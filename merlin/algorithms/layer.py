@@ -1236,6 +1236,11 @@ class QuantumLayer(MerlinModule):
             "trainable_parameters": list(self.trainable_parameters),
             "input_parameters": list(self.input_parameters),
             "noise_model": self.noise_model,
+            "input_param_order": [
+                name
+                for prefix in self.input_parameters
+                for name in spec_mappings.get(prefix, [])
+            ],
         }
         return config
 
