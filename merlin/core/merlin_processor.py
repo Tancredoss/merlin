@@ -717,20 +717,8 @@ class MerlinProcessor:
             yield from self._iter_layers_in_order(child)
 
     def _extract_input_params(self, config: dict) -> list[str]:
-        """Extract and sort circuit parameter names that correspond to model inputs."""
-        circuit = config["circuit"]
-        all_params = [p.name for p in circuit.get_parameters()]
-        input_param_names: list[str] = []
-        for input_spec in config.get("input_parameters", []):
-            if input_spec == "px":
-                for p_name in all_params:
-                    if p_name.startswith("px") and p_name[2:].isdigit():
-                        input_param_names.append(p_name)
-            else:
-                for p_name in all_params:
-                    if p_name.startswith(input_spec):
-                        input_param_names.append(p_name)
-        return sorted(input_param_names)
+        """Extract circuit parameter names that correspond to model inputs."""
+        return list(config["input_param_order"])
 
     def _process_batch_results(
         self,
