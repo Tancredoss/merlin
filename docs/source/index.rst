@@ -30,9 +30,9 @@ Advanced users can leverage the underlying `Perceval <https://perceval.quandela.
    user_guide/index
    quantum_expert_area/index
    notebooks/index
-   reproduced_papers/reproduced_papers
+   reproduced_papers/index
    api_reference/index
-   performance/performance
+   performance/index
 
 Who Should Use MerLin?
 ======================
