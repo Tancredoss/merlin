@@ -72,6 +72,7 @@ class MerlinGalleryDirective(Directive):
                 f"Gallery data file '{raw_data_path}' was not found "
                 f"(resolved to '{data_path}')."
             )
+        env.note_dependency(str(data_path))
 
         try:
             raw_cards = json.loads(data_path.read_text(encoding="utf-8"))
