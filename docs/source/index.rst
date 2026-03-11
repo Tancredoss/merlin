@@ -13,7 +13,7 @@ MerLin brings quantum computing capabilities to AI practitioners through easy-to
 
 - **Paper Reproduction**: Simple tools to reproduce published quantum ML papers and benchmark algorithms - see our :doc:`reproduced papers </reproduced_papers/reproduced_papers>` list.
 - **Quantum Architecture Bridge**: Access to latest and next-gen quantum photonic architectures as a bridge between AI and quantum worlds - see our :doc:`quantum architectures </research/architectures>`.
-- **GPU-Optimized Performance**: Fast simulation scaling up to 500+ mode chips with 10-20 photons near the simulability threshold - see :doc:`performance benchmarks <./reference/performance>`.
+- **GPU-Optimized Performance**: Fast simulation scaling up to 500+ mode chips with 10-20 photons near the simulability threshold - see :doc:`performance benchmarks </performance/performance>`.
 
 Together, these provide researchers with comprehensive tools for exploring and developing new quantum-classical hybrid algorithms.
 
@@ -32,7 +32,7 @@ Advanced users can leverage the underlying `Perceval <https://perceval.quandela.
    notebooks/index
    reproduced_papers/reproduced_papers
    api_reference/index
-   performance/index
+   performance/performance
 
 Who Should Use MerLin?
 ======================
