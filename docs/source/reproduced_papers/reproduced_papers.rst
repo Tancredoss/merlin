@@ -54,6 +54,11 @@ Available Reproductions
      - 2025
      - Complete
      - Photonic vision model
+   * - :doc:`reproductions/qssl`
+     - Jaderberg et al.
+     - 2022
+     - Complete
+     - Quantum self-supervised representation learning
 
 Contributing Reproductions
 --------------------------
@@ -117,8 +122,10 @@ Upcoming Reproductions
 
    reproductions/fock_state_expressivity
    reproductions/quantum_reservoir_computing
-   reproductions/template
    reproductions/qllm_finetuning
+   reproductions/photonic_qcnn
+   reproductions/qssl
+   reproductions/template
 
 ----
 
