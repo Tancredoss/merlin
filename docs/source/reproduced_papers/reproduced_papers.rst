@@ -54,11 +54,16 @@ Available Reproductions
      - 2025
      - Complete
      - Photonic vision model
+   * - :doc:`reproductions/QCNN_data_classification`
+     - Hur et al.
+     - 2022
+     - Complete
+     - Quantum convolutional neural network for classical data classification
    * - :doc:`reproductions/qssl`
      - Jaderberg et al.
      - 2022
      - Complete
-     - Quantum self-supervised representation learning
+     - Quantum self-supervised learning
 
 Contributing Reproductions
 --------------------------
@@ -124,6 +129,7 @@ Upcoming Reproductions
    reproductions/quantum_reservoir_computing
    reproductions/qllm_finetuning
    reproductions/photonic_qcnn
+   reproductions/QCNN_data_classification
    reproductions/qssl
    reproductions/template
 
