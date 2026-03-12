@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Run the QCNN model",
+    "summary": "Complete code reproduction of QCNN_data_classification (quantum and classical baselines)",
+    "image": "_static/reproduced_papers/QCNN_data_classification/Photonic_QConv.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/QCNN_data_classification",
+    "tags": ["External Link", "QCNN", "Repository"]
+  }
+]

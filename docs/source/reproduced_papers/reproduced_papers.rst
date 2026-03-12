@@ -86,11 +86,16 @@ Available Reproductions
      - 2025
      - Complete
      - Distributed computing for parameter compression
+   * - :doc:`reproductions/QCNN_data_classification`
+     - Hur et al.
+     - 2022
+     - Complete
+     - Quantum convolutional neural network for classical data classification
    * - :doc:`reproductions/qssl`
      - Jaderberg et al.
      - 2022
      - Complete
-     - Quantum self-supervised representation learning
+     - Quantum self-supervised learning
 
 Contributing Reproductions
 --------------------------
@@ -159,6 +164,7 @@ Upcoming Reproductions
    reproductions/distributed_nn
    reproductions/photonic_qcnn
    reproductions/hqnn-myth
+   reproductions/QCNN_data_classification
    reproductions/qssl
    reproductions/template
 
