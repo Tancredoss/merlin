@@ -106,7 +106,7 @@ Next results will include a comparison of the number of parameters !
 Interactive Exploration
 =======================
 
-**Jupyter Notebook**: :doc:`../notebooks/QLLM_fine_tuning`
+**Jupyter Notebook**: :doc:`../../notebooks/reproduced_papers/QLLM_fine_tuning`
 
 
 Citation
@@ -132,4 +132,3 @@ Future Work
 
 
 .. note:: End of document.
-
