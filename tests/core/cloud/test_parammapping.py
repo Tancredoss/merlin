@@ -37,7 +37,6 @@ from merlin.core.computation_space import ComputationSpace
 from merlin.core.merlin_processor import MerlinProcessor
 from merlin.measurement import MeasurementStrategy
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -80,9 +79,7 @@ def _make_perceval_layer(
     if n_physical is None:
         n_physical = n_logical
 
-    circuit = _make_perceval_circuit_single_prefix(
-        n_logical, n_physical, prefix=prefix
-    )
+    circuit = _make_perceval_circuit_single_prefix(n_logical, n_physical, prefix=prefix)
 
     if n_photons <= 0:
         raise ValueError("n_photons must be >= 1")
@@ -192,7 +189,6 @@ def _assert_config_contract(cfg: dict):
 
 
 class TestPercevalUserBuilt:
-
     @pytest.mark.parametrize("n", [3, 5, 10, 12])
     def test_export_matches_converter_and_is_numeric(self, n):
         layer = _make_perceval_layer(n, prefix="px")
@@ -209,7 +205,7 @@ class TestPercevalUserBuilt:
         cfg = layer.export_config()
         _assert_config_contract(cfg)
 
-        expected = [f"a{i+1}" for i in range(12)] + [f"b{i+1}" for i in range(12)]
+        expected = [f"a{i + 1}" for i in range(12)] + [f"b{i + 1}" for i in range(12)]
         assert cfg["input_param_order"] == expected
 
     def test_reversed_prefix_order(self):
@@ -219,7 +215,9 @@ class TestPercevalUserBuilt:
         cfg = layer.export_config()
         _assert_config_contract(cfg)
 
-        expected = [f"beta{i+1}" for i in range(4)] + [f"alpha{i+1}" for i in range(4)]
+        expected = [f"beta{i + 1}" for i in range(4)] + [
+            f"alpha{i + 1}" for i in range(4)
+        ]
         assert cfg["input_param_order"] == expected
 
     @pytest.mark.parametrize("n", [10, 12])
@@ -240,9 +238,7 @@ class TestPercevalUserBuilt:
         assert params[f"px{n}"] == pytest.approx(n * 0.1)
 
     def test_user_scenario_2ph_12logical_24modes(self):
-        layer = _make_perceval_layer(
-            12, n_physical=24, n_photons=2, prefix="px"
-        )
+        layer = _make_perceval_layer(12, n_physical=24, n_photons=2, prefix="px")
         cfg = layer.export_config()
         proc = _mock_processor()
         names = proc._extract_input_params(cfg)
@@ -262,7 +258,6 @@ class TestPercevalUserBuilt:
 
 
 class TestBuilderDeclarative:
-
     @pytest.mark.parametrize("n", [5, 10, 12])
     def test_builder_export_matches_converter_and_routes(self, n):
         layer, _b = _make_builder_layer(n, include_trainable=True, scale=1.0)
@@ -287,7 +282,9 @@ class TestBuilderDeclarative:
         _assert_config_contract(cfg)
 
         for name in cfg["input_param_order"]:
-            assert not name.startswith("W"), f"trainable leaked into input_param_order: {name}"
+            assert not name.startswith("W"), (
+                f"trainable leaked into input_param_order: {name}"
+            )
 
     def test_builder_input_only_no_trainables(self):
         layer, _b = _make_builder_layer(8, include_trainable=False, scale=1.0)
@@ -328,13 +325,18 @@ class TestCloudBothSpaces:
       pytest --run-cloud-tests tests/core/cloud/test_parammapping.py -k Cloud -v
     """
 
-    @pytest.mark.parametrize("space", [ComputationSpace.UNBUNCHED, ComputationSpace.FOCK])
-    @pytest.mark.parametrize("n_modes,n_photons", [
-        (11, 2),
-        (12, 2),
-        (15, 2),
-        (12, 3),
-    ])
+    @pytest.mark.parametrize(
+        "space", [ComputationSpace.UNBUNCHED, ComputationSpace.FOCK]
+    )
+    @pytest.mark.parametrize(
+        "n_modes,n_photons",
+        [
+            (11, 2),
+            (12, 2),
+            (15, 2),
+            (12, 3),
+        ],
+    )
     def test_perceval_direct_local_vs_remote(
         self,
         remote_processor,
@@ -372,13 +374,18 @@ class TestCloudBothSpaces:
         diff = (y_local - y_remote).abs().mean().item()
         assert diff < 0.1
 
-    @pytest.mark.parametrize("space", [ComputationSpace.UNBUNCHED, ComputationSpace.FOCK])
-    @pytest.mark.parametrize("n_modes,n_photons", [
-        (11, 2),
-        (12, 2),
-        (15, 2),
-        (12, 3),
-    ])
+    @pytest.mark.parametrize(
+        "space", [ComputationSpace.UNBUNCHED, ComputationSpace.FOCK]
+    )
+    @pytest.mark.parametrize(
+        "n_modes,n_photons",
+        [
+            (11, 2),
+            (12, 2),
+            (15, 2),
+            (12, 3),
+        ],
+    )
     def test_builder_local_vs_remote(
         self,
         remote_processor,
@@ -430,7 +437,9 @@ class TestCloudMultiPrefixBothSpaces:
       pytest --run-cloud-tests tests/core/cloud/test_parammapping.py -k MultiPrefix -v
     """
 
-    @pytest.mark.parametrize("space", [ComputationSpace.UNBUNCHED, ComputationSpace.FOCK])
+    @pytest.mark.parametrize(
+        "space", [ComputationSpace.UNBUNCHED, ComputationSpace.FOCK]
+    )
     @pytest.mark.parametrize("n_each", [10, 12])
     def test_multi_prefix_local_vs_remote(
         self,
@@ -443,9 +452,9 @@ class TestCloudMultiPrefixBothSpaces:
 
         c = pcvl.Circuit(total_modes)
         for i in range(n_each):
-            c.add(i, pcvl.PS(pcvl.P(f"a{i+1}")))
+            c.add(i, pcvl.PS(pcvl.P(f"a{i + 1}")))
         for i in range(n_each):
-            c.add(i + n_each, pcvl.PS(pcvl.P(f"b{i+1}")))
+            c.add(i + n_each, pcvl.PS(pcvl.P(f"b{i + 1}")))
 
         input_state = [0] * total_modes
         input_state[0] = 1
@@ -457,9 +466,7 @@ class TestCloudMultiPrefixBothSpaces:
             trainable_parameters=[],
             input_parameters=["a", "b"],
             input_state=input_state,
-            measurement_strategy=MeasurementStrategy.probs(
-                computation_space=space
-            ),
+            measurement_strategy=MeasurementStrategy.probs(computation_space=space),
         ).eval()
 
         expected_dist = _expected_dist_size(space, total_modes, n_photons)
@@ -480,4 +487,3 @@ class TestCloudMultiPrefixBothSpaces:
 
         diff = (y_local - y_remote).abs().mean().item()
         assert diff < 0.1
-

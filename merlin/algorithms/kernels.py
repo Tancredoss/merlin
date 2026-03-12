@@ -395,7 +395,7 @@ class FeatureMap:
         Simple factory method to create a FeatureMap with minimal configuration.
 
         Args:
-            input_size: Classical feature dimension. Maximum is 20.
+            input_size: Classical feature dimension. Maximum is 19.
             n_photons: Optional photon count (defaults to ``input_size``).
             dtype: Target dtype for internal tensors.
             device: Optional torch device handle.
@@ -406,8 +406,10 @@ class FeatureMap:
             FeatureMap: Configured feature-map instance.
         """
         if n_modes is None:
-            n_modes = input_size
-        if input_size > 20 or n_modes > 20:
+            n_modes = input_size + 1
+        if n_modes < 2:
+            raise ValueError(f"The number of modes must be at least 2, got {n_modes}")
+        if input_size > 19 or n_modes > 20:
             raise ValueError(
                 "Input size too large for the simple layer construction. For large inputs (with larger size than 20), please use the CircuitBuilder. Here is a quick tutorial on how to use it: https://merlinquantum.ai/quickstart/first_quantum_layer.html#circuitbuilder-walkthrough"
             )
@@ -417,39 +419,24 @@ class FeatureMap:
         if input_size > n_modes:
             raise ValueError(ANGLE_ENCODING_MODE_ERROR)
 
-        if n_modes == 1:
-            builder = CircuitBuilder(n_modes=2)
+        builder = CircuitBuilder(n_modes=n_modes)
 
-            # Trainable entangling layer before encoding
-            builder.add_entangling_layer(trainable=True, name="LI_simple")
+        # Trainable entangling layer before encoding
+        builder.add_entangling_layer(
+            trainable=True,
+            name="LI_simple",
+        )
 
-            # Angle encoding
-            builder.add_angle_encoding(
-                modes=[1], name="input", subset_combinations=False
-            )
+        # Angle encoding
+        builder.add_angle_encoding(
+            modes=list(range(int(input_size))),
+            name="input",
+            subset_combinations=False,
+            scale=angle_encoding_scale,
+        )
 
-            # Trainable entangling layer after encoding
-            builder.add_entangling_layer(trainable=True, name="RI_simple")
-
-        else:
-            builder = CircuitBuilder(n_modes=n_modes)
-
-            # Trainable entangling layer before encoding
-            builder.add_entangling_layer(
-                trainable=True,
-                name="LI_simple",
-            )
-
-            # Angle encoding
-            builder.add_angle_encoding(
-                modes=list(range(int(input_size))),
-                name="input",
-                subset_combinations=False,
-                scale=angle_encoding_scale,
-            )
-
-            # Trainable entangling layer after encoding
-            builder.add_entangling_layer(trainable=True, name="RI_simple")
+        # Trainable entangling layer after encoding
+        builder.add_entangling_layer(trainable=True, name="RI_simple")
 
         return cls(
             builder=builder,
@@ -1061,17 +1048,14 @@ class FidelityKernel(MerlinModule):
         )
 
         if n_modes is None:
-            state_size = input_size
+            state_size = input_size + 1
         else:
-            state_size = max(n_modes, input_size)
+            state_size = max(n_modes, input_size + 1)
 
-        if state_size == 1:
-            input_state = [0, 1]
-        else:
-            input_state = state_size * [0]
-            for i in range(state_size):
-                if i % 2 == 1:
-                    input_state[i] = 1
+        input_state = state_size * [0]
+        for i in range(state_size):
+            if i % 2 == 1:
+                input_state[i] = 1
 
         return cls(
             feature_map=feature_map,

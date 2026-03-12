@@ -93,7 +93,13 @@ class TestUserGuideExamples:
 
     def test_local_vs_remote_ab_force_simulation(self, remote_processor):
         """Remote vs forced-local A/B; distributions should be reasonably close."""
-        q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED, trainable=True)
+        q = _make_layer(
+            6,
+            2,
+            input_size=2,
+            computation_space=ComputationSpace.UNBUNCHED,
+            trainable=True,
+        )
         X = torch.rand(4, 2)
         proc = MerlinProcessor(remote_processor)
 
@@ -109,7 +115,13 @@ class TestUserGuideExamples:
 
     def test_monitor_status_and_cancellation(self, remote_processor):
         """Status polling and cooperative cancellation should raise CancelledError."""
-        q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED, trainable=True)
+        q = _make_layer(
+            6,
+            2,
+            input_size=2,
+            computation_space=ComputationSpace.UNBUNCHED,
+            trainable=True,
+        )
         proc = MerlinProcessor(remote_processor)
         fut = proc.forward_async(q, torch.rand(16, 2), nsample=40_000, timeout=None)
 
@@ -130,7 +142,13 @@ class TestUserGuideExamples:
 
     def test_high_throughput_batching_with_chunking(self, remote_processor):
         """Large batch is chunked; counters and output shape match expectations."""
-        q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED, trainable=True)
+        q = _make_layer(
+            6,
+            2,
+            input_size=2,
+            computation_space=ComputationSpace.UNBUNCHED,
+            trainable=True,
+        )
 
         proc = MerlinProcessor(
             remote_processor,
@@ -154,7 +172,13 @@ class TestUserGuideExamples:
 
     def test_device_and_dtype_roundtrip(self, remote_processor):
         """Ensure outputs preserve input device/dtype semantics after remote call."""
-        q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED, trainable=True)
+        q = _make_layer(
+            6,
+            2,
+            input_size=2,
+            computation_space=ComputationSpace.UNBUNCHED,
+            trainable=True,
+        )
         proc = MerlinProcessor(remote_processor, timeout=300.0)
 
         x_f32 = torch.rand(3, 2, dtype=torch.float32)
@@ -164,7 +188,11 @@ class TestUserGuideExamples:
         # If CUDA is available, verify round-trip back to CUDA device
         if torch.cuda.is_available():
             q_cuda = _make_layer(
-                6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED, trainable=True
+                6,
+                2,
+                input_size=2,
+                computation_space=ComputationSpace.UNBUNCHED,
+                trainable=True,
             ).to("cuda")
             x_cuda = torch.rand(2, 2, device="cuda", dtype=torch.float32)
             y_cuda = proc.forward(q_cuda, x_cuda, nsample=1500)
