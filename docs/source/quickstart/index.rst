@@ -1,15 +1,9 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-.. _quickstart:
-
-==========
-Quickstart
-==========
+.. include:: quickstart.rst
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Table of Contents
+   :maxdepth: 1
+   :hidden:
 
-   installation
-   first_quantum_layer
-   basic_concepts
+   quickstart
