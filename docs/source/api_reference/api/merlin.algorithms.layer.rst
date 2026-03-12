@@ -235,12 +235,17 @@ Returning typed objects
 When ``return_object`` is set to True, the output of a ``forward()`` call depends of the ``measurement_strategy``. By default,
 it is set to False. See the following output matrix to size what to expect as the return of a forward call.
 
-|   measurement_strategy   |  return_object=False   |  return_object=True       |
-|   :-------------------   |  :------------------   |  :----------------:       |
-|   AMPLTITUDES            |  torch.Tensor          |  StateVector              |
-|   PROBABILITIES          |  torch.Tensor          |  ProbabilityDistribution  |
-|   PARTIAL_MEASUREMENT    |  PartialMeasurement    |  PartialMeasurement       |
-|   MODE_EXPECTATIONS      |  torch.Tensor          |  torch.Tensor             |
++-----------------------+----------------------+--------------------------+
+| measurement_strategy  | return_object=False  | return_object=True       |
++=======================+======================+==========================+
+| AMPLTITUDES           | torch.Tensor         | StateVector              |
++-----------------------+----------------------+--------------------------+
+| PROBABILITIES         | torch.Tensor         | ProbabilityDistribution  |
++-----------------------+----------------------+--------------------------+
+| PARTIAL_MEASUREMENT   | PartialMeasurement   | PartialMeasurement       |
++-----------------------+----------------------+--------------------------+
+| MODE_EXPECTATIONS     | torch.Tensor         | torch.Tensor             |
++-----------------------+----------------------+--------------------------+
 
 Most of the typed objects can give the ``torch.Tensor`` as an output with the ``.tensor`` parameter. Only the 
 PartialMeasurement object is a little different. See its according documentation.
