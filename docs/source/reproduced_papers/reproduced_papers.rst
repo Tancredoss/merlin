@@ -86,6 +86,11 @@ Available Reproductions
      - 2025
      - Complete
      - Distributed computing for parameter compression
+   * - :doc:`reproductions/qssl`
+     - Jaderberg et al.
+     - 2022
+     - Complete
+     - Quantum self-supervised representation learning
 
 Contributing Reproductions
 --------------------------
@@ -154,6 +159,7 @@ Upcoming Reproductions
    reproductions/distributed_nn
    reproductions/photonic_qcnn
    reproductions/hqnn-myth
+   reproductions/qssl
    reproductions/template
 
 ----
