@@ -1,0 +1,9 @@
+[
+  {
+    "title": "First Quantum Layers (Iris)",
+    "summary": "Three practical ways to build and train QuantumLayer models on Iris.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Classification", "Iris", "QuantumLayer"]
+  }
+]

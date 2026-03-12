@@ -1,0 +1,49 @@
+[
+  {
+    "title": "FQL Default To Page Color",
+    "summary": "Uses page-level contour color from the directive.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Color", "Page Level"]
+  },
+  {
+    "title": "FQL Warm Orange",
+    "summary": "Card-level contour override in orange.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Color", "Card Override"],
+    "contour_color": "#ff8c42"
+  },
+  {
+    "title": "FQL Teal Accent",
+    "summary": "Card-level contour override in teal.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Color", "Card Override"],
+    "contour_color": "#0ec8c3"
+  },
+  {
+    "title": "FQL Indigo Accent",
+    "summary": "Card-level contour override in indigo.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Color", "Card Override"],
+    "contour_color": "#4f46e5"
+  },
+  {
+    "title": "FQL Green Accent",
+    "summary": "Card-level contour override in green.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Color", "Card Override"],
+    "contour_color": "#2f9e44"
+  },
+  {
+    "title": "FQL Deep Red Accent",
+    "summary": "Card-level contour override in deep red.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Color", "Card Override"],
+    "contour_color": "#b42318"
+  }
+]
