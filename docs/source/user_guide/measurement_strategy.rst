@@ -169,9 +169,10 @@ states is available with ``StateVector`` and ``ProbabilityDistribution`` by inde
 with Perceval making it easy interations to have an easy crossplay between the two libraries.
 
 For more information on the typed output capabilities, follow the following links:
-- ``StateVector`` : :doc:`/api_reference/api/merlin.algorithms.core.state_vector`
-- ``ProbabilityDistribution`` : :doc:`/api_reference/api/merlin.algorithms.core.probability_distribution`
-- ``PartialMeasurement`` : :doc:`/api_reference/api/merlin.algorithms.core.partial_measurement`
+
+- ``StateVector``: :doc:`StateVector </api_reference/api/merlin.core.state_vector>`
+- ``ProbabilityDistribution``: :doc:`ProbabilityDistribution </api_reference/api/merlin.core.probability_distribution>`
+- ``PartialMeasurement``: :doc:`PartialMeasurement </api_reference/api/merlin.core.partial_measurement>`
 
 The snippet below prepares a basic quantum layer and returns a ``ProbabilityDistribution`` object:
 
