@@ -90,6 +90,7 @@ The complete implementation includes:
 * The bond dimension comparison experiment
 * The parameter compression comparison experiment
 * An ablation study
+* A tutorial on how to use the code
 
 Citation
 ========
