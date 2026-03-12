@@ -119,6 +119,7 @@ Upcoming Reproductions
    reproductions/quantum_reservoir_computing
    reproductions/template
    reproductions/qllm_finetuning
+   reproductions/photonic_qcnn
 
 ----
 
