@@ -54,6 +54,11 @@ Available Reproductions
      - 2025
      - Complete
      - Photonic vision model
+   * - :doc:`reproductions/data_reuploading`
+     - Mauser et al.
+     - 2025
+     - Complete
+     - Photonic data re-uploading model
 
 Contributing Reproductions
 --------------------------
@@ -119,6 +124,7 @@ Upcoming Reproductions
    reproductions/quantum_reservoir_computing
    reproductions/template
    reproductions/qllm_finetuning
+   reproductions/data_reuploading
 
 ----
 
