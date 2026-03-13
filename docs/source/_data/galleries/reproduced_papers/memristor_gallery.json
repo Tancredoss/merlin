@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Discover the photonic memristor",
+    "summary": "Experimental neuromorphic computing based on quantum memristor with MerLin",
+    "image": "_static/reproduced_papers/memristor/results.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/blob/main/papers/qrc_memristor",
+    "tags": ["External Link", "Photonic Memristor", "Reservoir", "Future-proofing", "NARMA10"]
+  }
+]
