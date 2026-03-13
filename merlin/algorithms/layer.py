@@ -1256,7 +1256,7 @@ class QuantumLayer(MerlinModule):
         dtype: torch.dtype | None = None,
         computation_space: ComputationSpace | str = ComputationSpace.UNBUNCHED,
     ):
-        """Create a ready-to-train layer with a (input_size+1)-mode, ((input_size+1)//2)-photon architecture.
+        """Create a ready-to-train layer with a (input_size+1)-mode, ceil((input_size+1)/2)-photon architecture.
 
         The circuit is assembled via :class:`CircuitBuilder` with the following layout:
 
@@ -1282,12 +1282,12 @@ class QuantumLayer(MerlinModule):
         if input_size < 1:
             raise ValueError(f"input_size must be at least 1, got {input_size}")
 
-        n_photons = n_modes // 2
-
         input_state = n_modes * [0]
         for i in range(n_modes):
-            if i % 2 == 1:
+            if i % 2 == 0:
                 input_state[i] = 1
+
+        n_photons = sum(input_state)
         input_state = pcvl.BasicState(input_state)
 
         builder = CircuitBuilder(n_modes=n_modes)
