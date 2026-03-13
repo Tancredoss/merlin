@@ -260,14 +260,14 @@ class TestFidelityKernel:
         # Check that all eigenvalues are non-negative
         eigenvals = torch.linalg.eigvals(psd_matrix)
         # Assert eigenvalues are real (imaginary parts are essentially zero)
-        assert torch.all(torch.abs(eigenvals.imag) < 1e-12), (
-            f"Eigenvalues have significant imaginary parts: {eigenvals.imag}"
-        )
+        assert torch.all(
+            torch.abs(eigenvals.imag) < 1e-12
+        ), f"Eigenvalues have significant imaginary parts: {eigenvals.imag}"
         # Assert all eigenvalues are non-negative (PSD condition)
         real_eigenvals = eigenvals.real
-        assert torch.all(real_eigenvals >= -1e-10), (
-            f"Matrix has negative eigenvalues: {real_eigenvals[real_eigenvals < -1e-10]}"
-        )
+        assert torch.all(
+            real_eigenvals >= -1e-10
+        ), f"Matrix has negative eigenvalues: {real_eigenvals[real_eigenvals < -1e-10]}"
 
     def test_kernel_no_bunching(self):
         from perceval import (
@@ -332,8 +332,7 @@ class TestFidelityKernel:
         )
 
         feature_forward = (
-            feature_map
-            .compute_unitary(torch.as_tensor(X1, dtype=feature_map.dtype))
+            feature_map.compute_unitary(torch.as_tensor(X1, dtype=feature_map.dtype))
             .detach()
             .cpu()
             .numpy()
@@ -348,8 +347,7 @@ class TestFidelityKernel:
         )
 
         feature_backward = (
-            feature_map
-            .compute_unitary(torch.as_tensor(X2, dtype=feature_map.dtype))
+            feature_map.compute_unitary(torch.as_tensor(X2, dtype=feature_map.dtype))
             .detach()
             .cpu()
             .numpy()
@@ -618,7 +616,7 @@ class TestFidelityKernelFactoryMethods:
         assert kernel.feature_map.circuit.m == 4
         assert len(kernel.input_state) == 4
         assert sum(kernel.input_state) == 2
-        assert kernel.input_state == [0, 1, 0, 1]
+        assert kernel.input_state == [1, 0, 1, 0]
 
     def test_simple_factory_default_photons(self):
         """Test simple factory with default n_photons."""
@@ -626,29 +624,29 @@ class TestFidelityKernelFactoryMethods:
 
         assert kernel.input_size == 3
         assert sum(kernel.input_state) == 3  # Should default to input_size photons
-        assert kernel.input_state == [0, 1, 0, 1, 0, 1]
+        assert kernel.input_state == [1, 0, 1, 0, 1, 0]
 
     def test_simple_num_photons_modes_and_input_state(self):
         for i in range(1, 15):
             kernel = FidelityKernel.simple(input_size=i)
             assert kernel.feature_map.circuit.m == i + 1
-            assert np.sum(kernel.input_state) == (i + 1) // 2
+            assert np.sum(kernel.input_state) == int(np.ceil((i + 1) / 2))
             assert len(kernel.input_state) == i + 1
 
             input_state = [0] * (i + 1)
             for j in range(len(input_state)):
-                if j % 2 == 1:
+                if j % 2 == 0:
                     input_state[j] = 1
             assert kernel.input_state == input_state
         for i in range(1, 15):
             kernel = FidelityKernel.simple(input_size=1, n_modes=i + 1)
             assert kernel.feature_map.circuit.m == i + 1
-            assert np.sum(kernel.input_state) == (i + 1) // 2
+            assert np.sum(kernel.input_state) == int(np.ceil((i + 1) / 2))
             assert len(kernel.input_state) == i + 1
 
             input_state = [0] * (i + 1)
             for j in range(len(input_state)):
-                if j % 2 == 1:
+                if j % 2 == 0:
                     input_state[j] = 1
             assert kernel.input_state == input_state
 
@@ -681,8 +679,7 @@ class TestKernelCircuitBuilder:
         device = torch.device("cpu")
         builder = KernelCircuitBuilder()
         feature_map = (
-            builder
-            .input_size(2)
+            builder.input_size(2)
             .n_modes(4)
             .device(device)
             .dtype(torch.float64)
@@ -703,8 +700,7 @@ class TestKernelCircuitBuilder:
         assert not feature_map.is_trainable
 
         feature_map = (
-            builder
-            .input_size(2)
+            builder.input_size(2)
             .n_modes(4)
             .trainable(True, prefix="phi_")
             .build_feature_map()
@@ -729,8 +725,7 @@ class TestKernelCircuitBuilder:
         builder = KernelCircuitBuilder()
         custom_state = [2, 0, 0, 0]
         kernel = (
-            builder
-            .input_size(2)
+            builder.input_size(2)
             .n_modes(4)
             .build_fidelity_kernel(input_state=custom_state)
         )
@@ -741,8 +736,7 @@ class TestKernelCircuitBuilder:
         """Test building FidelityKernel with sampling configuration."""
         builder = KernelCircuitBuilder()
         kernel = (
-            builder
-            .input_size(2)
+            builder.input_size(2)
             .n_modes(4)
             .build_fidelity_kernel(
                 shots=1000,
@@ -767,8 +761,7 @@ class TestKernelCircuitBuilder:
     def test_builder_angle_encoding_configuration(self):
         builder = KernelCircuitBuilder()
         feature_map = (
-            builder
-            .input_size(3)
+            builder.input_size(3)
             .n_modes(4)
             .angle_encoding(scale=0.5)
             .build_feature_map()
@@ -871,8 +864,7 @@ class TestKernelConstructionConsistency:
         # Builder API
         builder_api = KernelCircuitBuilder()
         k_builder = (
-            builder_api
-            .input_size(2)
+            builder_api.input_size(2)
             .n_modes(4)
             .trainable(False)
             .build_fidelity_kernel()
@@ -1103,9 +1095,9 @@ def test_iris_dataset_quantum_kernel():
     assert all(pred in [0, 1, 2] for pred in y_pred)  # Valid class predictions
 
     print(f"Iris dataset quantum kernel test - Accuracy: {accuracy:.4f}")
-    assert accuracy > 0.8, (
-        f"Accuracy too low: {accuracy:.4f}, there may be a problem with the kernel"
-    )
+    assert (
+        accuracy > 0.8
+    ), f"Accuracy too low: {accuracy:.4f}, there may be a problem with the kernel"
     # test functions must not return values (pytest expects None)
 
 
@@ -1318,8 +1310,7 @@ def test_iris_with_supported_constructors():
         try:
             builder = KernelCircuitBuilder()
             kernel_builder = (
-                builder
-                .input_size(4)
+                builder.input_size(4)
                 .n_modes(4)
                 .trainable(trainable_flag)
                 .build_fidelity_kernel()
