@@ -6,7 +6,7 @@ This page is dedicated for new users of MerLin! The following notebook will show
 
 You will learn how to create a MerLin ``QuantumLayer``, the basic module of this library. You will also realize that this object is a ``torch.nn.Module``. That means that MerLin plugs directly into pytorch. 
 
-In only a few epochs, we obtain a 84.1% accuracy.
+In only a few epochs, we obtain a 87.3% accuracy.
 
 .. merlin-gallery::
    :data: _data/galleries/quickstart_notebook.json
