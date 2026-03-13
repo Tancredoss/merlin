@@ -48,7 +48,6 @@ def _wait_future(fut, timeout=300.0):
 
 @pytest.mark.usefixtures("scaleway_session")
 class TestChunkDebug:
-
     def test_sequential_chunks(self, scaleway_session):
         """chunk_concurrency=1: sequential, baseline."""
         proc = MerlinProcessor(

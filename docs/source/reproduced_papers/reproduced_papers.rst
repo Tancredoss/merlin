@@ -122,9 +122,10 @@ Upcoming Reproductions
 
    reproductions/fock_state_expressivity
    reproductions/quantum_reservoir_computing
-   reproductions/template
    reproductions/qllm_finetuning
    reproductions/distributed_nn
+   reproductions/photonic_qcnn
+   reproductions/template
 
 ----
 
