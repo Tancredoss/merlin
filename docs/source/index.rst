@@ -26,7 +26,7 @@ Advanced users can leverage the underlying `Perceval <https://perceval.quandela.
    :hidden:
 
    Welcome <self>
-   quickstart/index
+   Quickstart <quickstart/index>
    user_guide/index
    quantum_expert_area/index
    examples/index
