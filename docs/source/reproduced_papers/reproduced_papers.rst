@@ -54,6 +54,11 @@ Available Reproductions
      - 2025
      - Complete
      - Photonic vision model
+   * - :doc:`reproductions/photonic_kernel`
+     - Yin et al.
+     - 2025
+     - Complete
+     - Experimental quantum-enhanced kernel-based machine learning on a photonic processor
 
 Contributing Reproductions
 --------------------------
@@ -120,6 +125,7 @@ Upcoming Reproductions
    reproductions/template
    reproductions/qllm_finetuning
    reproductions/photonic_qcnn
+   reproductions/photonic_kernel
 
 ----
 
