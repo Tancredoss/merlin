@@ -42,7 +42,7 @@ Example: Quickstart QuantumLayer
    :width: 600px
    :align: center
 
-The simple quantum layer above implements a circuit of (input_size) modes and (input_size//2) photons. This circuit is made of:
+The simple quantum layer above implements a circuit of (input_size+1) modes and ((input_size+1)//2) photons. This circuit is made of:
 - A fully trainable entangling layer acting on all modes;
 - A full input encoding layer spanning all encoded features;
 - A fully trainable entangling layer acting on all modes.

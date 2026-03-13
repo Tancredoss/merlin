@@ -1256,7 +1256,7 @@ class QuantumLayer(MerlinModule):
         dtype: torch.dtype | None = None,
         computation_space: ComputationSpace | str = ComputationSpace.UNBUNCHED,
     ):
-        """Create a ready-to-train layer with a input_size-mode, (input_size//2)-photon architecture.
+        """Create a ready-to-train layer with a (input_size+1)-mode, ((input_size+1)//2)-photon architecture.
 
         The circuit is assembled via :class:`CircuitBuilder` with the following layout:
 
@@ -1265,7 +1265,7 @@ class QuantumLayer(MerlinModule):
         3. A fully trainable entangling layer acting on all modes.
 
         Args:
-            input_size: Size of the classical input vector. Must be 20 or lower.
+            input_size: Size of the classical input vector. Must be 19 or lower.
             output_size: Optional classical output width.
             device: Optional target device for tensors.
             dtype: Optional tensor dtype.
@@ -1274,51 +1274,36 @@ class QuantumLayer(MerlinModule):
         Returns:
             QuantumLayer configured with the described architecture.
         """
-        if input_size > 20:
+        n_modes = input_size + 1
+        if n_modes > 20:
             raise ValueError(
-                "Input size too large for the simple layer construction. For large inputs (with larger size than 20), please use the CircuitBuilder. Here is a quick tutorial on how to use it: https://merlinquantum.ai/quickstart/first_quantum_layer.html#circuitbuilder-walkthrough"
+                "Input size too large for the simple layer construction. For large inputs (with larger size than 19), please use the CircuitBuilder. Here is a quick tutorial on how to use it: https://merlinquantum.ai/quickstart/first_quantum_layer.html#circuitbuilder-walkthrough"
             )
         if input_size < 1:
             raise ValueError(f"input_size must be at least 1, got {input_size}")
 
-        if input_size == 1:
-            n_photons = 1
-            input_state = [0, 1]
-            builder = CircuitBuilder(n_modes=2)
+        n_photons = n_modes // 2
 
-            # Trainable entangling layer before encoding
-            builder.add_entangling_layer(trainable=True, name="LI_simple")
+        input_state = n_modes * [0]
+        for i in range(n_modes):
+            if i % 2 == 1:
+                input_state[i] = 1
+        input_state = pcvl.BasicState(input_state)
 
-            # Angle encoding
-            builder.add_angle_encoding(
-                modes=[1], name="input", subset_combinations=False
-            )
+        builder = CircuitBuilder(n_modes=n_modes)
 
-            # Trainable entangling layer after encoding
-            builder.add_entangling_layer(trainable=True, name="RI_simple")
+        # Trainable entangling layer before encoding
+        builder.add_entangling_layer(trainable=True, name="LI_simple")
 
-        else:
-            n_photons = input_size // 2
+        # Angle encoding
+        builder.add_angle_encoding(
+            modes=list(range(input_size)),
+            name="input",
+            subset_combinations=False,
+        )
 
-            input_state = input_size * [0]
-            for i in range(input_size):
-                if i % 2 == 1:
-                    input_state[i] = 1
-            input_state = pcvl.BasicState(input_state)
-
-            builder = CircuitBuilder(n_modes=input_size)
-
-            # Trainable entangling layer before encoding
-            builder.add_entangling_layer(trainable=True, name="LI_simple")
-
-            # Angle encoding
-            builder.add_angle_encoding(
-                name="input",
-                subset_combinations=False,
-            )
-
-            # Trainable entangling layer after encoding
-            builder.add_entangling_layer(trainable=True, name="RI_simple")
+        # Trainable entangling layer after encoding
+        builder.add_entangling_layer(trainable=True, name="RI_simple")
 
         # new API forces explicit measurement strategy definition, so we set it here to match the old default behavior of returning probabilities
         measurement_strategy = MeasurementStrategy.probs(
