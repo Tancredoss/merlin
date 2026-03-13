@@ -54,6 +54,11 @@ Available Reproductions
      - 2025
      - Complete
      - Photonic vision model
+   * - :doc:`reproductions/amplitude_limitations`
+     - Wang et al.
+     - 2025
+     - Complete
+     - Limitations of the amplitude encoding paradigm
 
 Contributing Reproductions
 --------------------------
@@ -120,6 +125,7 @@ Upcoming Reproductions
    reproductions/template
    reproductions/qllm_finetuning
    reproductions/photonic_qcnn
+   reproductions/amplitude_limitations
 
 ----
 
