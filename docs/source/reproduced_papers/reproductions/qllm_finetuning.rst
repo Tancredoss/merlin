@@ -17,7 +17,7 @@ Quantum Large Language Model Fine-Tuning
 
    **ArXiv**: `2504.08732 <https://arxiv.org/abs/2504.08732>`_
 
-   **Reproduction Status**: 🚧 In Progress
+   **Reproduction Status**: ✅ Complete
 
    **Reproducer**: Cassandre Notton (cassandre.notton@quandela.com)
 
@@ -25,7 +25,7 @@ Project Repository
 ==================
 
 .. merlin-gallery::
-   :data: _data/galleries/reproduced_papers/qssl_external_links.json
+   :data: _data/galleries/reproduced_papers/qllm_gallery.json
    :columns: 3
    :contour-color: #5648ED
 

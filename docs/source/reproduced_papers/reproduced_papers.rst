@@ -45,9 +45,9 @@ Available Reproductions
      - In Progress
      - Boson sampling for quantum reservoir computing
    * - :doc:`reproductions/qllm_finetuning`
-     - Jern et al.
+     - Kim et al.
      - 2025
-     - In Progress
+     - Complete
      - Fine Tuning a LLM with a photonic neural network
    * - :doc:`reproductions/photonic_qcnn`
      - Monbroussou et al.
