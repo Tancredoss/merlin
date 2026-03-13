@@ -33,6 +33,12 @@ Each reproduction may include:
    reproductions/qllm_finetuning
    reproductions/photonic_qcnn
    reproductions/photonic_kernel
+   reproductions/QCNN_data_classification
+   reproductions/qssl
+   reproductions/photonic_memristor
+   reproductions/hqnn-myth
+   reproductions/data_reuploading
+   reproductions/distributed_nn
 
 Available Reproductions
 -----------------------
@@ -169,15 +175,9 @@ Upcoming Reproductions
 
    reproductions/fock_state_expressivity
    reproductions/quantum_reservoir_computing
-   reproductions/qllm_finetuning
-   reproductions/data_reuploading
-   reproductions/distributed_nn
-   reproductions/photonic_qcnn
-   reproductions/photonic_memristor
-   reproductions/hqnn-myth
-   reproductions/QCNN_data_classification
-   reproductions/qssl
    reproductions/template
+   reproductions/qllm_finetuning
+   reproductions/photonic_qcnn
 
 ----
 
