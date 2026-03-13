@@ -150,16 +150,6 @@ The plots below compare the original paper figures (left in the source README) a
    :width: 52%
    :alt: Reproduced supplementary figure 2 trend.
 
-Code Access and Documentation
-=============================
-
-Reference implementation notes for this reproduction are documented in:
-
-* ``docs/source/reproduced_papers/reproductions/README-kernel.md``
-* ``docs/source/_static/reproduced_papers/photonic_enhanced_kernels/`` (figure assets and reproduced plots)
-
-The README also documents experiment CLI options, output directory structure, and test commands used for the noise-model validation.
-
 Technical Implementation Details
 ================================
 
