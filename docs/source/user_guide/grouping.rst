@@ -15,7 +15,7 @@ It can be directly defined in a ``MeasurementStrategy`` in the QuantumLayer cons
 
 .. code-block:: python
 
-    measurement_strategy=merlin.MeasurementStrategy.probs(grouping=grouping = LexGrouping(fock_space_dim, 3))
+    measurement_strategy=merlin.MeasurementStrategy.probs(grouping = LexGrouping(fock_space_dim, 3))
 
 See :doc:`./measurement_strategy` for more details.
 
