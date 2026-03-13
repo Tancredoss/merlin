@@ -209,7 +209,7 @@ Minimal example (factory)
 	# Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
 	kernel = FidelityKernel.simple(
 		input_size=2,
-		n_modes=4,               # Here the number of modes is optional, if n_modes is not given, n_modes=input_size
+		n_modes=4,               # Here the number of modes is optional, if n_modes is not given, n_modes=input_size+1
 		computation_space=ComputationSpace.FOCK,       # allow bunched outcomes if needed
 		dtype=torch.float32,
 		device=torch.device("cpu"),
@@ -303,7 +303,7 @@ Comparing quantum vs classical kernels
     X_test_t = torch.tensor(X_test, dtype=torch.float32)
 
     # Quantum kernel
-    qkernel = FidelityKernel.simple(input_size=4, n_modes=6)     # Here the number of modes is optional, if n_modes is not given, n_modes=input_size
+    qkernel = FidelityKernel.simple(input_size=4, n_modes=6)     # Here the number of modes is optional, if n_modes is not given, n_modes=input_size+1
     K_train_q = qkernel(X_train_t).numpy()
     K_test_q = qkernel(X_test_t, X_train_t).numpy()
 
