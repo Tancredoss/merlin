@@ -2,11 +2,11 @@
 Quickstart: Classify a Nonlinear Dataset with the Photonic Quantum Layer
 =================
 
-This page is dedicated for new users of MerLin! The following notebook will show how to install MerLin and use it to create a small quantum model to classify a non-linear dataset (moons dataset).
+This page is dedicated for new users of MerLin! The following notebook will show how to install MerLin and use it to create a small quantum model to classify a non-linear dataset (circles dataset).
 
 You will learn how to create a MerLin ``QuantumLayer``, the basic module of this library. You will also realize that this object is a ``torch.nn.Module``. That means that MerLin plugs directly into pytorch. 
 
-In only a few epochs, we obtain a 87.3% accuracy.
+We obtain a 80% accuracy on the dataset.
 
 .. merlin-gallery::
    :data: _data/galleries/quickstart_notebook.json
