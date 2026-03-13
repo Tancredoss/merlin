@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Photonic QCNN with Adaptive State Injection",
+    "summary": "Reproduction of the Photonic QCNN with Adaptive State Injection (QCNN architecture used here).",
+    "image": "_static/img/QCNN_adaptive.png",
+    "doc": "reproduced_papers/reproductions/QCNN_adaptive",
+    "tags": ["Reproduction", "MNIST", "QCNN"]
+  }
+]

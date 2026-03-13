@@ -88,7 +88,7 @@ This paper sparked the interest to explore more encoding strategies and find the
 Code Access and Documentation
 =============================
 
-**GitHub Repository**: `merlin/reproductions/AA_study <https://github.com/merlinquantum/merlin/tree/main/reproductions/AA_study>`_
+**GitHub Repository**: `merlin/reproductions/AA_study <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/AA_study>`_
 
 The complete implementation includes:
 
@@ -120,6 +120,9 @@ Citation
 Related Reproductions
 =====================
 
-This work uses a another reproduction:
+This work uses another reproduction:
 
 * **Photonic QCNN with Adaptive State Injection**: For the usual datasets, a QCNN is used. In the paper it is a gate based version. So, we used a photonic QCNN for our experiments. We used the one reproduced in this paper.
+
+.. merlin-gallery::
+   :data: _data/galleries/AA_study_gallery.json
