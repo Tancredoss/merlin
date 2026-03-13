@@ -151,7 +151,6 @@ Technical Implementation Details
 **Classical Baseline Sweep**
   * Original baseline grid follows the paper design (155 combinations).
   * Extended hidden-size search was used to recover strong performance at high feature counts.
-  * Baseline runs are stored in `results/classical_baseline.json` (as documented in README).
 
 **Photonic HQNN Sweep**
   * Photonic HQNN configurations sweep multiple mode counts.
