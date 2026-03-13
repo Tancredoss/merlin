@@ -22,6 +22,18 @@ Each reproduction may include:
 .. note::
    All reproductions are implemented using MerLin's high-level API, making them accessible to ML practitioners without deep quantum expertise.
 
+.. toctree::
+   :maxdepth: 2
+   :hidden:
+   :caption: Reproduced Papers
+
+   reproductions/fock_state_expressivity
+   reproductions/quantum_reservoir_computing
+   reproductions/template
+   reproductions/qllm_finetuning
+   reproductions/photonic_qcnn
+   reproductions/photonic_kernel
+
 Available Reproductions
 -----------------------
 
@@ -114,18 +126,6 @@ Upcoming Reproductions
 
 **Community Requested**:
   Vote on upcoming reproductions in our `paper requests discussions <https://github.com/merlinquantum/merlin/discussions/categories/paper-requests>`_.
-
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Reproduced Papers
-
-   reproductions/fock_state_expressivity
-   reproductions/quantum_reservoir_computing
-   reproductions/template
-   reproductions/qllm_finetuning
-   reproductions/photonic_qcnn
-   reproductions/photonic_kernel
 
 ----
 
