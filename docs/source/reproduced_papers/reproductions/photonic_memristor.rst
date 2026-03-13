@@ -50,24 +50,24 @@ The reproduction is exposed through the repository-level runner:
 
 Two execution modes are supported:
 
-* `quantum` mode (default): memristor and no-memristor quantum reservoirs.
-* `classical` mode: linear and quadratic baselines with and without memory.
+* ``quantum`` mode (default): memristor and no-memristor quantum reservoirs.
+* ``classical`` mode: linear and quadratic baselines with and without memory.
 
-Configuration files can be loaded from `reproduced_papers/qrc_memristor/configs/`, and CLI options override JSON values.
+Configuration files can be loaded from ``reproduced_papers/qrc_memristor/configs/``, and CLI options override JSON values.
 
 Key Contributions Reproduced
 ============================
 
 **Quantum reservoir variants**
-  * Implemented quantum reservoir computing with memristor (`memristor`) and without memristor (`nomem`).
+  * Implemented quantum reservoir computing with memristor (``memristor``) and without memristor (``nomem``).
   * Reproduced task-specific training/evaluation flows through unified CLI parameters.
 
 **Classical baselines for comparison**
-  * Implemented linear and quadratic models (`L`, `Q`) and their memory-augmented variants (`L+M`, `Q+M`).
+  * Implemented linear and quadratic models (``L``, ``Q``) and their memory-augmented variants (``L+M``, ``Q+M``).
   * Enabled direct mode switching between quantum and classical experiments.
 
 **Reproducible experiment outputs**
-  * Added run artifact generation with `config.json`, `metrics.json`, `plot_data.json`, and `experiment.log`.
+  * Added run artifact generation with ``config.json``, ``metrics.json``, ``plot_data.json``, and ``experiment.log``.
   * Preserved timestamped output directories for side-by-side reproducibility.
 
 Implementation Details
@@ -115,18 +115,18 @@ Technical Implementation Details
 ================================
 
 **Available tasks**
-  * `narma` and `nonlinear` are currently validated in the reproduction.
-  * `mackey_glass` and `santa_fe` are present in the interface and under further development.
+  * ``narma`` and ``nonlinear`` are currently validated in the reproduction.
+  * ``mackey_glass`` and ``santa_fe`` are present in the interface and under further development.
 
 **CLI arguments**
-  * `--mode`: `quantum` or `classical`.
-  * `--task`: `narma`, `nonlinear`, `mackey_glass`, `santa_fe`.
-  * `--model-type`: quantum (`memristor`, `nomem`) or classical (`L`, `Q`, `L+M`, `Q+M`).
-  * Training controls include `--memory`, `--n-runs`, `--epochs`, `--lr`, `--output-dir`.
+  * ``--mode``: ``quantum`` or ``classical``.
+  * ``--task``: ``narma``, ``nonlinear``, ``mackey_glass``, ``santa_fe``.
+  * ``--model-type``: quantum (``memristor``, ``nomem``) or classical (``L``, ``Q``, ``L+M``, ``Q+M``).
+  * Training controls include ``--memory``, ``--n-runs``, ``--epochs``, ``--lr``, ``--output-dir``.
 
 **Result management**
   * Each run stores configuration, metrics, and plotting payloads in timestamped folders.
-  * Plots can be generated during execution (`--plot`) or post-run with `create_plots.py`.
+  * Plots can be generated during execution (``--plot``) or post-run with ``create_plots.py``.
 
 Performance Analysis
 ====================
