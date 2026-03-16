@@ -49,12 +49,68 @@ In this reproduction, the same idea is explored in a photonic workflow with expl
 MerLin Implementation
 =====================
 
-The MerLin side of the project is executed through the repo-level CLI with ``--paper QCNN_data_classification`` and supports two model families:
+Here, we implemented two main model variants:
 
-* ``--model qconv``: quantum pseudo-convolution model (parallel kernels)
-* ``--model single``: single Gaussian interferometer baseline
+* A photonic quantum convolution with parallel kernels
+* A single Gaussian interferometer baseline
 
-Core run options include quantum kernel topology (``nb_kernels``, ``kernel_size``, ``kernel_modes``, ``stride``), encoding mode (angle or amplitude), and optimisation controls (``steps``, ``batch``, ``seeds``, ``lr``).
+Core run options include quantum kernel topology (number, size and mode-count of kernels, stride), encoding strategy (angle or amplitude), and optimisation controls (steps, batch, seeds, learning rate).
+
+How ``QuantumLayer`` is used in both models
+-------------------------------------------
+
+The full implementation is in ``lib/merlin_reproduction.py``. The two model paths use ``QuantumLayer`` differently:
+
+1. ``SingleGI`` uses one global quantum layer directly on the PCA vector.
+
+.. code-block:: python
+
+   def build_single_gi_layer(n_modes, n_features, n_photons, reservoir_mode, state_pattern):
+       circ = create_quantum_circuit(n_modes, n_features)
+       trainable_prefixes = [] if reservoir_mode else ["theta"]
+       input_state = StateGenerator.generate_state(n_modes, n_photons, StatePattern[state_pattern.upper()])
+       return ML.QuantumLayer(
+           input_size=n_modes,
+           output_size=2,
+           circuit=circ,
+           trainable_parameters=trainable_prefixes,
+           input_parameters=["px"],
+           input_state=input_state,
+           output_mapping_strategy=ML.OutputMappingStrategy.GROUPING,
+       )
+
+   class SingleGI(nn.Module):
+       def __init__(...):
+           self.q = build_single_gi_layer(...)
+       def forward(self, angles):
+           return self.q(angles)
+
+2. ``QConvModel`` uses one ``QuantumLayer`` per kernel and applies them to sliding PCA patches.
+
+.. code-block:: python
+
+   def _make_kernel() -> QuantumPatchKernel:
+       q_layer = ML.QuantumLayer(
+           input_size=kernel_modes,
+           output_size=2,
+           circuit=create_quantum_circuit(kernel_modes, args.kernel_size),
+           trainable_parameters=["theta"],
+           input_parameters=["px"],
+           input_state=([1, 0] * (kernel_modes // 2) + [0]) if kernel_modes % 2 == 1 else [1, 0] * (kernel_modes // 2),
+           output_mapping_strategy=ML.OutputMappingStrategy.GROUPING,
+       )
+       return QuantumPatchKernel(q_layer, required_inputs=kernel_required_inputs, patch_dim=args.kernel_size)
+
+   class QConvModel(nn.Module):
+       def _apply_quantum_kernels(self, patches, num_windows, batch_size):
+           patches_flat = patches.contiguous().view(-1, patches.size(-1))
+           outputs = []
+           for kernel in self.kernel_modules:
+               y = kernel(patches_flat).view(batch_size, num_windows, -1)
+               outputs.append(y)
+           return torch.stack(outputs, dim=1).view(batch_size, -1)
+
+In short, ``SingleGI`` uses a single end-to-end photonic layer, while ``QConvModel`` reuses multiple photonic layers as learnable pseudo-convolution kernels over local PCA windows.
 
 .. figure:: ../../_static/reproduced_papers/QCNN_data_classification/Photonic_QConv.png
    :alt: Photonic pseudo-convolution architecture used in QCNN reproduction
