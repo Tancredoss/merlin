@@ -1,0 +1,30 @@
+[
+  {
+    "title": "Your first quantum layer",
+    "summary": "A deeper walkthrough of creating a QuantumLayer to classify the Iris dataset.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Tutorial","Classification", "Iris", "QuantumLayer"]
+  },
+  {
+    "title": "A guide to CircuitBuilder",
+    "summary": "How to use MerLin's circuit builder to easily create custom quantum layers.",
+    "image": "_static/img/from_simple_to_builder_galley_img.png",
+    "doc": "notebooks/FromSimpleToBuilder",
+    "tags": ["Tutorial","Classification", "Moons", "Load_digits", "CircuitBuilder"]
+  },
+  {
+    "title": "QML basic concepts with MerLin",
+    "summary": "Explore the basics of QML with MerLin.",
+    "image": "_static/img/Interferometer_training.png",
+    "doc": "quickstart/basic_concepts",
+    "tags": ["QML","Encoding","MeasurementStrategy"]
+  },
+  {
+    "title": "Other MerLin examples",
+    "summary": "Check out all of the other examples of QML tasks with MerLin.",
+    "image": "_static/img/merlin_black.png",
+    "doc": "examples/index",
+    "tags": ["QML","Example", "Classification"]
+  }
+]
