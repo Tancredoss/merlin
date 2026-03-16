@@ -2,15 +2,15 @@
   {
     "title": "Quickstart",
     "summary": "Start with the essentials and build your first photonic quantum layer.",
-    "image": "_static/img/Circ_simple.png",
-    "doc": "quickstart/index",
-    "tags": ["Getting Started", "PyTorch"]
+    "image": "_static/img/classifying_circles_decision_simple.png",
+    "doc": "notebooks/classifying_circles_from_installation.ipynb",
+    "tags": ["Getting Started", "PyTorch", "Quickstart"]
   },
   {
     "title": "Latest Releases",
     "summary": "Track recent updates, fixes, and newly added capabilities in MerLin.",
-    "image": "_static/img/WorkFlow.png",
-    "url": "https://github.com/merlinquantum/merlin/releases",
-    "tags": ["Releases", "Changelog"]
+    "image": "_static/img/release_0.3.png",
+    "doc": "notebooks/release_0,3_highlights.ipynb",
+    "tags": ["Releases", "Changelog", "Partial measurement"]
   }
 ]
