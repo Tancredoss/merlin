@@ -45,9 +45,9 @@ Available Reproductions
      - In Progress
      - Boson sampling for quantum reservoir computing
    * - :doc:`reproductions/qllm_finetuning`
-     - Jern et al.
+     - Kim et al.
      - 2025
-     - In Progress
+     - Complete
      - Fine Tuning a LLM with a photonic neural network
    * - :doc:`reproductions/photonic_qcnn`
      - Monbroussou et al.
@@ -59,6 +59,11 @@ Available Reproductions
      - 2025
      - Partial
      - Experimental neuromorphic computing based on quantum memristor
+   * - :doc:`reproductions/distributed_nn`
+     - Chen et al.
+     - 2025
+     - Complete
+     - Distributed computing for parameter compression
 
 Contributing Reproductions
 --------------------------
@@ -122,10 +127,11 @@ Upcoming Reproductions
 
    reproductions/fock_state_expressivity
    reproductions/quantum_reservoir_computing
-   reproductions/template
    reproductions/qllm_finetuning
+   reproductions/distributed_nn
    reproductions/photonic_qcnn
    reproductions/photonic_memristor
+   reproductions/template
 
 ----
 
