@@ -54,13 +54,6 @@ For full run instructions, experiment options, and expected outputs, use the rep
 
 `Photonic quantum-enhanced kernels README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels/README.md>`_.
 
-Implemented experiments include:
-
-* ``accuracy_vs_kernel``
-* ``accuracy_vs_input_state``
-* ``accuracy_vs_width``
-* ``accuracy_vs_geometric_difference``
-
 How MerLin Was Used
 ===================
 
