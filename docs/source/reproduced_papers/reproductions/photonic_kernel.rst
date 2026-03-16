@@ -48,14 +48,47 @@ This work gives an experimentally grounded example of quantum-enhanced kernel le
 MerLin Implementation
 =====================
 
-The reproduction is organized as configurable experiments executed through the repository-level ``implementation.py`` entry point. The implementation includes dedicated experiment modules for:
+The reproduction is organized as configurable experiments executed through the repository-level ``implementation.py`` entry point.
+
+For full run instructions, experiment options, and expected outputs, use the reproduced-papers guide:
+
+`Photonic quantum-enhanced kernels README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels/README.md>`_.
+
+Implemented experiments include:
 
 * ``accuracy_vs_kernel``
 * ``accuracy_vs_input_state``
 * ``accuracy_vs_width``
 * ``accuracy_vs_geometric_difference``
 
-Runtime behavior is controlled through JSON config files (defaults and per-run overrides), and each run writes a timestamped output folder containing the config snapshot, summary, numeric artifacts, and plots.
+How MerLin Was Used
+===================
+
+The ``accuracy_vs_kernel`` experiment builds MerLin feature maps and fidelity kernels, then uses them with ``scikit-learn`` SVMs:
+
+.. code-block:: python
+
+   from merlin.algorithms import FeatureMap, FidelityKernel
+   from perceval import GenericInterferometer
+   from sklearn.svm import SVC
+   from utils.feature_map import circuit_func
+   from utils.noise import NoisySLOSComputeGraph
+
+   circuit = GenericInterferometer(m=len(input_state), fun_gen=circuit_func)
+   input_size = len(circuit.get_parameters())
+   feature_map = FeatureMap(circuit, input_size, input_parameters=["phi"])
+
+   quantum_kernel = FidelityKernel(feature_map, input_state, shots=shots)
+   coherent_kernel = FidelityKernel(feature_map, input_state, shots=shots)
+
+   quantum_kernel._slos_graph = NoisySLOSComputeGraph(indistinguishability=0.972)
+   coherent_kernel._slos_graph = NoisySLOSComputeGraph(indistinguishability=0.0)
+
+   Kq = quantum_kernel(X)
+   Kc = coherent_kernel(X)
+
+   svc_q = SVC(kernel="precomputed").fit(Kq_train, y_train)
+   svc_c = SVC(kernel="precomputed").fit(Kc_train, y_train)
 
 Key Contributions Reproduced
 ============================
@@ -75,32 +108,17 @@ Key Contributions Reproduced
   * Supported reproducible runs via saved configuration snapshots.
   * Kept plotting and hyperparameters alongside run outputs for traceability.
 
-Implementation Details
-======================
+Running Guidance
+================
 
-Main execution entry points from the README:
+To run experiments and tune CLI/config options, follow the reproduced-papers instructions:
 
-.. code-block:: bash
-
-   # From inside papers/photonic_quantum_enhanced_kernels
-   python ../../implementation.py --paper photonic_quantum_enhanced_kernels --help
-
-   # Run default experiment
-   python ../../implementation.py --paper photonic_quantum_enhanced_kernels
-
-   # Run a specific experiment
-   python ../../implementation.py --paper photonic_quantum_enhanced_kernels --experiment accuracy_vs_kernel
+`Photonic quantum-enhanced kernels README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels/README.md>`_.
 
 Experimental Results
 ====================
 
-The plots below compare the original paper figures (left in the source README) and the reproduced outputs generated in this repository.
-
-**Figure 4a (paper)**
-
-.. image:: ../../_static/reproduced_papers/photonic_enhanced_kernels/fig-4a.png
-   :width: 48%
-   :alt: Original Figure 4a from the paper.
+The plots below show some of the reproduced outputs generated in this repository. You can see all results at `Photonic quantum-enhanced kernels README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels/README.md>`_.
 
 **Figure 4a (MerLin reproduction: accuracy vs input state)**
 
@@ -108,65 +126,11 @@ The plots below compare the original paper figures (left in the source README) a
    :width: 60%
    :alt: Reproduced Figure 4a trend.
 
-**Figure 4b (paper)**
-
-.. image:: ../../_static/reproduced_papers/photonic_enhanced_kernels/fig-4b.png
-   :width: 48%
-   :alt: Original Figure 4b from the paper.
-
 **Figure 4b (MerLin reproduction: accuracy vs kernel type)**
 
 .. image:: ../../_static/reproduced_papers/photonic_enhanced_kernels/results-for-readme/accuracy_vs_kernel/plot.png
    :width: 60%
    :alt: Reproduced Figure 4b trend.
-
-**Supplementary Figure 1 (paper)**
-
-.. image:: ../../_static/reproduced_papers/photonic_enhanced_kernels/supplementary-fig-1.png
-   :width: 52%
-   :alt: Original supplementary figure 1 from the paper.
-
-**Supplementary Figure 1 (MerLin reproduction, n=2)**
-
-.. image:: ../../_static/reproduced_papers/photonic_enhanced_kernels/results-for-readme/accuracy_vs_geometric_difference/n=2/plot.png
-   :width: 52%
-   :alt: Reproduced supplementary figure 1 trend for n=2.
-
-**Supplementary Figure 1 (MerLin reproduction, n=3)**
-
-.. image:: ../../_static/reproduced_papers/photonic_enhanced_kernels/results-for-readme/accuracy_vs_geometric_difference/n=3/plot.png
-   :width: 52%
-   :alt: Reproduced supplementary figure 1 trend for n=3.
-
-**Supplementary Figure 2 (paper)**
-
-.. image:: ../../_static/reproduced_papers/photonic_enhanced_kernels/supplementary-fig-2.png
-   :width: 52%
-   :alt: Original supplementary figure 2 from the paper.
-
-**Supplementary Figure 2 (MerLin reproduction: accuracy vs width)**
-
-.. image:: ../../_static/reproduced_papers/photonic_enhanced_kernels/results-for-readme/accuracy_vs_width/plot.png
-   :width: 52%
-   :alt: Reproduced supplementary figure 2 trend.
-
-Technical Implementation Details
-================================
-
-**Experiment Modules**
-  * ``accuracy_vs_kernel`` compares classification performance across kernel constructions.
-  * ``accuracy_vs_input_state`` evaluates dependence on selected Fock input states.
-  * ``accuracy_vs_width`` scans circuit width and reports resulting accuracy trends.
-  * ``accuracy_vs_geometric_difference`` studies kernel geometry effects.
-
-**Configuration System**
-  * ``defaults.json`` centralizes shared defaults.
-  * ``cli.json`` maps CLI arguments to config keys.
-  * Per-run snapshots are saved for reproducibility.
-
-**Testing**
-  * Noise-model tests cross-check probabilities against Perceval.
-  * Tests are run with ``pytest -q`` as documented in the README.
 
 Performance Analysis
 ====================
