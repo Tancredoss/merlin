@@ -139,7 +139,7 @@ Implementation Details
 
 The reproduction is designed to be straightforward to run from the command line.
 For full setup instructions, run commands, and implementation details, see:
-`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/main/papers/QCNN_data_classification/README.md>`_.
+`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/QCNN_data_classification/README.md>`_.
 
 Experimental Results
 ====================
@@ -156,7 +156,7 @@ The figure below summarizes overall validation accuracy across the tested quantu
    :width: 80%
 
 For full plots and detailed discussion, see the
-`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/main/papers/QCNN_data_classification/README.md>`_.
+`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/QCNN_data_classification/README.md>`_.
 
 Angle-encoding benchmark (3 kernels, kernel size 3, stride 2)
 -------------------------------------------------------------
