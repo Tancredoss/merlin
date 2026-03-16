@@ -6,16 +6,16 @@ QML library
 
 As part of the reproduction effort, a lot of interesting QML papers were found.
 
-
 Reproduced papers
 =================
 
 .. bibliography:: QML_library_reproduced_papers.bib
    :all:
-
+   :list: bullet
 
 Other meaningful papers
 =======================
 
 .. bibliography:: QML_library_other_papers.bib
    :all:
+   :list: bullet

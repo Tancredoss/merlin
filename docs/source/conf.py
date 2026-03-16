@@ -88,6 +88,7 @@ bibtex_bibfiles = [
     "QML_library/QML_library_other_papers.bib",
     "QML_library/QML_library_reproduced_papers.bib",
 ]
+bibtex_default_style = "alpha"
 bibtex_reference_style = "author_year"
 
 # Autodoc configuration
