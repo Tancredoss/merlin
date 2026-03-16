@@ -142,6 +142,68 @@ The MeasurementStrategy now gets two arguments in input.
 * ``grouping``: The grouping strategy to use between ``LexGrouping`` and ``ModGrouping``. By default, no grouping is applied.
 
 
+
+Returning typed objects
+============================================
+
+When ``return_object`` is set to True in the constructor of :class:`~merlin.algorithms.layer.QuantumLayer`, the output of a ``forward()`` call depends of the ``measurement_strategy``. By default,
+it is set to False. See the following output matrix to see what to expect as the return of a forward call.
+
++-----------------------+----------------------+--------------------------+
+| measurement_strategy  | return_object=False  | return_object=True       |
++=======================+======================+==========================+
+| AMPLTITUDES           | torch.Tensor         | StateVector              |
++-----------------------+----------------------+--------------------------+
+| PROBABILITIES         | torch.Tensor         | ProbabilityDistribution  |
++-----------------------+----------------------+--------------------------+
+| PARTIAL_MEASUREMENT   | PartialMeasurement   | PartialMeasurement       |
++-----------------------+----------------------+--------------------------+
+| MODE_EXPECTATIONS     | torch.Tensor         | torch.Tensor             |
++-----------------------+----------------------+--------------------------+
+
+Most of the typed objects can give the ``torch.Tensor`` as an output with the ``.tensor`` parameter. Only the 
+PartialMeasurement object is a little different. See its according documentation.
+
+These object could be quite useful to access metadata like the number of photons, modes and measurement_strategy behind the output tensors. For example, a better access to specific
+states is available with ``StateVector`` and ``ProbabilityDistribution`` by indexing the desired state. The objects are interoperable with Perceval, enabling seamless interaction between the two libraries.
+
+For more information on the typed output capabilities, follow the following links:
+
+- ``StateVector``: :doc:`StateVector </api_reference/api/merlin.core.state_vector>`
+- ``ProbabilityDistribution``: :doc:`ProbabilityDistribution </api_reference/api/merlin.core.probability_distribution>`
+- ``PartialMeasurement``: :doc:`PartialMeasurement </api_reference/api/merlin.core.partial_measurement>`
+
+The snippet below prepares a basic quantum layer and returns a ``ProbabilityDistribution`` object:
+
+.. code-block:: python
+
+    import torch
+    import perceval as pcvl
+    from merlin.algorithms.layer import QuantumLayer
+    from merlin.core import ComputationSpace, ProbabilityDistribution
+    from merlin.measurement.strategies import MeasurementStrategy
+
+    circuit = ML.CircuitBuilder(n_modes=4)
+    circuit.add_entangling_layer()
+
+    bell = pcvl.StateVector()
+    bell += pcvl.BasicState([1, 0, 1, 0])
+    bell += pcvl.BasicState([0, 1, 0, 1])
+    print(bell) # bell is a state vector of 2 photons in 4 modes
+
+    layer = QuantumLayer(
+        builder=circuit,
+        n_photons=2,
+        input_state=bell,
+        measurement_strategy=MeasurementStrategy.probs(computation_space=ComputationSpace.DUAL_RAIL),
+        return_object=True,
+    )
+
+    x = torch.rand(10, circuit.m)  # batch of classical parameters
+    probs = layer(x)
+    assert isinstance(probs,ProbabilityDistribution)
+    assert isinstance(probs.tensor,torch.Tensor)
+
 Migrating from OutputMappingStrategy (legacy)
 ============================================
 
