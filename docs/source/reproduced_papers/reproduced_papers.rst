@@ -168,17 +168,6 @@ Upcoming Reproductions
 **Community Requested**:
   Vote on upcoming reproductions in our `paper requests discussions <https://github.com/merlinquantum/merlin/discussions/categories/paper-requests>`_.
 
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Reproduced Papers
-
-   reproductions/fock_state_expressivity
-   reproductions/quantum_reservoir_computing
-   reproductions/template
-   reproductions/qllm_finetuning
-   reproductions/photonic_qcnn
-
 ----
 
 *Have a paper you'd like to see reproduced?* `Start a discussion <https://github.com/merlinquantum/merlin/discussions/new>`_ *and let us know!*
