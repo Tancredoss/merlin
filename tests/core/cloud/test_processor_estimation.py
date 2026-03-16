@@ -72,7 +72,9 @@ class TestOutputAndExport:
             (6, 2, 2, ComputationSpace.UNBUNCHED, 15),
         ],
     )
-    def test_local_distribution_size(self, m, n, input_size, computation_space, expected):
+    def test_local_distribution_size(
+        self, m, n, input_size, computation_space, expected
+    ):
         q = make_layer(m, n, input_size, computation_space=computation_space)
         y = q(torch.rand(3, input_size))
         assert y.shape == (3, expected)
@@ -84,7 +86,9 @@ class TestOutputAndExport:
         assert y.shape == (4, comb(6, 2))
 
     def test_export_config_includes_trained_thetas(self):
-        q = make_layer(5, 3, 3, computation_space=ComputationSpace.UNBUNCHED, trainable=True)
+        q = make_layer(
+            5, 3, 3, computation_space=ComputationSpace.UNBUNCHED, trainable=True
+        )
         before = {n: p.clone() for n, p in q.named_parameters()}
         q.train()
         opt = torch.optim.Adam(q.parameters(), lr=0.05)

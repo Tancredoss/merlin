@@ -11,6 +11,7 @@ Requires environment variables:
 
 Run with: pytest --run-scaleway-tests tests/core/cloud/test_scaleway_session.py
 """
+
 from __future__ import annotations
 
 import time
@@ -105,7 +106,9 @@ class TestScalewaySessionBasic:
             max_shots_per_call=100,
         )
 
-        q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED)
+        q = _make_layer(
+            6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
+        )
         X = torch.rand(4, 2)
         y = proc.forward(q, X, nsample=100)
 
@@ -124,7 +127,9 @@ class TestScalewaySessionBasic:
             max_shots_per_call=100,
         )
 
-        q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED)
+        q = _make_layer(
+            6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
+        )
         X = torch.rand(4, 2)
         fut = proc.forward_async(q, X, nsample=100)
 
@@ -186,8 +191,12 @@ class TestScalewaySessionPipeline:
             max_shots_per_call=100,
         )
 
-        q1 = _make_layer(5, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED)
-        q2 = _make_layer(6, 2, input_size=3, computation_space=ComputationSpace.UNBUNCHED)
+        q1 = _make_layer(
+            5, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
+        )
+        q2 = _make_layer(
+            6, 2, input_size=3, computation_space=ComputationSpace.UNBUNCHED
+        )
         q2.force_local = True  # Force second layer to run locally
 
         dist1 = comb(5, 2)  # 10
@@ -217,7 +226,9 @@ class TestScalewaySessionChunking:
             max_shots_per_call=100,
         )
 
-        q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED)
+        q = _make_layer(
+            6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
+        )
         X = torch.rand(32, 2)
 
         fut = proc.forward_async(q, X, nsample=100)
@@ -239,7 +250,9 @@ class TestScalewaySessionChunking:
             chunk_concurrency=4,
         )
 
-        q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED)
+        q = _make_layer(
+            6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
+        )
         X = torch.rand(16, 2)  # 4 chunks of 4
 
         fut = proc.forward_async(q, X, nsample=100)
@@ -265,7 +278,9 @@ class TestScalewaySessionStatus:
             max_shots_per_call=1000,
         )
 
-        q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED)
+        q = _make_layer(
+            6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
+        )
         X = torch.rand(8, 2)
 
         fut = proc.forward_async(q, X, nsample=1000)
@@ -296,7 +311,9 @@ class TestScalewaySessionStatus:
             max_shots_per_call=50000,
         )
 
-        q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED)
+        q = _make_layer(
+            6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
+        )
         X = torch.rand(16, 2)
 
         fut = proc.forward_async(q, X, nsample=50000)
@@ -326,7 +343,9 @@ class TestScalewaySessionContextManager:
             timeout=300.0,
             max_shots_per_call=100,
         ) as proc:
-            q = _make_layer(6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED)
+            q = _make_layer(
+                6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
+            )
             X = torch.rand(4, 2)
             y = proc.forward(q, X, nsample=100)
             assert y.shape == (4, comb(6, 2))

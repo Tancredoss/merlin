@@ -12,6 +12,7 @@ Cloud tests (Quandela):
 Scaleway tests:
     pytest --run-scaleway-tests tests/core/cloud/test_state_mapping.py -k "Scaleway" -v
 """
+
 from __future__ import annotations
 
 import time
@@ -25,7 +26,6 @@ from _helpers import make_layer
 from merlin.core.computation_space import ComputationSpace
 from merlin.core.merlin_processor import MerlinProcessor
 from merlin.utils.combinadics import Combinadics
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -42,7 +42,9 @@ def _wait_future(fut, timeout_s: float = 120.0):
 
 
 def _slos_reference_ordering(
-    n_modes: int, n_photons: int, unbunched: bool,
+    n_modes: int,
+    n_photons: int,
+    unbunched: bool,
 ) -> list[tuple[int, ...]]:
     """Reference SLOS graph construction order (mirrors _build_graph_structure)."""
     last_combinations: dict[tuple[int, ...], tuple[int, int]] = {
@@ -58,7 +60,10 @@ def _slos_reference_ordering(
                 nstate[i] += 1
                 nstate_t = tuple(nstate)
                 if nstate_t not in combinations:
-                    combinations[nstate_t] = (norm_factor * nstate[i], len(combinations))
+                    combinations[nstate_t] = (
+                        norm_factor * nstate[i],
+                        len(combinations),
+                    )
                 nstate[i] -= 1
         last_combinations = combinations
     return list(last_combinations.keys())
@@ -160,7 +165,7 @@ class TestUnitStateOrdering:
         for state in states:
             for k in range(0, 6, 2):
                 assert state[k] + state[k + 1] == 1, (
-                    f"State {state} violates dual-rail at modes {k},{k+1}"
+                    f"State {state} violates dual-rail at modes {k},{k + 1}"
                 )
 
     def test_all_states_have_correct_photon_count(self):
@@ -187,14 +192,17 @@ class TestUnitLocalOutputShape:
             (6, 2, 2, ComputationSpace.FOCK, 21),
         ],
     )
-    def test_local_dist_size(self, m, n, input_size, computation_space, expected_dist_size):
+    def test_local_dist_size(
+        self, m, n, input_size, computation_space, expected_dist_size
+    ):
         """Local forward output dimension matches combinatorial expectation."""
         layer = make_layer(m, n, input_size, computation_space=computation_space)
         y = layer(torch.rand(2, input_size))
         assert y.shape == (2, expected_dist_size)
 
     @pytest.mark.parametrize(
-        "computation_space", [ComputationSpace.UNBUNCHED, ComputationSpace.FOCK],
+        "computation_space",
+        [ComputationSpace.UNBUNCHED, ComputationSpace.FOCK],
     )
     def test_local_output_normalized(self, computation_space):
         """Local forward should produce valid normalized probabilities."""
@@ -234,9 +242,10 @@ class TestCloudBunchedUnbunched:
         X = torch.rand(4, input_size)
         y = proc.forward(layer, X, nsample=5000)
 
-        assert y.shape == (4, expected_dist), (
-            f"Expected shape (4, {expected_dist}), got {y.shape}"
-        )
+        assert y.shape == (
+            4,
+            expected_dist,
+        ), f"Expected shape (4, {expected_dist}), got {y.shape}"
         assert torch.all(y >= 0), "Probabilities must be non-negative"
         assert torch.allclose(y.sum(dim=1), torch.ones(4), atol=0.1), (
             f"Probabilities should sum to ~1, got {y.sum(dim=1)}"
@@ -267,7 +276,9 @@ class TestCloudBunchedUnbunched:
 
     def test_bunched_local_vs_remote(self, remote_processor):
         """Remote FOCK results should approximate local probabilities."""
-        layer = make_layer(4, 2, 2, computation_space=ComputationSpace.FOCK, trainable=True)
+        layer = make_layer(
+            4, 2, 2, computation_space=ComputationSpace.FOCK, trainable=True
+        )
         X = torch.rand(4, 2)
 
         y_local = layer(X)
@@ -279,11 +290,15 @@ class TestCloudBunchedUnbunched:
         assert torch.allclose(y_local.sum(dim=1), torch.ones(4), atol=1e-5)
         assert torch.allclose(y_remote.sum(dim=1), torch.ones(4), atol=0.1)
         diff = (y_local - y_remote).abs().mean().item()
-        assert diff < 0.1, f"Mean abs diff between local and remote too large: {diff:.4f}"
+        assert diff < 0.1, (
+            f"Mean abs diff between local and remote too large: {diff:.4f}"
+        )
 
     def test_unbunched_local_vs_remote(self, remote_processor):
         """Remote UNBUNCHED results should approximate local probabilities."""
-        layer = make_layer(5, 2, 2, computation_space=ComputationSpace.UNBUNCHED, trainable=True)
+        layer = make_layer(
+            5, 2, 2, computation_space=ComputationSpace.UNBUNCHED, trainable=True
+        )
         X = torch.rand(4, 2)
 
         y_local = layer(X)
@@ -293,7 +308,9 @@ class TestCloudBunchedUnbunched:
 
         assert y_local.shape == y_remote.shape
         diff = (y_local - y_remote).abs().mean().item()
-        assert diff < 0.1, f"Mean abs diff between local and remote too large: {diff:.4f}"
+        assert diff < 0.1, (
+            f"Mean abs diff between local and remote too large: {diff:.4f}"
+        )
 
     def test_bunched_nonzero_output(self, remote_processor):
         """FOCK cloud execution must produce non-trivial (non-zero) output tensors."""
@@ -403,7 +420,9 @@ class TestScalewayBunchedUnbunched:
             max_shots_per_call=5000,
         )
 
-        layer = make_layer(4, 2, 2, computation_space=ComputationSpace.FOCK, trainable=True)
+        layer = make_layer(
+            4, 2, 2, computation_space=ComputationSpace.FOCK, trainable=True
+        )
         X = torch.rand(4, 2)
 
         y_local = layer(X)
@@ -411,4 +430,6 @@ class TestScalewayBunchedUnbunched:
 
         assert y_local.shape == y_remote.shape
         diff = (y_local - y_remote).abs().mean().item()
-        assert diff < 0.15, f"Mean abs diff between local and remote too large: {diff:.4f}"
+        assert diff < 0.15, (
+            f"Mean abs diff between local and remote too large: {diff:.4f}"
+        )

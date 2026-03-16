@@ -59,6 +59,11 @@ Available Reproductions
      - 2025
      - Complete
      - Limitations of the amplitude encoding paradigm
+   * - :doc:`reproductions/distributed_nn`
+     - Chen et al.
+     - 2025
+     - Complete
+     - Distributed computing for parameter compression
 
 Contributing Reproductions
 --------------------------
@@ -122,8 +127,8 @@ Upcoming Reproductions
 
    reproductions/fock_state_expressivity
    reproductions/quantum_reservoir_computing
-   reproductions/template
    reproductions/qllm_finetuning
+   reproductions/distributed_nn
    reproductions/photonic_qcnn
    reproductions/amplitude_limitations
 
