@@ -64,6 +64,11 @@ Available Reproductions
      - 2022
      - Complete
      - Quantum self-supervised learning
+   * - :doc:`reproductions/photonic_memristor`
+     - Selimović et al.
+     - 2025
+     - Partial
+     - Experimental neuromorphic computing based on quantum memristor
    * - :doc:`reproductions/hqnn-myth`
      - Kashif et al.
      - 2025
@@ -148,6 +153,7 @@ Upcoming Reproductions
    reproductions/photonic_qcnn
    reproductions/QCNN_data_classification
    reproductions/qssl
+   reproductions/photonic_memristor
    reproductions/hqnn-myth
    reproductions/template
 
