@@ -37,4 +37,4 @@ def test_simple_warns_on_n_params():
         obj = QuantumLayer.simple(input_size=2, n_params=95)
     assert obj is not None
     assert obj.circuit.m == 3
-    assert obj.quantum_layer.input_state == pcvl.BasicState([0, 1, 0])
+    assert obj.quantum_layer.input_state == pcvl.BasicState([1, 0, 1])

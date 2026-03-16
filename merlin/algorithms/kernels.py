@@ -400,7 +400,7 @@ class FeatureMap:
             dtype: Target dtype for internal tensors.
             device: Optional torch device handle.
             angle_encoding_scale: Global scaling applied to angle encoding features.
-            n_modes: Number of photonic modes used by the helper circuit. If it is not defined: n_modes=input_size. Maximum is 20.
+            n_modes: Number of photonic modes used by the helper circuit. If it is not defined: n_modes=input_size+1. Maximum is 20.
 
         Returns:
             FeatureMap: Configured feature-map instance.
@@ -1050,11 +1050,11 @@ class FidelityKernel(MerlinModule):
         if n_modes is None:
             state_size = input_size + 1
         else:
-            state_size = max(n_modes, input_size + 1)
+            state_size = n_modes
 
         input_state = state_size * [0]
         for i in range(state_size):
-            if i % 2 == 1:
+            if i % 2 == 0:
                 input_state[i] = 1
 
         return cls(
