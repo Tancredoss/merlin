@@ -50,9 +50,7 @@ MerLin Implementation
 
 The reproduction is organized as configurable experiments executed through the repository-level ``implementation.py`` entry point.
 
-For full run instructions, experiment options, and expected outputs, use the reproduced-papers guide:
-
-`Photonic quantum-enhanced kernels README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels/README.md>`_.
+For full run instructions, experiment options, and expected outputs, use the reproduced-papers guide: `Photonic quantum-enhanced kernels README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels/README.md>`_.
 
 How MerLin Was Used
 ===================
@@ -104,9 +102,7 @@ Key Contributions Reproduced
 Running Guidance
 ================
 
-To run experiments and tune CLI/config options, follow the reproduced-papers instructions:
-
-`Photonic quantum-enhanced kernels README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels/README.md>`_.
+To run experiments and tune CLI/config options, follow the reproduced-papers instructions: `Photonic quantum-enhanced kernels README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels/README.md>`_.
 
 Experimental Results
 ====================
