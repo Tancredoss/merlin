@@ -1,9 +1,9 @@
 [
   {
-    "title": "Classifying a non-linear dataset",
+    "title": "Quickstart: classify a nonlinear dataset with the photonic quantum layer",
     "summary": "A MerLin introduction from installation to classification.",
     "image": "_static/img/classifying_circles_decision_simple.png",
-    "doc": "notebooks/classifying_moons_from_installation",
+    "doc": "notebooks/classifying_circles_from_installation",
     "tags": ["Classification", "Circles", "QuantumLayer", "Introduction"],
     "contour_color": "#0ec8c3"
   }
