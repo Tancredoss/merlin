@@ -25,7 +25,7 @@ Project Repository
 
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/photonic_enhanced_kernel_gallery.json
-   :columns: 3
+   :columns: 2
    :contour-color: #5648ED
 
 
