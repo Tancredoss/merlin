@@ -54,6 +54,11 @@ Available Reproductions
      - 2025
      - Complete
      - Photonic vision model
+   * - :doc:`reproductions/hqnn-myth`
+     - Kashif et al.
+     - 2025
+     - Complete
+     - Hybrid quantum neural network benchmark
    * - :doc:`reproductions/data_reuploading`
      - Mauser et al.
      - 2025
@@ -131,6 +136,7 @@ Upcoming Reproductions
    reproductions/data_reuploading
    reproductions/distributed_nn
    reproductions/photonic_qcnn
+   reproductions/hqnn-myth
    reproductions/template
 
 ----
