@@ -26,7 +26,7 @@ Project Repository
 
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/qssl_external_links.json
-   :columns: 3
+   :columns: 2
    :contour-color: #5648ED
 
 Abstract
@@ -54,6 +54,43 @@ The implementation follows the standard qSSL recipe:
 * Representation block selected among ``merlin``, ``qiskit``, and ``classical``
 * 2-layer projection head with BatchNorm
 * InfoNCE training on two augmented views, followed by frozen-encoder linear probing
+
+How ``QuantumLayer`` is used (MerLin backend)
+---------------------------------------------
+
+In ``papers/qSSL/lib/model.py``, ``QuantumLayer`` is used as the MerLin
+``representation_network``:
+
+.. code-block:: python
+
+   # __init__: build the MerLin representation block
+   self.circuit = create_quantum_circuit(modes=self.modes, feature_size=self.width)
+   input_state = [(i + 1) % 2 for i in range(args.modes)]
+
+   self.representation_network = QuantumLayer(
+       input_size=self.width,
+       circuit=self.circuit,
+       trainable_parameters=[
+           p.name for p in self.circuit.get_parameters()
+           if not p.name.startswith("feature")
+       ],
+       input_parameters=["feature"],
+       input_state=input_state,
+       computation_space=ComputationSpace.UNBUNCHED,
+       measurement_strategy=MeasurementStrategy.PROBABILITIES,
+   )
+
+   # forward: encoder -> quantum layer -> projection head
+   x1 = self.comp(self.backbone(y1))
+   x1 = torch.sigmoid(x1) * (1 / torch.pi)  # MerLin scaling
+   z1 = self.representation_network(x1)
+   z1 = self.proj(z1)
+
+Minimal reading of this flow:
+
+* ``feature-*`` circuit parameters receive the compressed image features.
+* Non-``feature`` parameters are trainable variational parameters.
+* ``QuantumLayer`` output (probability features) is the representation used by InfoNCE after the projection head.
 
 Default training settings used in reproduction runs:
 
@@ -107,9 +144,9 @@ Original paper headline results (5 CIFAR-10 classes)
      - 46.51 ± 1.37
      - 46.34 ± 2.07 (100 shots)
    * - IBM QPU (27 qubits)
-     - 47.27
+     - .
+     - .
      - 47.00
-     - -
 
 Reproduced results
 ------------------
