@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Quickstart",
+    "summary": "Start with the essentials and build your first photonic quantum layer.",
+    "image": "_static/img/Circ_simple.png",
+    "doc": "quickstart/index",
+    "tags": ["Getting Started", "PyTorch"]
+  },
+  {
+    "title": "Latest Releases",
+    "summary": "Track recent updates, fixes, and newly added capabilities in MerLin.",
+    "image": "_static/img/WorkFlow.png",
+    "url": "https://github.com/merlinquantum/merlin/releases",
+    "tags": ["Releases", "Changelog"]
+  },
+  {
+    "title": "Benchmark State-Of-The-Art Papers",
+    "summary": "Benchmark new QML ideas against 21 papers reproduced in one unified MerLin framework.",
+    "image": "_static/img/benchmark_21.png",
+    "doc": "reproduced_papers/reproduced_papers",
+    "tags": ["Research", "Benchmarks"]
+  }
+]
