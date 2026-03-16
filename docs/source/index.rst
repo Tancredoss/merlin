@@ -34,6 +34,7 @@ Advanced users can leverage the underlying `Perceval <https://perceval.quandela.
    reproduced_papers/index
    api_reference/index
    performance/index
+   QML_library/index
 
 Who Should Use MerLin?
 ======================
