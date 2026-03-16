@@ -22,6 +22,24 @@ Each reproduction may include:
 .. note::
    All reproductions are implemented using MerLin's high-level API, making them accessible to ML practitioners without deep quantum expertise.
 
+.. toctree::
+   :maxdepth: 2
+   :hidden:
+   :caption: Reproduced Papers
+
+   reproductions/fock_state_expressivity
+   reproductions/quantum_reservoir_computing
+   reproductions/template
+   reproductions/qllm_finetuning
+   reproductions/photonic_qcnn
+   reproductions/photonic_kernel
+   reproductions/QCNN_data_classification
+   reproductions/qssl
+   reproductions/photonic_memristor
+   reproductions/hqnn-myth
+   reproductions/data_reuploading
+   reproductions/distributed_nn
+
 Available Reproductions
 -----------------------
 
@@ -54,21 +72,11 @@ Available Reproductions
      - 2025
      - Complete
      - Photonic vision model
-   * - :doc:`reproductions/QCNN_data_classification`
-     - Hur et al.
-     - 2022
-     - Complete
-     - Quantum convolutional neural network for classical data classification
-   * - :doc:`reproductions/qssl`
-     - Jaderberg et al.
-     - 2022
-     - Complete
-     - Quantum self-supervised learning
-   * - :doc:`reproductions/photonic_memristor`
-     - Selimović et al.
+   * - :doc:`reproductions/photonic_kernel`
+     - Yin et al.
      - 2025
-     - Partial
-     - Experimental neuromorphic computing based on quantum memristor
+     - Complete
+     - Experimental quantum-enhanced kernel-based machine learning on a photonic processor
    * - :doc:`reproductions/hqnn-myth`
      - Kashif et al.
      - 2025
@@ -84,6 +92,21 @@ Available Reproductions
      - 2025
      - Complete
      - Distributed computing for parameter compression
+   * - :doc:`reproductions/QCNN_data_classification`
+     - Hur et al.
+     - 2022
+     - Complete
+     - Quantum convolutional neural network for classical data classification
+   * - :doc:`reproductions/qssl`
+     - Jaderberg et al.
+     - 2022
+     - Complete
+     - Quantum self-supervised learning
+   * - :doc:`reproductions/photonic_memristor`
+     - Selimović et al.
+     - 2025
+     - Partial
+     - Experimental neuromorphic computing based on quantum memristor
 
 Contributing Reproductions
 --------------------------
@@ -139,23 +162,6 @@ Upcoming Reproductions
 
 **Community Requested**:
   Vote on upcoming reproductions in our `paper requests discussions <https://github.com/merlinquantum/merlin/discussions/categories/paper-requests>`_.
-
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Reproduced Papers
-
-   reproductions/fock_state_expressivity
-   reproductions/quantum_reservoir_computing
-   reproductions/qllm_finetuning
-   reproductions/data_reuploading
-   reproductions/distributed_nn
-   reproductions/photonic_qcnn
-   reproductions/QCNN_data_classification
-   reproductions/qssl
-   reproductions/photonic_memristor
-   reproductions/hqnn-myth
-   reproductions/template
 
 ----
 
