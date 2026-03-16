@@ -233,7 +233,7 @@ Returning typed objects
 -------------------------
 
 When ``return_object`` is set to True, the output of a ``forward()`` call depends of the ``measurement_strategy``. By default,
-it is set to False. See the following output matrix to size what to expect as the return of a forward call.
+it is set to False. See the following output matrix to see what to expect as the return of a forward call.
 
 +-----------------------+----------------------+--------------------------+
 | measurement_strategy  | return_object=False  | return_object=True       |
@@ -251,8 +251,7 @@ Most of the typed objects can give the ``torch.Tensor`` as an output with the ``
 PartialMeasurement object is a little different. See its according documentation.
 
 These object could be quite useful to access metadata like the number of photons, modes and measurement_strategy behind the output tensors. For example, a better access to specific
-states is available with ``StateVector`` and ``ProbabilityDistribution`` by indexing the desired state. The objects also have an interoperability
-with Perceval making it easy interations to have an easy crossplay between the two libraries.
+states is available with ``StateVector`` and ``ProbabilityDistribution`` by indexing the desired state. The objects are interoperable with Perceval, enabling seamless interaction between the two libraries.
 
 For more information on the typed output capabilities, follow the following links:
 
@@ -267,11 +266,11 @@ The snippet below prepares a basic quantum layer and returns a ``ProbabilityDist
     import torch
     import perceval as pcvl
     from merlin.algorithms.layer import QuantumLayer
-    from merlin.core import ComputationSpace
+    from merlin.core import ComputationSpace, ProbabilityDistribution
     from merlin.measurement.strategies import MeasurementStrategy
-    from merlin import ProbabilityDistribution
 
-    circuit = pcvl.Unitary(pcvl.Matrix.random_unitary(4))  # some haar-random 4-mode circuit
+    circuit = ML.CircuitBuilder(n_modes=4)
+    circuit.add_entangling_layer()
 
     bell = pcvl.StateVector()
     bell += pcvl.BasicState([1, 0, 1, 0])
@@ -279,7 +278,7 @@ The snippet below prepares a basic quantum layer and returns a ``ProbabilityDist
     print(bell) # bell is a state vector of 2 photons in 4 modes
 
     layer = QuantumLayer(
-        circuit=circuit,
+        builder=circuit,
         n_photons=2,
         input_state=bell,
         measurement_strategy=MeasurementStrategy.probs(computation_space=ComputationSpace.DUAL_RAIL),
