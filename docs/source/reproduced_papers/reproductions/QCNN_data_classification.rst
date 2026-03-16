@@ -137,24 +137,9 @@ Key Contributions Reproduced
 Implementation Details
 ======================
 
-Main execution examples (from the reproduction README):
-
-.. code-block:: bash
-
-   # Show all options
-   python ../implementation.py --paper QCNN_data_classification --help
-
-   # Quantum pseudo-convolution with classical comparison
-   python ../implementation.py --paper QCNN_data_classification \
-     --dataset mnist --pca_dim 8 --steps 200 --seeds 3 \
-     --nb_kernels 4 --kernel_size 2 --kernel_modes 8 --compare_classical
-
-   # Single-GI baseline
-   python ../implementation.py --paper QCNN_data_classification \
-     --model single --n_modes 8 --n_features 8 --n_photons 4 \
-     --steps 200 --seeds 3
-
-Datasets are resolved via the shared data root and stored under ``data/QCNN_data_classification/`` by default.
+The reproduction is designed to be straightforward to run from the command line.
+For full setup instructions, run commands, and implementation details, see:
+`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/QCNN_data_classification/README.md>`_.
 
 Experimental Results
 ====================
