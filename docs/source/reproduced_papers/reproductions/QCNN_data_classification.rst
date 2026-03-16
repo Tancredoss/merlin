@@ -28,7 +28,7 @@ Project Repository
 
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/qcnn_data_classification_external_links.json
-   :columns: 3
+   :columns: 2
    :contour-color: #5648ED
 
 Abstract
@@ -139,7 +139,7 @@ Implementation Details
 
 The reproduction is designed to be straightforward to run from the command line.
 For full setup instructions, run commands, and implementation details, see:
-`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/QCNN_data_classification/README.md>`_.
+`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/main/papers/QCNN_data_classification/README.md>`_.
 
 Experimental Results
 ====================
@@ -147,38 +147,16 @@ Experimental Results
 Hyperparameter analysis (MNIST, PCA=8)
 --------------------------------------
 
-Highlights from the sweep summary:
+We performed a dedicated hyperparameter analysis for the quantum pseudo-convolution setup.
+The figure below summarizes overall validation accuracy across the tested quantum and classical model variants.
 
-* Kernel modes have the strongest correlation with accuracy (about 0.65).
-* Increasing modes from 4 to 16 improves mean accuracy from about 0.58 to 0.85, with parameter growth from roughly 90 to 1,000.
-* Three kernels outperform one kernel on average (about 0.81 vs 0.68 mean accuracy) at higher parameter cost.
-* Stride 2 slightly outperforms stride 1 while reducing overlap-related parameter cost.
-
-.. list-table::
-   :widths: 50 50
-
-   * - .. figure:: ../../_static/reproduced_papers/QCNN_data_classification/hyperparameter_impacts.png
-          :alt: Hyperparameter impacts on QCNN metrics
-          :width: 100%
-
-     - .. figure:: ../../_static/reproduced_papers/QCNN_data_classification/correlation_matrix.png
-          :alt: Correlation matrix of QCNN hyperparameters and metrics
-          :width: 100%
-
-   * - .. figure:: ../../_static/reproduced_papers/QCNN_data_classification/quantum_vs_classical.png
-          :alt: Quantum versus classical comparison
-          :width: 100%
-
-     - .. figure:: ../../_static/reproduced_papers/QCNN_data_classification/pareto_frontier.png
-          :alt: Pareto frontier for accuracy and parameter efficiency
-          :width: 100%
-
-A compact heatmap view of sweep outcomes:
-
-.. figure:: ../../_static/reproduced_papers/QCNN_data_classification/heatmaps.png
-   :alt: QCNN sweep heatmaps
+.. figure:: ../../_static/reproduced_papers/QCNN_data_classification/quantum_vs_classical.png
+   :alt: Quantum versus classical comparison across tested QCNN variants
    :align: center
-   :width: 95%
+   :width: 80%
+
+For full plots and detailed discussion, see the
+`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/main/papers/QCNN_data_classification/README.md>`_.
 
 Angle-encoding benchmark (3 kernels, kernel size 3, stride 2)
 -------------------------------------------------------------
@@ -223,24 +201,8 @@ Amplitude-encoding benchmark (6 kernel modes, 3 kernels, kernel size 3, stride 2
 Training curves
 ===============
 
-.. list-table:: MNIST and FashionMNIST (8 PCA components)
-   :widths: 50 50
-
-   * - .. figure:: ../../_static/reproduced_papers/QCNN_data_classification/MNIST_accuracy_curves.png
-          :alt: MNIST accuracy curves for QCNN reproduction
-          :width: 100%
-
-     - .. figure:: ../../_static/reproduced_papers/QCNN_data_classification/MNIST_loss_curves.png
-          :alt: MNIST loss curves for QCNN reproduction
-          :width: 100%
-
-   * - .. figure:: ../../_static/reproduced_papers/QCNN_data_classification/FMNIST-accuracy_curves.png
-          :alt: FashionMNIST accuracy curves for QCNN reproduction
-          :width: 100%
-
-     - .. figure:: ../../_static/reproduced_papers/QCNN_data_classification/FMNIST-loss_curves.png
-          :alt: FashionMNIST loss curves for QCNN reproduction
-          :width: 100%
+All training-curve results are available in the
+`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/QCNN_data_classification/README.md>`_.
 
 Performance Analysis
 ====================
