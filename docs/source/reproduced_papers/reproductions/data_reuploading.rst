@@ -87,7 +87,7 @@ The MerLin implementation extends beyond the original paper:
 Code Access and Documentation
 =============================
 
-**GitHub Repository**: `merlin/reproductions/data_reuploading <https://github.com/merlinquantum/merlin/tree/main/reproductions/data_reuploading>`_
+**GitHub Repository**: `merlin/reproductions/data_reuploading <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/data_reuploading>`_
 
 The complete implementation includes:
 
