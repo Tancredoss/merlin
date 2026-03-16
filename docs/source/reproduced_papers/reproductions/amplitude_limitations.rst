@@ -106,7 +106,6 @@ Citation
     url = {http://arxiv.org/abs/2503.01545},
     doi = {10.48550/arXiv.2503.01545},
     abstract = {It remains unclear whether quantum machine learning (QML) has real advantages when dealing with practical and meaningful tasks. Encoding classical data into quantum states is one of the key steps in QML. Amplitude encoding has been widely used owing to its remarkable efficiency in encoding a number of \$2{\textasciicircum}\{n\}\$ classical data into \$n\$ qubits simultaneously. However, the theoretical impact of amplitude encoding on QML has not been thoroughly investigated. In this work we prove that under some broad and typical data assumptions, the average of encoded quantum states via amplitude encoding tends to concentrate towards a specific state. This concentration phenomenon severely constrains the capability of quantum classifiers as it leads to a loss barrier phenomenon, namely, the loss function has a lower bound that cannot be improved by any optimization algorithm. In addition, via numerical simulations, we reveal a counterintuitive phenomenon of amplitude encoding: as the amount of training data increases, the training error may increase rather than decrease, leading to reduced decrease in prediction accuracy on new data. Our results highlight the limitations of amplitude encoding in QML and indicate that more efforts should be devoted to finding more efficient encoding strategies to unlock the full potential of QML.},
-    urldate = {2026-01-29},
     publisher = {arXiv},
     author = {Wang, Xin and Wang, Yabo and Qi, Bo and Wu, Rebing},
     month = mar,
@@ -114,7 +113,6 @@ Citation
     note = {arXiv:2503.01545 [quant-ph]},
     keywords = {Quantum Physics},
     annote = {Comment: 18 pages, 11 figures},
-    file = {Preprint PDF:/Users/lfvigneux/Zotero/storage/YTHE7HX3/Wang et al. - 2025 - Limitations of Amplitude Encoding on Quantum Classification.pdf:application/pdf;Snapshot:/Users/lfvigneux/Zotero/storage/UZPTSQR7/2503.html:text/html},
   }
 
 Related Reproductions
