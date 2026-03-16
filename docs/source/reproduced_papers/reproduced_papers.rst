@@ -45,9 +45,9 @@ Available Reproductions
      - In Progress
      - Boson sampling for quantum reservoir computing
    * - :doc:`reproductions/qllm_finetuning`
-     - Jern et al.
+     - Kim et al.
      - 2025
-     - In Progress
+     - Complete
      - Fine Tuning a LLM with a photonic neural network
    * - :doc:`reproductions/photonic_qcnn`
      - Monbroussou et al.
@@ -59,6 +59,16 @@ Available Reproductions
      - 2025
      - Complete
      - Limitations of the amplitude encoding paradigm
+   * - :doc:`reproductions/hqnn-myth`
+     - Kashif et al.
+     - 2025
+     - Complete
+     - Hybrid quantum neural network benchmark
+   * - :doc:`reproductions/data_reuploading`
+     - Mauser et al.
+     - 2025
+     - Complete
+     - Photonic data re-uploading model
    * - :doc:`reproductions/distributed_nn`
      - Chen et al.
      - 2025
@@ -128,9 +138,12 @@ Upcoming Reproductions
    reproductions/fock_state_expressivity
    reproductions/quantum_reservoir_computing
    reproductions/qllm_finetuning
+   reproductions/data_reuploading
    reproductions/distributed_nn
    reproductions/photonic_qcnn
    reproductions/amplitude_limitations
+   reproductions/hqnn-myth
+   reproductions/template
 
 ----
 
