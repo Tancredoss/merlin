@@ -302,10 +302,12 @@ class TestQuantumLayer:
 
         amplitude = torch.rand(len(layer.output_keys))
         remaining_input = torch.rand(2)
-        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input([
-            amplitude,
-            remaining_input,
-        ])
+        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input(
+            [
+                amplitude,
+                remaining_input,
+            ]
+        )
 
         assert saved_state is original_state
         assert remaining[0] is remaining_input
@@ -346,10 +348,12 @@ class TestQuantumLayer:
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
 
-        params, batch_dim = layer._prepare_classical_parameters([
-            torch.rand(2, 2),
-            torch.rand(2, 2),
-        ])
+        params, batch_dim = layer._prepare_classical_parameters(
+            [
+                torch.rand(2, 2),
+                torch.rand(2, 2),
+            ]
+        )
 
         assert batch_dim == 2
         assert len(params) >= 2
@@ -937,9 +941,9 @@ class TestQuantumLayer:
         assert model[1].out_features == 3
         # Check that it has trainable parameters (only in Linear layer)
         trainable_params_layer = [p for p in layer.parameters() if p.requires_grad]
-        assert len(trainable_params_layer) == 0, (
-            "Layer should have no trainable parameters"
-        )
+        assert (
+            len(trainable_params_layer) == 0
+        ), "Layer should have no trainable parameters"
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         assert len(trainable_params) > 0, "Model should have trainable parameters"
 
@@ -1354,13 +1358,13 @@ class TestQuantumLayer:
 def test_simple_num_photons_modes_and_input_state():
     for i in range(1, 15):
         ql = ML.QuantumLayer.simple(input_size=i)
-        assert ql.quantum_layer.n_photons == (i + 1) // 2
-        assert sum(ql.quantum_layer.input_state) == (i + 1) // 2
+        assert ql.quantum_layer.n_photons == int(np.ceil((i + 1) / 2))
+        assert sum(ql.quantum_layer.input_state) == int(np.ceil((i + 1) / 2))
         assert len(ql.quantum_layer.input_state) == i + 1
 
         input_state = [0] * (i + 1)
         for j in range(len(input_state)):
-            if j % 2 == 1:
+            if j % 2 == 0:
                 input_state[j] = 1
         assert ql.quantum_layer.input_state == pcvl.BasicState(input_state)
 
