@@ -59,6 +59,11 @@ Available Reproductions
      - 2025
      - Complete
      - Hybrid quantum neural network benchmark
+   * - :doc:`reproductions/data_reuploading`
+     - Mauser et al.
+     - 2025
+     - Complete
+     - Photonic data re-uploading model
    * - :doc:`reproductions/distributed_nn`
      - Chen et al.
      - 2025
@@ -128,6 +133,7 @@ Upcoming Reproductions
    reproductions/fock_state_expressivity
    reproductions/quantum_reservoir_computing
    reproductions/qllm_finetuning
+   reproductions/data_reuploading
    reproductions/distributed_nn
    reproductions/photonic_qcnn
    reproductions/hqnn-myth
