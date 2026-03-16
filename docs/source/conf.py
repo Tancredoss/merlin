@@ -47,6 +47,7 @@ from importlib.metadata import metadata
 from pathlib import Path
 
 sys.path.insert(0, os.path.realpath("../../"))
+sys.path.insert(0, os.path.abspath("_ext"))
 
 
 merlin_metadata = metadata("merlinquantum")
@@ -78,6 +79,7 @@ extensions = [
     "enum_tools.autoenum",
     "nbsphinx",
     "sphinx_multiversion",
+    "merlin_gallery",
 ]
 
 suppress_warnings = ["autosectionlabel.*"]
