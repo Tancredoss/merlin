@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Run the QSSL model",
+    "summary": "Complete code reproduction of the QSSL (classical, qiskit and Merlin)",
+    "image": "_static/reproduced_papers/qSSL/qSSL_model.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/qSSL",
+    "tags": ["Reproduced papers", "qSSL", "Qiskit"]
+  }
+]
