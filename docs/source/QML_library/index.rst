@@ -4,7 +4,7 @@
 QML library
 ===========
 
-As part of the reproduction effort, a lot of interesting QML papers were found.
+As part of the reproduction effort, a lot of interesting QML papers were found. We list all of them below, ordered by utility towards MerLin. They are sorted alphabetically by the first author's last name.
 
 Reproduced papers
 =================
