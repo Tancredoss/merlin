@@ -54,6 +54,11 @@ Available Reproductions
      - 2025
      - Complete
      - Photonic vision model
+   * - :doc:`reproductions/photonic_memristor`
+     - Selimović et al.
+     - 2025
+     - Partial
+     - Experimental neuromorphic computing based on quantum memristor
    * - :doc:`reproductions/hqnn-myth`
      - Kashif et al.
      - 2025
@@ -136,6 +141,7 @@ Upcoming Reproductions
    reproductions/data_reuploading
    reproductions/distributed_nn
    reproductions/photonic_qcnn
+   reproductions/photonic_memristor
    reproductions/hqnn-myth
    reproductions/template
 
