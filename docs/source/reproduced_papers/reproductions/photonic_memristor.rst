@@ -24,7 +24,7 @@ Project Repository
 
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/memristor_gallery.json
-   :columns: 3
+   :columns: 2
    :contour-color: #5648ED
 
 Abstract
@@ -42,49 +42,40 @@ The paper connects quantum photonics and neuromorphic computing through a memris
 MerLin Implementation
 =====================
 
-The reproduction is exposed through the repository-level runner:
+The reproduction code and runnable examples are maintained in the dedicated README:
 
-.. code-block:: bash
+`qrc_memristor README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/qrc_memristor/README.md>`_.
 
-   python implementation.py --paper qrc_memristor [ARGUMENTS]
+Memristor ``QuantumLayer`` usage (from the implementation):
 
-Two execution modes are supported:
+.. code-block:: python
 
-* `quantum` mode (default): memristor and no-memristor quantum reservoirs.
-* `classical` mode: linear and quadratic baselines with and without memory.
+   self.quantum_layer = ml.QuantumLayer(
+       input_size=input_dim + 1,  # input + feedback
+       circuit=circuit,
+       trainable_parameters=["theta"],
+       input_parameters=["px"],
+       input_state=[0, 1, 0],
+       measurement_strategy=ml.MeasurementStrategy.PROBABILITIES,
+       no_bunching=True,
+   )
 
-Configuration files can be loaded from `reproduced_papers/qrc_memristor/configs/`, and CLI options override JSON values.
+   phi_enc = encode_phase(x)
+   theta_t = R_to_theta(R_t)  # feedback-derived phase (memristive state)
+   quantum_input = torch.cat([phi_enc, theta_t], dim=1)  # [px_0, px_1]
+   out = self.quantum_layer(quantum_input)
+
+The full command-line interface, task coverage, and results workflow are documented in that README.
 
 Key Contributions Reproduced
 ============================
 
 **Quantum reservoir variants**
-  * Implemented quantum reservoir computing with memristor (`memristor`) and without memristor (`nomem`).
-  * Reproduced task-specific training/evaluation flows through unified CLI parameters.
+  * Implemented quantum reservoir computing with memristor (``memristor``) and without memristor (``nomem``).
 
 **Classical baselines for comparison**
-  * Implemented linear and quadratic models (`L`, `Q`) and their memory-augmented variants (`L+M`, `Q+M`).
+  * Implemented linear and quadratic models (``L``, ``Q``) and their memory-augmented variants (``L+M``, ``Q+M``).
   * Enabled direct mode switching between quantum and classical experiments.
-
-**Reproducible experiment outputs**
-  * Added run artifact generation with `config.json`, `metrics.json`, `plot_data.json`, and `experiment.log`.
-  * Preserved timestamped output directories for side-by-side reproducibility.
-
-Implementation Details
-======================
-
-Representative commands from the reproduction README:
-
-.. code-block:: bash
-
-   # Quantum NARMA with memristor
-   python implementation.py --paper qrc_memristor --task narma --model-type memristor --memory 4 --n-runs 10
-
-   # Quantum nonlinear without memristor
-   python implementation.py --paper qrc_memristor --task nonlinear --model-type nomem --epochs 200
-
-   # Classical baseline
-   python implementation.py --paper qrc_memristor --mode classical --task narma --model-type L
 
 Experimental Results
 ====================
@@ -106,27 +97,10 @@ For the nonlinear transformation benchmark, the reproduced results show a clear 
 
 .. figure:: ../../_static/reproduced_papers/memristor/results.png
    :align: center
-   :width: 85%
+   :width: 50%
    :alt: Nonlinear task plot comparing target x^4 with linear baseline, quantum reservoir without memristor, and quantum reservoir with memristor.
 
    Nonlinear task reproduction plot. The memristor-enhanced quantum reservoir follows the target curve more accurately than the baselines.
-
-Technical Implementation Details
-================================
-
-**Available tasks**
-  * `narma` and `nonlinear` are currently validated in the reproduction.
-  * `mackey_glass` and `santa_fe` are present in the interface and under further development.
-
-**CLI arguments**
-  * `--mode`: `quantum` or `classical`.
-  * `--task`: `narma`, `nonlinear`, `mackey_glass`, `santa_fe`.
-  * `--model-type`: quantum (`memristor`, `nomem`) or classical (`L`, `Q`, `L+M`, `Q+M`).
-  * Training controls include `--memory`, `--n-runs`, `--epochs`, `--lr`, `--output-dir`.
-
-**Result management**
-  * Each run stores configuration, metrics, and plotting payloads in timestamped folders.
-  * Plots can be generated during execution (`--plot`) or post-run with `create_plots.py`.
 
 Performance Analysis
 ====================
