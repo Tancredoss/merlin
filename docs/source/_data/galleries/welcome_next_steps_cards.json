@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Run the Notebook Version",
+    "summary": "Open the end-to-end notebook for first-layer training experiments.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Notebook", "Hands-on"]
+  },
+  {
+    "title": "Build Your First Photonic Circuit",
+    "summary": "Follow the Quickstart walkthrough to build and train a QuantumLayer.",
+    "image": "_static/img/Circ_builder.png",
+    "doc": "quickstart/first_quantum_layer",
+    "tags": ["Quickstart", "Circuit"]
+  },
+  {
+    "title": "Explore More Examples",
+    "summary": "Discover additional demos and model patterns across MerLin.",
+    "image": "_static/examples/SimpleToBuilder.svg",
+    "doc": "examples/index",
+    "tags": ["Examples", "Workflows"]
+  }
+]

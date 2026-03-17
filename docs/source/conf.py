@@ -47,6 +47,7 @@ from importlib.metadata import metadata
 from pathlib import Path
 
 sys.path.insert(0, os.path.realpath("../../"))
+sys.path.insert(0, os.path.abspath("_ext"))
 
 
 merlin_metadata = metadata("merlinquantum")
@@ -78,10 +79,18 @@ extensions = [
     "enum_tools.autoenum",
     "nbsphinx",
     "sphinx_multiversion",
+    "merlin_gallery",
 ]
 
 suppress_warnings = ["autosectionlabel.*"]
-bibtex_bibfiles = ["references.bib"]
+bibtex_bibfiles = [
+    "references.bib",
+    "QML_library/QML_library_other_papers.bib",
+    "QML_library/QML_library_reproduced_papers.bib",
+    "QML_library/QML_library_reproduced_papers_to_do.bib",
+    "QML_library/QML_library_reproduced_papers_in_progress.bib",
+]
+bibtex_default_style = "alpha"
 bibtex_reference_style = "author_year"
 
 # Autodoc configuration

@@ -52,7 +52,7 @@ Key Contributions Reproduced
 Interactive Exploration
 =======================
 
-**Jupyter Notebook**: :doc:`../notebooks/quantum_reservoir`
+**Jupyter Notebook**: :doc:`../../notebooks/reproduced_papers/quantum_reservoir`
 
 The notebook provides:
 
@@ -74,4 +74,3 @@ Citation
      publisher={Optica Publishing Group},
      doi={10.1364/OPTICAQ.541432}
    }
-

@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Quantum Memristor Neuromorphic Computing",
+    "summary": "Photonic quantum-memristor reservoir model with reproduced nonlinear-task improvements.",
+    "image": "_static/reproduced_papers/memristor/results.png",
+    "doc": "reproduced_papers/reproductions/photonic_memristor",
+    "tags": ["Selimovic et al.", "2025", "Partial"]
+  }
+]
