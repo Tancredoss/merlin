@@ -39,6 +39,9 @@ Each reproduction may include:
    reproductions/hqnn-myth
    reproductions/data_reuploading
    reproductions/distributed_nn
+   reproductions/quantum_adversarial_ml
+   reproductions/quantum_transfer_learning
+   reproductions/nearest_centroids_merlin
 
 Available Reproductions
 -----------------------
@@ -107,6 +110,21 @@ Available Reproductions
      - 2025
      - Partial
      - Experimental neuromorphic computing based on quantum memristor
+   * - :doc:`reproductions/nearest_centroids_merlin`
+     - Johri et al.
+     - 2020
+     - Complete
+     - Nearest centroid classification on a trapped ion quantum computer
+   * - :doc:`reproductions/quantum_adversarial_ml`
+     - Lu et al.
+     - 2020
+     - Complete
+     - Adversarial robustness of quantum machine learning classifiers
+   * - :doc:`reproductions/quantum_transfer_learning`
+     - Mari et al.
+     - 2020
+     - Complete
+     - Transfer learning in hybrid classical-quantum neural networks
 
 Contributing Reproductions
 --------------------------
