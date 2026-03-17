@@ -1,9 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
+====================================================================
 Photonic Quantum Generative Adversarial Networks for Classical Data
-====================================================
-
+====================================================================
 .. admonition:: Paper Information
    :class: note
 
@@ -42,8 +41,7 @@ For MerLin users, this is a strong benchmark problem because it combines:
 MerLin Implementation
 =====================
 
-The current reproduced implementation (in `merlinquantum/reproduced_papers`) uses a MerLin-native photonic generator path. ``PatchGenerator`` is implemented as a ``torch.nn.Module`` and internally instantiates one ``ML.QuantumLayer`` per patch.
-
+The current reproduced implementation (in `merlinquantum/reproduced_papers <https://github.com/merlinquantum/reproduced_papers>`_) uses a MerLin-native photonic generator path. ``PatchGenerator`` is implemented as a ``torch.nn.Module`` and internally instantiates one ``ML.QuantumLayer`` per patch.
 The adversarial loop in ``lib/qgan.py`` is fully differentiable:
 
 * discriminator and generator are optimized with Adam,
