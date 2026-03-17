@@ -1,0 +1,30 @@
+[
+  {
+    "title": "Explore Reproduced Papers",
+    "summary": "Browse our catalog of 21 papers reproduced with reusable QML baselines.",
+    "image": "_static/img/papers_21.png",
+    "doc": "reproduced_papers/reproduced_papers",
+    "tags": ["Research", "Benchmarks"]
+  },
+  {
+    "title": "Highlight: QORC",
+    "summary": "Quantum optical reservoir computing powered by boson sampling.",
+    "image": "_static/img/SW-BS.png",
+    "doc": "reproduced_papers/reproductions/quantum_reservoir_computing",
+    "tags": ["Boson Sampling", "Reservoir"]
+  },
+  {
+    "title": "Highlight: QLLM",
+    "summary": "Fine-tuning a language model with a photonic quantum neural network.",
+    "image": "_static/img/Interferometer_training.png",
+    "doc": "reproduced_papers/reproductions/qllm_finetuning",
+    "tags": ["LLM", "Photonic QNN"]
+  },
+  {
+    "title": "Want to Contribute?",
+    "summary": "Submit examples, reproductions, or documentation improvements.",
+    "image": "_static/img/merlin_black.png",
+    "url": "https://github.com/merlinquantum/merlin/blob/main/CONTRIBUTING.md",
+    "tags": ["Community", "Contributing"]
+  }
+]
