@@ -29,7 +29,6 @@ Each reproduction may include:
 
    reproductions/fock_state_expressivity
    reproductions/quantum_reservoir_computing
-   reproductions/template
    reproductions/qllm_finetuning
    reproductions/photonic_qcnn
    reproductions/photonic_kernel
@@ -115,7 +114,7 @@ We welcome contributions of additional paper reproductions.
 2. **Implement** using MerLin following our guidelines
 3. **Validate** results against original paper
 4. **Document** in Jupyter notebook format
-5. **Submit** via pull request a complete reproduction folder and a summary page in :code:`docs/source/reproduced_papers/reproductions/` directory
+5. **Submit** via pull request a complete reproduction folder and a summary page in :code:`docs/source/reproductions/` directory
 
 **Template Structure**:
 
