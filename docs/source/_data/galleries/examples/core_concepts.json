@@ -4,21 +4,21 @@
     "summary": "Introduction to these two encoding strategies and their tradeoffs.",
     "image": "_static/img/Circ_simple.png",
     "doc": "user_guide/angle_amplitude_encoding",
-    "tags": ["Introduction", "Encodings", "Comparison","Examples"]
+    "tags": ["Documentation", "Encodings", "Comparison","Examples"]
   },
   {
     "title": "Measurement strategies",
     "summary": "Exploration of the possible output types of the MerLin modules.",
     "image": "_static/img/partial_measurement.png",
     "doc": "user_guide/measurement_strategy",
-    "tags": ["Measurement", "Probabilities", "Amplitudes", "Partial measurement"]
+    "tags": ["Documentation","Measurement", "Probabilities", "Amplitudes", "Partial measurement"]
   },
   {
     "title": "The computation spaces and the QuantumBridge",
     "summary": "How to use MerLin's circuit builder to easily create custom quantum layers.",
-    "image": "_static/img/merlin_black.png",
+    "image": "_static/img/computation_space.png",
     "doc": "user_guide/computation_space",
-    "tags": ["ComputationSpace","QuantumBridge", "Gate-based to photonics"]
+    "tags": ["Documentation","ComputationSpace","QuantumBridge", "Gate-based to photonics"]
   },
   {
     "title": "Running on hardware",
