@@ -38,7 +38,7 @@
     "title": "Quantum Relational Knowledge Distillation",
     "summary": "Knowledge distillation (KD) is a widely adopted technique for compressing large models into smaller, more efficient student models",
     "image": "_static/reproduced_papers/QRKD.png",
-    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/QRNN",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/QRKD",
     "tags": ["Liu et al.", "2025", "Complete", "Knowledge Distillation"]
   }
 ]

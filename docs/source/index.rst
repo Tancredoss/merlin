@@ -199,3 +199,15 @@ Next Steps
 - **Reproduce papers**: :doc:`reproduced_papers/index`
 - **Contribute**: :doc:`contribution`
 - **API reference**: :doc:`api_reference/index`
+
+How to Cite Us
+==============
+
+.. code-block:: bibtex
+
+   @article{notton2026merlin,
+     title={MerLin: A Discovery Engine for Photonic and Hybrid Quantum Machine Learning},
+     author={Notton, Cassandre and Stott, Benjamin and Schoeb, Philippe and Walsh, Anthony and Leboucher, Gr{\'e}goire and Espitalier, Vincent and Apostolou, Vassilis and Vigneux, Louis-F{\'e}lix and Salavrakos, Alexia and Senellart, Jean},
+     journal={arXiv preprint arXiv:2602.11092},
+     year={2026}
+   }
