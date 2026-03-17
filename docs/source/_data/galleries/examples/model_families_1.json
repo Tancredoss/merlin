@@ -24,7 +24,7 @@
     "title": "QORC basis",
     "summary": "Introduction to the quantum optical reservoir computing and classical readout.",
     "image": "_static/img/merlin_black.png",
-    "doc": "examples/index",
+    "doc": "reproduced_papers/reproductions/quantum_reservoir_computing.rst",
     "tags": ["QORC","Reservoir","Coming soon!"]
   }
 ]
