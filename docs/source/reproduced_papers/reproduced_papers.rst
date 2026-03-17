@@ -41,7 +41,7 @@ Each reproduction may include:
    reproductions/distributed_nn
    reproductions/quantum_adversarial_ml
    reproductions/quantum_transfer_learning
-   reproductions/nearest_centroids_merlin
+   reproductions/nearest_centroids
 
 Available Reproductions
 -----------------------
@@ -110,7 +110,7 @@ Available Reproductions
      - 2025
      - Partial
      - Experimental neuromorphic computing based on quantum memristor
-   * - :doc:`reproductions/nearest_centroids_merlin`
+   * - :doc:`reproductions/nearest_centroids`
      - Johri et al.
      - 2020
      - Complete

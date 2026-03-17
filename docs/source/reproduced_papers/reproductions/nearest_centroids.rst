@@ -54,7 +54,7 @@ MerLin Implementation
 MerLin's ``QuantumLayer`` is used as a drop-in quantum distance oracle inside scikit-learn's
 ``NearestCentroid`` classifier. The ``QuantumLayer`` operates in the unbunched single-photon
 regime (``ComputationSpace.UNBUNCHED``) and returns measurement probabilities over basis
-states (``MeasurementStrategy.PROBABILITIES``). The RBS binary-tree circuit is constructed
+states (``MeasurementStrategy.probs()``). The RBS binary-tree circuit is constructed
 programmatically from the input dimension, and the angle encoding for both the test vector
 and the reference centroid is concatenated and passed as the ``input_parameters``. No
 trainable parameters are used - the circuit is entirely data-driven.
@@ -107,7 +107,7 @@ only the distance metric:
        input_parameters=["theta"],
        input_state=[1] + [0] * (n - 1),
        computation_space=ComputationSpace.UNBUNCHED,
-       measurement_strategy=MeasurementStrategy.PROBABILITIES,
+       measurement_strategy=MeasurementStrategy.probs(),
    )
 
    class MLQuantumNearestCentroid(NearestCentroid):
@@ -216,6 +216,12 @@ MNIST images reduced from 784 pixels to 8 PCA components (Nq=8), 1000 shots.
      - 87.9 %
      - 88.8 %
      - 88.2 %
+
+Code Access and Documentation
+=============================
+
+**GitHub Repository**: `merlin/reproductions/nearest_centroids <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/nearest_centroids_merlin>`_
+
 
 
 Extensions and Future Work
