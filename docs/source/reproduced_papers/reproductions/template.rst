@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
-[Paper Title]
-====================================================
+=====================================================
+Template for Reproducing a Quantum ML Paper in MerLin
+=====================================================
 
 .. admonition:: Paper Information
    :class: note

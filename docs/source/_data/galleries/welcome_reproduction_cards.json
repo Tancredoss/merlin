@@ -9,16 +9,16 @@
   {
     "title": "Highlight: QORC",
     "summary": "Quantum optical reservoir computing powered by boson sampling.",
-    "image": "_static/img/SW-BS.png",
+    "image": "_static/reproduced_papers/QORC.png",
     "doc": "reproduced_papers/reproductions/quantum_reservoir_computing",
     "tags": ["Boson Sampling", "Reservoir"]
   },
   {
-    "title": "Highlight: QLLM",
-    "summary": "Fine-tuning a language model with a photonic quantum neural network.",
-    "image": "_static/img/Interferometer_training.png",
-    "doc": "reproduced_papers/reproductions/qllm_finetuning",
-    "tags": ["LLM", "Photonic QNN"]
+    "title": "Highlight: QSSL",
+    "summary": "Quantum self-supervised learning with photonic and gate-model quantum backends.",
+    "image": "_static/reproduced_papers/qSSL/qSSL_model.png",
+    "doc": "reproduced_papers/reproductions/qssl",
+    "tags": ["Self-Supervised", "Photonic QNN"]
   },
   {
     "title": "Want to Contribute?",
