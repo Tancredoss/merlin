@@ -45,6 +45,7 @@ constraints.
    examples/index
    notebooks/index
    reproduced_papers/index
+   contribution
    api_reference/index
    performance/index
    QML_library/index
@@ -196,4 +197,5 @@ Next Steps
 - **Understand MerLin**: :doc:`user_guide/index`
 - **Explore examples**: :doc:`examples/index` or :doc:`notebooks/index`
 - **Reproduce papers**: :doc:`reproduced_papers/index`
+- **Contribute**: :doc:`contribution`
 - **API reference**: :doc:`api_reference/index`
