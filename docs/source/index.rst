@@ -43,7 +43,6 @@ constraints.
    user_guide/index
    quantum_expert_area/index
    examples/index
-   notebooks/index
    reproduced_papers/index
    api_reference/index
    performance/index
@@ -186,7 +185,7 @@ This hybrid architecture can combine:
 - **Classical output**: Map quantum results to predictions
 
 Common patterns include quantum kernels, variational quantum classifiers (VQC), and
-quantum feature maps. Explore :doc:`examples/index` and :doc:`notebooks/index`
+quantum feature maps. Explore :doc:`examples/index`
 for working implementations and use cases.
 
 Next Steps
@@ -194,6 +193,6 @@ Next Steps
 
 - **Get started**: :doc:`quickstart/index`
 - **Understand MerLin**: :doc:`user_guide/index`
-- **Explore examples**: :doc:`examples/index` or :doc:`notebooks/index`
+- **Explore examples**: :doc:`examples/index
 - **Reproduce papers**: :doc:`reproduced_papers/index`
 - **API reference**: :doc:`api_reference/index`
