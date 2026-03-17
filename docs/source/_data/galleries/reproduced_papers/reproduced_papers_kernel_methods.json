@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Photonic Quantum-Enhanced Kernels",
+    "summary": "Kernel-based classification on a photonic processor with indistinguishable-versus-distinguishable photon comparisons.",
+    "image": "_static/reproduced_papers/photonic_enhanced_kernels/results-for-readme/accuracy_vs_input_state/plot.png",
+    "doc": "reproduced_papers/reproductions/photonic_kernel",
+    "tags": ["Yin et al.", "2025", "Complete", "Kernel methods"]
+  }
+]

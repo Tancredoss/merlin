@@ -4,23 +4,12 @@
 Reproduced Papers
 =================
 
-MerLin enables researchers to reproduce and build upon published quantum machine learning research.
-This section provides implementations of key papers in the quantum ML field, complete with working code, analysis, and extensions.
-
-Overview
---------
-
-Each reproduction may include:
-
-* **Original paper implementation** - Faithful recreation of the paper's methodology
-* **Reproduction status** - Indicating whether the reproduction is partial or complete
-* **Jupyter notebooks** - Interactive exploration of results and concepts
-* **Full code** - Available on GitHub for easy access and modification
-* **Performance analysis** - Comparison with paper results
-* **Extension opportunities** - Ideas for building upon the work
+MerLin provides reproducible implementations of published quantum machine learning papers.
+Each card links to a dedicated reproduction page with paper metadata, implementation details, code access, and results.
 
 .. note::
-   All reproductions are implemented using MerLin's high-level API, making them accessible to ML practitioners without deep quantum expertise.
+   Reproductions are organized by topic. Card tags show authors, year, and reproduction status.
+   For papers without a dedicated image yet, a temporary placeholder is used and can be replaced later.
 
 .. toctree::
    :maxdepth: 2
@@ -29,7 +18,6 @@ Each reproduction may include:
 
    reproductions/fock_state_expressivity
    reproductions/quantum_reservoir_computing
-   reproductions/template
    reproductions/qllm_finetuning
    reproductions/photonic_qcnn
    reproductions/photonic_kernel
@@ -39,84 +27,73 @@ Each reproduction may include:
    reproductions/hqnn-myth
    reproductions/data_reuploading
    reproductions/distributed_nn
+   reproductions/template
+
+Highlights
+----------
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/reproduced_papers_highlights.json
+   :columns: 4
+   :contour-color: #5648ED
 
 Available Reproductions
 -----------------------
 
-.. list-table::
-   :header-rows: 1
-   :widths: 40 25 20 15 60
+The reproductions are organized by topic. Each card opens the corresponding paper-reproduction page.
 
-   * - Paper Title
-     - Authors
-     - Year
-     - Status
-     - Description/Category
-   * - :doc:`reproductions/fock_state_expressivity`
-     - Gan et al.
-     - 2021
-     - Complete
-     - Foundational work on photonic circuit architectures
-   * - :doc:`reproductions/quantum_reservoir_computing`
-     - Sakurai et al.
-     - 2025
-     - In Progress
-     - Boson sampling for quantum reservoir computing
-   * - :doc:`reproductions/qllm_finetuning`
-     - Kim et al.
-     - 2025
-     - Complete
-     - Fine Tuning a LLM with a photonic neural network
-   * - :doc:`reproductions/photonic_qcnn`
-     - Monbroussou et al.
-     - 2025
-     - Complete
-     - Photonic vision model
-   * - :doc:`reproductions/amplitude_limitations`
-     - Wang et al.
-     - 2025
-     - Complete
-     - Limitations of the amplitude encoding paradigm
-   * - :doc:`reproductions/photonic_kernel`
-     - Yin et al.
-     - 2025
-     - Complete
-     - Experimental quantum-enhanced kernel-based machine learning on a photonic processor
-   * - :doc:`reproductions/hqnn-myth`
-     - Kashif et al.
-     - 2025
-     - Complete
-     - Hybrid quantum neural network benchmark
-   * - :doc:`reproductions/data_reuploading`
-     - Mauser et al.
-     - 2025
-     - Complete
-     - Photonic data re-uploading model
-   * - :doc:`reproductions/distributed_nn`
-     - Chen et al.
-     - 2025
-     - Complete
-     - Distributed computing for parameter compression
-   * - :doc:`reproductions/QCNN_data_classification`
-     - Hur et al.
-     - 2022
-     - Complete
-     - Quantum convolutional neural network for classical data classification
-   * - :doc:`reproductions/qssl`
-     - Jaderberg et al.
-     - 2022
-     - Complete
-     - Quantum self-supervised learning
-   * - :doc:`reproductions/photonic_memristor`
-     - Selimović et al.
-     - 2025
-     - Partial
-     - Experimental neuromorphic computing based on quantum memristor
+Kernel Methods
+~~~~~~~~~~~~~~
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/reproduced_papers_kernel_methods.json
+   :columns: 3
+   :contour-color: #5648ED
+
+Variational Methods
+~~~~~~~~~~~~~~~~~~~
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/reproduced_papers_variational_methods.json
+   :columns: 3
+   :contour-color: #5648ED
+
+Computer Vision
+~~~~~~~~~~~~~~~
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/reproduced_papers_computer_vision.json
+   :columns: 3
+   :contour-color: #5648ED
+
+Advanced Training Paradigms
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/reproduced_papers_advanced_training.json
+   :columns: 3
+   :contour-color: #5648ED
+
+Distributed Training
+~~~~~~~~~~~~~~~~~~~~
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/reproduced_papers_distributed_training.json
+   :columns: 2
+   :contour-color: #5648ED
+
+Future-proofing
+~~~~~~~~~~~~~~~
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/reproduced_papers_future_proofing.json
+   :columns: 2
+   :contour-color: #5648ED
 
 Contributing Reproductions
 --------------------------
 
-We welcome contributions of additional paper reproductions!
+We welcome contributions of additional paper reproductions.
 
 **Requirements**:
 
@@ -131,7 +108,7 @@ We welcome contributions of additional paper reproductions!
 2. **Implement** using MerLin following our guidelines
 3. **Validate** results against original paper
 4. **Document** in Jupyter notebook format
-5. **Submit** via pull request a complete reproduction folder and a summary page in :code:`docs/source/reproductions/` directory
+5. **Submit** via pull request a complete reproduction folder and a summary page in :code:`docs/source/reproduced_papers/reproductions/` directory
 
 **Template Structure**:
 
@@ -156,33 +133,4 @@ Contributors to reproductions are recognized in:
 * MerLin project contributors list
 * Academic citations in MerLin publications
 
-Upcoming Reproductions
-----------------------
-
-**Near-term (Q2 2025)**:
-  *Currently accepting proposals*
-
-**Medium-term (Q3-Q4 2025)**:
-  *Community voting in progress*
-
-**Community Requested**:
-  Vote on upcoming reproductions in our `paper requests discussions <https://github.com/merlinquantum/merlin/discussions/categories/paper-requests>`_.
-
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Reproduced Papers
-
-   reproductions/fock_state_expressivity
-   reproductions/quantum_reservoir_computing
-   reproductions/qllm_finetuning
-   reproductions/data_reuploading
-   reproductions/distributed_nn
-   reproductions/photonic_qcnn
-   reproductions/amplitude_limitations
-   reproductions/hqnn-myth
-   reproductions/template
-
-----
-
-*Have a paper you'd like to see reproduced?* `Start a discussion <https://github.com/merlinquantum/merlin/discussions/new>`_ *and let us know!*
+*Have a paper you'd like to see reproduced?* `Start a discussion <https://github.com/merlinquantum/merlin/discussions/new>`_.

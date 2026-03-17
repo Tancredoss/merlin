@@ -1,0 +1,30 @@
+[
+  {
+    "title": "Explore Our Work",
+    "summary": "Browse the reproduced papers repository and explore all available implementations.",
+    "image": "_static/reproduced_papers/hqnn/Results.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers",
+    "tags": ["11 papers", "Code and docs", "Reproducibility"]
+  },
+  {
+    "title": "Highlight: QORC",
+    "summary": "Quantum optical reservoir computing powered by boson sampling on image-recognition tasks.",
+    "image": "_static/img/merlin_black.png",
+    "doc": "reproduced_papers/reproductions/quantum_reservoir_computing",
+    "tags": ["Sakurai et al.", "2025", "In Progress", "Image TBD"]
+  },
+  {
+    "title": "Highlight: qSSL",
+    "summary": "Self-supervised quantum representation learning reproduced with photonic and gate-model backends.",
+    "image": "_static/reproduced_papers/qSSL/qSSL_model.png",
+    "doc": "reproduced_papers/reproductions/qssl",
+    "tags": ["Jaderberg et al.", "2022", "Complete"]
+  },
+  {
+    "title": "Want To Contribute?",
+    "summary": "Propose a new paper reproduction and contribute to MerLin's benchmark-driven ecosystem.",
+    "image": "_static/img/merlin_black.png",
+    "url": "https://github.com/merlinquantum/merlin/discussions/new",
+    "tags": ["Contributing", "Paper requests", "Community"]
+  }
+]

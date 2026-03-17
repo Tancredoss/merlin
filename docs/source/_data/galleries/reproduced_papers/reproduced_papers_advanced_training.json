@@ -1,0 +1,16 @@
+[
+  {
+    "title": "Quantum LLM Fine-Tuning",
+    "summary": "Photonic quantum heads for sentence-embedding classification with baseline-aware evaluation.",
+    "image": "_static/reproduced_papers/qllm/qllm_setup.png",
+    "doc": "reproduced_papers/reproductions/qllm_finetuning",
+    "tags": ["Kim et al.", "2025", "Complete"]
+  },
+  {
+    "title": "Quantum Self-Supervised Learning",
+    "summary": "SimCLR-style qSSL reproduction with MerLin photonic, Qiskit, and classical backends.",
+    "image": "_static/reproduced_papers/qSSL/qSSL_model.png",
+    "doc": "reproduced_papers/reproductions/qssl",
+    "tags": ["Jaderberg et al.", "2022", "Complete"]
+  }
+]
