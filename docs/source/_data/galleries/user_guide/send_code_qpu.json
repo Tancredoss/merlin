@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Remote execution",
+    "summary": "Guide on how to run your models on a simulator or QPU",
+    "image": "_static/img/quandela_cloud.png",
+    "doc": "user_guide/remote_execution",
+    "tags": ["Introduction", "MerLinProcessor","Remote","QPU", "Overview"]
+  }
+]
