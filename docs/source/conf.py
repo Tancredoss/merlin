@@ -41,6 +41,7 @@ Then this file is interpreted
 """
 
 import os
+import re
 import sys
 from datetime import datetime
 from importlib.metadata import metadata
@@ -140,3 +141,31 @@ nbsphinx_execute_arguments = [
     "--InlineBackend.figure_formats={'svg', 'pdf'}",
     "--InlineBackend.rc={'figure.dpi': 96}",
 ]
+
+GTM_NOSCRIPT = """<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TB3VSRKZ"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->"""
+
+
+def _inject_gtm_noscript(app, exception):
+    if exception is not None or app.builder.format != "html":
+        return
+
+    outdir = Path(app.builder.outdir)
+    body_pattern = re.compile(r"(<body\b[^>]*>)", re.IGNORECASE)
+
+    for html_file in outdir.rglob("*.html"):
+        content = html_file.read_text(encoding="utf-8")
+        if GTM_NOSCRIPT in content:
+            continue
+
+        updated_content, replacements = body_pattern.subn(
+            rf"\1\n{GTM_NOSCRIPT}\n", content, count=1
+        )
+        if replacements:
+            html_file.write_text(updated_content, encoding="utf-8")
+
+
+def setup(app):
+    app.connect("build-finished", _inject_gtm_noscript)
