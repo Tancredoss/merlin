@@ -1,0 +1,30 @@
+[
+  {
+    "title": "Fidelity kernel classification",
+    "summary": "Introduction to these two encoding strategies and their tradeoffs.",
+    "image": "_static/img/MerLin_black.png",
+    "doc": "notebooks/Kernels.ipynb",
+    "tags": ["Tutorial", "Kernels", "FidelityKernel","Iris"]
+  },
+  {
+    "title": "Variational Quantum Models: Classification",
+    "summary": "Training a variational photonic circuit on a simple classification task.",
+    "image": "_static/img/partial_measurement.png",
+    "doc": "user_guide/measurement_strategy",
+    "tags": ["Measurement", "Probabilities", "Amplitudes", "Partial measurement"]
+  },
+  {
+    "title": "Variational Quantum Models: Impact of the Photon Number",
+    "summary": "How to use MerLin's circuit builder to easily create custom quantum layers.",
+    "image": "_static/examples/VQC_plot.png",
+    "doc": "notebooks/reproduced_papers/GanEtAl_VQC_classification",
+    "tags": ["Reproduced paper","Variational", "Number of Photons","Moons","Circles","Linear"]
+  },
+  {
+    "title": "QORC basis",
+    "summary": "Introduction to the quantum optical reservoir computing and classical readout.",
+    "image": "_static/img/merlin_black.png",
+    "doc": "examples/index",
+    "tags": ["QORC","Reservoir"]
+  }
+]
