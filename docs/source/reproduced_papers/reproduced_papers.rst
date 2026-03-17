@@ -29,14 +29,6 @@ Each card links to a dedicated reproduction page with paper metadata, implementa
    reproductions/distributed_nn
    reproductions/template
 
-Highlights
-----------
-
-.. merlin-gallery::
-   :data: _data/galleries/reproduced_papers/reproduced_papers_highlights.json
-   :columns: 4
-   :contour-color: #5648ED
-
 Available Reproductions
 -----------------------
 
@@ -50,8 +42,8 @@ Kernel Methods
    :columns: 3
    :contour-color: #5648ED
 
-Variational Methods
-~~~~~~~~~~~~~~~~~~~
+For a Better Understanding of Photonic QML Theory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/reproduced_papers_variational_methods.json
