@@ -2,16 +2,16 @@
   {
     "title": "Quantum Optical Reservoir Computing",
     "summary": "Boson-sampling reservoirs for image recognition and scalable photonic reservoir analysis.",
-    "image": "_static/img/merlin_black.png",
+    "image": "_static/reproduced_papers/QORC.png",
     "doc": "reproduced_papers/reproductions/quantum_reservoir_computing",
-    "tags": ["Sakurai et al.", "2025", "In Progress", "Image TBD"]
+    "tags": ["Sakurai et al.", "2025", "In Progress"]
   },
   {
     "title": "Photonic QCNN with State Injection",
     "summary": "Photonic quantum convolutional architecture with adaptive state injection for vision tasks.",
-    "image": "_static/img/merlin_black.png",
+    "image": "_static/reproduced_papers/PhotonicQCNN_state_injection.png",
     "doc": "reproduced_papers/reproductions/photonic_qcnn",
-    "tags": ["Monbroussou et al.", "2025", "Complete", "Image TBD"]
+    "tags": ["Monbroussou et al.", "2025", "Complete"]
   },
   {
     "title": "QCNN for Classical Data Classification",

@@ -2,9 +2,9 @@
   {
     "title": "Fock State-Enhanced Expressivity",
     "summary": "Expressivity study of photonic variational models with increasing photon counts.",
-    "image": "_static/img/merlin_black.png",
+    "image": "_static/reproduced_papers/GanEtAl.png",
     "doc": "reproduced_papers/reproductions/fock_state_expressivity",
-    "tags": ["Gan et al.", "2022", "Complete", "Image TBD"]
+    "tags": ["Gan et al.", "2022", "Complete"]
   },
   {
     "title": "HQNN: Myth or Reality?",
@@ -16,8 +16,8 @@
   {
     "title": "Experimental Data Re-uploading",
     "summary": "Resource-efficient photonic data re-uploading model reproduced on multiple datasets.",
-    "image": "_static/img/merlin_black.png",
+    "image": "_static/reproduced_papers/DataReuploading.png",
     "doc": "reproduced_papers/reproductions/data_reuploading",
-    "tags": ["Mauser et al.", "2025", "Complete", "Image TBD"]
+    "tags": ["Mauser et al.", "2025", "Complete"]
   }
 ]
