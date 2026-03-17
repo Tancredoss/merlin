@@ -72,6 +72,11 @@ Available Reproductions
      - 2025
      - Complete
      - Photonic vision model
+   * - :doc:`reproductions/amplitude_limitations`
+     - Wang et al.
+     - 2025
+     - Complete
+     - Limitations of the amplitude encoding paradigm
    * - :doc:`reproductions/photonic_kernel`
      - Yin et al.
      - 2025
@@ -162,6 +167,21 @@ Upcoming Reproductions
 
 **Community Requested**:
   Vote on upcoming reproductions in our `paper requests discussions <https://github.com/merlinquantum/merlin/discussions/categories/paper-requests>`_.
+
+.. toctree::
+   :maxdepth: 2
+   :hidden:
+   :caption: Reproduced Papers
+
+   reproductions/fock_state_expressivity
+   reproductions/quantum_reservoir_computing
+   reproductions/qllm_finetuning
+   reproductions/data_reuploading
+   reproductions/distributed_nn
+   reproductions/photonic_qcnn
+   reproductions/amplitude_limitations
+   reproductions/hqnn-myth
+   reproductions/template
 
 ----
 
