@@ -4,12 +4,23 @@
 Reproduced Papers
 =================
 
-MerLin provides reproducible implementations of published quantum machine learning papers.
-Each card links to a dedicated reproduction page with paper metadata, implementation details, code access, and results.
+MerLin enables researchers to reproduce and build upon published quantum machine learning research.
+This section provides implementations of key papers in the quantum ML field, complete with working code, analysis, and extensions.
+
+Overview
+--------
+
+Each reproduction may include:
+
+* **Original paper implementation** - Faithful recreation of the paper's methodology
+* **Reproduction status** - Indicating whether the reproduction is partial or complete
+* **Jupyter notebooks** - Interactive exploration of results and concepts
+* **Full code** - Available on GitHub for easy access and modification
+* **Performance analysis** - Comparison with paper results
+* **Extension opportunities** - Ideas for building upon the work
 
 .. note::
-   Reproductions are organized by topic. Card tags show authors, year, and reproduction status.
-   For papers without a dedicated image yet, a temporary placeholder is used and can be replaced later.
+   All reproductions are implemented using MerLin's high-level API, making them accessible to ML practitioners without deep quantum expertise.
 
 .. toctree::
    :maxdepth: 2
@@ -18,6 +29,7 @@ Each card links to a dedicated reproduction page with paper metadata, implementa
 
    reproductions/fock_state_expressivity
    reproductions/quantum_reservoir_computing
+   reproductions/template
    reproductions/qllm_finetuning
    reproductions/photonic_qcnn
    reproductions/photonic_kernel
@@ -27,6 +39,9 @@ Each card links to a dedicated reproduction page with paper metadata, implementa
    reproductions/hqnn-myth
    reproductions/data_reuploading
    reproductions/distributed_nn
+   reproductions/quantum_adversarial_ml
+   reproductions/quantum_transfer_learning
+   reproductions/nearest_centroids_merlin
    reproductions/template
 
 Available Reproductions
