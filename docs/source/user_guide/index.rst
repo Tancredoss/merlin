@@ -42,6 +42,7 @@ Migration guide
 .. merlin-gallery::
    :data: _data/galleries/user_guide/migration.json
    :columns: 2
+   :contour-color: #f2994a
 
 
 .. toctree::
