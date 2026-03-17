@@ -83,7 +83,14 @@ extensions = [
 ]
 
 suppress_warnings = ["autosectionlabel.*"]
-bibtex_bibfiles = ["references.bib"]
+bibtex_bibfiles = [
+    "references.bib",
+    "QML_library/QML_library_other_papers.bib",
+    "QML_library/QML_library_reproduced_papers.bib",
+    "QML_library/QML_library_reproduced_papers_to_do.bib",
+    "QML_library/QML_library_reproduced_papers_in_progress.bib",
+]
+bibtex_default_style = "alpha"
 bibtex_reference_style = "author_year"
 
 # Autodoc configuration

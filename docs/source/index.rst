@@ -47,6 +47,7 @@ constraints.
    reproduced_papers/index
    api_reference/index
    performance/index
+   QML_library/index
 
 Reproducing State-of-the-art QML Papers
 =======================================
