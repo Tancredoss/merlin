@@ -1,0 +1,16 @@
+[
+ {
+    "title": "Quantum Recurrent Neural Networks for Sequential Learning",
+    "summary": "QRNN for NISQ devices with photonic implementation and evaluation on sequential tasks.",
+    "image": "_static/reproduced_papers/QRNN.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/QRNN",
+    "tags": ["Li et al.", "2023", "Complete", "Pennylane", "Sequential"]
+  },
+  {
+    "title": "Quantum Long Short-Term Memory",
+    "summary": "Quantum LSTM architecture with photonic implementation for sequence and temporal modeling tasks.",
+    "image": "_static/reproduced_papers/QLSTM.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/QLSTM",
+    "tags": ["Yen-Chi et al.", "2020", "Complete", "Sequential"]
+  }
+]

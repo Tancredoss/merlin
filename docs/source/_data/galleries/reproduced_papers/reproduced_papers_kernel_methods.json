@@ -5,5 +5,12 @@
     "image": "_static/reproduced_papers/photonic_enhanced_kernels/results-for-readme/accuracy_vs_input_state/plot.png",
     "doc": "reproduced_papers/reproductions/photonic_kernel",
     "tags": ["Yin et al.", "2025", "Complete", "Kernel methods"]
+  },
+  {
+    "title": "Nearest Centroid Quantum Classification",
+    "summary": "Amplitude-encoding nearest-centroid classification with quantum inner-product estimation.",
+    "image": "_static/reproduced_papers/Centroids.png",
+    "doc": "reproduced_papers/reproductions/nearest_centroids",
+    "tags": ["Johri et al.", "2020", "Complete", "Image TBD"]
   }
 ]

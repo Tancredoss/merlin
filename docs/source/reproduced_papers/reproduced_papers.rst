@@ -4,23 +4,8 @@
 Reproduced Papers
 =================
 
-MerLin enables researchers to reproduce and build upon published quantum machine learning research.
-This section provides implementations of key papers in the quantum ML field, complete with working code, analysis, and extensions.
-
-Overview
---------
-
-Each reproduction may include:
-
-* **Original paper implementation** - Faithful recreation of the paper's methodology
-* **Reproduction status** - Indicating whether the reproduction is partial or complete
-* **Jupyter notebooks** - Interactive exploration of results and concepts
-* **Full code** - Available on GitHub for easy access and modification
-* **Performance analysis** - Comparison with paper results
-* **Extension opportunities** - Ideas for building upon the work
-
-.. note::
-   All reproductions are implemented using MerLin's high-level API, making them accessible to ML practitioners without deep quantum expertise.
+MerLin provides reproducible implementations of published quantum machine learning papers.
+Each card links to a dedicated reproduction page with paper metadata, implementation details, code access, and results.
 
 .. toctree::
    :maxdepth: 2
@@ -29,8 +14,12 @@ Each reproduction may include:
 
    reproductions/fock_state_expressivity
    reproductions/amplitude_limitations
+   reproductions/nearest_centroids
    reproductions/quantum_reservoir_computing
+   reproductions/quantum_adversarial_ml
+   reproductions/quantum_transfer_learning
    reproductions/qllm_finetuning
+   reproductions/photonic_QGAN
    reproductions/photonic_qcnn
    reproductions/photonic_kernel
    reproductions/QCNN_data_classification
@@ -39,9 +28,6 @@ Each reproduction may include:
    reproductions/hqnn-myth
    reproductions/data_reuploading
    reproductions/distributed_nn
-   reproductions/quantum_adversarial_ml
-   reproductions/quantum_transfer_learning
-   reproductions/nearest_centroids_merlin
    reproductions/template
 
 Available Reproductions
@@ -70,6 +56,15 @@ Computer Vision
 
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/reproduced_papers_computer_vision.json
+   :columns: 3
+   :contour-color: #5648ED
+
+
+Sequential Tasks
+~~~~~~~~~~~~~~~~
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/reproduced_papers_sequential.json
    :columns: 3
    :contour-color: #5648ED
 
@@ -115,19 +110,23 @@ We welcome contributions of additional paper reproductions.
 2. **Implement** using MerLin following our guidelines
 3. **Validate** results against original paper
 4. **Document** in Jupyter notebook format
-5. **Submit** via pull request a complete reproduction folder and a summary page in :code:`docs/source/reproductions/` directory
+5. **Submit** via pull request a complete reproduction folder and a summary page in :code:`docs/source/reproduced_papers/reproductions/` directory
 
-**Template Structure**:
+**Mandatory Structure for a Reproduction**:
 
 .. code-block:: text
 
-   paper_reproduction/
-   ├── README.md             # Paper overview and results
-   ├── implementation.py     # Core implementation
-   ├── notebook.ipynb        # Interactive exploration showing the key concepts, not necessarily the full implementation
-   ├── data/                 # Datasets and preprocessing
-   ├── results/              # Figures and analysis
-   └── tests/                # Validation tests
+   papers/NAME/            # Non-ambiguous acronym or fullname of the reproduced paper
+   ├── .gitignore          # specific .gitignore rules for clean repository
+   ├── notebook.ipynb      # Interactive exploration of key concepts
+   ├── README.md           # Paper overview and results overview
+   ├── requirements.txt    # additional requirements for the scripts
+   ├── configs/            # defaults + CLI/runtime descriptors consumed by the repo root runner
+   ├── lib/                # code used by the shared runner and notebooks - as an integrated library (import shared data helpers from papers/shared/<paper>/)
+   ├── models/             # Trained models
+   ├── results/            # Selected generated figures, tables, or outputs from trained models
+   ├── tests/              # Validation tests
+   └── utils/              # additional commandline utilities for visualization, launch of multiple trainings, etc...
 
 **Template Summary Page**: :doc:`this document <reproductions/template>`
 
