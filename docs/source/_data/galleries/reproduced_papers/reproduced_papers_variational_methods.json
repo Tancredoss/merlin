@@ -19,5 +19,12 @@
     "image": "_static/reproduced_papers/DataReuploading.png",
     "doc": "reproduced_papers/reproductions/data_reuploading",
     "tags": ["Mauser et al.", "2025", "Complete"]
+  },
+  {
+    "title": "Limitations of Amplitude Encoding",
+    "summary": "Theoretical and experimental study of amplitude-encoding concentration effects and their impact on quantum classification.",
+    "image": "_static/img/reproduced_papers/AA_study.png",
+    "doc": "reproduced_papers/reproductions/amplitude_limitations",
+    "tags": ["Wang et al.", "2025", "Complete", "Image TBD"]
   }
 ]

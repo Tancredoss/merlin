@@ -28,6 +28,7 @@ Each reproduction may include:
    :caption: Reproduced Papers
 
    reproductions/fock_state_expressivity
+   reproductions/amplitude_limitations
    reproductions/quantum_reservoir_computing
    reproductions/qllm_finetuning
    reproductions/photonic_qcnn
