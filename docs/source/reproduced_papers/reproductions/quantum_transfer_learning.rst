@@ -100,7 +100,7 @@ for flexible input/output dimensionality:
        trainable_parameters=["phi"],
        input_parameters=["theta"],
        computation_space=ComputationSpace.UNBUNCHED,
-       measurement_strategy=MeasurementStrategy.PROBABILITIES,
+       measurement_strategy=MeasurementStrategy.probs(),
    )
 
    # Dressed quantum circuit: classical -> quantum -> classical
@@ -112,11 +112,6 @@ for flexible input/output dimensionality:
 
    # Full CQ transfer learning model: frozen ResNet18 + dressed circuit
    model = nn.Sequential(resnet18_frozen, dressed_circuit)
-
-Code Access and Documentation
-=============================
-
-**GitHub Repository**: `merlin/reproductions/quantum_transfer_learning <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/quantum_transfer_learning>`_
 
 
 Extensions and Future Work
