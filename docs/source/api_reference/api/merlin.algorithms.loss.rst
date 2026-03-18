@@ -1,7 +1,10 @@
 merlin.algorithms.loss module
 =============================
 
-.. automodule:: merlin.algorithms.loss
+.. currentmodule:: merlin.algorithms.loss
+
+.. autoclass:: NKernelAlignment
    :members:
    :undoc-members:
    :show-inheritance:
+

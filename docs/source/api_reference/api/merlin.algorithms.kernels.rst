@@ -1,8 +1,20 @@
 merlin.algorithms.kernels module
 ================================
 
-.. automodule:: merlin.algorithms.kernels
-   :members: FeatureMap, FidelityKernel, KernelCircuitBuilder
+.. currentmodule:: merlin.algorithms.kernels
+
+.. autoclass:: FeatureMap
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: FidelityKernel
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: KernelCircuitBuilder
+   :members:
    :undoc-members:
    :show-inheritance:
 

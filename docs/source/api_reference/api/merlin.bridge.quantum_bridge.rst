@@ -1,10 +1,13 @@
 merlin.bridge.quantum_bridge module
-========================
+===================================
 
-.. automodule:: merlin.bridge.quantum_bridge
+.. currentmodule:: merlin.bridge.quantum_bridge
+
+.. autoclass:: QuantumBridge
    :members:
    :undoc-members:
    :show-inheritance:
+
 
 
 Overview

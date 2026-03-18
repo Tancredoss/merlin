@@ -1,7 +1,13 @@
 merlin.builder.circuit_builder module
 =====================================
 
-.. automodule:: merlin.builder.circuit_builder
+.. currentmodule:: merlin.builder.circuit_builder
+
+.. autoclass:: ModuleGroup
+   :members:
+   :undoc-members:
+
+.. autoclass:: CircuitBuilder
    :members:
    :undoc-members:
    :show-inheritance:

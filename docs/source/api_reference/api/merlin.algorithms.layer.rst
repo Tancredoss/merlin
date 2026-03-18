@@ -1,7 +1,9 @@
 merlin.algorithms.layer module
 ==============================
 
-.. automodule:: merlin.algorithms.layer
+.. currentmodule:: merlin.algorithms.layer
+
+.. autoclass:: QuantumLayer
    :members:
    :undoc-members:
    :show-inheritance:

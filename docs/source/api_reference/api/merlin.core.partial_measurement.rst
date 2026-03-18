@@ -8,14 +8,17 @@ PartialMeasurementBranch
 
 .. autoclass:: PartialMeasurementBranch
    :members:
+   :undoc-members:
    :member-order: bysource
    :show-inheritance:
+   
 
 PartialMeasurement
 ------------------
 
 .. autoclass:: PartialMeasurement
    :members:
+   :undoc-members:
    :member-order: bysource
    :show-inheritance:
 

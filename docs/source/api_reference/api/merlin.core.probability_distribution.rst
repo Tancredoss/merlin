@@ -3,11 +3,21 @@ merlin.core.probability_distribution
 
 .. currentmodule:: merlin.core.probability_distribution
 
+FilteredBasis
+-------------
+
+.. autoclass:: FilteredBasis
+   :members:
+   :undoc-members:
+   :member-order: bysource
+   :show-inheritance:
+
 ProbabilityDistribution
 -----------------------
 
 .. autoclass:: ProbabilityDistribution
    :members:
+   :undoc-members:
    :member-order: bysource
    :show-inheritance:
 

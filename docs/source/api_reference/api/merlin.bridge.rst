@@ -1,7 +1,9 @@
 merlin.bridge package
 ======================
 
-.. automodule:: merlin.bridge.QuantumBridge
+.. currentmodule:: merlin.bridge.bridge
+
+.. autoclass:: QuantumBridge
    :members:
    :undoc-members:
    :show-inheritance:
