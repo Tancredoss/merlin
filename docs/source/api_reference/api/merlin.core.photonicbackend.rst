@@ -1,5 +1,5 @@
 merlin.core.photonicbackend module (removed)
-===========================================
+=============================================
 
 .. warning:: *Deprecated since version 0.3:*
     This module name is no longer used.

@@ -1,5 +1,5 @@
 merlin.algorithms.feed_forward module
-====================================
+======================================
 .. currentmodule:: merlin.algorithms.feed_forward
 
 .. autoclass:: FFStage

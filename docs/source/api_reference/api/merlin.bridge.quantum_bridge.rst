@@ -35,8 +35,8 @@ Architecture
 
 The bridge operates in three stages:
 
-1. **State Preparation**: A PennyLane circuit or function generates a qubit statevector ψ ∈ ℂ^(2^n)
-2. **Encoding**: Each computational basis state |bitstring⟩ is mapped to a Fock state with one photon per qubit group
+1. **State Preparation**: A PennyLane circuit or function generates a qubit statevector :math:`| \psi \rangle \in \mathbb{C}^{2^n}`
+2. **Encoding**: Each computational basis state :math:`| \text{bitstring} \rangle` is mapped to a Fock state with one photon per qubit group
 3. **Photonic Processing**: The encoded superposition is fed to a Merlin QuantumLayer for photonic computation
 
 Encoding Scheme

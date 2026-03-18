@@ -8,7 +8,7 @@ Photonic experiments in `Perceval <https://perceval.quandela.net/>`_ bundle the 
 passing a :class:`perceval.Experiment` to :class:`~merlin.algorithms.layer.QuantumLayer` or to :class:`~merlin.algorithms.kernels.FeatureMap` lets you specify how each optical mode should be measured.
 
 Why use an Experiment?
----------------
+-----------------------
 
 - **Single source of truth** – The circuit and every detector live in one object
   that can be shared across QuantumLayers or kernels.
