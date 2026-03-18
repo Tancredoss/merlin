@@ -47,7 +47,7 @@ Extensions:
 - Combine with :class:`~merlin.utils.grouping.LexGrouping` or :class:`~merlin.utils.grouping.ModGrouping` when you need fewer output features and don't want to increase the number of parameters.
 
 MODE_EXPECTATIONS
-----------------
+------------------------------
 
 The output vector is real and has a size equal to the number of modes. Each element represents the expected number of photons in the corresponding mode. In the unbunched computation space, the vector instead provides the probability of detecting at least one photon in each respective mode.
 
@@ -110,7 +110,7 @@ Return type (forward call):
   this measurement strategy **requires that no noise model or detectors are defined**.
 
 PARTIAL MEASUREMENT
----------------
+-----------------------
 
 Partial measurement is a specific kind of measurement strategy. With this measurement strategy, only some modes are measured while amplitudes are preserved on the other modes. For more details, checkout the :doc:`/quantum_expert_area/partial_measurement` page.
 
@@ -205,7 +205,7 @@ The snippet below prepares a basic quantum layer and returns a ``ProbabilityDist
     assert isinstance(probs.tensor,torch.Tensor)
 
 Migrating from OutputMappingStrategy (legacy)
-============================================
+=================================================
 
 Earlier releases exposed :class:`~merlin.algorithms.layer.QuantumLayer` through
 ``OutputMappingStrategy``. Newc code should rely on :class:`~merlin.measurement.strategies.MeasurementStrategy`

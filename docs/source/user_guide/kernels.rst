@@ -1,6 +1,6 @@
-=====================
+=============================
 Photonic Kernel Methods
-=====================
+=============================
 
 Introduction
 ------------
@@ -40,13 +40,13 @@ Core building blocks
 MerLin exposes three cooperating components:
 
 - :class:`~merlin.algorithms.kernels.FeatureMap`
-	Encodes classical inputs into a photonic circuit and produces the corresponding unitary matrix. You can pass a pre‑built :class:`perceval.Circuit`, a declarative :class:`~merlin.builder.circuit_builder.CircuitBuilder`, or a full :class:`perceval.Experiment`.
+  Encodes classical inputs into a photonic circuit and produces the corresponding unitary matrix. You can pass a pre-built :class:`perceval.Circuit`, a declarative :class:`~merlin.builder.circuit_builder.CircuitBuilder`, or a full :class:`perceval.Experiment`.
 
 - :class:`~merlin.algorithms.kernels.FidelityKernel`
-	Given a feature map and an input Fock state, computes Gram matrices (train/test) by simulating transition probabilities through SLOS. Supports optional sampling, photon loss and detector transforms.
+  Given a feature map and an input Fock state, computes Gram matrices (train/test) by simulating transition probabilities through SLOS. Supports optional sampling, photon loss and detector transforms.
 
 - :class:`~merlin.algorithms.kernels.KernelCircuitBuilder`
-	A convenience helper to create a :class:`FeatureMap` and then a :class:`FidelityKernel` with minimal boilerplate.
+  A convenience helper to create a :class:`FeatureMap` and then a :class:`FidelityKernel` with minimal boilerplate.
 
 Quick Start Decision Guide
 --------------------------
@@ -92,7 +92,7 @@ Below is a summary of key constructor arguments and their effects. See the API r
 Below is a summary of key constructor arguments and their effects. See the API reference for full signatures.
 
 FeatureMap Parameters
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
@@ -140,7 +140,7 @@ FeatureMap Parameters
      - Computation device
 
 FidelityKernel Parameters
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
@@ -202,75 +202,76 @@ Minimal example (factory)
 
 .. code-block:: python
 
-	import torch
-  from merlin import ComputationSpace
-	from merlin.algorithms.kernels import FidelityKernel
+   import torch
+   from merlin import ComputationSpace
+   from merlin.algorithms.kernels import FidelityKernel
 
-	# Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
-	kernel = FidelityKernel.simple(
-		input_size=2,
-		n_modes=4,               # Here the number of modes is optional, if n_modes is not given, n_modes=input_size+1
-		computation_space=ComputationSpace.FOCK,       # allow bunched outcomes if needed
-		dtype=torch.float32,
-		device=torch.device("cpu"),
-	)
+   # Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
+   kernel = FidelityKernel.simple(
+       input_size=2,
+       n_modes=4,  # Optional; defaults to input_size + 1
+       computation_space=ComputationSpace.FOCK,  # Allow bunched outcomes if needed
+       dtype=torch.float32,
+       device=torch.device("cpu"),
+   )
 
-	X_train = torch.rand(10, 2)
-	X_test = torch.rand(5, 2)
-	K_train = kernel(X_train)          # (10, 10)
-	K_test = kernel(X_test, X_train)   # (5, 10)
+   X_train = torch.rand(10, 2)
+   X_test = torch.rand(5, 2)
+   K_train = kernel(X_train)  # (10, 10)
+   K_test = kernel(X_test, X_train)  # (5, 10)
 
 Custom experiment with detectors and loss
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-	import torch
-    import perceval as pcvl
-    from merlin.algorithms.kernels import FeatureMap, FidelityKernel
+   import torch
+   import perceval as pcvl
+   from merlin import ComputationSpace
+   from merlin.algorithms.kernels import FeatureMap, FidelityKernel
 
-    # Circuit and experiment
-    circuit = pcvl.Circuit(6)
-    experiment = pcvl.Experiment(circuit)
-    experiment.noise = pcvl.NoiseModel(brightness=0.9, transmittance=0.85)
+   # Circuit and experiment
+   circuit = pcvl.Circuit(6)
+   experiment = pcvl.Experiment(circuit)
+   experiment.noise = pcvl.NoiseModel(brightness=0.9, transmittance=0.85)
 
-    # Feature map from the experiment
-    fmap = FeatureMap(
-        input_size=3,
-        input_parameters = ["px"],
-        experiment=experiment,
-    )
+   # Feature map from the experiment
+   fmap = FeatureMap(
+       input_size=3,
+       input_parameters=["px"],
+       experiment=experiment,
+   )
 
-    # Fidelity kernel using a spaced input pattern
-    kernel = FidelityKernel(
-        feature_map=fmap,
-        input_state=[1, 0, 1, 0, 1, 0],
-        shots=0,
-       computation_space=ComputationSpace.FOCK, 
-    )
+   # Fidelity kernel using a spaced input pattern
+   kernel = FidelityKernel(
+       feature_map=fmap,
+       input_state=[1, 0, 1, 0, 1, 0],
+       shots=0,
+       computation_space=ComputationSpace.FOCK,
+   )
 
-    X = torch.rand(8, 3)
-    K = kernel(X)  # (8, 8)
+   X = torch.rand(8, 3)
+   K = kernel(X)  # (8, 8)
 
 Declarative builder + kernel
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-	import torch
-	from merlin.algorithms.kernels import KernelCircuitBuilder
+   import torch
+   from merlin.algorithms.kernels import KernelCircuitBuilder
 
-	builder = (
-		KernelCircuitBuilder()
-		.input_size(4)
-		.n_modes(6)
-		.angle_encoding(scale=torch.pi)
-		.trainable(enabled=True, prefix="phi")
-	)
-	kernel = builder.build_fidelity_kernel(input_state=[1,1,0,0,0,0], shots=0)
+   builder = (
+       KernelCircuitBuilder()
+       .input_size(4)
+       .n_modes(6)
+       .angle_encoding(scale=torch.pi)
+       .trainable(enabled=True, prefix="phi")
+   )
+   kernel = builder.build_fidelity_kernel(input_state=[1, 1, 0, 0, 0, 0], shots=0)
 
-	X = torch.rand(32, 4)
-	K = kernel(X)
+   X = torch.rand(32, 4)
+   K = kernel(X)
 
 .. note::
 
@@ -282,11 +283,12 @@ Using with scikit‑learn (precomputed kernel)
 
 .. code-block:: python
 
-	from sklearn.svm import SVC
-	K_train = kernel(X_train)
-	K_test = kernel(X_test, X_train)
-	clf = SVC(kernel="precomputed").fit(K_train, y_train)
-	y_pred = clf.predict(K_test)
+   from sklearn.svm import SVC
+
+   K_train = kernel(X_train)
+   K_test = kernel(X_test, X_train)
+   clf = SVC(kernel="precomputed").fit(K_train, y_train)
+   y_pred = clf.predict(K_test)
 
 Comparing quantum vs classical kernels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -341,9 +343,9 @@ API reference
 
 See :mod:`merlin.algorithms.kernels` for complete class and method signatures and additional usage notes.
 
-Bibliography
-------------
+References
+----------
 
-[1]: Experimental quantum-enhanced kernel-based machine learning on a photonic processor, Z. Yin et al. (Nature photonics, 2025): https://www.nature.com/articles/s41566-025-01682-5
-[2]: Quantum machine learning in feature Hilbert spaces, Schuld. M and Killoran. A: https://arxiv.org/abs/1803.07128
-[3]: Supervised learning with quantum-enhanced feature spaces, V. Havlíček et al. (Nature, 2019): Vojtěch Havlíček
+.. [1] Z. Yin et al., "Experimental quantum-enhanced kernel-based machine learning on a photonic processor," Nature Photonics (2025). https://www.nature.com/articles/s41566-025-01682-5
+.. [2] M. Schuld and N. Killoran, "Quantum machine learning in feature Hilbert spaces." https://arxiv.org/abs/1803.07128
+.. [3] V. Havlicek et al., "Supervised learning with quantum-enhanced feature spaces," Nature (2019). https://www.nature.com/articles/s41586-019-0980-2

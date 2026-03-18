@@ -42,10 +42,9 @@ Merlin exposes three common working regimes; each is a subspace of the full Fock
      - High-fidelity simulations and comparisons with analytic solutions.
      - PNR detectors
    * - Unbunched
-     - Restricts to configurations with at most one photon per mode.
+     - Restricts to configurations with at most one photon per mode. It is the **default computation space** since the current photonic detectors can not count the number of photons.
      - Circuits read with threshold detectors or when loss resilience is required.
      - Threshold detectors
-     - It is the **default computation space** since the current photonic detectors can not count the number of photons.
    * - Dual-rail
      - Special case of the unbunched space: one photon shared across every pair of modes.
      - Logical qubit encodings, qubit ↔ photonic interfacing.
@@ -59,9 +58,9 @@ construction time.
 
 The ``measurement_strategy`` can define the computation space with its ``computation_space`` argument.
 We can choose from 
-  - ``merlin.ComputationSpace.UNBUNCHED``, do not allow multiple photons per modes. It is the default value when no MeasurementStrategy is given.
-  - ``merlin.ComputationSpace.FOCK``, allow multiple photons per modes (i.e. explore the full Fock space).
-  - ``merlin.ComputationSpace.DUAL_RAIL``, use a dual rail encoding (two modes per photon).
+- ``merlin.ComputationSpace.UNBUNCHED``, do not allow multiple photons per modes. It is the default value when no MeasurementStrategy is given.
+- ``merlin.ComputationSpace.FOCK``, allow multiple photons per modes (i.e. explore the full Fock space).
+- ``merlin.ComputationSpace.DUAL_RAIL``, use a dual rail encoding (two modes per photon).
 
 Those computation spaces can also be assigned with the ``computation_space`` argument in the constructor but, it
 is prefered to exploit the ``measurement_strategy`` since ``computation_space`` will be deprecated in the future.

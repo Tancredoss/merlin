@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
+===================================================================================
 Computational Advantage in Hybrid Quantum Neural Networks: Myth or Reality?
-====================================================
+===================================================================================
 
 .. admonition:: Paper Information
    :class: note
@@ -223,5 +223,3 @@ This benchmarking approach has practical implications for:
 * **Resource-aware QML**: balancing parameter savings against FLOP or runtime budgets.
 * **Benchmark design**: enforcing transparent reporting of assumptions and search spaces.
 * **Quantum advantage assessment**: replacing binary claims with metric-specific evidence.
-
-----

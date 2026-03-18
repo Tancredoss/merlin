@@ -158,7 +158,7 @@ Complexity and performance tips
 -------------------------------
 
 * Reduce ``m`` (modes) or ``n`` (photons) to shrink the Fock space; use the 
-  ``ComputationSpace.UNBUNCHED`` computation space instead of ``ComputationSpace.FOCK``
+    ``ComputationSpace.UNBUNCHED`` computation space instead of ``ComputationSpace.FOCK``
 	when your circuit forbids multi‑occupancy per mode.
 * Reuse feature maps and kernels across batches to amortize converter/setup
 	costs.

@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
+===========================================================================
 Nearest Centroid Classification on a Trapped Ion Quantum Computer
-====================================================
+===========================================================================
 
 .. admonition:: Paper Information
    :class: note
@@ -268,5 +268,3 @@ Citation
      journal={arXiv preprint arXiv:2012.04145},
      year={2020}
    }
-
-----

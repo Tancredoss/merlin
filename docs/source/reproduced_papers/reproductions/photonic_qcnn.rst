@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
+====================================================================================
 Photonic Quantum Convolutional Neural Networks with Adaptive State Injection
-====================================================
+====================================================================================
 
 .. admonition:: Paper Information
    :class: note
@@ -13,7 +13,7 @@ Photonic Quantum Convolutional Neural Networks with Adaptive State Injection
 
    **Published**: EPJ Quantum Technol. 9, 16 (2025)
 
-   **DOI**: `https://doi.org/10.48550/arXiv.2504.20989`_
+   **DOI**: `10.48550/arXiv.2504.20989 <https://doi.org/10.48550/arXiv.2504.20989>`_
 
    **Reproduction Status**: ✅ Complete
 
@@ -61,7 +61,7 @@ Experimental Results
 
 **PQCNN simulation results**
 
- *Using MerLin
+*Using MerLin*
 +------------+----------------------+----------------+---------------+
 | Dataset    | Number of Parameters | Train Accuracy | Test Accuracy |
 +============+======================+================+===============+
@@ -72,7 +72,7 @@ Experimental Results
 | MNIST      |          30          | 99.7 ± 0.5%    | 98.8 ± 1.0%   |
 +------------+----------------------+----------------+---------------+
 
- *Using their provided code
+*Using their provided code*
 +------------+----------------------+----------------+---------------+
 | Dataset    | Number of Parameters | Train Accuracy | Test Accuracy |
 +============+======================+================+===============+
@@ -122,6 +122,5 @@ Citation
       archivePrefix={arXiv},
       primaryClass={quant-ph},
       url={https://arxiv.org/abs/2504.20989},
-}
+   }
 
-----

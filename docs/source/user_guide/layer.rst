@@ -17,9 +17,8 @@ Overview
 - **Input encoding strategies** - Pick a data encoding method: angle or amplitude encoding.. See :doc:`./angle_amplitude_encoding` for more information.
 - **Output measurement strategies** – Select between probabilities, per-mode expectations,
   or raw amplitudes through :class:`~merlin.measurement.strategies.MeasurementStrategy`.
-  The layer validates incompatible combinations (e.g. detectors with amplitude read-out). For more information ont this and all of the possible output configurations, visit :doc:`./measurement_strategy`.
-  - **Grouping strategy** – The grouping strategy to format the output of the QuantumLayer to the desired size can be defined directly in
-    the measurement_strategy parameter. See :doc:`./grouping` for more information.
+  The layer validates incompatible combinations (e.g. detectors with amplitude read-out). For more information on this and all possible output configurations, visit :doc:`./measurement_strategy`.
+  Grouping can be configured directly in the measurement strategy parameter. See :doc:`./grouping` for more information.
 - **Multiple construction paths** – Build layers from
   the convenience :meth:`~merlin.algorithms.layer.QuantumLayer.simple` factory,
   a :class:`~merlin.builder.circuit_builder.CircuitBuilder`, a custom
@@ -141,9 +140,9 @@ If you want to simulate a noise model or specify detectors characteristics, conf
    probs = layer()
    detector_keys = layer.output_keys
 
------------
+---------------------------------
 Photon loss and detectors
------------
+---------------------------------
 
 - Without an experiment, the layer defaults to ideal PNR detection on every
   mode, mirroring Perceval’s default behaviour.
@@ -173,9 +172,9 @@ Notes
    *Deprecated since version 0.3:* The use of the ``no_bunching`` flag  is deprecated and is removed since version 0.3.0.
    Use the ``computation_space`` flag inside ``measurement_strategy`` instead. See :doc:`/user_guide/migration_guide`.
 
------------
+----------------------
 API Reference
------------
+----------------------
 
 .. autoclass:: merlin.algorithms.layer.QuantumLayer
    :members:
