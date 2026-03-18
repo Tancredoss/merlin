@@ -81,6 +81,24 @@ extensions = [
     "nbsphinx",
     "sphinx_multiversion",
     "merlin_gallery",
+    "sphinx.ext.intersphinx",
+]
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "torch": ("https://pytorch.org/docs/stable", None),
+    "perceval": ("https://perceval.quandela.net/docs/v1.1/", None),
+}
+
+nitpick_ignore = [
+    ("py:class", "torch.nn.parameter.Parameter"),
+    ("py:class", "torch.utils.hooks.RemovableHandle"),
+    ("py:class", "perceval.Detector"),
+    ("py:class", "perceval.Experiment"),
+    ("py:attr", "dst_type"),
+    ("py:attr", "non_blocking"),
+    ("py:class", "Dropout"),
+    ("py:class", "BatchNorm"),
 ]
 
 suppress_warnings = ["autosectionlabel.*"]

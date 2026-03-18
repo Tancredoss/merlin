@@ -57,7 +57,7 @@ class FeatureMap:
         input_size: Dimension of incoming classical data (required).
         builder: Optional :class:`CircuitBuilder` to compile into a circuit.
         experiment: Optional :class:`pcvl.Experiment` providing both the circuit and detector configuration.
-                   Exactly one of ``circuit``, ``builder``, or ``experiment`` must be supplied.
+        Exactly one of ``circuit``, ``builder``, or ``experiment`` must be supplied.
         input_parameters: Parameter prefix(es) that host the classical data.
         dtype: Torch dtype used when constructing the unitary.
         device: Torch device on which unitaries are evaluated.
@@ -298,11 +298,11 @@ class FeatureMap:
     def compute_unitary(
         self, x: Tensor | np.ndarray | float, *training_parameters: Tensor
     ) -> Tensor:
-        """Generate the circuit unitary after encoding ``x`` and applying trainables.
+        """Generate the circuit unitary after encoding `x` and applying trainables.
 
         Args:
             x: Single datapoint to embed; accepts scalars, numpy arrays, or tensors.
-            *training_parameters: Optional overriding trainable tensors.
+            ``*training_parameters``: Optional overriding trainable tensors.
 
         Returns:
             Tensor: Complex unitary matrix representing the prepared circuit.
@@ -608,50 +608,62 @@ class FidelityKernel(MerlinModule):
     For a given input Fock state, :math:`|s \rangle` and feature map,
     :math:`U`, the fidelity quantum kernel estimates the following inner
     product using SLOS:
+
     .. math::
         |\langle s | U^{\dagger}(x_2) U(x_1) | s \rangle|^{2}
 
     Transition probabilities are computed in parallel for each pair of
     datapoints in the input datasets.
 
-    :param feature_map: Feature map object that encodes a given
-        datapoint within its circuit
-    :param input_state: Input state into circuit.
-    :param shots: Number of circuit shots. If `None`, the exact
-        transition probabilities are returned. Default: `None`.
-    :param sampling_method: Probability distributions are post-
-        processed with some pseudo-sampling method: 'multinomial',
-        'binomial' or 'gaussian'.
-    :param computation_space: Logical computation subspace; one of
+    Parameters
+    ----------
+    feature_map
+        Feature map object that encodes a given datapoint within its circuit.
+    input_state
+        Input state into the circuit.
+    shots
+        Number of circuit shots. If ``None``, the exact transition
+        probabilities are returned. Default: ``None``.
+    sampling_method
+        Probability distributions are post-processed with a pseudo-sampling
+        method: ``"multinomial"``, ``"binomial"``, or ``"gaussian"``.
+    computation_space
+        Logical computation subspace; one of
         ``{"fock", "unbunched", "dual_rail"}``. Default: ``FOCK``.
-    :param force_psd: Projects training kernel matrix to closest
-        positive semi-definite. Default: `True`.
-    :param device: Device on which to perform SLOS
-    :param dtype: Datatype with which to perform SLOS
+    force_psd
+        Projects the training kernel matrix to the closest positive
+        semi-definite matrix. Default: ``True``.
+    device
+        Device on which to perform SLOS.
+    dtype
+        Datatype with which to perform SLOS.
 
     Examples
     --------
-    For a given training and test datasets, one can construct the
-    training and test kernel matrices in the following structure:
-    .. code-block:: python
-        >>> circuit = Circuit(2) // PS(P("X0") // BS() // PS(P("X1") // BS()
-        >>> feature_map = FeatureMap(circuit, ["X"])
-        >>>
-        >>> quantum_kernel = FidelityKernel(
-        >>>     feature_map,
-        >>>     input_state=[0, 4],
-        >>> )
-        >>> # Construct the training & test kernel matrices
-        >>> K_train = quantum_kernel(X_train)
-        >>> K_test = quantum_kernel(X_test, X_train)
+    For a given training and test datasets, one can construct the training and
+    test kernel matrices with the following structure:
 
-    Use with scikit-learn for kernel-based machine learning:.
     .. code-block:: python
-        >>> from sklearn import SVC
-        >>> # For a support vector classification problem
-        >>> svc = SVC(kernel='precomputed')
-        >>> svc.fit(K_train, y_train)
-        >>> y_pred = svc.predict(K_test)
+
+        circuit = Circuit(2) // PS(P("X0")) // BS() // PS(P("X1")) // BS()
+        feature_map = FeatureMap(circuit, ["X"])
+
+        quantum_kernel = FidelityKernel(
+            feature_map,
+            input_state=[0, 4],
+        )
+        K_train = quantum_kernel(X_train)
+        K_test = quantum_kernel(X_test, X_train)
+
+    Use with scikit-learn for kernel-based machine learning:
+
+    .. code-block:: python
+
+        from sklearn.svm import SVC
+
+        svc = SVC(kernel="precomputed")
+        svc.fit(K_train, y_train)
+        y_pred = svc.predict(K_test)
     """
 
     @sanitize_parameters
@@ -860,9 +872,9 @@ class FidelityKernel(MerlinModule):
 
         # Check if we are constructing training matrix
         equal_inputs = self._check_equal_inputs(x1, x2)
-        U_forward = torch.stack([
-            self.feature_map.compute_unitary(x).to(x1.device) for x in x1
-        ])
+        U_forward = torch.stack(
+            [self.feature_map.compute_unitary(x).to(x1.device) for x in x1]
+        )
 
         len_x1 = len(x1)
         if x2 is not None:
@@ -871,19 +883,25 @@ class FidelityKernel(MerlinModule):
                 if isinstance(x2, torch.Tensor)
                 else torch.as_tensor(x2, dtype=self.dtype, device=self.device)
             )
-            U_adjoint = torch.stack([
-                self.feature_map.compute_unitary(x).transpose(0, 1).conj().to(x1.device)
-                for x in x2_tensor
-            ])
-            if isinstance(x2, torch.Tensor):
-                U_adjoint = torch.stack([
-                    self.feature_map
-                    .compute_unitary(x)
+            U_adjoint = torch.stack(
+                [
+                    self.feature_map.compute_unitary(x)
                     .transpose(0, 1)
                     .conj()
                     .to(x1.device)
-                    for x in x2
-                ])
+                    for x in x2_tensor
+                ]
+            )
+            if isinstance(x2, torch.Tensor):
+                U_adjoint = torch.stack(
+                    [
+                        self.feature_map.compute_unitary(x)
+                        .transpose(0, 1)
+                        .conj()
+                        .to(x1.device)
+                        for x in x2
+                    ]
+                )
             else:
                 raise (TypeError("x2 is not None nor torch.Tensor"))
 

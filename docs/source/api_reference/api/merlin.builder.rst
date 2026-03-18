@@ -12,5 +12,4 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
-   merlin.builder.ansatz
    merlin.builder.circuit_builder

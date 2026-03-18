@@ -39,15 +39,15 @@ class DetectorTransform(torch.nn.Module):
 
     Args:
         simulation_keys: Iterable describing the raw Fock states produced by the
-            simulator (as tuples or lists of integers).
+        simulator (as tuples or lists of integers).
         detectors: One detector per optical mode. Each detector must expose the
-            :meth:`detect` method from :class:`perceval.Detector`.
+        :meth:`detect` method from :class:`perceval.Detector`.
         dtype: Optional torch dtype for the transform matrix. Defaults to
-            ``torch.float32``.
+        ``torch.float32``.
         device: Optional device used to stage the transform matrix.
         partial_measurement: When ``True``, only the modes whose detector entry is
-            not ``None`` are measured. The transform then operates on complex
-            amplitudes and returns per-outcome dictionaries (see :meth:`forward`).
+        not ``None`` are measured. The transform then operates on complex
+        amplitudes and returns per-outcome dictionaries (see :meth:`forward`).
     """
 
     def __init__(
@@ -541,10 +541,12 @@ class DetectorTransform(torch.nn.Module):
                     amplitudes_view / safe_norm,
                 )
 
-            formatted.setdefault(combined_key, []).append((
-                probabilities,
-                amplitudes_view,
-            ))
+            formatted.setdefault(combined_key, []).append(
+                (
+                    probabilities,
+                    amplitudes_view,
+                )
+            )
 
         max_remaining = (
             max((key[1] for key in formatted.keys()), default=0) if formatted else 0

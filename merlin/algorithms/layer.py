@@ -752,7 +752,7 @@ class QuantumLayer(MerlinModule):
 
         Parameters
         ----------
-        *input_parameters : torch.Tensor | StateVector
+        ``*input_parameters`` : torch.Tensor | StateVector
             Input data. For angle encoding, pass float tensors. For amplitude
             encoding, pass a single ``StateVector`` or complex tensor.
         shots : int | None, optional

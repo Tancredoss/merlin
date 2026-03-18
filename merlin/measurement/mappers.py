@@ -62,7 +62,7 @@ class OutputMapper:
             strategy: The measurement mapping strategy to use
             computation_space: The computation space for the measurement.
             keys: (Only used for ModeExpectations measurement strategy) List of tuples that represent the possible quantum Fock states.
-                  For example, keys = [(0,1,0,2), (1,0,1,0), ...]
+            For example, keys = [(0,1,0,2), (1,0,1,0), ...]
             dtype: Target dtype for internal tensors. Defaults to torch.float32.
 
         Returns:

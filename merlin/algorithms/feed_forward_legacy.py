@@ -133,43 +133,37 @@ class FeedForwardBlockLegacy(torch.nn.Module):
     The recursion continues until a specified depth, allowing the model to
     simulate complex conditional evolution of quantum systems.
 
-    Detector support:
-        The current feed-forward implementation expects amplitude access for
-        every intermediate layer (``MeasurementStrategy.AMPLITUDES``) and
-        therefore assumes ideal PNR detectors. Custom detector transforms or
-        Perceval experiments with threshold / hybrid detectors are not yet
-        supported inside this block.
+    Detector support: The current feed-forward implementation expects amplitude access for
+    every intermediate layer (``MeasurementStrategy.AMPLITUDES``) and
+    therefore assumes ideal PNR detectors. Custom detector transforms or
+    Perceval experiments with threshold / hybrid detectors are not yet
+    supported inside this block.
 
-    ---
-    Args:
-        input_size (int):
-            Number of classical input features (used for hybrid quantum-classical computation).
-
-        n (int):
-            Number of photons in the system.
-
-        m (int):
-            Total number of photonic modes.
-
-        depth (int, optional):
-            Maximum depth of feed-forward recursion.
-            Defaults to `m - 1` if not specified.
-
-        state_injection (bool, optional):
-            If True, allows re-injecting quantum states at intermediate steps
-            (useful for simulating sources or ancilla modes). Default = False.
-
-        conditional_modes (list[int], optional):
-            List of mode indices on which photon detection is performed.
-            Determines the branching structure. Defaults to `[0]`.
-
-        layers (list[QuantumLayer], optional):
-            Predefined list of quantum layers (if any). If not provided,
-            layers are automatically generated.
-
-        circuit_type (str, optional):
-            Type of quantum circuit architecture used to build each layer.
-            Acts as a “template selector” for circuit structure generation.
+    Parameters
+    ----------
+    input_size
+        Number of classical input features used for hybrid quantum-classical
+        computation.
+    n
+        Number of photons in the system.
+    m
+        Total number of photonic modes.
+    depth
+        Maximum depth of feed-forward recursion. Defaults to ``m - 1`` if not
+        specified.
+    state_injection
+        If ``True``, allows re-injecting quantum states at intermediate steps,
+        which is useful for simulating sources or ancilla modes. Defaults to
+        ``False``.
+    conditional_modes
+        List of mode indices on which photon detection is performed. This
+        determines the branching structure. Defaults to ``[0]``.
+    layers
+        Predefined list of quantum layers. If not provided, layers are
+        generated automatically.
+    circuit_type
+        Type of quantum circuit architecture used to build each layer. Acts as
+        a template selector for circuit structure generation.
     """
 
     # TO DO: add a "circuit_type" attribute to select quantum circuit template
@@ -207,9 +201,9 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         else:
             tuples = self.generate_possible_tuples()
             self.tuples = tuples
-            assert len(tuples) == len(layers), (
-                "Mismatch between number of tuples and provided layers."
-            )
+            assert len(tuples) == len(
+                layers
+            ), "Mismatch between number of tuples and provided layers."
             self.layers = {tuples[k]: layers[k] for k in range(len(layers))}
 
             start = 0
