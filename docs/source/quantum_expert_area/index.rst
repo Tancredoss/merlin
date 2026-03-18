@@ -6,14 +6,32 @@
 Quantum Expert Area
 ===================
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Table of Contents
 
-   architectures
-   internal_design
-   SLOS
-   experiment_support
-   quantum_bridge
-   kernels
-   partial_measurement
+Physical and Mathematical background
+===================
+
+.. merlin-gallery::
+   :data: _data/galleries/quantum_expert/phy_mat_back.json
+   :columns: 3
+
+
+Algorithm Design
+===================
+
+.. merlin-gallery::
+   :data: _data/galleries/quantum_expert/algo_design.json
+   :columns: 2
+
+More on the QuantumBridge
+===================
+
+.. merlin-gallery::
+   :data: _data/galleries/quantum_expert/quantum_bridge.json
+   :columns: 2
+
+Stronger Background on Algorithms
+===================
+
+.. merlin-gallery::
+   :data: _data/galleries/quantum_expert/algo_back.json
+   :columns: 2

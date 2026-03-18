@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Quantum Architectures",
+    "summary": "Technical overview of the quantum architectures that power MerLin's quantum layers.",
+    "image": "_static/img/notebooks_Tutorial_28_0.svg",
+    "doc": "quantum_expert_area/architectures.rst",
+    "tags": ["Interferometers","Circuits", "Parameters", "Fock states", "Entanglement"]
+  },
+  {
+    "title": "SLOS",
+    "summary": "Deep dive into the framework that efficiently solves the boson sampling problem.",
+    "image": "_static/img/general_interferometer.png",
+    "doc": "quantum_expert_area/SLOS.rst",
+    "tags": ["SLOS", "Boson Sampling", "Strong Simulation"]
+  },
+  {
+    "title": "Internal Design",
+    "summary": "Overview of key internal design elements that underpin MerLin's simulation pipeline and advanced workflows.",
+    "image": "_static/img/QCNN_adaptive.png",
+    "doc": "quantum_expert_area/internal_design.rst",
+    "tags": ["Partial Detectors", "Feed forward", "SLOS"]
+  }
+]
