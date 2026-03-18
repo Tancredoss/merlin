@@ -1,7 +1,12 @@
 merlin.measurement.detectors module
 ===================================
 
-.. automodule:: merlin.measurement.detectors
+.. currentmodule:: merlin.measurement.detectors
+
+.. autoclass:: DetectorTransform
    :members:
    :undoc-members:
    :show-inheritance:
+
+.. autofunction:: resolve_detectors
+
