@@ -35,3 +35,18 @@ Stronger Background on Algorithms
 .. merlin-gallery::
    :data: _data/galleries/quantum_expert/algo_back.json
    :columns: 2
+
+Quantum Expert Area Pages
+===========================
+
+.. toctree::
+   :maxdepth: 1
+
+   architectures
+   building_intuition
+   experiment_support
+   internal_design
+   kernels
+   partial_measurement
+   quantum_bridge
+   SLOS
