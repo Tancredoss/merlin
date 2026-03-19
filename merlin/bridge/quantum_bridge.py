@@ -230,7 +230,9 @@ class QuantumBridge(nn.Module):
 
     def qubit_to_fock_state(self, bitstring: str) -> pcvl.BasicState:
         r"""
-        Convenience helper mirroring :func:`qubit_to_fock_state` with the bridge configuration.
+        Convenience helper mirroring
+        :meth:`~merlin.bridge.quantum_bridge.QuantumBridge.qubit_to_fock_state`
+        with the bridge configuration.
 
         Parameters
         ----------

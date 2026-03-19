@@ -22,7 +22,7 @@ Why computation space matters
   photons.
 * **Hybrid interoperability** – Matching a photonic computation space with a qubit-based
   model (for example from PennyLane) allows seamless hybrid training through
-  :class:`~merlin.bridge.QuantumBridge`.
+  :class:`~merlin.bridge.quantum_bridge.QuantumBridge`.
 
 Core computation spaces
 -----------------------
@@ -78,7 +78,7 @@ Another parameter is also relevent.
   subspaces such as dual-rail groupings without rebuilding the circuit.
 
 Internally the :class:`~merlin.core.process.ComputationProcessFactory` uses these 
-to build the correct :mod:`perceval` simulation graph.  The same options propagate
+to build the correct `Perceval <https://perceval.quandela.net/docs/v1.1/>`_ simulation graph.  The same options propagate
 through factory-created ansätze and algorithm builders.
 
 Working with QLOQ encodings
@@ -128,7 +128,7 @@ Example setup
 Bridging qubit logic and photonics
 ----------------------------------
 
-The :class:`~merlin.bridge.QuantumBridge` is the companion to computation spaces.  It
+The :class:`~merlin.bridge.quantum_bridge.QuantumBridge` is the companion to computation spaces.  It
 turns a qubit statevector ``ψ ∈ ℂ^{2^n}`` into the appropriate photonic superposition by
 grouping qubits according to ``qubit_groups``.  Its ``computation_space`` argument (``fock``,
 ``unbunched``, or ``dual_rail``) determines both the size of the emitted tensor and the

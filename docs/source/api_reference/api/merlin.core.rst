@@ -11,6 +11,8 @@ Submodules
    :maxdepth: 4
 
    merlin.core.base
+   merlin.core.circuit
+   merlin.core.computation_space
    merlin.core.state
    merlin.core.state_vector
    merlin.core.probability_distribution

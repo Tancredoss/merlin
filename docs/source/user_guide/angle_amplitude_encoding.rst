@@ -5,15 +5,15 @@ Angle Encoding and Amplitude Encoding
 =====================================
 
 This guide shows how to use **angle encoding** and **amplitude encoding** with
-Merlin's :class:`~merlin.algorithms.QuantumLayer`. You'll find when to use each,
-how to build circuits with :class:`~merlin.builder.CircuitBuilder` or native
+Merlin's :class:`~merlin.algorithms.layer.QuantumLayer`. You'll find when to use each,
+how to build circuits with :class:`~merlin.builder.circuit_builder.CircuitBuilder` or native
 Perceval, and complete, runnable snippets.
 
 Prerequisites
 -------------
 
 - Python, PyTorch, and Merlin installed.
-- Basic familiarity with Merlin's :class:`~merlin.algorithms.QuantumLayer`.
+- Basic familiarity with Merlin's :class:`~merlin.algorithms.layer.QuantumLayer`.
 - Optional: Perceval for custom circuits and experiments.
 
 Conceptual overview
@@ -40,7 +40,7 @@ hybrid neural networks where your inputs are real-valued tensors.
 With CircuitBuilder
 ^^^^^^^^^^^^^^^^^^^
 
-:class:`~merlin.builder.CircuitBuilder` provides a declarative way to add an
+:class:`~merlin.builder.circuit_builder.CircuitBuilder` provides a declarative way to add an
 angle-encoding stage into your photonic circuit.
 
 1) Build a circuit with angle encoding:
@@ -89,9 +89,9 @@ angle-encoding stage into your photonic circuit.
 Parameter names and prefixes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The :py:meth:`~merlin.builder.CircuitBuilder.add_angle_encoding` call registers
+The :py:meth:`~merlin.builder.circuit_builder.CircuitBuilder.add_angle_encoding` call registers
 parameters prefixed by ``name`` (e.g., ``"input"``). Internally,
-:class:`~merlin.algorithms.QuantumLayer` will consume your real-valued input
+:class:`~merlin.algorithms.layer.QuantumLayer` will consume your real-valued input
 tensor and map each feature to the corresponding prefixed angle(s).
 
 Tips and constraints
@@ -424,7 +424,7 @@ And with a probability strategy, a
 Chaining quantum layers
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Because :class:`~merlin.algorithms.QuantumLayer` can both consume and produce
+Because :class:`~merlin.algorithms.layer.QuantumLayer` can both consume and produce
 :class:`~merlin.core.state_vector.StateVector` objects, you can chain layers
 so that the output amplitudes of one feed into the next:
 
