@@ -232,7 +232,7 @@ The layer decides between angle and amplitude encoding based on what you pass to
 ``forward()``:
 
 - **Real** ``torch.Tensor`` → angle encoding (features mapped to phase shifters).
-- :class:`~merlin.core.state_vector.StateVector` → amplitude encoding (use :meth:`~StateVector.from_tensor` for classical data).
+- :class:`~merlin.core.state_vector.StateVector` → amplitude encoding (use :meth:`~merlin.core.state_vector.StateVector.from_tensor` for classical data).
 - **Complex** ``torch.Tensor`` → amplitude encoding (tensor variant).
 
 No special constructor flags are needed — just pass the right type.
@@ -244,9 +244,9 @@ By default, the output of the QuantumLayer's forward function is a ``torch.Tenso
 (it is False by default), the layer returns typed Merlin objects instead of bare tensors, carrying metadata such as mode count, photon number, and computation space:
 
 - ``.probs()`` → :class:`~merlin.core.probability_distribution.ProbabilityDistribution`, an object that regroups all of the possible outcomes and their probabilities.
-    For more details, :doc:`/api_reference/api/merlin.algorithms.core.probability_distribution`.
+    For more details, :doc:`/api_reference/api/merlin.core.probability_distribution`.
 - ``.amplitudes()`` → :class:`~merlin.core.state_vector.StateVector`, an object that regroups all of the possible state_vectors at the end of the circuit and their basis state decomposition.
-    For more details, :doc:`/api_reference/api/merlin.algorithms.core.state_vector`.
+    For more details, :doc:`/api_reference/api/merlin.core.state_vector`.
 - ``.mode_expectations()`` → ``torch.Tensor``
 
 Even when ``return_object=False``,

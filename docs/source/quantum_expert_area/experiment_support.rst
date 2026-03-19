@@ -15,7 +15,7 @@ Why use an Experiment?
 - **Detector customization** – You can mix photon-number-resolving (PNR),
   threshold, or partially projected detectors mode-by-mode while keeping the
   rest of the configuration identical.
-- **Photon-loss modelling** – Attach a :class:`perceval.perceval.utils.noise_model.NoiseModel` and MerLin
+- **Photon-loss modelling** – Attach a :class:`perceval.utils.noise_model.NoiseModel` and MerLin
   will propagate its brightness/transmittance parameters before any detector
   logic, exposing photon loss events in the returned classical outcomes.
 

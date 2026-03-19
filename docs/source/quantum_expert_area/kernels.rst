@@ -48,7 +48,7 @@ its circuit expects before calling the Torch converter
 (:class:`~merlin.pcvl_pytorch.locirc_to_tensor.CircuitConverter`) to obtain
 ``U(x)``. The encoding logic follows a strict preference order:
 
-1. If the feature map was created from a :class:`CircuitBuilder`, use its
+1. If the feature map was created from a :class:`~merlin.builder.circuit_builder.CircuitBuilder`, use its
 	 angle‑encoding metadata (``combinations`` and per‑index ``scales``) to
 	 compute linear forms of the input vector. This guarantees the encoded vector
 	 length matches the converter specification for the declared input prefix.
@@ -108,7 +108,7 @@ If the :class:`merlin.algorithms.kernels.FeatureMap` comes from an experiment (o
 one from its circuit), two transforms may be applied to raw probabilities:
 
 * :class:`~merlin.measurement.photon_loss.PhotonLossTransform` – composes the
-	experiment's :class:`perceval.perceval.utils.noise_model.NoiseModel` into survival probabilities. This
+	experiment's :class:`perceval.utils.noise_model.NoiseModel` into survival probabilities. This
 	returns a new probability vector and a new set of output keys.
 * :class:`~merlin.measurement.detectors.DetectorTransform` – projects (or maps)
 	the post‑loss probabilities to the detector outcome basis (threshold, PNR,

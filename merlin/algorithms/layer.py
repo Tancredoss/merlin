@@ -81,7 +81,7 @@ class QuantumLayer(MerlinModule):
     """
     Quantum Neural Network Layer with factory-based architecture.
 
-    This layer can be created either from a :class:`CircuitBuilder` instance, a pre-compiled :class:`perceval.components.linear_circuit.Circuit`,
+    This layer can be created either from a :class:`~merlin.builder.circuit_builder.CircuitBuilder` instance, a pre-compiled :class:`perceval.components.linear_circuit.Circuit`,
     or an :class:Experiment`.
     """
 

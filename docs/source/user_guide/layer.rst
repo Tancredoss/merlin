@@ -25,7 +25,7 @@ Overview
   :class:`perceval.components.linear_circuit.Circuit` or a fully specified :class:`perceval.components.experiment.Experiment`.
 - **Detector awareness** – Layers automatically derive detector transforms from
   the experiment, enabling threshold, PNR, or hybrid detection schemes.
-- **Photon-loss aware** – Experiments carrying a :class:`perceval.perceval.utils.noise_model.NoiseModel`
+- **Photon-loss aware** – Experiments carrying a :class:`perceval.utils.noise_model.NoiseModel`
   trigger an automatic photon-loss transform so survival and loss outcomes share
   a single, normalised output distribution.
 
@@ -56,7 +56,7 @@ learning experts without any prior knowledge in quantum machine learning.
 CircuitBuilder
 ~~~~~~~~~~~~~~
 
-Use MerLin’s :class:`CircuitBuilder` utilities to describe a circuit at a higher level. The builder maintains a record of the trainable parameters and the parameters used as layer inputs. A prefix-based naming scheme separates trainable parameters from those used as layer inputs. This is an ideal tool for quantum machine learning experts who do not have any experience with Perceval.". More information in the CircuitBuilder API reference: :class:`~merlin.builder.circuit_builder.CircuitBuilder`
+Use MerLin’s :class:`~merlin.builder.circuit_builder.CircuitBuilder` utilities to describe a circuit at a higher level. The builder maintains a record of the trainable parameters and the parameters used as layer inputs. A prefix-based naming scheme separates trainable parameters from those used as layer inputs. This is an ideal tool for quantum machine learning experts who do not have any experience with Perceval.". More information in the CircuitBuilder API reference: :class:`~merlin.builder.circuit_builder.CircuitBuilder`
 
 .. code-block:: python
 
@@ -80,7 +80,7 @@ Use MerLin’s :class:`CircuitBuilder` utilities to describe a circuit at a high
 Custom circuit
 ~~~~~~~~~~~~~~
 
-When you already have a :class:`perceval.Circuit`, provide the classical input
+When you already have a :class:`perceval.components.linear_circuit.Circuit`, provide the classical input
 layout and the trainable parameter prefixes explicitly. This initialization requires
 a good understanding of Perceval.
 

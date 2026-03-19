@@ -40,13 +40,13 @@ Core building blocks
 MerLin exposes three cooperating components:
 
 - :class:`~merlin.algorithms.kernels.FeatureMap`
-  Encodes classical inputs into a photonic circuit and produces the corresponding unitary matrix. You can pass a pre-built :class:`perceval.Circuit`, a declarative :class:`~merlin.builder.circuit_builder.CircuitBuilder`, or a full :class:`perceval.components.experiment.Experiment`.
+  Encodes classical inputs into a photonic circuit and produces the corresponding unitary matrix. You can pass a pre-built :class:`perceval.components.linear_circuit.Circuit`, a declarative :class:`~merlin.builder.circuit_builder.CircuitBuilder`, or a full :class:`perceval.components.experiment.Experiment`.
 
 - :class:`~merlin.algorithms.kernels.FidelityKernel`
   Given a feature map and an input Fock state, computes Gram matrices (train/test) by simulating transition probabilities through SLOS. Supports optional sampling, photon loss and detector transforms.
 
 - :class:`~merlin.algorithms.kernels.KernelCircuitBuilder`
-  A convenience helper to create a :class:`FeatureMap` and then a :class:`FidelityKernel` with minimal boilerplate.
+  A convenience helper to create a :class:`~merlin.algorithms.kernels.FeatureMap` and then a :class:`~merlin.algorithms.kernels.FidelityKernel` with minimal boilerplate.
 
 Quick Start Decision Guide
 --------------------------
@@ -69,10 +69,10 @@ Quick Start Decision Guide
 How feature maps encode data
 ----------------------------
 
-The :class:`FeatureMap` converts a datapoint into the exact list of circuit parameters required by the underlying circuit/experiment. The encoding pipeline follows this preference order:
+The :class:`~merlin.algorithms.kernels.FeatureMap` converts a datapoint into the exact list of circuit parameters required by the underlying circuit/experiment. The encoding pipeline follows this preference order:
 
 1. Builder‑provided metadata (from :class:`~merlin.builder.circuit_builder.CircuitBuilder.add_angle_encoding`) that lists feature combinations and per‑index scales;
-2. A user‑provided callable encoder, if supplied to :class:`FeatureMap`;
+2. A user‑provided callable encoder, if supplied to :class:`~merlin.algorithms.kernels.FeatureMap`;
 3. A deterministic subset‑sum expansion that generates :math:`1`‑to‑:math:`d` order sums of the input until the expected parameter count is reached.
 
 The resulting vector is then sent to the Torch converter (:class:`~merlin.pcvl_pytorch.locirc_to_tensor.CircuitConverter`) to obtain the complex unitary matrix :math:`U(x)`.
@@ -80,7 +80,7 @@ The resulting vector is then sent to the Torch converter (:class:`~merlin.pcvl_p
 Detectors, photon loss and experiments
 --------------------------------------
 
-If the feature map exposes a :class:`perceval.components.experiment.Experiment`, the kernel composes a photon‑loss transform derived from the experiment's :class:`perceval.perceval.utils.noise_model.NoiseModel` and then applies detector transforms (threshold or PNR) before reading probabilities. This means kernel values naturally reflect survival probabilities and detector post‑processing.
+If the feature map exposes a :class:`perceval.components.experiment.Experiment`, the kernel composes a photon‑loss transform derived from the experiment's :class:`perceval.utils.noise_model.NoiseModel` and then applies detector transforms (threshold or PNR) before reading probabilities. This means kernel values naturally reflect survival probabilities and detector post‑processing.
 
 If no experiment is provided, the kernel constructs one from the circuit (unitary, no detectors, no noise).
 
@@ -190,7 +190,7 @@ FidelityKernel Parameters
 Implementation highlights
 -------------------------
 
-Internally, :class:`FidelityKernel` builds the pairwise circuits :math:`U^{\dagger}(x_2) U(x_1)` in a vectorised way and asks the SLOS graph to compute detection probabilities for the chosen input state. If photon loss and/or detectors are defined, the raw probabilities are transformed accordingly before the scalar kernel is read.
+Internally, :class:`~merlin.algorithms.kernels.FidelityKernel` builds the pairwise circuits :math:`U^{\dagger}(x_2) U(x_1)` in a vectorised way and asks the SLOS graph to compute detection probabilities for the chosen input state. If photon loss and/or detectors are defined, the raw probabilities are transformed accordingly before the scalar kernel is read.
 
 When constructing a training Gram matrix (``x2 is None``), only the upper triangle is simulated and mirrored to the lower triangle, then the diagonal is set to 1. With ``force_psd=True``, the matrix is symmetrised and projected to PSD by zeroing negative eigenvalues in an eigendecomposition.
 

@@ -158,10 +158,11 @@ Job & Lifecycle Utilities
 
    Best-effort cancellation of **all** active jobs across outstanding calls.
 
-.. method:: get_job_history() -> list[RemoteJob]
+.. method:: get_job_history()
 
    :returns: List of remote job handles.
    :rtype: list[``perceval.runtime.RemoteJob``]
+
 
    Returns a list of all jobs observed/submitted by this instance during the
    process lifetime (useful for diagnostics).
