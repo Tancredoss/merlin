@@ -541,12 +541,10 @@ class DetectorTransform(torch.nn.Module):
                     amplitudes_view / safe_norm,
                 )
 
-            formatted.setdefault(combined_key, []).append(
-                (
-                    probabilities,
-                    amplitudes_view,
-                )
-            )
+            formatted.setdefault(combined_key, []).append((
+                probabilities,
+                amplitudes_view,
+            ))
 
         max_remaining = (
             max((key[1] for key in formatted.keys()), default=0) if formatted else 0
