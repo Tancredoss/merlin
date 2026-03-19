@@ -14,3 +14,4 @@ Submodules
    merlin.algorithms.kernels
    merlin.algorithms.layer
    merlin.algorithms.loss
+   merlin.algorithms.module

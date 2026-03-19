@@ -33,11 +33,30 @@ Model families
    :columns: 4
    :contour-color: #5648ED
 
-Other notebooks
+All of the notebooks
 -----------------------
-- :doc:`../notebooks/iris_classification`
-- Based on reproduced papers:
-   - :doc:`../notebooks/reproduced_papers/GanEtAl_q_gaussian_kernel`
-   - :doc:`../notebooks/reproduced_papers/GanEtAl_q_random_kitchen_sinks`
-   - :doc:`../notebooks/reproduced_papers/GanEtAl_VQC_fourier_series`
-   - :doc:`../notebooks/reproduced_papers/photonic_QCNN`
+
+.. toctree::
+   :maxdepth: 1
+
+   ../notebooks/FirstQuantumLayers
+   ../notebooks/FromSimpleToBuilder
+   ../notebooks/HelloWorldMerLinCloud
+   ../notebooks/Kernels
+   ../notebooks/classifying_circles_from_installation
+   ../notebooks/iris_classification
+   ../notebooks/release_0,3_highlights
+
+Based on reproduced papers
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 1
+
+   ../notebooks/reproduced_papers/GanEtAl_VQC_classification
+   ../notebooks/reproduced_papers/GanEtAl_q_gaussian_kernel
+   ../notebooks/reproduced_papers/GanEtAl_q_random_kitchen_sinks
+   ../notebooks/reproduced_papers/GanEtAl_VQC_fourier_series
+   ../notebooks/reproduced_papers/amplitude_limitations_tutorial
+   ../notebooks/reproduced_papers/photonic_QCNN
+   ../notebooks/reproduced_papers/quantum_reservoir

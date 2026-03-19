@@ -9,6 +9,7 @@ Subpackages
 
    merlin.algorithms
    merlin.builder
+   merlin.bridge
    merlin.core
    merlin.datasets
    merlin.measurement

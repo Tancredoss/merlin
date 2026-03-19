@@ -20,3 +20,14 @@ To enhance your experience with MerLin we suggest to consult the following pages
 .. merlin-gallery::
    :data: _data/galleries/quick_start_next_steps.json
    :columns: 4
+
+
+Quickstart pages
+=================
+
+.. toctree::
+   :maxdepth: 1
+
+   installation
+   first_quantum_layer
+   basic_concepts

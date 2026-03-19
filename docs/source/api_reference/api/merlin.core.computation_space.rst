@@ -1,5 +1,5 @@
 merlin.core.computation_space module
-=======================
+=====================================
 
 .. automodule:: merlin.core.computation_space
    :no-members:

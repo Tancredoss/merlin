@@ -12,11 +12,14 @@ Submodules
 
    merlin.core.base
    merlin.core.circuit
+   merlin.core.components
    merlin.core.computation_space
-   merlin.core.state
-   merlin.core.state_vector
+   merlin.core.generators
+   merlin.core.partial_measurement
+   merlin.core.photonicbackend
    merlin.core.probability_distribution
    merlin.core.process
-   merlin.core.components
-   merlin.core.partial_measurement
    merlin.core.merlin_processor
+   merlin.core.state
+   merlin.core.state_vector
+   

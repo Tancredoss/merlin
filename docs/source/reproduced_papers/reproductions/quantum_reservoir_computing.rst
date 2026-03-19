@@ -52,7 +52,7 @@ Key Contributions Reproduced
 Interactive Exploration
 =======================
 
-**Jupyter Notebook**: To come
+**Jupyter Notebook**: `quantum_reservoir.ipynb </notebooks/reproduced_papers/quantum_reservoir.ipynb>`_
 
 The notebook provides:
 

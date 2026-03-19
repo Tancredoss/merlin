@@ -88,6 +88,7 @@ intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "torch": ("https://pytorch.org/docs/stable", None),
     "perceval": ("https://perceval.quandela.net/docs/v1.1/", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
 }
 
 
@@ -98,6 +99,10 @@ nitpick_ignore = [
     ("py:class", "BatchNorm"),
     ("py:class", "perceval.utils.states.BasicState"),
     ("py:class", "merlin.measurement.strategies._LegacyMeasurementStrategy"),
+    ("py:class", "torch.nn.modules.loss._Loss"),
+    ("py:class", "Module"),
+    ("py:attr", "dtype"),
+    ("py:attr", "device"),
 ]
 
 suppress_warnings = ["autosectionlabel.*"]
