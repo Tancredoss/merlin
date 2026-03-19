@@ -75,7 +75,7 @@ The parser records these stages as ``FFStage`` instances. Each stage stores
 
 After a detector stage finishes, the measured modes are removed from the active
 set so that every subsequent circuit is expressed solely in terms of the
-remaining modes. This remapping guarantees that the :class:`QuantumLayer`
+remaining modes. This remapping guarantees that the :class:`~merlin.algorithms.layer.QuantumLayer`
 constructed for the stage matches the reduced dimensionality, while the
 original mode identifiers are still available for bookkeeping.
 
@@ -129,7 +129,7 @@ SLOS Torch simulation helpers
 =============================
 
 MerLin provides TorchScript-optimized primitives in
-:mod:`merlin.pcvl_pytorch.slos_torchscript` to simulate photonic circuits with
+:mod:`~merlin.pcvl_pytorch.slos_torchscript` to simulate photonic circuits with
 high throughput. These helpers separate graph construction from evaluation and
 offer two primary execution paths matching the two common encoding schemes:
 

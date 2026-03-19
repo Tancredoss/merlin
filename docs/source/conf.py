@@ -90,15 +90,14 @@ intersphinx_mapping = {
     "perceval": ("https://perceval.quandela.net/docs/v1.1/", None),
 }
 
+
 nitpick_ignore = [
-    ("py:class", "torch.nn.parameter.Parameter"),
-    ("py:class", "torch.utils.hooks.RemovableHandle"),
-    ("py:class", "perceval.Detector"),
-    ("py:class", "perceval.Experiment"),
     ("py:attr", "dst_type"),
     ("py:attr", "non_blocking"),
     ("py:class", "Dropout"),
     ("py:class", "BatchNorm"),
+    ("py:class", "perceval.utils.states.BasicState"),
+    ("py:class", "merlin.measurement.strategies._LegacyMeasurementStrategy"),
 ]
 
 suppress_warnings = ["autosectionlabel.*"]

@@ -21,8 +21,8 @@ merlin.algorithms.kernels module
 .. note::
 
    When the wrapped :class:`~merlin.algorithms.kernels.FeatureMap` exposes a
-   :class:`perceval.Experiment`, fidelity kernels compose the attached
-   :class:`perceval.NoiseModel` (photon loss) before applying any detector
+   :class:`perceval.components.experiment.Experiment`, fidelity kernels compose the attached
+   :class:`perceval.perceval.utils.noise_model.NoiseModel` (photon loss) before applying any detector
    transforms. The resulting kernel values therefore reflect both survival
    probabilities and detector post-processing.
 

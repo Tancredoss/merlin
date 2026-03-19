@@ -56,7 +56,7 @@ class QuantumBridge(nn.Module):
         Endianness used to interpret computational basis strings.
     computation_space
         Target photonic computation space. Accepts a
-        :class:`ComputationSpace` enum or a string (``"fock"``, ``"unbunched"``,
+        :class:`~merlin.core.computation_space.ComputationSpace` enum or a string (``"fock"``, ``"unbunched"``,
         ``"dual_rail"``).
     normalize
         Whether to L2-normalise input statevectors before applying the
@@ -239,7 +239,7 @@ class QuantumBridge(nn.Module):
 
         Returns
         -------
-        perceval.BasicState
+        `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_
             Photonic Fock state produced by the current qubit grouping convention.
         """
         if len(bitstring) != self.n_qubits:

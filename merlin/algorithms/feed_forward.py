@@ -89,7 +89,7 @@ class FeedForwardBlock(MerlinModule):
     """
     Feed-forward photonic block constructed directly from a Perceval experiment.
 
-    The block introspects the provided :class:`pcvl.Experiment`, splits it into
+    The block introspects the provided :class:`perceval.components.experiment.Experiment`, splits it into
     unitary / detector / :class:`~perceval.components.feed_forward_configurator.FFCircuitProvider`
     stages and turns each segment into one or more :class:`~merlin.algorithms.layer.QuantumLayer`
     instances. At run time the block executes every stage, branching on every
@@ -104,7 +104,7 @@ class FeedForwardBlock(MerlinModule):
         ``None``).
     input_state
         Initial quantum state. May be provided as a Fock occupation list,
-        :class:`pcvl.BasicState`, :class:`pcvl.StateVector`, or a tensor whose
+        `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_, :class:`~exqalibur.StateVector`, or a tensor whose
         components represent amplitudes in the experiment Fock basis. The tensor
         form is only required for amplitude-encoding inputs.
     trainable_parameters
@@ -116,7 +116,7 @@ class FeedForwardBlock(MerlinModule):
         branches switch to amplitude encoding and the classical tensor is ignored.
     computation_space
         Currently restricted to
-        :attr:`~merlin.core.computation_space.ComputationSpace.FOCK`.
+        :class:`~merlin.core.computation_space.ComputationSpace`\ ``.FOCK``.
     measurement_strategy
         Controls how classical outputs are produced.
 

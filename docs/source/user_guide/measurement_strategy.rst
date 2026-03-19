@@ -74,7 +74,7 @@ Key properties:
 Return type (forward call):
 
 - return_object=False: ``torch.Tensor``
-- return_object=True: ``torch.Tensor`
+- return_object=True: ``torch.Tensor``
 
 AMPLITUDES
 ---------------
@@ -102,7 +102,7 @@ Use this strategy for debugging, algorithmic research, or when a classical routi
 Return type (forward call):
 
 - return_object=False: ``torch.Tensor``
-- return_object=True: ``merlin.StateVector`
+- return_object=True: ``merlin.StateVector``
 
 .. note::
   Adding photon loss or detectors corresponds to performing a measurement of the quantum state, 
@@ -117,7 +117,7 @@ Partial measurement is a specific kind of measurement strategy. With this measur
 Photon Loss-aware & Detector-aware execution
 ============================================
 
-When a :class:`perceval.Experiment` is provided, the :class:`~merlin.algorithms.layer.QuantumLayer`
+When a :class:`perceval.components.experiment.Experiment` is provided, the :class:`~merlin.algorithms.layer.QuantumLayer`
 derives a photon loss transform and a detector transform that remaps raw Fock-state probabilities to the classical
 outcomes defined by the experiment. The photon loss mapping is applied first. Then, the detector mapping is applied. Lastly, the
 measurement strategy converts the distribution into classical features. As a consequence:

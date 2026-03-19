@@ -251,7 +251,7 @@ By default, the output of the QuantumLayer's forward function is a ``torch.Tenso
 
 Even when ``return_object=False``,
 - ``.partial()`` → :class:`~merlin.core.partial_measurement.PartialMeasurement`, an object that regroups all of the measurement results and possible output ``StateVectors``.
-For more details, :doc:`/api_reference/api/merlin.algorithms.core.partial_measurement`.
+For more details, :doc:`/api_reference/api/merlin.core.partial_measurement`.
 
 
 Putting It All Together

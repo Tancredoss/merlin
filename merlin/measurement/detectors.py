@@ -40,8 +40,8 @@ class DetectorTransform(torch.nn.Module):
     Args:
         simulation_keys: Iterable describing the raw Fock states produced by the
         simulator (as tuples or lists of integers).
-        detectors: One detector per optical mode. Each detector must expose the
-        :meth:`detect` method from :class:`perceval.Detector`.
+        detectors: One detector per optical mode. Each detector must expose a
+        ``detect`` method compatible with :class:`perceval.components.detector.Detector`.
         dtype: Optional torch dtype for the transform matrix. Defaults to
         ``torch.float32``.
         device: Optional device used to stage the transform matrix.

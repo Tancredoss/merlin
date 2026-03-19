@@ -66,14 +66,16 @@ Those computation spaces can also be assigned with the ``computation_space`` arg
 is prefered to exploit the ``measurement_strategy`` since ``computation_space`` will be deprecated in the future.
 
 It will be the only way to control the computation space as the ``no_bunching`` flag is deprecated.
+
 .. warning:: *Deprecated since version 0.3:*
    The use of the ``no_bunching`` flag  is deprecated and is removed since version 0.3.0.
    Use the ``computation_space`` flag inside ``measurement_strategy`` instead. See :doc:`/user_guide/migration_guide`.
 
 Another parameter is also relevent.
+
 ``index_photons``
-    Optional per-photon constraints on allowed modes.  This lets you carve out logical
-    subspaces such as dual-rail groupings without rebuilding the circuit.
+  Optional per-photon constraints on allowed modes. This lets you carve out logical
+  subspaces such as dual-rail groupings without rebuilding the circuit.
 
 Internally the :class:`~merlin.core.process.ComputationProcessFactory` uses these 
 to build the correct :mod:`perceval` simulation graph.  The same options propagate

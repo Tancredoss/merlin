@@ -10,9 +10,9 @@ Overview
 (e.g., layers exposing ``export_config()``) to a remote backend, while keeping
 classical layers local. It supports two backend paths:
 
-* **Perceval** :class:`~perceval.runtime.RemoteProcessor` — the original
+* **Perceval** :class:`~perceval.runtime.remote_processor.RemoteProcessor` — the original
   Quandela Cloud path.
-* **Perceval** :class:`~perceval.runtime.session.ISession` — the preferred path
+* **Perceval** `perceval.runtime.session.ISession <https://perceval.quandela.net/docs/v0.11/providers.html#scaleway>`_ — the preferred path
   for Scaleway-hosted platforms (and any future session-based providers).
 
 Both paths support batched execution with chunking, limited intra-leaf
@@ -27,7 +27,7 @@ Key Capabilities
 * **Synchronous** (``forward``) and **asynchronous** (``forward_async``) APIs.
 * **Cancellation** of a single call or **all** calls in flight.
 * **Timeouts** that cancel in-flight cloud jobs.
-* Per-chunk fresh :class:`~perceval.runtime.RemoteProcessor` objects — cloned
+* Per-chunk fresh :class:`~perceval.runtime.remote_processor.RemoteProcessor` objects — cloned
   from the original (RemoteProcessor path) or built from the session (ISession
   path) — to avoid cross-thread handler sharing.
 * Stable, descriptive cloud job names (capped to 50 chars).
@@ -49,10 +49,10 @@ MerlinProcessor
    Exactly **one** of ``remote_processor`` or ``session`` must be provided.
 
    :param remote_processor: Authenticated Perceval
-      :class:`~perceval.runtime.RemoteProcessor` (simulator or QPU-backed).
+      :class:`~perceval.runtime.remote_processor.RemoteProcessor` (simulator or QPU-backed).
       Merlin clones it per chunk so concurrent jobs have independent state.
       Type: ``RemoteProcessor | None``.
-   :param session: A Perceval :class:`~perceval.runtime.session.ISession`
+   :param session: A Perceval `perceval.runtime.session.ISession <https://perceval.quandela.net/docs/v0.11/providers.html#scaleway>`_
       object — e.g. from ``perceval.providers.scaleway.Session``. Merlin calls
       ``session.build_remote_processor()`` per chunk, giving each chunk
       an independent RP. Type: ``ISession | None``.
@@ -158,7 +158,10 @@ Job & Lifecycle Utilities
 
    Best-effort cancellation of **all** active jobs across outstanding calls.
 
-.. method:: get_job_history() -> list[perceval.runtime.RemoteJob]
+.. method:: get_job_history() -> list[RemoteJob]
+
+   :returns: List of remote job handles.
+   :rtype: list[``perceval.runtime.RemoteJob``]
 
    Returns a list of all jobs observed/submitted by this instance during the
    process lifetime (useful for diagnostics).
@@ -228,7 +231,7 @@ Job Naming & Traceability
 Threading & Fresh RPs
 ^^^^^^^^^^^^^^^^^^^^^
 * For each chunk attempt, the processor builds a **fresh**
-  :class:`~perceval.runtime.RemoteProcessor`:
+  :class:`~perceval.runtime.remote_processor.RemoteProcessor`:
 
   * **RemoteProcessor path**: clones the original RP (independent RPC handler).
   * **ISession path**: calls ``session.build_remote_processor()`` (independent

@@ -110,9 +110,7 @@ Constraints
 
 API
 ---
-.. automethod:: merlin.bridge.QuantumBridge.qubit_to_fock_state
-
-.. automodule:: merlin.bridge.QuantumBridge
-   :members: QuantumBridge
+.. autoclass:: merlin.bridge.QuantumBridge
+   :members:
    :undoc-members:
    :show-inheritance:

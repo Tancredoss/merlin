@@ -22,10 +22,10 @@ Overview
 - **Multiple construction paths** – Build layers from
   the convenience :meth:`~merlin.algorithms.layer.QuantumLayer.simple` factory,
   a :class:`~merlin.builder.circuit_builder.CircuitBuilder`, a custom
-  :class:`perceval.Circuit` or a fully specified :class:`perceval.Experiment`.
+  :class:`perceval.components.linear_circuit.Circuit` or a fully specified :class:`perceval.components.experiment.Experiment`.
 - **Detector awareness** – Layers automatically derive detector transforms from
   the experiment, enabling threshold, PNR, or hybrid detection schemes.
-- **Photon-loss aware** – Experiments carrying a :class:`perceval.NoiseModel`
+- **Photon-loss aware** – Experiments carrying a :class:`perceval.perceval.utils.noise_model.NoiseModel`
   trigger an automatic photon-loss transform so survival and loss outcomes share
   a single, normalised output distribution.
 
@@ -109,12 +109,12 @@ a good understanding of Perceval.
 .. note::
 
   ``input_state=[...]`` is accepted as a convenience input, but the layer stores it as a Perceval
-  :class:`perceval.BasicState` (access the occupation vector via ``list(layer.input_state)``).
+  `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ (access the occupation vector via ``list(layer.input_state)``).
 
 Experiment-driven
 ~~~~~~~~~~~~~~~~~
 
-If you want to simulate a noise model or specify detectors characteristics, configure a :class:`perceval.Experiment` and pass it directly. The QuantumLayer inherits the circuit, detectors, and any photon-loss noise model you attached. This scheme is the one that gives the user the most options when utilizing a QuantumLayer.
+If you want to simulate a noise model or specify detectors characteristics, configure a :class:`perceval.components.experiment.Experiment` and pass it directly. The QuantumLayer inherits the circuit, detectors, and any photon-loss noise model you attached. This scheme is the one that gives the user the most options when utilizing a QuantumLayer.
 
 .. code-block:: python
 

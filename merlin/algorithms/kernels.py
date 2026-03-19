@@ -53,10 +53,10 @@ class FeatureMap:
     computes the associated unitary for quantum kernel methods.
 
     Args:
-        circuit: Pre-compiled :class:`pcvl.Circuit` to encode features.
+        circuit: Pre-compiled :class:`perceval.components.linear_circuit.Circuit` to encode features.
         input_size: Dimension of incoming classical data (required).
-        builder: Optional :class:`CircuitBuilder` to compile into a circuit.
-        experiment: Optional :class:`pcvl.Experiment` providing both the circuit and detector configuration.
+        builder: Optional :class:`~merlin.builder.circuit_builder.CircuitBuilder` to compile into a circuit.
+        experiment: Optional :class:`perceval.components.experiment.Experiment` providing both the circuit and detector configuration.
         Exactly one of ``circuit``, ``builder``, or ``experiment`` must be supplied.
         input_parameters: Parameter prefix(es) that host the classical data.
         dtype: Torch dtype used when constructing the unitary.

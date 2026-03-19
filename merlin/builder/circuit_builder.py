@@ -171,7 +171,7 @@ class CircuitBuilder:
             angle: Optional fixed value for the rotations (alias of ``value``).
             value: Optional fixed value for the rotations (alias of ``angle``).
             name: Optional stem used for generated parameter names.
-            role: Explicit :class:`ParameterRole` taking precedence over other flags.
+            role: Explicit :class:`~merlin.core.components.ParameterRole` taking precedence over other flags.
 
         Returns:
             CircuitBuilder: ``self`` for fluent chaining.
