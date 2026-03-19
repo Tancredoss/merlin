@@ -1,6 +1,9 @@
 merlin.algorithms.kernels module
 ================================
 
+.. automodule:: merlin.algorithms.kernels
+   :no-members:
+
 .. currentmodule:: merlin.algorithms.kernels
 
 .. autoclass:: FeatureMap

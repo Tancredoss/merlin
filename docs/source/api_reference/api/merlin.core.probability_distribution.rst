@@ -1,6 +1,9 @@
 merlin.core.probability_distribution
 ====================================
 
+.. automodule:: merlin.core.probability_distribution
+   :no-members:
+
 .. currentmodule:: merlin.core.probability_distribution
 
 FilteredBasis

@@ -2,9 +2,7 @@ merlin.datasets package
 =======================
 
 .. automodule:: merlin.datasets
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Submodules
 ----------

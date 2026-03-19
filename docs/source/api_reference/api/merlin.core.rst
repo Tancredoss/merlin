@@ -2,9 +2,7 @@ merlin.core package
 ===================
 
 .. automodule:: merlin.core
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Submodules
 ----------

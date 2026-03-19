@@ -1,6 +1,9 @@
 merlin.measurement.process module
 =================================
 
+.. automodule:: merlin.measurement.process
+   :no-members:
+
 .. currentmodule:: merlin.measurement.process
 
 .. autoclass:: SamplingProcess
@@ -9,4 +12,3 @@ merlin.measurement.process module
    :show-inheritance:
 
 .. autofunction:: partial_measurement
-

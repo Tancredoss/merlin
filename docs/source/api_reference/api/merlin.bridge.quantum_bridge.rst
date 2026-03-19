@@ -1,5 +1,7 @@
 merlin.bridge.quantum_bridge module
 ===================================
+.. automodule:: merlin.bridge.quantum_bridge
+   :no-members:
 
 .. currentmodule:: merlin.bridge.quantum_bridge
 

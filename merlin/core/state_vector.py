@@ -26,7 +26,7 @@ This module provides a lightweight :class:`StateVector` wrapper that keeps the
 Fock-space metadata (number of modes, number of photons, basis ordering) tied to
 its amplitude tensor. It supports dense and sparse tensors, Fock ordering via
 :class:`~merlin.utils.combinadics.Combinadics`, and conversion to/from
-:class:`perceval.StateVector`.
+:class:`exqalibur.StateVector`.
 """
 
 from __future__ import annotations

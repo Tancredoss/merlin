@@ -1,5 +1,9 @@
 merlin.algorithms.feed_forward module
 ======================================
+
+.. automodule:: merlin.algorithms.feed_forward
+   :no-members:
+
 .. currentmodule:: merlin.algorithms.feed_forward
 
 .. autoclass:: FFStage

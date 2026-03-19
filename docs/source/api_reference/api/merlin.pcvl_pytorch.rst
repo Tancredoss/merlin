@@ -2,9 +2,7 @@ merlin.pcvl\_pytorch package
 ============================
 
 .. automodule:: merlin.pcvl_pytorch
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Submodules
 ----------

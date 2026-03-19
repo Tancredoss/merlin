@@ -1,6 +1,9 @@
 merlin.measurement.strategies module
 ====================================
 
+.. automodule:: merlin.measurement.strategies
+   :no-members:
+
 .. currentmodule:: merlin.measurement.strategies
 
 Overview

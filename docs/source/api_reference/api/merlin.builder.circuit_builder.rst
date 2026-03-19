@@ -1,6 +1,9 @@
 merlin.builder.circuit_builder module
 =====================================
 
+.. automodule:: merlin.builder.circuit_builder
+   :no-members:
+
 .. currentmodule:: merlin.builder.circuit_builder
 
 .. autoclass:: ModuleGroup

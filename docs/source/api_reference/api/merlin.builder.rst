@@ -2,9 +2,7 @@ merlin.builder package
 ======================
 
 .. automodule:: merlin.builder
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Submodules
 ----------

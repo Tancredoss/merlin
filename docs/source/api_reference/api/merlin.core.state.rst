@@ -1,6 +1,9 @@
 merlin.core.state module
 ========================
 
+.. automodule:: merlin.core.state
+   :no-members:
+
 .. currentmodule:: merlin.core.state
 
 .. autoclass:: StatePattern

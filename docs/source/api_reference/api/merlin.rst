@@ -1,7 +1,5 @@
 .. automodule:: merlin
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Subpackages
 -----------

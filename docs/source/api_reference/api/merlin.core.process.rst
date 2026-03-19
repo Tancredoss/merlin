@@ -1,6 +1,9 @@
 merlin.core.process module
 ==========================
 
+.. automodule:: merlin.core.process
+   :no-members:
+
 .. currentmodule:: merlin.core.process
 
 .. autoclass:: ComputationProcess

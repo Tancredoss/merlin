@@ -1,6 +1,9 @@
 merlin.datasets.utils module
 ============================
 
+.. automodule:: merlin.datasets.utils
+   :no-members:
+
 .. currentmodule:: merlin.datasets.utils
 
 .. autofunction:: get_venv_data_dir
@@ -18,4 +21,3 @@ merlin.datasets.utils module
 .. autofunction:: read_mnist_labels
 
 .. autofunction:: get_data_generic
-

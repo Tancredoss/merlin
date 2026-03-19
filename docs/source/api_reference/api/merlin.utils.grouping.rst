@@ -1,6 +1,9 @@
 merlin.utils.grouping module
 ============================
 
+.. automodule:: merlin.utils.grouping
+   :no-members:
+
 .. currentmodule:: merlin.utils.grouping
 
 .. autoclass:: LexGrouping
@@ -12,4 +15,3 @@ merlin.utils.grouping module
    :members:
    :undoc-members:
    :show-inheritance:
-

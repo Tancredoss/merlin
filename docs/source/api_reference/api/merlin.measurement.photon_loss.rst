@@ -8,6 +8,9 @@ directly inside a :class:`perceval.components.experiment.Experiment`. The result
 mapping, expanding the classical basis with loss outcomes whilst keeping
 probability normalisation intact.
 
+.. automodule:: merlin.measurement.photon_loss
+   :no-members:
+
 .. currentmodule:: merlin.measurement.photon_loss
 
 .. autoclass:: PhotonLossTransform

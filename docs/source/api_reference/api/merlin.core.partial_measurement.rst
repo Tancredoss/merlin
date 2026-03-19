@@ -1,6 +1,9 @@
 merlin.core.partial_measurement
 ===============================
 
+.. automodule:: merlin.core.partial_measurement
+   :no-members:
+
 .. currentmodule:: merlin.core.partial_measurement
 
 PartialMeasurementBranch

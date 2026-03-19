@@ -1,6 +1,9 @@
 merlin.measurement.mappers module
 =================================
 
+.. automodule:: merlin.measurement.mappers
+   :no-members:
+
 .. currentmodule:: merlin.measurement.mappers
 
 .. autoclass:: OutputMapper
@@ -21,4 +24,3 @@ merlin.measurement.mappers module
    :members:
    :undoc-members:
    :show-inheritance:
-

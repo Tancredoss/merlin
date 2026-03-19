@@ -1,6 +1,9 @@
 merlin.datasets.mnist\_digits module
 ====================================
 
+.. automodule:: merlin.datasets.mnist_digits
+   :no-members:
+
 .. currentmodule:: merlin.datasets.mnist_digits
 
 .. autofunction:: get_data_train_original

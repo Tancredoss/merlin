@@ -18,6 +18,9 @@ The `merlin.core.components` module defines the fundamental building blocks for 
 
 These components are used by higher-level tools (like `CircuitBuilder`) to assemble, manipulate, and compile quantum circuits for simulation or execution.
 
+.. automodule:: merlin.core.components
+   :no-members:
+
 .. currentmodule:: merlin.core.components
 
 .. autoclass:: ParameterRole

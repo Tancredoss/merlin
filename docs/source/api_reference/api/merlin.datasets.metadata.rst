@@ -1,6 +1,9 @@
 merlin.datasets.metadata module
 ===============================
 
+.. automodule:: merlin.datasets.metadata
+   :no-members:
+
 .. currentmodule:: merlin.datasets.metadata
 
 .. autoclass:: Normalization

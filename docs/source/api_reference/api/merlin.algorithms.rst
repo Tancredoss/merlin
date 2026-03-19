@@ -2,9 +2,7 @@ merlin.algorithms package
 =========================
 
 .. automodule:: merlin.algorithms
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Submodules
 ----------

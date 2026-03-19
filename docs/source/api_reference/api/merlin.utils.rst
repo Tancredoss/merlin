@@ -2,9 +2,7 @@ merlin.utils package
 ====================
 
 .. automodule:: merlin.utils
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Modules
 -------
