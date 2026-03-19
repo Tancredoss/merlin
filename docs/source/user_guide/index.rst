@@ -43,3 +43,21 @@ Migration guide
    :data: _data/galleries/user_guide/migration.json
    :columns: 2
    :contour-color: #f2994a
+
+
+User Guide Pages
+----------------
+
+.. toctree::
+   :maxdepth: 1
+
+   angle_amplitude_encoding
+   computation_space
+   feed_forward
+   grouping
+   kernels
+   layer
+   measurement_strategy
+   migration_guide
+   quantum_bridge
+   remote_execution
