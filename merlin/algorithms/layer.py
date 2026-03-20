@@ -78,11 +78,12 @@ from .module import MerlinModule
 
 
 class QuantumLayer(MerlinModule):
-    """
-    Quantum Neural Network Layer with factory-based architecture.
+    """Quantum neural network layer with factory-based architecture.
 
-    This layer can be created either from a :class:`~merlin.builder.circuit_builder.CircuitBuilder` instance, a pre-compiled :class:`perceval.components.linear_circuit.Circuit`,
-    or an :class:Experiment`.
+    This layer can be created either from a
+    :class:`~merlin.builder.circuit_builder.CircuitBuilder` instance, a
+    pre-compiled :class:`perceval.components.linear_circuit.Circuit`, or an
+    :class:`perceval.components.experiment.Experiment`.
     """
 
     @sanitize_parameters
@@ -180,15 +181,13 @@ class QuantumLayer(MerlinModule):
             ``MeasurementStrategy.mode_expectations(...)``, and
             ``MeasurementStrategy.amplitudes()``, plus legacy enum aliases
             ``PROBABILITIES``, ``MODE_EXPECTATIONS`` and ``AMPLITUDES`` (deprecated).
-        return_object: bool, default: False
-            When True, a typed object related to the measurement_strategy will be returned by forward(). If
-            false, a torch.Tensor will be returned. Here are the objects to be returned
-            |   measurement_strategy   |  return_object=False   | return_object=True |
-            | :-------  | :--------  | :----------: |
-            | AMPLTITUDES | torch.Tensor |  StateVector  |
-            | PROBABILITIES  | torch.Tensor  |  ProbabilityDistribution  |
-            | PARTIAL_MEASUREMENT | PartialMeasurement   |  PartialMeasurement  |
-            | MODE_EXPECTATIONS  | torch.Tensor   |  torch.Tensor    |
+        return_object : bool, default: False
+            When True, return a typed object associated with the selected
+            measurement strategy instead of a raw tensor.
+            - ``MeasurementKind.AMPLITUDES`` returns a ``StateVector``
+            - ``MeasurementKind.PROBABILITIES`` returns a ``ProbabilityDistribution``
+            - ``MeasurementKind.PARTIAL`` returns a ``PartialMeasurement``.
+            - ``MeasurementKind.MODE_EXPECTATIONS`` returns a ``torch.Tensor``.
         device : torch.device | None, optional
             Target device for internal tensors (e.g., ``torch.device("cuda")``).
         dtype : torch.dtype | None, optional
@@ -684,6 +683,14 @@ class QuantumLayer(MerlinModule):
         return amplitude
 
     def set_input_state(self, input_state):
+        """Set the layer input state for subsequent evaluations.
+
+        Parameters
+        ----------
+        input_state : pcvl.BasicState | tuple | list | torch.Tensor | StateVector
+            Input state to store on the layer and underlying computation
+            process.
+        """
         if isinstance(input_state, pcvl.BasicState):
             self.input_state = input_state
             self.computation_process.input_state = list(input_state)
@@ -752,14 +759,14 @@ class QuantumLayer(MerlinModule):
 
         Parameters
         ----------
-        ``*input_parameters`` : torch.Tensor | StateVector
+        input_parameters : torch.Tensor | StateVector
             Input data. For angle encoding, pass float tensors. For amplitude
             encoding, pass a single ``StateVector`` or complex tensor.
-        shots : int | None, optional
+        shots : int | None
             Number of samples; if 0 or None, return exact amplitudes/probabilities.
-        sampling_method : str | None, optional
+        sampling_method : str | None
             Sampling method, e.g. "multinomial".
-        simultaneous_processes : int | None, optional
+        simultaneous_processes : int | None
             Batch size hint for parallel computation.
 
         Returns
@@ -1058,6 +1065,20 @@ class QuantumLayer(MerlinModule):
         return None
 
     def to(self, *args, **kwargs):
+        """Move the layer and auxiliary transforms to a new device or dtype.
+
+        Parameters
+        ----------
+        args
+            Positional arguments forwarded to :meth:`torch.nn.Module.to`.
+        kwargs
+            Keyword arguments forwarded to :meth:`torch.nn.Module.to`.
+
+        Returns
+        -------
+        QuantumLayer
+            The updated layer instance.
+        """
         super().to(*args, **kwargs)
         # Manually move any additional tensors
         device = kwargs.get("device", None)
@@ -1100,10 +1121,12 @@ class QuantumLayer(MerlinModule):
 
     @property
     def output_size(self) -> int:
+        """int: Number of values produced after measurement mapping."""
         return self._output_size
 
     @property
     def has_custom_detectors(self) -> bool:
+        """bool: Whether the wrapped experiment defines non-default detectors."""
         return self._has_custom_detectors
 
     def _initialize_photon_loss_transform(self) -> None:
@@ -1190,8 +1213,13 @@ class QuantumLayer(MerlinModule):
                 self._current_params[name] = param.detach().cpu().numpy()
 
     def export_config(self) -> dict:
-        """
-        Export a standalone configuration for remote execution.
+        """Export a standalone configuration for remote execution.
+
+        Returns
+        -------
+        dict
+            Serializable layer configuration containing the resolved circuit,
+            parameters, and input metadata.
         """
         # TODO: to be revisited - not all options seems to be exported
         self._update_current_params()
@@ -1258,20 +1286,31 @@ class QuantumLayer(MerlinModule):
     ):
         """Create a ready-to-train layer with a (input_size+1)-mode, ceil((input_size+1)/2)-photon architecture.
 
-        The circuit is assembled via :class:`~merlin.builder.circuit_builder.CircuitBuilder` with the following layout:
+        The circuit is assembled via
+        :class:`~merlin.builder.circuit_builder.CircuitBuilder` with the
+        following layout:
 
         1. A fully trainable entangling layer acting on all modes;
         2. A full input encoding layer spanning all encoded features;
         3. A fully trainable entangling layer acting on all modes.
 
-        Args:
-            input_size: Size of the classical input vector. Must be 19 or lower.
-            output_size: Optional classical output width.
-            device: Optional target device for tensors.
-            dtype: Optional tensor dtype.
-            computation_space: Logical computation subspace; one of {"fock", "unbunched", "dual_rail"}.
+        Parameters
+        ----------
+        input_size : int
+            Size of the classical input vector. Must be 19 or lower.
+        output_size : int | None
+            Optional classical output width.
+        device : torch.device | None
+            Optional target device for tensors.
+        dtype : torch.dtype | None
+            Optional tensor dtype.
+        computation_space : ComputationSpace | str
+            Logical computation subspace; one of ``{"fock", "unbunched",
+            "dual_rail"}``.
 
-        Returns:
+        Returns
+        -------
+        nn.Module
             QuantumLayer configured with the described architecture.
         """
         n_modes = input_size + 1

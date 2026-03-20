@@ -31,15 +31,25 @@ from ..utils.dtypes import complex_dtype_for
 
 
 class MerlinModule(nn.Module):
-    """Generic MerLin module with shared utility functions
+    """Base Merlin module with shared execution-policy utilities.
 
+    Parameters
+    ----------
+    None
+
+    Notes
+    -----
     Merlin remote execution policy:
-      - `_force_simulation` (bool) defaults to False. When True, the layer MUST run locally.
-        The variable is set with property (getter and setter): `force_local`.
-      - `supports_offload()` reports whether remote offload is possible (via `export_config()`).
-      - `should_offload(processor, shots)` encapsulates the current offload policy:
-            return supports_offload() and not force_local
-      - `as_simulation()` provide local context forcing use as simulation
+
+    - ``_force_simulation`` defaults to ``False``. When ``True``, the layer
+      must run locally.
+    - ``force_local`` exposes that flag through a property interface.
+    - :meth:`supports_offload` reports whether remote offload is possible via
+      ``export_config()``.
+    - :meth:`should_offload` returns whether the current module should be
+      offloaded under the active policy.
+    - :meth:`as_simulation` provides a context manager that temporarily forces
+      local simulation.
     """
 
     # -------------------- Execution policy & helpers --------------------
@@ -73,6 +83,7 @@ class MerlinModule(nn.Module):
         return self.supports_offload() and not self.force_local
 
     def __init__(self) -> None:
+        """Initialize the shared Merlin module state."""
         super().__init__()
 
         # execution policy: when True, always simulate locally (do not offload)

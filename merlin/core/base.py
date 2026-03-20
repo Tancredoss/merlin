@@ -28,14 +28,22 @@ from abc import ABC, abstractmethod
 
 
 class AbstractComputationProcess(ABC):
-    """Abstract base class for quantum computation processes."""
+    """Abstract base class for quantum computation processes.
+
+    Parameters
+    ----------
+    None
+    """
 
     @abstractmethod
     def compute(self, *args, **kwargs):
-        r"""Perform the computation.
+        """Perform the computation.
 
-        Args:
-            \*args: Positional arguments for the computation.
-            \*\*kwargs: Keyword arguments for the computation.`
+        Parameters
+        ----------
+        args
+            Positional arguments for the computation.
+        kwargs
+            Keyword arguments for the computation.
         """
         pass

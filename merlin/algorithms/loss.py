@@ -45,12 +45,37 @@ class NKernelAlignment(_Loss):
         \text{NKA}(K, K^{*}) =
         -\frac{\operatorname{Tr}(K K^{*})}{
         \sqrt{\operatorname{Tr}(K^2)\operatorname{Tr}(K^{*2})}}
+
+    Parameters
+    ----------
+    None
     """
 
     def __init__(self):
+        """Initialize the negative kernel-target alignment loss."""
         super().__init__()
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        """Compute the negative kernel-target alignment loss.
+
+        Parameters
+        ----------
+        input : Tensor
+            Kernel matrix.
+        target : Tensor
+            Binary label vector in ``{-1, +1}`` or target kernel matrix.
+
+        Returns
+        -------
+        Tensor
+            Scalar loss value.
+
+        Raises
+        ------
+        ValueError
+            If ``input`` is not two-dimensional or if ``target`` contains
+            values other than ``-1`` and ``+1``.
+        """
         if input.dim() != 2:
             raise ValueError(
                 "Input must be a 2D tensor representing the kernel matrix."

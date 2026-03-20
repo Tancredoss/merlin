@@ -30,7 +30,17 @@ from typing import Any
 
 @dataclass
 class Circuit:
-    """Simple circuit container."""
+    """Simple circuit container.
+
+    Parameters
+    ----------
+    n_modes : int
+        Number of photonic modes in the circuit.
+    components : list[Any]
+        Ordered list of circuit components.
+    metadata : dict[str, Any]
+        Arbitrary circuit metadata.
+    """
 
     n_modes: int
     components: list[Any] = field(default_factory=list)
@@ -39,11 +49,15 @@ class Circuit:
     def add(self, component: Any) -> "Circuit":
         """Append a component and return the circuit for chained calls.
 
-        Args:
-            component: Circuit element (rotation, beam splitter, measurement, etc.).
+        Parameters
+        ----------
+        component : Any
+            Circuit element such as a rotation, beam splitter, or measurement.
 
-        Returns:
-            Circuit: ``self`` to support fluent-style chaining.
+        Returns
+        -------
+        Circuit
+            ``self`` to support fluent-style chaining.
         """
         self.components.append(component)
         return self
@@ -72,8 +86,10 @@ class Circuit:
     def get_parameters(self) -> dict[str, Any]:
         """Collect parameter placeholders exposed by each component.
 
-        Returns:
-            Dict[str, Any]: Mapping from parameter name to default value (or ``None``).
+        Returns
+        -------
+        dict[str, Any]
+            Mapping from parameter name to default value or ``None``.
         """
         params = {}
         for comp in self.components:

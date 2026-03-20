@@ -24,24 +24,38 @@ logger = logging.getLogger(__name__)
 
 
 class MerlinProcessor:
-    """
-    RPC-style processor for quantum execution with:
+    """RPC-style processor for quantum execution.
 
-      - Torch-friendly async interface (Future[torch.Tensor])
-      - Cloud offload of MerlinModule leaves (e.g. QuantumLayer)
-      - Batch chunking per quantum leaf with limited concurrency
-      - Cancellation (per-future and global)
-      - Global timeouts that cancel in-flight jobs
-      - Fresh RemoteProcessor per chunk/attempt (no shared RPC handlers across threads)
-      - Descriptive cloud job names (<= 50 chars) for traceability
+    The processor provides:
+
+    - Torch-friendly asynchronous execution via ``Future[torch.Tensor]``.
+    - Cloud offload of :class:`~merlin.algorithms.module.MerlinModule` leaves (e.g. QuantumLayer).
+    - Batch chunking per quantum leaf with limited concurrency.
+    - Cancellation support, both per future and globally.
+    - Global timeouts that cancel in-flight jobs.
+    - Fresh RemoteProcessor per chunk/attempt (no shared RPC handlers across threads).
+    - Descriptive cloud job names (<= 50 chars) for traceability.
 
     Only modules that subclass MerlinModule and implement `export_config()` are
     considered for offload. All other modules are always run locally.
 
-    Args:
-        remote_processor: A Perceval RemoteProcessor (legacy path).
-        session: A Perceval ISession, for example from Scaleway or Perceval Cloud (preferred path). Exactly one of ``remote_processor`` or ``session`` must be provided.
-        token: Optional auth token forwarded to cloned RemoteProcessors. When omitted the token is auto-extracted from the RP's handler, which covers both inline-token and ``RemoteConfig.set_token()`` workflows.
+    Parameters
+    ----------
+    remote_processor : RemoteProcessor | None
+        Perceval remote processor used in the legacy path.
+    session : ISession | None
+        Perceval session used to build remote processors. Exactly one of
+        ``remote_processor`` or ``session`` must be provided.
+    microbatch_size : int
+        Maximum number of inputs submitted in a single remote chunk.
+    timeout : float
+        Default timeout in seconds for remote calls.
+    max_shots_per_call : int | None
+        Maximum number of shots to request per remote sampler call.
+    chunk_concurrency : int
+        Maximum number of concurrent chunk submissions per quantum layer.
+    token : str | None
+        Optional authentication token forwarded to cloned remote processors.
     """
 
     DEFAULT_MAX_SHOTS: int = 100_000
@@ -60,6 +74,34 @@ class MerlinProcessor:
         chunk_concurrency: int = 1,
         token: str | None = None,
     ):
+        """Initialize the remote Merlin processor.
+
+        Parameters
+        ----------
+        remote_processor : RemoteProcessor | None
+            Perceval remote processor used in the legacy path.
+        session : ISession | None
+            Perceval session used to build remote processors.
+        microbatch_size : int
+            Maximum number of inputs submitted in a single remote chunk.
+        timeout : float
+            Default timeout in seconds for remote calls.
+        max_shots_per_call : int | None
+            Maximum number of shots to request per remote sampler call.
+        chunk_concurrency : int
+            Maximum number of concurrent chunk submissions per quantum layer.
+        token : str | None
+            Optional authentication token forwarded to cloned remote
+            processors.
+
+        Raises
+        ------
+        TypeError
+            If neither or both of ``remote_processor`` and ``session`` are
+            provided, or if their types are invalid.
+        ValueError
+            If the remote processor path is used and no token can be resolved.
+        """
         # ── Validate: exactly one of the two must be provided ──
         if remote_processor is not None and session is not None:
             raise TypeError("Provide either 'remote_processor' or 'session', not both.")
@@ -187,7 +229,24 @@ class MerlinProcessor:
         nsample: int | None = None,
         timeout: float | None = None,
     ) -> torch.Tensor:
-        """Synchronous convenience wrapper around forward_async()."""
+        """Run a module synchronously, offloading eligible Merlin layers.
+
+        Parameters
+        ----------
+        module : nn.Module
+            Module to evaluate.
+        input : torch.Tensor
+            Input batch to process.
+        nsample : int | None
+            Optional number of samples to request from the remote backend.
+        timeout : float | None
+            Optional timeout in seconds for this call.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor produced by ``module``.
+        """
         fut = self.forward_async(module, input, nsample=nsample, timeout=timeout)
         return fut.wait()
 
@@ -202,8 +261,28 @@ class MerlinProcessor:
         """Asynchronous execution of a PyTorch module, offloading MerlinModule
         leaves to the configured remote processor.
 
-        Returns a ``torch.futures.Future`` with extra helpers:
-        ``future.job_ids``, ``future.status()``, ``future.cancel_remote()``.
+        Parameters
+        ----------
+        module : nn.Module
+            Module to evaluate.
+        input : torch.Tensor
+            Input batch to process.
+        nsample : int | None
+            Optional number of samples to request from the remote backend.
+        timeout : float | None
+            Optional timeout in seconds for this call.
+
+        Returns
+        -------
+        Future
+            ``torch.futures.Future`` with extra helpers:
+            ``future.job_ids``, ``future.status()``, and
+            ``future.cancel_remote()``.
+
+        Raises
+        ------
+        RuntimeError
+            If the processor is closed or ``module`` is still in training mode.
         """
         with self._lock:
             if self._closed:
@@ -873,8 +952,27 @@ class MerlinProcessor:
     ) -> list[int]:
         """Estimate required shots per input row using the platform estimator.
 
-        Returns a list[int] with one entry per input row (0 means 'not viable').
-        Does not submit any cloud jobs.
+        Parameters
+        ----------
+        layer : MerlinModule
+            Layer providing ``export_config()`` for remote estimation.
+        input : torch.Tensor
+            Input tensor with one or more rows to estimate.
+        desired_samples_per_input : int
+            Target number of usable samples per input row.
+
+        Returns
+        -------
+        list[int]
+            Estimated shots per input row. ``0`` means the target is not
+            considered viable.
+
+        Raises
+        ------
+        TypeError
+            If ``layer`` does not provide ``export_config()``.
+        ValueError
+            If ``input`` is not one- or two-dimensional.
         """
         if not hasattr(layer, "export_config") or not callable(
             cast(Any, layer).export_config
@@ -949,7 +1047,13 @@ class MerlinProcessor:
         return ()
 
     def get_job_history(self) -> list[RemoteJob]:
-        """Return all jobs observed/submitted by this instance."""
+        """Return all jobs observed or submitted by this instance.
+
+        Returns
+        -------
+        list[RemoteJob]
+            Recorded remote jobs.
+        """
         return self._job_history
 
     def clear_job_history(self) -> None:
