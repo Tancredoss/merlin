@@ -1,6 +1,9 @@
 merlin.measurement.strategies module
 ====================================
 
+.. automodule:: merlin.measurement.strategies
+   :no-members:
+
 .. currentmodule:: merlin.measurement.strategies
 
 Overview
@@ -94,7 +97,44 @@ methods, do not also pass ``computation_space`` separately in constructors such 
 Reference
 ---------
 
-.. automodule:: merlin.measurement.strategies
+.. autoclass:: BaseMeasurementStrategy
    :members:
    :undoc-members:
    :show-inheritance:
+
+.. autoclass:: DistributionStrategy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: ProbabilitiesStrategy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: ModeExpectationsStrategy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: AmplitudesStrategy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: PartialMeasurementStrategy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: MeasurementKind
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: MeasurementStrategy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autofunction:: resolve_measurement_strategy

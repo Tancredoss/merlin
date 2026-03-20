@@ -339,18 +339,27 @@ class SLOSComputeGraph:
         """
         Initialize the SLOS computation graph.
 
-        Args:
-            m (int): Number of modes in the circuit
-            n_photons (int): Number of photons in the input state given to the model during the forward pass
-            output_map_func (callable, optional): Function that maps output states
-            computation_space (ComputationSpace): Enumeration domain.
-            keep_keys (bool): If True, output state keys are returned
-            device: Optional device to place tensors on (CPU, CUDA, etc.)
-            dtype: Data type precision for floating point calculations (default: torch.float)
-                  Use torch.float16 for half precision, torch.float for single precision,
-                  or torch.float64 for double precision
-            index_photons: List of tuples (first_integer, second_integer). The first_integer is the
-                  lowest index layer a photon can take and the second_integer is the highest index
+        Parameters
+        ----------
+        m (int)
+            Number of modes in the circuit
+        n_photons (int)
+            Number of photons in the input state given to the model during the forward pass
+        output_map_func (callable, optional)
+            Function that maps output states
+        computation_space (ComputationSpace)
+            Enumeration domain.
+        keep_keys (bool)
+            If True, output state keys are returned
+        device
+            Optional device to place tensors on (CPU, CUDA, etc.)
+        dtype
+            Data type precision for floating point calculations (default: torch.float)
+            Use torch.float16 for half precision, torch.float for single precision,
+            or torch.float64 for double precision
+        index_photons
+            List of tuples (first_integer, second_integer). The first_integer is the
+            lowest index layer a photon can take and the second_integer is the highest index
 
         """
         self.m = m
@@ -948,26 +957,31 @@ def build_slos_distribution_computegraph(
 
     Parameters
     ----------
-    m : int
+    m (int)
         Number of modes in the circuit.
-    n_photons : int
+    n_photons (int)
         Total number of photons injected in the circuit.
-    output_map_func : callable, optional
+    output_map_func (callable, optional)
         Mapping applied to each output Fock state, allowing post-processing.
-    computation_space : ComputationSpace, optional
-    keep_keys : bool, optional
+    computation_space (ComputationSpace, optional)
+        Logical computation subspace used to build the basis and transitions.
+        When omitted, defaults to ``ComputationSpace.UNBUNCHED``.
+    no_bunching (bool, optional)
+        Deprecated legacy flag. Use ``computation_space`` instead.
+    keep_keys (bool, optional)
         Whether to keep the list of mapped Fock states.
-    device : torch.device, optional
+    device (torch.device, optional)
         Device on which tensors should be allocated.
-    dtype : torch.dtype, optional
+    dtype (torch.dtype, optional)
         Real dtype controlling numerical precision.
-    index_photons : list[tuple[int, ...]], optional
+    index_photons (list[tuple[int, ...]], optional)
         Bounds for each photon placement.
 
     Returns
     -------
     SLOSComputeGraph
         Pre-built computation graph ready for repeated evaluations.
+
     """
 
     if no_bunching is not None:
@@ -1018,15 +1032,21 @@ def build_slos_distribution_computegraph(
                 "vectorized_operations": compute_graph.vectorized_operations,
                 "final_keys": compute_graph.final_keys,
                 "mapped_keys": compute_graph.mapped_keys,
-                "mapped_indices": compute_graph.mapped_indices
-                if hasattr(compute_graph, "mapped_indices")
-                else None,
-                "total_mapped_keys": compute_graph.total_mapped_keys
-                if hasattr(compute_graph, "total_mapped_keys")
-                else None,
-                "target_indices": compute_graph.target_indices
-                if hasattr(compute_graph, "target_indices")
-                else None,
+                "mapped_indices": (
+                    compute_graph.mapped_indices
+                    if hasattr(compute_graph, "mapped_indices")
+                    else None
+                ),
+                "total_mapped_keys": (
+                    compute_graph.total_mapped_keys
+                    if hasattr(compute_graph, "total_mapped_keys")
+                    else None
+                ),
+                "target_indices": (
+                    compute_graph.target_indices
+                    if hasattr(compute_graph, "target_indices")
+                    else None
+                ),
             },
             path,
         )

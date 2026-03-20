@@ -62,17 +62,17 @@ Research and Paper reproductions
 -----------------------
 QML research at Quandela
 
-   .. merlin-gallery::
-      :data: _data/galleries/examples/qml_research.json
-      :columns: 2
-      :contour-color: #5648ED
+.. merlin-gallery::
+    :data: _data/galleries/examples/qml_research.json
+    :columns: 2
+    :contour-color: #5648ED
 
 Highlights of the reproduced papers
 
-   .. merlin-gallery::
-      :data: _data/galleries/examples/reproduced_highlights.json
-      :columns: 4
-      :contour-color: #5648ED
+.. merlin-gallery::
+    :data: _data/galleries/examples/reproduced_highlights.json
+    :columns: 4
+    :contour-color: #5648ED
 
 Benchmarks and Evaluations
 -----------------------

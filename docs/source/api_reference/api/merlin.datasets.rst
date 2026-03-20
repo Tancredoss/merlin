@@ -2,9 +2,7 @@ merlin.datasets package
 =======================
 
 .. automodule:: merlin.datasets
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Submodules
 ----------
@@ -15,5 +13,7 @@ Submodules
    merlin.datasets.metadata
    merlin.datasets.iris
    merlin.datasets.mnist_digits
+   merlin.datasets.fashion_mnist
+   merlin.datasets.k_mnist
    merlin.datasets.spiral
    merlin.datasets.utils
