@@ -45,8 +45,8 @@ Migration guide
    :contour-color: #f2994a
 
 
-User Guide Pages
-----------------
+Other Guides you would want to check out !
+------------------------------------------
 
 .. toctree::
    :maxdepth: 1
