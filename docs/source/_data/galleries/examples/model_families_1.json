@@ -26,5 +26,12 @@
     "image": "_static/examples/VQC_plot.png",
     "doc": "notebooks/reproduced_papers/GanEtAl_VQC_classification",
     "tags": ["Reproduced paper","Variational", "Number of Photons","Moons","Circles","Linear"]
+  },
+  {
+    "title": "The Basics of Quantum Optical Reservoir Computing",
+    "summary": "Introduction to the quantum optical reservoir computing and classical readout.",
+    "image": "_static/img/reservoir_scheme.png",
+    "doc": "notebooks/QORC-basics.ipynb",
+    "tags": ["QORC","Reservoir","Tutorial","Classification"]
   }
 ]
