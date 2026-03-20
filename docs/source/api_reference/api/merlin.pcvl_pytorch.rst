@@ -12,3 +12,4 @@ Submodules
 
    merlin.pcvl_pytorch.locirc_to_tensor
    merlin.pcvl_pytorch.slos_torchscript
+   merlin.pcvl_pytorch.utils

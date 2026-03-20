@@ -21,8 +21,8 @@ The different components of the builder with their arguments and example of code
 
 Below are the components available in the ``CircuitBuilder`` class.
 
-Add Rotations
--------------
+**add_rotations**
+-----------------------
 
 Adds one or multiple phase shifters across the specified modes.
 
@@ -55,8 +55,8 @@ Arguments:
    :width: 200px
    :align: center
 
-Add Angle Encoding
-------------------
+**add_angle_encoding**
+----------------------------
 
 Adds angle-based input encoding to the circuit.
 
@@ -73,8 +73,8 @@ Arguments:
 
 This will show as a rotation layer as data is encoded in phase shifters.
 
-Add Entangling Layer
---------------------
+**add_entangling_layer**
+------------------------------
 
 Adds an entangling layer spanning a range of modes using a generic interferometer.
 
@@ -115,8 +115,8 @@ Switching to a Bell-style interferometer is as simple as:
    :width: 200px
    :align: center
 
-Add Superpositions
-------------------
+**add_superposition**
+-----------------------
 
 Adds one or more beam splitters with optional depth.
 
