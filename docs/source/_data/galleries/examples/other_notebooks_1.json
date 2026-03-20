@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Reproduced paper: Fock State-Enhanced Expressivity's Fourier Series Study",
+    "summary": "Experiment on the relation between the number of photons and expressivity of the model.",
+    "image": "_static/img/gan_fourier.png",
+    "doc": "notebooks/reproduced_papers/GanEtAl_VQC_fourier_series",
+    "tags": ["Reproduced paper","Variational", "Fourier series"]
+  },
+  {
+    "title": "Reproduced paper: Fock State-Enhanced Expressivity's Kernel Study",
+    "summary": "Experiments to benchmarks the kernel used in the paper.",
+    "image": "_static/img/gan_kernel.png",
+    "doc": "notebooks/reproduced_papers/GanEtAl_q_gaussian_kernel",
+    "tags": ["Reproduced paper","Kernel","Gaussians","SVM","Moons","Circles","Linear"]
+  },
+  {
+    "title": "Reproduced paper: Fock State-Enhanced Expressivity's Quantum-Enhanced Random Kitchen Sinks Study",
+    "summary": "Experiments to benchmarks the quantum-enhanced random kitchen sinks used in the paper.",
+    "image": "_static/img/gan_sinks.png",
+    "doc": "notebooks/reproduced_papers/GanEtAl_q_random_kitchen_sinks",
+    "tags": ["Reproduced paper","Random Kitchen Sinks","Function approximation","Moons"]
+  }
+]

@@ -1,0 +1,16 @@
+[
+  {
+    "title": "QuantumLayer essentials",
+    "summary": "The essentials for using MerLin's main module: the QuantumLayer.",
+    "image": "_static/img/diagrams.png",
+    "doc": "user_guide/layer",
+    "tags": ["Introduction", "QuantumLayer", "Overview"]
+  },
+  {
+    "title": "Angle and Amplitude Encoding",
+    "summary": "Introduction to these two encoding strategies and their tradeoffs.",
+    "image": "_static/img/Circ_simple.png",
+    "doc": "user_guide/angle_amplitude_encoding",
+    "tags": ["Encodings", "Comparison","Amplitude","Angle"]
+  }
+]

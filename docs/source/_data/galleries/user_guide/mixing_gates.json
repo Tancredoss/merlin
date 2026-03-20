@@ -1,0 +1,9 @@
+[
+  {
+    "title": "From qubits to photons",
+    "summary": "Introduction of the QuantumBridge: the MerLin object that allows you to combine photonic and gate-based circuits.",
+    "image": "_static/img/quantumbridge.png",
+    "doc": "user_guide/quantum_bridge",
+    "tags": ["Introduction", "QuantumBridge", "Qubits", "Gate-based"]
+  }
+]

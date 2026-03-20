@@ -1,0 +1,16 @@
+[
+  {
+    "title": "Efficient training of photonic quantum generative models",
+    "summary": "Paper on an efficient training procedure for photon-native quantum generative models.",
+    "image": "_static/img/paper_photonic_qgan.png",
+    "url": "https://arxiv.org/abs/2603.08793",
+    "tags": ["External link","Quantum Generative Models"]
+  },
+  {
+    "title": "Perceval Quest",
+    "summary": "A paper listing all of the submissions of the Perceval Quest: Classifying MNIST with a QML approach.",
+    "image": "_static/img/perceval_quest_paper.png",
+    "url": "https://arxiv.org/abs/2510.25839",
+    "tags": ["External link","Challenge","MNIST"]
+  }
+]
