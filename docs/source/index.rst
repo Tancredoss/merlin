@@ -194,7 +194,7 @@ Next Steps
 
 - **Get started**: :doc:`quickstart/index`
 - **Understand MerLin**: :doc:`user_guide/index`
-- **Explore examples**: :doc:`examples/index
+- **Explore examples**: :doc:`examples/index`
 - **Reproduce papers**: :doc:`reproduced_papers/index`
 - **Contribute**: :doc:`contribution`
 - **API reference**: :doc:`api_reference/index`

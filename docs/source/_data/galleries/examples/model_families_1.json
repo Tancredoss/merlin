@@ -1,21 +1,28 @@
 [
   {
-    "title": "Fidelity kernel classification",
+    "title": "Kernel Methods: Fidelity kernel classification",
     "summary": "Introduction to these two encoding strategies and their tradeoffs.",
-    "image": "_static/img/MerLin_black.png",
+    "image": "_static/img/Iris_pipeline.png",
     "doc": "notebooks/Kernels.ipynb",
     "tags": ["Tutorial", "Kernels", "FidelityKernel","Iris"]
   },
   {
+    "title": "Kernel Methods: Quantum Kernel vs Clasical Kernel",
+    "summary": "Comparing classical kernels with quantum fidelity kernels on a simple dataset.",
+    "image": "_static/img/MerLin_black.png",
+    "doc": "examples/index",
+    "tags": ["Comparison", "Kernels","DATASET", "Coming soon!"]
+  },
+  {
     "title": "Variational Quantum Models: Classification",
     "summary": "Training a variational photonic circuit on a simple classification task.",
-    "image": "_static/img/partial_measurement.png",
-    "doc": "user_guide/measurement_strategy",
-    "tags": ["Measurement", "Probabilities", "Amplitudes", "Partial measurement"]
+    "image": "_static/img/Iris_pipeline.png",
+    "doc": "notebooks/iris_classification",
+    "tags": ["Tutorial","Comparison","MLP","Iris"]
   },
   {
     "title": "Variational Quantum Models: Impact of the Photon Number",
-    "summary": "How to use MerLin's circuit builder to easily create custom quantum layers.",
+    "summary": "How photon number affects expressivity and Fourier components?",
     "image": "_static/examples/VQC_plot.png",
     "doc": "notebooks/reproduced_papers/GanEtAl_VQC_classification",
     "tags": ["Reproduced paper","Variational", "Number of Photons","Moons","Circles","Linear"]
