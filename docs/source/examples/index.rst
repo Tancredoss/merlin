@@ -81,16 +81,15 @@ Benchmarks and Evaluations
    :columns: 3
    :contour-color: #5648ED
 
-Other notebooks
------------------------
+Browse through our notebooks
+----------------------------
 .. merlin-gallery::
    :data: _data/galleries/examples/other_notebooks_1.json
    :columns: 3
    :contour-color: #5648ED
 
-
-All of the notebooks
------------------------
+Discover more usages of MerLin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. toctree::
    :maxdepth: 1
