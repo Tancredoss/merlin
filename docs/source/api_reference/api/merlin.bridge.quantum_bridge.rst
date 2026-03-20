@@ -1,10 +1,15 @@
 merlin.bridge.quantum_bridge module
-========================
-
+===================================
 .. automodule:: merlin.bridge.quantum_bridge
+   :no-members:
+
+.. currentmodule:: merlin.bridge.quantum_bridge
+
+.. autoclass:: QuantumBridge
    :members:
    :undoc-members:
    :show-inheritance:
+
 
 
 Overview
@@ -32,8 +37,8 @@ Architecture
 
 The bridge operates in three stages:
 
-1. **State Preparation**: A PennyLane circuit or function generates a qubit statevector ψ ∈ ℂ^(2^n)
-2. **Encoding**: Each computational basis state |bitstring⟩ is mapped to a Fock state with one photon per qubit group
+1. **State Preparation**: A PennyLane circuit or function generates a qubit statevector :math:`| \psi \rangle \in \mathbb{C}^{2^n}`
+2. **Encoding**: Each computational basis state :math:`| \text{bitstring} \rangle` is mapped to a Fock state with one photon per qubit group
 3. **Photonic Processing**: The encoded superposition is fed to a Merlin QuantumLayer for photonic computation
 
 Encoding Scheme
@@ -51,35 +56,16 @@ Each group of gᵢ qubits is encoded as one photon distributed across 2^gᵢ mod
 Parameters
 ~~~~~~~~~~
 
-.. py:class:: QuantumBridge(*, qubit_groups, n_modes, n_photons, computation_space='unbunched', device=None, dtype=torch.float32, wires_order='little', normalize=True)
-
-   :param list[int] qubit_groups: List specifying the size of each qubit group. 
-                                   For example, [2, 2] splits 4 qubits into two groups of 2.
-   
-   :param int n_modes: Total number of photonic modes (must equal Σ 2^group_size).
-   
-   :param int n_photons: Number of photons in the photonic layer (must equal len(qubit_groups)).
-   
-   :param str computation_space: Target computation space (``"fock"``, ``"unbunched"``, or ``"dual_rail"``).
-   :param torch.device device: Target device for computation (default: None, infers from input).
-   
-   :param torch.dtype dtype: Data type for real-valued tensors (default: torch.float32).
-   
-   :param str wires_order: Qubit ordering convention - 'little' (LSB first) or 'big' (MSB first) (default: 'little').
-   
-   :param bool normalize: Whether to normalize the input statevector (default: True).
+See the class signature above for the full constructor, including ``qubit_groups``,
+``n_modes``, ``n_photons``, ``computation_space``, ``device``, ``dtype``,
+``wires_order``, and ``normalize``.
 
 Helper Functions
 ----------------
 
-.. automethod:: merlin.bridge.QuantumBridge.qubit_to_fock_state
-
-   Converts a bitstring to a photonic BasicState using one-photon-per-group encoding.
-
-   :param str qubit_state: Binary string representing the qubit state (e.g., "1011")
-   :param list[int] group_sizes: List of qubit group sizes
-   :returns: Perceval BasicState with one photon per group
-   :rtype: pcvl.BasicState
+The :meth:`~merlin.bridge.quantum_bridge.QuantumBridge.qubit_to_fock_state`
+helper converts a bitstring to the corresponding photonic basic state under the
+current grouping convention.
 
 Usage Examples
 --------------
@@ -249,6 +235,6 @@ Performance Tips
 See Also
 --------
 
-* :class:`merlin.QuantumLayer`: The underlying photonic processor interface
+* :class:`merlin.algorithms.layer.QuantumLayer`: The underlying photonic processor interface
 * `PennyLane Documentation <https://pennylane.ai>`_: For quantum circuit design
 * `Perceval Documentation <https://perceval.quandela.net>`_: For photonic circuit details

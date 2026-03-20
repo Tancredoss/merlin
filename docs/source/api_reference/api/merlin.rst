@@ -1,7 +1,5 @@
 .. automodule:: merlin
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Subpackages
 -----------
@@ -11,6 +9,7 @@ Subpackages
 
    merlin.algorithms
    merlin.builder
+   merlin.bridge
    merlin.core
    merlin.datasets
    merlin.measurement

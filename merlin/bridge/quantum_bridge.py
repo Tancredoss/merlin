@@ -43,19 +43,28 @@ class QuantumBridge(nn.Module):
     The bridge applies a fixed transition matrix that maps computational-basis amplitudes
     into the selected photonic computation space (Fock, unbunched, or dual-rail).
 
-    Args:
-        n_photons: Number of logical photons (equals ``len(qubit_groups)``).
-        n_modes: Total number of photonic modes that will be simulated downstream.
-        qubit_groups: Logical grouping of qubits; ``[2, 1]`` means one photon is spread
-            over ``2**2`` modes and another over ``2**1`` modes.
-        wires_order: Endianness used to interpret computational basis strings.
-        computation_space: Target photonic computation space. Accepts a
-            :class:`ComputationSpace` enum or a string (``"fock"``, ``"unbunched"``,
-            ``"dual_rail"``).
-        normalize: Whether to L2-normalise input statevectors before applying the
-            transition matrix.
-        device: Optional device on which to place the output tensor.
-        dtype: Real dtype that determines the corresponding complex dtype for amplitudes.
+    Parameters
+    ----------
+    n_photons
+        Number of logical photons (equals ``len(qubit_groups)``).
+    n_modes
+        Total number of photonic modes that will be simulated downstream.
+    qubit_groups
+        Logical grouping of qubits; ``[2, 1]`` means one photon is spread
+        over ``2**2`` modes and another over ``2**1`` modes.
+    wires_order
+        Endianness used to interpret computational basis strings.
+    computation_space
+        Target photonic computation space. Accepts a
+        :class:`~merlin.core.computation_space.ComputationSpace` enum or a string (``"fock"``, ``"unbunched"``,
+        ``"dual_rail"``).
+    normalize
+        Whether to L2-normalise input statevectors before applying the
+        transition matrix.
+    device
+        Optional device on which to place the output tensor.
+    dtype
+        Real dtype that determines the corresponding complex dtype for amplitudes.
     """
 
     def __init__(
@@ -221,7 +230,7 @@ class QuantumBridge(nn.Module):
 
     def qubit_to_fock_state(self, bitstring: str) -> pcvl.BasicState:
         r"""
-        Convenience helper mirroring :func:`qubit_to_fock_state` with the bridge configuration.
+        Convenience helper mirroring `qubit_to_fock_state` with the bridge configuration.
 
         Parameters
         ----------
@@ -230,7 +239,7 @@ class QuantumBridge(nn.Module):
 
         Returns
         -------
-        perceval.BasicState
+        `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_
             Photonic Fock state produced by the current qubit grouping convention.
         """
         if len(bitstring) != self.n_qubits:

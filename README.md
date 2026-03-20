@@ -104,18 +104,18 @@ The following shows how to create a very simple quantum layer using MerLin's hig
 integrated into any PyTorch model, and supports usual PyTorch operations like training and inference.
 
 ``` python
-   import merlin as ML # Package: merlinquantum, import: merlin
-   import torch
-   
-   # Create a simple quantum layer
-   quantum_layer = ML.QuantumLayer.simple(
-       input_size=3,
-   )
+import merlin as ML  # Package: merlinquantum, import: merlin
+import torch
 
-   # Use it like any PyTorch layer
-   x = torch.rand(10, 3)
-   output = quantum_layer(x)
-   print(f"Input shape: {x.shape}, Output shape: {output.shape}")
+# Create a simple quantum layer
+quantum_layer = ML.QuantumLayer.simple(
+    input_size=3,
+)
+
+# Use it like any PyTorch layer
+x = torch.rand(10, 3)
+output = quantum_layer(x)
+print(f"Input shape: {x.shape}, Output shape: {output.shape}")
 ```
 
 Under the hood, this simple interface wraps complex photonic quantum operations — including architecture selection, ansatz design, input encoding, and photon number configuration. Learn more in our [User Guide](https://merlinquantum.ai/user_guide/index.html).

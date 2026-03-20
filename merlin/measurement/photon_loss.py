@@ -85,10 +85,10 @@ class PhotonLossTransform(torch.nn.Module):
 
     Args:
         simulation_keys: Iterable describing the raw Fock states produced by the
-            simulator (as tuples or lists of integers).
+        simulator (as tuples or lists of integers).
         survival_probs: One survival probability per optical mode.
         dtype: Optional torch dtype for the transform matrix. Defaults to
-            ``torch.float32``.
+        ``torch.float32``.
         device: Optional device used to stage the transform matrix.
     """
 

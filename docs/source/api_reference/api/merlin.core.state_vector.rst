@@ -1,6 +1,9 @@
 merlin.core.state_vector
 ========================
 
+.. automodule:: merlin.core.state_vector
+   :no-members:
+
 .. currentmodule:: merlin.core.state_vector
 
 StateVector

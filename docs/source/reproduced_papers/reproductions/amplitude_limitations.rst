@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
+============================================================
 Limitations of Amplitude Encoding on Quantum Classification
-====================================================
+============================================================
 
 .. admonition:: Paper Information
    :class: note

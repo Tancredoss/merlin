@@ -2,9 +2,7 @@ merlin.utils package
 ====================
 
 .. automodule:: merlin.utils
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Modules
 -------
@@ -12,5 +10,8 @@ Modules
 .. toctree::
    :maxdepth: 4
 
+   merlin.utils.combinadics
+   merlin.utils.deprecations
+   merlin.utils.dtypes
    merlin.utils.grouping
-
+   merlin.utils.normalization

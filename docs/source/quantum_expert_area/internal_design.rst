@@ -75,7 +75,7 @@ The parser records these stages as ``FFStage`` instances. Each stage stores
 
 After a detector stage finishes, the measured modes are removed from the active
 set so that every subsequent circuit is expressed solely in terms of the
-remaining modes. This remapping guarantees that the :class:`QuantumLayer`
+remaining modes. This remapping guarantees that the :class:`~merlin.algorithms.layer.QuantumLayer`
 constructed for the stage matches the reduced dimensionality, while the
 original mode identifiers are still available for bookkeeping.
 
@@ -111,12 +111,12 @@ remaining_photons, amplitudes)`` so callers can reason about the remaining
 mixed state. ``merlin.MeasurementStrategy.probs()`` collapses every branch into a tensor of shape
 ``(batch_size, len(output_keys))`` where the columns already align with the
 fully specified Fock states recorded in
-:pyattr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_keys`.
+:py:attr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_keys`.
 ``merlin.MeasurementStrategy.mode_expectations()`` produces a ``(batch_size, num_modes)`` tensor describing
 the photon expectations per mode. The result is already aggregated across all
-measurement keys, so :pyattr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_keys`
+measurement keys, so :py:attr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_keys`
 is retained solely for metadata while
-:pyattr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_state_sizes`
+:py:attr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_state_sizes`
 equals ``num_modes`` for every key so consumers can reason about downstream
 reshaping without additional bookkeeping.
 
@@ -129,7 +129,7 @@ SLOS Torch simulation helpers
 =============================
 
 MerLin provides TorchScript-optimized primitives in
-:mod:`merlin.pcvl_pytorch.slos_torchscript` to simulate photonic circuits with
+:mod:`~merlin.pcvl_pytorch.slos_torchscript` to simulate photonic circuits with
 high throughput. These helpers separate graph construction from evaluation and
 offer two primary execution paths matching the two common encoding schemes:
 
@@ -193,21 +193,24 @@ Contract
 --------
 
 * ``compute(unitary, input_state)``
+  
   - Input: ``unitary`` with shape ``[B, m, m]`` (or ``[m, m]``), complex dtype
     matching the graph precision; ``input_state`` as a length-``m`` list of
     integers whose sum equals the photon count.
-  - Output: ``(keys, amplitudes)`` where ``amplitudes`` has shape
-    ``[B, S]`` and ``keys`` enumerates the output Fock states (or
-    ``None`` if keys are not retained).
+  - Output: ``(keys, amplitudes)`` where ``amplitudes`` has shape ``[B, S]``
+    and ``keys`` enumerates the output Fock states (or ``None`` if keys are not
+    retained).
   - Usage: angle encoding (vary unitaries over the batch).
 
 * ``compute_batch(unitary, input_states)``
+  
   - Input: ``unitary`` with shape ``[m, m]`` (or ``[1, m, m]``) and
     ``input_states`` as a list of Fock states; all states must have the same
     total photon number.
-  - Output: ``(keys, amplitudes)`` where ``amplitudes`` has shape
-    ``[1, S, N]`` (or squeezed), with ``N`` the number of input states.
+  - Output: ``(keys, amplitudes)`` where ``amplitudes`` has shape ``[1, S, N]``
+    (or squeezed), with ``N`` the number of input states.
   - Usage: amplitude encoding (vary inputs while the unitary is fixed).
+
 
 Integration in QuantumLayer
 ---------------------------

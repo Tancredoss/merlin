@@ -11,6 +11,7 @@ Quantum Expert Area
    :caption: Table of Contents
 
    architectures
+   building_intuition
    internal_design
    SLOS
    experiment_support

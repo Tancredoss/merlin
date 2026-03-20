@@ -47,7 +47,7 @@ Extensions:
 - Combine with :class:`~merlin.utils.grouping.LexGrouping` or :class:`~merlin.utils.grouping.ModGrouping` when you need fewer output features and don't want to increase the number of parameters.
 
 MODE_EXPECTATIONS
-----------------
+------------------------------
 
 The output vector is real and has a size equal to the number of modes. Each element represents the expected number of photons in the corresponding mode. In the unbunched computation space, the vector instead provides the probability of detecting at least one photon in each respective mode.
 
@@ -74,7 +74,7 @@ Key properties:
 Return type (forward call):
 
 - return_object=False: ``torch.Tensor``
-- return_object=True: ``torch.Tensor`
+- return_object=True: ``torch.Tensor``
 
 AMPLITUDES
 ---------------
@@ -102,7 +102,7 @@ Use this strategy for debugging, algorithmic research, or when a classical routi
 Return type (forward call):
 
 - return_object=False: ``torch.Tensor``
-- return_object=True: ``merlin.StateVector`
+- return_object=True: ``merlin.StateVector``
 
 .. note::
   Adding photon loss or detectors corresponds to performing a measurement of the quantum state, 
@@ -110,14 +110,14 @@ Return type (forward call):
   this measurement strategy **requires that no noise model or detectors are defined**.
 
 PARTIAL MEASUREMENT
----------------
+-----------------------
 
 Partial measurement is a specific kind of measurement strategy. With this measurement strategy, only some modes are measured while amplitudes are preserved on the other modes. For more details, checkout the :doc:`/quantum_expert_area/partial_measurement` page.
 
 Photon Loss-aware & Detector-aware execution
 ============================================
 
-When a :class:`perceval.Experiment` is provided, the :class:`~merlin.algorithms.layer.QuantumLayer`
+When a :class:`perceval.components.experiment.Experiment` is provided, the :class:`~merlin.algorithms.layer.QuantumLayer`
 derives a photon loss transform and a detector transform that remaps raw Fock-state probabilities to the classical
 outcomes defined by the experiment. The photon loss mapping is applied first. Then, the detector mapping is applied. Lastly, the
 measurement strategy converts the distribution into classical features. As a consequence:
@@ -205,7 +205,7 @@ The snippet below prepares a basic quantum layer and returns a ``ProbabilityDist
     assert isinstance(probs.tensor,torch.Tensor)
 
 Migrating from OutputMappingStrategy (legacy)
-============================================
+=================================================
 
 Earlier releases exposed :class:`~merlin.algorithms.layer.QuantumLayer` through
 ``OutputMappingStrategy``. Newc code should rely on :class:`~merlin.measurement.strategies.MeasurementStrategy`
