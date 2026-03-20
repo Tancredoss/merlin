@@ -33,6 +33,13 @@ Model families
    :columns: 4
    :contour-color: #5648ED
 
+Application examples
+-----------------------
+.. merlin-gallery::
+   :data: _data/galleries/examples/applications.json
+   :columns: 4
+   :contour-color: #5648ED
+
 Other notebooks
 -----------------------
 - :doc:`../notebooks/iris_classification`
