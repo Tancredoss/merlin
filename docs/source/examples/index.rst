@@ -59,7 +59,7 @@ Hardware Examples
    :contour-color: #5648ED
 
 Research and Paper reproductions
------------------------
+--------------------------------
 QML research at Quandela
 
 .. merlin-gallery::
@@ -75,7 +75,7 @@ Highlights of the reproduced papers
     :contour-color: #5648ED
 
 Benchmarks and Evaluations
------------------------
+--------------------------
 .. merlin-gallery::
    :data: _data/galleries/examples/benchmarks.json
    :columns: 3
@@ -101,7 +101,6 @@ Discover more usages of MerLin
    ../notebooks/binary_classification
    ../notebooks/classifying_circles_from_installation
    ../notebooks/iris_classification
-   ../notebooks/Lorenz_MLP
    ../notebooks/QORC-basics
    ../notebooks/QORC-demo-MNIST
    ../notebooks/release_0,3_highlights
