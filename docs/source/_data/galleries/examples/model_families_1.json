@@ -21,10 +21,10 @@
     "tags": ["Reproduced paper","Variational", "Number of Photons","Moons","Circles","Linear"]
   },
   {
-    "title": "QORC basis",
+    "title": "The Basics of Quantum Optical Reservoir Computing",
     "summary": "Introduction to the quantum optical reservoir computing and classical readout.",
-    "image": "_static/img/merlin_black.png",
-    "doc": "reproduced_papers/reproductions/quantum_reservoir_computing.rst",
-    "tags": ["QORC","Reservoir","Coming soon!"]
+    "image": "_static/img/reservoir_scheme.png",
+    "doc": "notebooks/QORC-basics.ipynb",
+    "tags": ["QORC","Reservoir","Tutorial","Classification"]
   }
 ]
