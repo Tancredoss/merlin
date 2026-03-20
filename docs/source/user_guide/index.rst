@@ -45,10 +45,8 @@ Migration guide
    :contour-color: #f2994a
 
 
-Other Guides you would want to check out !
-------------------------------------------
-
 .. toctree::
+   :hidden:
    :maxdepth: 1
 
    angle_amplitude_encoding
