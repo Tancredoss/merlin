@@ -35,9 +35,12 @@ from merlin.datasets import DatasetMetadata
 
 
 def get_venv_data_dir() -> Path:
-    """
-    Get the data directory within the current virtual environment.
-    Creates a 'datasets' directory in the site-packages folder.
+    """Get the data directory within the current virtual environment. Creates a 'datasets' directory in the site-packages folder.
+
+    Returns
+    -------
+    Path
+        Dataset cache directory path.
     """
     if hasattr(sys, "real_prefix") or (
         hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
@@ -54,14 +57,16 @@ def get_venv_data_dir() -> Path:
 
 
 def url_to_filename(url: str) -> str:
-    """
-    Convert URL to a filename, using hash to ensure uniqueness while keeping it readable.
+    """Convert URL to a filename, using hash to ensure uniqueness while keeping it readable.
 
-    Args:
-        url: URL to convert
+    Parameters
+    ----------
+    url : str        URL to convert.
 
-    Returns:
-        str: Filename based on the URL
+    Returns
+    -------
+    str
+        Filename derived from the URL.
     """
     # Get the original filename from the URL
     original_filename = os.path.basename(url)
@@ -80,18 +85,23 @@ def url_to_filename(url: str) -> str:
 
 
 def fetch(url: str, data_dir: Path = None, force: bool = False) -> Path:
-    """
-    Fetch a file from URL, storing it in the virtual environment's data directory.
-    If the file already exists, return its path unless force=True.
-    If the file is gzipped, extract it.
+    """Fetch a file and cache it locally.
 
-    Args:
-        url: URL to fetch the file from
-        data_dir: Optional override for the data directory
-        force: If True, re-download even if file exists
+    If the file is gzipped, it is extracted before returning the local path.
 
-    Returns:
-        Path: Path to the downloaded (and potentially extracted) file
+    Parameters
+    ----------
+    url : str
+        URL to fetch.
+    data_dir : Path | None
+        Optional override for the cache directory.
+    force : bool
+        Whether to re-download the file even if it is already cached.
+
+    Returns
+    -------
+    Path
+        Path to the downloaded or extracted file.
     """
     if data_dir is None:
         data_dir = get_venv_data_dir()
@@ -143,14 +153,19 @@ def fetch(url: str, data_dir: Path = None, force: bool = False) -> Path:
 
 
 def read_idx(filepath: Path) -> tuple[np.ndarray, dict]:
-    """
-    Read an IDX file format as used in MNIST dataset.
+    """Read an IDX file as used by MNIST-style datasets.
 
-    Args:
-        filepath: Path to the IDX file
+    Parameters
+    ----------
+    filepath : Path
+        Path to the IDX file.
 
-    Returns:
+    Returns
+    -------
+    Tuple[np.ndarray, dict]
         Tuple[np.ndarray, dict]: Tuple containing:
+            - numpy array with the data
+            - metadata dictionary with magic number, data type, and dimensions
             - numpy array with the data
             - metadata dictionary with magic number, data type, and dimensions
     """
@@ -206,17 +221,23 @@ def read_idx(filepath: Path) -> tuple[np.ndarray, dict]:
 def df_to_xy(
     df: pd.DataFrame, feature_cols: list = None, label_cols: list = None
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Convert pandas DataFrame to numpy arrays for features (X) and labels (y)
+    """Convert a pandas DataFrame to feature and label arrays.
 
-    Args:
-        df: Input DataFrame
-        feature_cols: List of column names to use as features. If None, uses all columns except label_cols
-        label_cols: List of column names to use as labels. If None, assumes last column is label
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    feature_cols : list | None
+        Column names to use as features. If ``None``, all non-label columns are
+        used.
+    label_cols : list | None
+        Column names to use as labels. If ``None``, the last column is treated
+        as the label.
 
-    Returns:
-        X: numpy array of features
-        y: numpy array of labels
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Feature matrix ``X`` and label array ``y``.
     """
     if feature_cols is None and label_cols is None:
         # Assume last column is label
@@ -240,14 +261,17 @@ def df_to_xy(
 
 
 def read_mnist_images(filepath: Path) -> np.ndarray:
-    """
-    Read MNIST images file and return a numpy array of shape (n_images, 28, 28).
+    """Read an MNIST image file.
 
-    Args:
-        filepath: Path to the MNIST images file
+    Parameters
+    ----------
+    filepath : Path
+        Path to the MNIST image file.
 
-    Returns:
-        np.ndarray: Array of images with shape (n_images, 28, 28)
+    Returns
+    -------
+    np.ndarray
+        Image array with shape ``(n_images, 28, 28)``.
     """
     data, metadata = read_idx(filepath)
 
@@ -261,14 +285,17 @@ def read_mnist_images(filepath: Path) -> np.ndarray:
 
 
 def read_mnist_labels(filepath: Path) -> np.ndarray:
-    """
-    Read MNIST labels file and return a numpy array of labels.
+    """Read an MNIST label file.
 
-    Args:
-        filepath: Path to the MNIST labels file
+    Parameters
+    ----------
+    filepath : Path
+        Path to the MNIST label file.
 
-    Returns:
-        np.ndarray: Array of labels
+    Returns
+    -------
+    np.ndarray
+        Label array.
     """
     data, metadata = read_idx(filepath)
 
@@ -281,7 +308,25 @@ def read_mnist_labels(filepath: Path) -> np.ndarray:
     return data
 
 
-def get_data_generic(subset, url_images, url_labels, metadata):
+def get_data_generic(subset: str, url_images: str, url_labels: str, metadata: dict):
+    """Load an IDX-based image dataset split and wrap its metadata.
+
+    Parameters
+    ----------
+    subset : str
+        Split name, for example ``"train"`` or ``"test"``.
+    url_images : str
+        URL of the image IDX file.
+    url_labels : str
+        URL of the label IDX file.
+    metadata : dict
+        Dataset metadata dictionary to enrich with split-specific fields.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, DatasetMetadata]
+        Images, labels, and structured dataset metadata.
+    """
     train_images_path = fetch(url_images)
     train_labels_path = fetch(url_labels)
     X = read_mnist_images(train_images_path)

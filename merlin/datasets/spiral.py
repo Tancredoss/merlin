@@ -37,22 +37,32 @@ def get_data(num_instances=1500, num_features=10, num_classes=3, random_seed=42)
     The noise in the data scales with the distance from the origin, making points further from
     the center more difficult to classify.
 
-    Args:
-        num_instances (int, optional): Total number of samples to generate. Defaults to 1500.
-        num_features (int, optional): Number of features for each sample. Defaults to 10.
-        num_classes (int, optional): Number of spiral arms (classes). Defaults to 3.
-        random_seed (int, optional): Random seed for reproducibility. Defaults to 42.
+    Parameters
+    ----------
+    num_instances : int
+        Total number of samples to generate. Defaults to 1500.
+    num_features : int
+        Number of features for each sample. Defaults to 10.
+    num_classes : int
+        Number of spiral arms (classes). Defaults to 3.
+    random_seed : int
+        Random seed for reproducibility. Defaults to 42.
 
-    Returns:
-        tuple: (X, y) where:
-            - X (np.ndarray): Array of shape (n_samples, n_features) containing the feature data
-            - y (np.ndarray): Array of shape (n_samples,) containing the class labels (0 to n_classes-1)
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, DatasetMetadata]
+        Generated features, labels, and dataset metadata.
 
-    Features:
-        - First two dimensions: Form the base spiral pattern
-        - Additional dimensions: Created through nonlinear combinations of the base features
-        - Noise: Scales with distance from origin (harder to classify points further from center)
-        - Multiple classes: Represented by interleaved spirals
+    Notes
+    -----
+    Dataset characteristics:
+
+    - The first two dimensions form the base spiral pattern.
+    - Additional dimensions are created through nonlinear combinations of the
+      base features.
+    - Noise scales with distance from the origin, making outer points harder
+      to classify.
+    - Multiple classes are represented by interleaved spirals.
     """
     np.random.seed(random_seed)
 

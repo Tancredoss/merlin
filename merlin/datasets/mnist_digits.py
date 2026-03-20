@@ -97,6 +97,13 @@ MNIST_METADATA_PERCEVALQUEST = {
 
 
 def get_data_train_original():
+    """Load the original MNIST training split.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, DatasetMetadata]
+        Training images, labels, and dataset metadata.
+    """
     return get_data_generic(
         subset="train",
         url_images="https://storage.googleapis.com/cvdf-datasets/mnist/train-images-idx3-ubyte.gz",
@@ -106,6 +113,13 @@ def get_data_train_original():
 
 
 def get_data_test_original():
+    """Load the original MNIST test split.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, DatasetMetadata]
+        Test images, labels, and dataset metadata.
+    """
     return get_data_generic(
         subset="test",
         url_images="https://storage.googleapis.com/cvdf-datasets/mnist/t10k-images-idx3-ubyte.gz",
@@ -115,6 +129,13 @@ def get_data_test_original():
 
 
 def get_data_train_percevalquest():
+    """Load the Perceval Quest MNIST training split.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, DatasetMetadata]
+        Training images, labels, and dataset metadata.
+    """
     train = fetch(
         "https://raw.githubusercontent.com/Quandela/HybridAIQuantum-Challenge/refs/heads/main/data/train.csv"
     )
@@ -131,6 +152,13 @@ def get_data_train_percevalquest():
 
 
 def get_data_test_percevalquest():
+    """Load the Perceval Quest MNIST validation split.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, DatasetMetadata]
+        Validation images, labels, and dataset metadata.
+    """
     val = fetch(
         "https://raw.githubusercontent.com/Quandela/HybridAIQuantum-Challenge/refs/heads/main/data/val.csv"
     )
