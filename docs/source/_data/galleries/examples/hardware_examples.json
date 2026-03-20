@@ -6,6 +6,13 @@
     "doc": "user_guide/remote_execution.rst",
     "tags": ["Documentation","Quandela Cloud","MerlinProcessor"]
   },
+  {  
+    "title": "Comparing simulation and hardware reservoirs",
+    "summary": "A comparison of the performance of an optical reservoir on a simulated quantum layer and on Ascella QPU.",
+    "image": "_static/examples/Fig_5_PAQML_paper.png",
+    "doc": "notebooks/QORC-demo-MNIST.ipynb",
+    "tags": ["Reservoir","Quandela Cloud", "MNIST", "Ascella", "Benchmark"]
+  },
   {
     "title": "Reservoir Computing on Belenos",
     "summary": "A tutorial on how to run yor quantum layer on Quandela's photonic hardware.",
