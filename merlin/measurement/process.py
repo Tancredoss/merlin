@@ -32,20 +32,30 @@ from merlin.core.partial_measurement import DetectorTransformOutput, PartialMeas
 
 
 class SamplingProcess:
-    """Handles quantum measurement sampling with different methods.
+    """Handle quantum measurement sampling with different methods.
 
     This class provides functionality to simulate quantum measurement noise
     by applying different sampling strategies to probability distributions.
+
+    Parameters
+    ----------
+    method : str
+        Sampling method to use.
     """
 
     def __init__(self, method: str = "multinomial"):
         """Initialize the sampling process with a specific method.
-        Args:
-            method: Sampling method to use ('multinomial', 'binomial', or 'gaussian')
 
-        Raises:
-            ValueError: If method is not one of the valid options
+        Parameters
+        ----------
+        method : str
+            Sampling method to use, one of ``"multinomial"``,
+            ``"binomial"``, or ``"gaussian"``.
 
+        Raises
+        ------
+        ValueError
+            If ``method`` is not one of the valid options.
         """
         # Validate method
         self.valid_methods = ["multinomial", "binomial", "gaussian"]
@@ -60,17 +70,25 @@ class SamplingProcess:
     ) -> torch.Tensor:
         """Apply sampling noise to a probability distribution.
 
-        Args:
-            distribution: Input probability distribution tensor
-            method: Sampling method to use ('multinomial', 'binomial', or 'gaussian'), defaults to the initialized method
-            shots: Number of measurement shots to simulate
+        Parameters
+        ----------
+        distribution : torch.Tensor
+            Input probability distribution tensor.
+        shots : int
+            Number of measurement shots to simulate.
+        method : str | None
+            Sampling method to use ('multinomial', 'binomial', or 'gaussian'),
+            defaults to the initialized method
 
-        Returns:
-            Noisy probability distribution after sampling
+        Returns
+        -------
+        torch.Tensor
+            Noisy probability distribution after sampling.
 
-        Raises:
-            ValueError: If method is not one of the valid options
-
+        Raises
+        ------
+        ValueError
+            If ``method`` is not one of the valid options.
         """
         if shots <= 0:
             return distribution
@@ -121,7 +139,20 @@ def partial_measurement(
     *,
     grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
 ) -> PartialMeasurement:
-    """Build a PartialMeasurement from DetectorTransform(partial_measurement=True) output."""
+    """Build a PartialMeasurement from DetectorTransform(partial_measurement=True) output.
+
+    Parameters
+    ----------
+    detector_output : DetectorTransformOutput
+        Output of ``DetectorTransform(partial_measurement=True)``.
+    grouping : Callable[[torch.Tensor], torch.Tensor] | None
+        Optional callable used to group branch probabilities.
+
+    Returns
+    -------
+    PartialMeasurement
+        Partial-measurement wrapper built from the detector output.
+    """
     return PartialMeasurement.from_detector_transform_output(
         detector_output, grouping=grouping
     )

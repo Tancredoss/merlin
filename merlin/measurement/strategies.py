@@ -82,7 +82,32 @@ class BaseMeasurementStrategy:
         apply_detectors: Callable[[torch.Tensor], torch.Tensor],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> torch.Tensor | PartialMeasurement:
-        """Return the processed result for the selected measurement strategy."""
+        """Return the processed result for the selected measurement strategy.
+
+        Parameters
+        ----------
+        distribution : torch.Tensor
+            Probability distribution before final post-processing.
+        amplitudes : torch.Tensor
+            Raw amplitudes before measurement-specific processing.
+        apply_sampling : bool
+            Whether sampling should be applied.
+        effective_shots : int
+            Effective number of shots used for sampling.
+        sample_fn : Callable[[torch.Tensor, int], torch.Tensor]
+            Sampling function.
+        apply_photon_loss : Callable[[torch.Tensor], torch.Tensor]
+            Photon-loss transform.
+        apply_detectors : Callable[[torch.Tensor], torch.Tensor]
+            Detector transform.
+        grouping : Callable[[torch.Tensor], torch.Tensor] | None
+            Optional grouping applied to the resulting probabilities.
+
+        Returns
+        -------
+        torch.Tensor | PartialMeasurement
+            Processed measurement result.
+        """
         raise NotImplementedError
 
 
@@ -144,6 +169,13 @@ class PartialMeasurementStrategy(BaseMeasurementStrategy):
     """New API: return a PartialMeasurement from detector partial-measurement output."""
 
     def __init__(self, measured_modes: tuple[int, ...]) -> None:
+        """Initialize the partial-measurement strategy.
+
+        Parameters
+        ----------
+        measured_modes : tuple[int, ...]
+            Mode indices to measure.
+        """
         self._measured_modes = measured_modes
 
     def process(
@@ -202,7 +234,19 @@ class _MeasurementStrategyMeta(type):
 
 @dataclass(frozen=True, slots=True)
 class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
-    """New API: immutable definition of a measurement strategy for output post-processing."""
+    """New API: immutable definition of a measurement strategy for output post-processing.
+
+    Parameters
+    ----------
+    type : MeasurementKind
+        Measurement strategy kind.
+    measured_modes : tuple[int, ...]
+        Measured modes for partial measurement.
+    computation_space : ComputationSpace | None
+        Computation space used by the strategy.
+    grouping : LexGrouping | ModGrouping | None
+        Optional grouping applied to probability outputs.
+    """
 
     type: MeasurementKind
     measured_modes: tuple[int, ...] = ()
@@ -222,6 +266,20 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
         grouping: LexGrouping | ModGrouping | None = None,
     ) -> MeasurementStrategy:
+        """Create a probability-output measurement strategy.
+
+        Parameters
+        ----------
+        computation_space : ComputationSpace
+            Computation space used to enumerate the output basis.
+        grouping : LexGrouping | ModGrouping | None
+            Optional grouping applied to the resulting probabilities.
+
+        Returns
+        -------
+        MeasurementStrategy
+            Probability measurement strategy.
+        """
         # Full measurement returning a probability distribution.
         computation_space = ComputationSpace.coerce(computation_space)
         return MeasurementStrategy(
@@ -234,6 +292,18 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
     def mode_expectations(
         computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
     ) -> MeasurementStrategy:
+        """Create a per-mode expectation measurement strategy.
+
+        Parameters
+        ----------
+        computation_space : ComputationSpace
+            Computation space used to enumerate the output basis.
+
+        Returns
+        -------
+        MeasurementStrategy
+            Mode-expectation measurement strategy.
+        """
         # Mode_expectations
         # Per-mode expectation values from the measured distribution.
         computation_space = ComputationSpace.coerce(computation_space)
@@ -246,6 +316,18 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
     def amplitudes(
         computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
     ) -> MeasurementStrategy:
+        """Create an amplitude-output measurement strategy.
+
+        Parameters
+        ----------
+        computation_space : ComputationSpace
+            Computation space used to enumerate the output basis.
+
+        Returns
+        -------
+        MeasurementStrategy
+            Amplitude measurement strategy.
+        """
         # Raw amplitudes without detector/noise/sampling processing.
         computation_space = ComputationSpace.coerce(computation_space)
         return MeasurementStrategy(
@@ -259,9 +341,28 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
         grouping: LexGrouping | ModGrouping | None = None,
     ) -> MeasurementStrategy:
-        """
-        Create a partial measurement on the given mode indices.
+        """Create a partial measurement on the given mode indices.
         Note that the specified grouping only applies on the resulting probabilities, not on the amplitudes.
+
+        Parameters
+        ----------
+        modes : list[int]
+            Mode indices to measure.
+        computation_space : ComputationSpace
+            Computation space used to enumerate the output basis.
+        grouping : LexGrouping | ModGrouping | None
+            Optional grouping applied to the resulting probabilities only.
+
+        Returns
+        -------
+        MeasurementStrategy
+            Partial-measurement strategy.
+
+        Raises
+        ------
+        ValueError
+            If ``modes`` is empty, contains duplicates, or contains negative
+            indices.
         """
 
         if len(modes) == 0:
@@ -297,12 +398,14 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash((
-            self.type,
-            self.measured_modes,
-            self.computation_space,
-            self.grouping,
-        ))
+        return hash(
+            (
+                self.type,
+                self.measured_modes,
+                self.computation_space,
+                self.grouping,
+            )
+        )
 
     def validate_modes(self, n_modes: int) -> None:
         """Validate mode indices and warn when the selection covers all modes."""
@@ -345,7 +448,18 @@ def _resolve_measurement_kind(
 def resolve_measurement_strategy(
     measurement_strategy: MeasurementStrategyLike,
 ) -> BaseMeasurementStrategy:
-    """Return the concrete strategy implementation for the enum value."""
+    """Return the concrete strategy implementation for the enum value.
+
+    Parameters
+    ----------
+    measurement_strategy : MeasurementStrategyLike
+        Measurement strategy definition or legacy enum alias.
+
+    Returns
+    -------
+    BaseMeasurementStrategy
+        Concrete runtime strategy implementation.
+    """
     # Map high-level kind to the concrete strategy implementation.
     kind = _resolve_measurement_kind(measurement_strategy)
     if kind == MeasurementKind["PROBABILITIES"]:
