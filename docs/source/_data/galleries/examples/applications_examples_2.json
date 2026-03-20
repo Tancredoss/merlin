@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Self-supervised learning",
+    "summary": "Applying quantum models to representation learning tasks.",
+    "image": "_static/reproduced_papers/qSSL/qSSL_model.png",
+    "doc": "reproduced_papers/reproductions/qssl.rst",
+    "tags": ["Representation learning","Reproduced paper", "DATASET", "Coming soon!"]
+  },
+  {
+    "title": "Transfer Learning",
+    "summary": "Combining pre-trained classical models with quantum layers.",
+    "image": "_static/reproduced_papers/TransferLearning.png",
+    "doc": "reproduced_papers/reproductions/quantum_transfer_learning.rst",
+    "tags": ["Transfer learning","DATASET", "Coming soon!"]
+  },
+  {
+    "title": "Adversarial Robustness",
+    "summary": "Studying vulnerability of quantum models to adversarial perturbations.",
+    "image": "_static/reproduced_papers/AdversarialML.png",
+    "doc": "reproduced_papers/reproductions/quantum_adversarial_ml.rst",
+    "tags": ["Adversarial","DATASET", "Coming soon!"]
+  }
+]
