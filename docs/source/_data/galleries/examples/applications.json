@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Time-series forecasting using QORC",
+    "summary": "Forecasting the Lorenz attractor time series with a quantum optical reservoir computing model",
+    "image": "_static/examples/Lorenz-series.png",
+    "doc": "notebooks/QORC-timeseries",
+    "tags": ["Time-series", "Forecasting", "QORC", "Reservoir"]
+  },
+  {
+    "title": "Self-Supervised Learning",
+    "summary": "Exploring self-supervised learning techniques for image classification",
+    "image": "_static/reproduced_papers/qSSL/qSSL_model.png",
+    "doc": "reproduced_papers/reproductions/qssl",
+    "tags": ["Paper reproduction", "Image Classification", "Self-Supervised Learning", "Qiskit"]
+  },
+ {
+    "title": "Quantum Transfer Learning",
+    "summary": "Hybrid transfer learning with frozen classical feature extractors and trainable quantum heads.",
+    "image": "_static/reproduced_papers/TransferLearning.png",
+    "doc": "reproduced_papers/reproductions/quantum_transfer_learning",
+    "tags": ["Paper reproduction", "Image Classification", "Transfer Learning", "Pennylane"]
+  }
+]
