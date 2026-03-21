@@ -256,15 +256,15 @@ Most of the typed objects can give the :class:`torch.Tensor` as an output with t
 PartialMeasurement object is a little different. See its according documentation.
 
 These object could be quite useful to access metadata like the number of photons, modes and measurement_strategy behind the output tensors. For example, a better access to specific
-states is available with :class:`merlin.core.state_vector.StateVector` and :class:`merlin.core.probability_distribution.ProbabilityDistribution` by indexing the desired state. The objects are interoperable with Perceval, enabling seamless interaction between the two libraries.
+states is available with :class:`~merlin.core.state_vector.StateVector` and :class:`~merlin.core.probability_distribution.ProbabilityDistribution` by indexing the desired state. The objects are interoperable with Perceval, enabling seamless interaction between the two libraries.
 
 For more information on the typed output capabilities, follow the following links:
 
-- :class:`merlin.core.state_vector.StateVector`: :doc:`StateVector </api_reference/api/merlin.core.state_vector>`
-- :class:`merlin.core.probability_distribution.ProbabilityDistribution`: :doc:`ProbabilityDistribution </api_reference/api/merlin.core.probability_distribution>`
-- :class:`merlin.core.partial_measurement.PartialMeasurement`: :doc:`PartialMeasurement </api_reference/api/merlin.core.partial_measurement>`
+- :class:`~merlin.core.state_vector.StateVector`: :doc:`StateVector </api_reference/api/merlin.core.state_vector>`
+- :class:`~merlin.core.probability_distribution.ProbabilityDistribution`: :doc:`ProbabilityDistribution </api_reference/api/merlin.core.probability_distribution>`
+- :class:`~merlin.core.partial_measurement.PartialMeasurement`: :doc:`PartialMeasurement </api_reference/api/merlin.core.partial_measurement>`
 
-The snippet below prepares a basic quantum layer and returns a :class:`merlin.core.probability_distribution.ProbabilityDistribution` object:
+The snippet below prepares a basic quantum layer and returns a :class:`~merlin.core.probability_distribution.ProbabilityDistribution` object:
 
 .. code-block:: python
 

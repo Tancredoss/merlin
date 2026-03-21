@@ -104,7 +104,7 @@ and reuses pre‑computed sparse transitions per layer.
 Photon loss and detectors
 -------------------------
 
-If the :class:`merlin.algorithms.kernels.FeatureMap` comes from an experiment (or if the kernel creates
+If the :class:`~merlin.algorithms.kernels.FeatureMap` comes from an experiment (or if the kernel creates
 one from its circuit), two transforms may be applied to raw probabilities:
 
 * :class:`~merlin.measurement.photon_loss.PhotonLossTransform` – composes the

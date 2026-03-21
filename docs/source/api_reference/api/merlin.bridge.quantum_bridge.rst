@@ -235,6 +235,6 @@ Performance Tips
 See Also
 --------
 
-* :class:`merlin.algorithms.layer.QuantumLayer`: The underlying photonic processor interface
+* :class:`~merlin.algorithms.layer.QuantumLayer`: The underlying photonic processor interface
 * `PennyLane Documentation <https://pennylane.ai>`_: For quantum circuit design
 * `Perceval Documentation <https://perceval.quandela.net>`_: For photonic circuit details
