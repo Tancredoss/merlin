@@ -137,4 +137,6 @@ Reference
    :undoc-members:
    :show-inheritance:
 
+.. autodata:: MeasurementStrategyLike
+
 .. autofunction:: resolve_measurement_strategy

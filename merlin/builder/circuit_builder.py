@@ -676,7 +676,7 @@ class CircuitBuilder:
 
         Parameters
         ----------
-        pcvl_module : Any, optional
+        pcvl_module : Any
             Optional Perceval module. If ``None``, attempts to import
             ``perceval``.
 
@@ -855,7 +855,7 @@ class CircuitBuilder:
 
         Parameters
         ----------
-        circuit : Circuit
+        circuit : merlin.core.circuit.Circuit
             Circuit object whose components should seed the builder.
 
         Returns

@@ -74,6 +74,7 @@ release = merlin_metadata["Version"]
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.mathjax",
+    "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
     "sphinx.ext.autosectionlabel",
     "sphinxcontrib.bibtex",
@@ -123,6 +124,13 @@ autodoc_default_options = {
     "show-inheritance": True,
     "imported-members": False,  # Don't document imported members to avoid duplicates
 }
+autodoc_typehints = "signature"
+
+typehints_use_rtype = False
+napoleon_google_docstring = False
+napoleon_numpy_docstring = True
+napoleon_use_param = True
+napoleon_use_rtype = False
 
 # Suppress duplicate object warnings for re-exported classes
 suppress_warnings.extend(["autodoc.import_object"])

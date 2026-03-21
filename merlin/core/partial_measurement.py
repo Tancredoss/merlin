@@ -42,7 +42,7 @@ class PartialMeasurementBranch:
         Outcome restricted to measured modes, in detector order.
     probability : torch.Tensor
         Per-batch probability for this outcome.
-    amplitudes : StateVector
+    amplitudes : merlin.core.state_vector.StateVector
         Conditional state vector on unmeasured modes.
     """
 
@@ -180,7 +180,7 @@ class PartialMeasurement:
 
     @property
     def amplitudes(self):
-        """list[StateVector]: Conditional amplitudes for each branch."""
+        """list[merlin.core.state_vector.StateVector]: Conditional amplitudes for each branch."""
         return [branch.amplitudes for branch in self.branches]
 
     @property
@@ -244,7 +244,7 @@ class PartialMeasurement:
 
         Parameters
         ----------
-        detector_output : DetectorTransformOutput
+        detector_output : :data:`merlin.core.partial_measurement.DetectorTransformOutput`
             Output of ``DetectorTransform(partial_measurement=True)``.
         grouping : Callable[[torch.Tensor], torch.Tensor] | None
             Optional callable used to group branch probabilities.

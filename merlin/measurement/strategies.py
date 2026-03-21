@@ -43,7 +43,7 @@ from merlin.utils.grouping import LexGrouping, ModGrouping
 #   enum-style attribute access (`MeasurementStrategy.PROBABILITIES`, etc.).
 # - Delete compatibility paths in `resolve_measurement_strategy` and
 #   `_resolve_measurement_kind` that accept `_LegacyMeasurementStrategy`.
-# - Drop `MeasurementStrategyLike` alias and any tests that rely on legacy enums.
+# - Drop :data:`merlin.measurement.strategies.MeasurementStrategyLike` alias and any tests that rely on legacy enums.
 # - Update all call sites to use the new factories (lots of tetsts to update!):
 #     - `MeasurementStrategy.probs(computation_space)`
 #     - `MeasurementStrategy.mode_expectations(computation_space)`
@@ -452,7 +452,7 @@ def resolve_measurement_strategy(
 
     Parameters
     ----------
-    measurement_strategy : MeasurementStrategyLike
+    measurement_strategy : :data:`merlin.measurement.strategies.MeasurementStrategyLike`
         Measurement strategy definition or legacy enum alias.
 
     Returns

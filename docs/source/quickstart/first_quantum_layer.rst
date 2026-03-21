@@ -13,7 +13,7 @@ concepts you will reuse in every project:
 - **Computation spaces** controlling how the simulator truncates Fock states. See :doc:`../user_guide/computation_space`.
 
 Once the foundations are in place, we show how to reuse the same circuit through a
-:class:`perceval.components.experiment.Experiment` for detector-aware execution.
+:class:`pcvl.Experiment` for detector-aware execution.
 
 
 Set up the dataset
@@ -226,7 +226,7 @@ Override the default when you need explicit control:
 Detector-aware execution with Experiments
 =========================================
 
-Wrapping the circuit in a :class:`perceval.components.experiment.Experiment` lets you attach detectors and
+Wrapping the circuit in a :class:`pcvl.Experiment` lets you attach detectors and
 noise models without re-authoring the layer. The experiment becomes the single source
 of truth for measurement semantics.
 

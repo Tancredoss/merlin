@@ -25,6 +25,8 @@ PartialMeasurement
    :member-order: bysource
    :show-inheritance:
 
+.. autodata:: DetectorTransformOutput
+
 Notes and Examples
 ------------------
 

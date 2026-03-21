@@ -30,9 +30,9 @@ Three components cooperate to build and evaluate kernels:
 1. :class:`~merlin.algorithms.kernels.FeatureMap` – embeds classical data into
 	 a photonic circuit and returns unitaries ``U(x)``. It accepts:
 
-	 - a :class:`perceval.components.linear_circuit.Circuit` (manual construction),
+	 - a :class:`pcvl.Circuit` (manual construction),
 	 - a :class:`~merlin.builder.circuit_builder.CircuitBuilder` (declarative), or
-	 - a :class:`perceval.components.experiment.Experiment` (unitary circuit + measurement semantics).
+	 - a :class:`pcvl.Experiment` (unitary circuit + measurement semantics).
 
 2. :class:`~merlin.algorithms.kernels.FidelityKernel` – computes kernel values
 	 from a feature map and an input Fock state using SLOS.
@@ -108,7 +108,7 @@ If the :class:`merlin.algorithms.kernels.FeatureMap` comes from an experiment (o
 one from its circuit), two transforms may be applied to raw probabilities:
 
 * :class:`~merlin.measurement.photon_loss.PhotonLossTransform` – composes the
-	experiment's :class:`perceval.utils.noise_model.NoiseModel` into survival probabilities. This
+	experiment's :class:`pcvl.NoiseModel` into survival probabilities. This
 	returns a new probability vector and a new set of output keys.
 * :class:`~merlin.measurement.detectors.DetectorTransform` – projects (or maps)
 	the post‑loss probabilities to the detector outcome basis (threshold, PNR,

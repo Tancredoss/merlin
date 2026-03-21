@@ -143,7 +143,7 @@ def partial_measurement(
 
     Parameters
     ----------
-    detector_output : DetectorTransformOutput
+    detector_output : :data:`merlin.core.partial_measurement.DetectorTransformOutput`
         Output of ``DetectorTransform(partial_measurement=True)``.
     grouping : Callable[[torch.Tensor], torch.Tensor] | None
         Optional callable used to group branch probabilities.

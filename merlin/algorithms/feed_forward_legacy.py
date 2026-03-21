@@ -171,23 +171,23 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         Number of photons in the system.
     m : int
         Total number of photonic modes.
-    depth : int | None, optional
+    depth : int | None
         Maximum depth of feed-forward recursion. Defaults to ``m - 1`` if not
         specified.
-    state_injection : bool, optional
+    state_injection : bool
         If ``True``, allows re-injecting quantum states at intermediate steps,
         which is useful for simulating sources or ancilla modes. Defaults to
         ``False``.
-    conditional_modes : list[int] | None, optional
+    conditional_modes : list[int] | None
         List of mode indices on which photon detection is performed. This
         determines the branching structure. Defaults to ``[0]``.
-    layers : list | None, optional
+    layers : list | None
         Predefined list of quantum layers. If not provided, layers are
         generated automatically.
-    circuit_type : str | None, optional
+    circuit_type : str | None
         Type of quantum circuit architecture used to build each layer. Acts as
         a template selector for circuit structure generation.
-    device : torch.device | str | None, optional
+    device : torch.device | str | None
         Target device for the module and all generated layers.
     """
 
@@ -404,9 +404,9 @@ class FeedForwardBlockLegacy(torch.nn.Module):
             Stores intermediate probabilities.
         outputs : dict
             Stores final output probabilities for all branches.
-        depth : int, optional
+        depth : int=0
             Current recursion depth.
-        x : torch.Tensor | None, optional
+        x : torch.Tensor | None
             Classical input features.
         """
         # Base case: end of tree reached
@@ -483,7 +483,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         Parameters
         ----------
         keys : list[tuple[int, ...]] | torch.Tensor
-            Tensor or list of Fock states (basis keys).
+            torch.Tensor or list of Fock states (basis keys).
         modes : list[int]
             Conditional mode indices.
 
@@ -663,19 +663,19 @@ class PoolingFeedForwardLegacy(torch.nn.Module):
         Number of photons used in the quantum simulation.
     n_output_modes : int
         Number of output modes after pooling.
-    pooling_modes : list[list[int]] | None, optional
+    pooling_modes : list[list[int]] | None
         Specifies how input modes are grouped (pooled) into output modes.
         Each sublist contains the indices of input modes to pool together
         for one output mode. If None, an even pooling scheme is automatically generated.
-    no_bunching : bool | None, optional (deprecated)
+    no_bunching : bool | None (deprecated)
         Deprecated and now removed; use computation_space in MeasurementStrategy instead.
 
     Attributes
     ----------
     match_indices : torch.Tensor
-        Tensor containing the indices mapping input states to output states.
+        torch.Tensor containing the indices mapping input states to output states.
     exclude_indices : torch.Tensor
-        Tensor containing indices of input states that have no valid mapping
+        torch.Tensor containing indices of input states that have no valid mapping
         to an output state.
     keys_out : list
         List of output Fock state keys (from Perceval simulation graph).

@@ -61,7 +61,7 @@ class CircuitConverter:
 
     Parameters
     ----------
-    circuit : Circuit
+    circuit : pcvl.Circuit
         Perceval circuit to convert.
     input_specs : list[str] | None
         Parameter name prefixes used to group parameters into input tensors.
@@ -142,7 +142,7 @@ class CircuitConverter:
 
         Parameters
         ----------
-        circuit : Circuit
+        circuit : pcvl.Circuit
             Parameterized Perceval circuit to convert.
         input_specs : list[str] | None
             Parameter name prefixes used to group parameters into separate

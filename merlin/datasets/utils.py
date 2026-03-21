@@ -61,7 +61,8 @@ def url_to_filename(url: str) -> str:
 
     Parameters
     ----------
-    url : str        URL to convert.
+    url : str
+        URL to convert.
 
     Returns
     -------

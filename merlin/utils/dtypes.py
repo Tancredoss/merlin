@@ -95,7 +95,7 @@ def to_torch_dtype(
     ----------
     dtype_like : object
         Input representation to convert.
-    default : torch.dtype | None, optional
+    default : torch.dtype | None
         Fallback dtype if the representation is unknown. Defaults to
         ``torch.float32`` when ``dtype_like`` is ``None``.
 

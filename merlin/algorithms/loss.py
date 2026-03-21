@@ -55,7 +55,7 @@ class NKernelAlignment(_Loss):
         """Initialize the negative kernel-target alignment loss."""
         super().__init__()
 
-    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute the negative kernel-target alignment loss.
 
         Parameters

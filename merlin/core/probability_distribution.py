@@ -155,7 +155,7 @@ class ProbabilityDistribution:
 
     @property
     def basis(self) -> Basis:
-        """Basis: Basis enumeration associated with the current tensor."""
+        """:data:`merlin.core.probability_distribution.Basis`: Basis enumeration associated with the current tensor."""
         return (
             self._custom_basis
             if self._custom_basis is not None

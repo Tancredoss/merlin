@@ -47,6 +47,23 @@ from .module import MerlinModule
 
 @dataclass
 class FFStage:
+    """
+    Static description of one feed-forward stage extracted from an experiment.
+
+    Parameters
+    ----------
+    unitary : pcvl.Circuit
+        Circuit executed for the stage.
+    active_modes : tuple[int, ...]
+        Modes actively transformed by the stage circuit.
+    measured_modes : tuple[int, ...]
+        Modes measured immediately after the stage.
+    detectors : dict[int, pcvl.Detector | None]
+        Detector configuration indexed by measured mode.
+    provider : FFCircuitProvider | None
+        Optional conditional-circuit provider associated with the stage.
+    """
+
     unitary: pcvl.Circuit
     active_modes: tuple[int, ...]
     measured_modes: tuple[int, ...]
@@ -56,6 +73,45 @@ class FFStage:
 
 @dataclass
 class StageRuntime:
+    """
+    Runtime objects needed to execute one feed-forward stage.
+
+    Parameters
+    ----------
+    circuit : pcvl.Circuit
+        Full circuit executed for the stage.
+    pre_layer : QuantumLayer | None
+        Layer applied before any conditional branching.
+    detector_transform : DetectorTransform | None
+        Detector transform used to process measured outputs.
+    conditional_circuits : dict[tuple[int, ...], pcvl.Circuit]
+        Conditional circuits indexed by measurement outcomes.
+    conditional_default_key : tuple[int, ...] | None
+        Default conditional-circuit key when no exact outcome match exists.
+    measured_modes : tuple[int, ...]
+        Stage-local measured modes.
+    global_measured_modes : tuple[int, ...]
+        Measured modes expressed in the global circuit indexing.
+    active_modes : tuple[int, ...]
+        Modes actively transformed by this stage.
+    detectors : dict[int, pcvl.Detector | None]
+        Detector configuration indexed by measured mode.
+    provider : FFCircuitProvider | None
+        Optional provider used to build conditional circuits.
+    pre_layers : dict[int, QuantumLayer]
+        Cache of pre-layers indexed by branch state size.
+    detector_cache : dict[int, DetectorTransform]
+        Cache of detector transforms indexed by branch state size.
+    conditional_layer_cache : dict[tuple[tuple[int, ...], int], QuantumLayer]
+        Cache of conditional layers indexed by measurement key and state size.
+    trainable_parameters : list[str] | None
+        Trainable parameter prefixes kept for the stage.
+    initial_amplitudes : torch.Tensor | None
+        Initial amplitudes for amplitude-encoding execution.
+    classical_input_size : int
+        Number of classical inputs consumed by the stage. Default is ``0``.
+    """
+
     circuit: pcvl.Circuit
     pre_layer: QuantumLayer | None
     detector_transform: DetectorTransform | None
@@ -78,6 +134,23 @@ class StageRuntime:
 
 @dataclass
 class BranchState:
+    """
+    State carried by one feed-forward branch during execution.
+
+    Parameters
+    ----------
+    amplitudes : torch.Tensor
+        Branch amplitudes in the current basis.
+    weight : torch.Tensor
+        Classical probability weight accumulated for the branch.
+    remaining_n : int
+        Number of photons remaining after the branch measurements.
+    measurement_key : tuple[int | None, ...]
+        Measurement outcomes accumulated so far.
+    basis_keys : tuple[tuple[int, ...], ...]
+        Basis states associated with ``amplitudes``.
+    """
+
     amplitudes: torch.Tensor
     weight: torch.Tensor
     remaining_n: int
@@ -89,8 +162,8 @@ class FeedForwardBlock(MerlinModule):
     """
     Feed-forward photonic block constructed directly from a Perceval experiment.
 
-    The block introspects the provided :class:`perceval.components.experiment.Experiment`, splits it into
-    unitary / detector / :class:`~perceval.components.feed_forward_configurator.FFCircuitProvider`
+    The block introspects the provided :class:`pcvl.Experiment`, splits it into
+    unitary / detector / :class:`~pcvl.FFCircuitProvider`
     stages and turns each segment into one or more :class:`~merlin.algorithms.layer.QuantumLayer`
     instances. At run time the block executes every stage, branching on every
     partial measurement outcome and accumulating the classical probability for
@@ -102,22 +175,22 @@ class FeedForwardBlock(MerlinModule):
         Perceval experiment containing the full feed-forward definition. The
         current implementation requires noise-free experiments (``NoiseModel()`` or
         ``None``).
-    input_state : list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None, optional
+    input_state : list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None
         Initial quantum state. May be provided as a Fock occupation list,
-        `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_, :class:`~exqalibur.StateVector`, or a tensor whose
+        `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_, :class:`~exqalibur.StateVector`, or a tensor whose
         components represent amplitudes in the experiment Fock basis. The tensor
         form is only required for amplitude-encoding inputs.
-    trainable_parameters : list[str] | None, optional
+    trainable_parameters : list[str] | None
         Optional list of Perceval parameter prefixes that should remain learnable
         across all stages.
-    input_parameters : list[str] | None, optional
+    input_parameters : list[str] | None
         Perceval parameter prefixes that receive classical inputs. They are
         consumed by the first stage only; once the first detection happens all
         branches switch to amplitude encoding and the classical tensor is ignored.
-    computation_space : ComputationSpace, optional
+    computation_space : ComputationSpace
         Currently restricted to
         :class:`~merlin.core.computation_space.ComputationSpace`\ ``.FOCK``.
-    measurement_strategy : MeasurementStrategyLike, optional
+    measurement_strategy : :data:`merlin.measurement.strategies.MeasurementStrategyLike`
         Controls how classical outputs are produced.
 
         - ``MeasurementStrategy.probs(computation_space)`` (default) returns a
@@ -133,9 +206,9 @@ class FeedForwardBlock(MerlinModule):
           ``(measurement_key, branch_probability, remaining_photons,
           amplitudes)`` so callers can reason about the mixed state left by each
           branch.
-    device : torch.device | None, optional
+    device : torch.device | None
         Target device used for internal tensors and generated layers.
-    dtype : torch.dtype | None, optional
+    dtype : torch.dtype | None
         Real dtype used for classical outputs and derived complex amplitudes.
     """
 
@@ -694,7 +767,7 @@ class FeedForwardBlock(MerlinModule):
 
         Parameters
         ----------
-        x : torch.Tensor | None, optional
+        x : torch.Tensor | None
             Classical feature tensor. Only the first stage consumes classical
             inputs; subsequent stages operate purely in amplitude-encoding mode.
             When the experiment does not expose classical inputs this argument
@@ -1155,14 +1228,16 @@ class FeedForwardBlock(MerlinModule):
                     != MeasurementKind["PROBABILITIES"]
                 ):
                     continue
-                entries.append((
-                    key,
-                    probability_total,
-                    amplitude_total,
-                    weight_total,
-                    basis_keys,
-                    remaining_n,
-                ))
+                entries.append(
+                    (
+                        key,
+                        probability_total,
+                        amplitude_total,
+                        weight_total,
+                        basis_keys,
+                        remaining_n,
+                    )
+                )
 
         if not entries:
             self._output_keys = []
@@ -1430,19 +1505,19 @@ class FeedForwardBlock(MerlinModule):
                     if src_idx is not None:
                         reordered[..., tgt_idx] = src[..., src_idx]
                 normalized_amplitudes = reordered
-            mixed_states.append((
-                key,
-                branch_probability,
-                remaining_n,
-                normalized_amplitudes,
-            ))
+            mixed_states.append(
+                (
+                    key,
+                    branch_probability,
+                    remaining_n,
+                    normalized_amplitudes,
+                )
+            )
         self._output_keys = [entry[0] for entry in mixed_states]
         self._output_state_sizes = None
         return mixed_states
 
-    def _aggregate_branch_list(
-        self, branch_list: list[BranchState]
-    ) -> tuple[
+    def _aggregate_branch_list(self, branch_list: list[BranchState]) -> tuple[
         torch.Tensor | None,
         torch.Tensor | None,
         torch.Tensor | None,

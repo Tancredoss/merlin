@@ -53,25 +53,25 @@ class FeatureMap:
 
     Parameters
     ----------
-    circuit : pcvl.Circuit | None, optional
+    circuit : pcvl.Circuit | None
         Pre-compiled Perceval circuit used to encode features.
     input_size : int | None
         Dimension of incoming classical data. Required.
-    builder : CircuitBuilder | None, optional
+    builder : CircuitBuilder | None
         Optional builder used to compile a circuit declaratively.
-    experiment : pcvl.Experiment | None, optional
+    experiment : pcvl.Experiment | None
         Optional experiment providing both the circuit and detector
         configuration. Exactly one of ``circuit``, ``builder``, or
         ``experiment`` must be supplied.
     input_parameters : str | list[str] | None
         Parameter prefix(es) that host the classical data.
-    trainable_parameters : list[str] | None, optional
+    trainable_parameters : list[str] | None
         Optional trainable parameter prefixes.
-    dtype : str | torch.dtype, optional
+    dtype : str | torch.dtype
         Torch dtype used when constructing the unitary.
-    device : torch.device | None, optional
+    device : torch.device | None
         Torch device on which unitaries are evaluated.
-    encoder : Callable[[Tensor], Tensor] | None, optional
+    encoder : Callable[[Tensor], Tensor] | None
         Optional custom encoder used when the raw input shape does not match the
         circuit parameter layout.
     """
@@ -321,13 +321,13 @@ class FeatureMap:
         return torch.stack(encoded_vals, dim=0)
 
     def compute_unitary(
-        self, x: Tensor | np.ndarray | float, *training_parameters: Tensor
-    ) -> Tensor:
+        self, x: torch.Tensor | np.ndarray | float, *training_parameters: torch.Tensor
+    ) -> torch.Tensor:
         """Generate the circuit unitary after encoding `x` and applying trainables.
 
         Parameters
         ----------
-        x : Tensor | np.ndarray | float
+        x : torch.Tensor | np.ndarray | float
             Single datapoint to embed; accepts scalars, NumPy arrays, or
             tensors.
         training_parameters : Tensor
@@ -335,7 +335,7 @@ class FeatureMap:
 
         Returns
         -------
-        Tensor
+        torch.Tensor
             Complex unitary matrix representing the prepared circuit.
         """
         # Normalize input to tensor on correct device/dtype
@@ -365,12 +365,12 @@ class FeatureMap:
             )
         return self._circuit_graph.to_tensor(x_encoded, *params_to_use)
 
-    def is_datapoint(self, x: Tensor | np.ndarray | float | int) -> bool:
+    def is_datapoint(self, x: torch.Tensor | np.ndarray | float | int) -> bool:
         """Determine if ``x`` describes one sample or a batch.
 
         Parameters
         ----------
-        x : Tensor | np.ndarray | float | int
+        x : torch.Tensor | np.ndarray | float | int
             Candidate input data.
 
         Returns
@@ -432,13 +432,13 @@ class FeatureMap:
         ----------
         input_size : int
             Classical feature dimension. Maximum is 19.
-        dtype : str | torch.dtype, optional
+        dtype : str | torch.dtype
             Target dtype for internal tensors.
-        device : torch.device | None, optional
+        device : torch.device | None
             Optional torch device handle.
-        angle_encoding_scale : float, optional
-            Global scaling applied to angle encoding features.
-        n_modes : int | None, optional
+        angle_encoding_scale : float
+            Global scaling applied to angle encoding features. Default is ``1.0``.
+        n_modes : int | None
             Number of photonic modes used by the helper circuit. If omitted,
             ``n_modes = input_size + 1``. Maximum is 20.
 
@@ -622,17 +622,19 @@ class KernelCircuitBuilder:
 
         Parameters
         ----------
-        input_state : list[int] | None, optional
+        input_state : list[int] | None
             Input Fock state. If ``None``, it is generated automatically.
-        shots : int, optional
-            Number of sampling shots.
-        sampling_method : str, optional
-            Sampling method for pseudo-sampling.
-        computation_space : ComputationSpace | str | None, optional
+        shots : int
+            Number of sampling shots. Default is ``0``.
+        sampling_method : str
+            Sampling method for pseudo-sampling. Default is
+            ``"multinomial"``.
+        computation_space : ComputationSpace | str | None
             Logical computation subspace; one of ``{"fock", "unbunched",
             "dual_rail"}``.
-        force_psd : bool, optional
+        force_psd : bool
             Whether to project to the nearest positive semi-definite matrix.
+            Default is ``True``.
 
         Returns
         -------
@@ -679,21 +681,22 @@ class FidelityKernel(MerlinModule):
         Feature map object that encodes a given datapoint within its circuit.
     input_state : list[int]
         Input state into the circuit.
-    shots : int | None, optional
+    shots : int | None
         Number of circuit shots. If ``None``, the exact transition
         probabilities are returned. Default: ``None``.
-    sampling_method : str, optional
+    sampling_method : str
         Probability distributions are post-processed with a pseudo-sampling
         method: ``"multinomial"``, ``"binomial"``, or ``"gaussian"``.
-    computation_space : ComputationSpace | str | None, optional
+        Default is ``"multinomial"``.
+    computation_space : ComputationSpace | str | None
         Logical computation subspace; one of
         ``{"fock", "unbunched", "dual_rail"}``. Default: ``FOCK``.
-    force_psd : bool, optional
+    force_psd : bool
         Projects the training kernel matrix to the closest positive
-        semi-definite matrix. Default: ``True``.
-    device : torch.device | None, optional
+        semi-definite matrix. Default is ``True``.
+    device : torch.device | None
         Device on which to perform SLOS.
-    dtype : str | torch.dtype | None, optional
+    dtype : str | torch.dtype | None
         Datatype with which to perform SLOS.
 
     Examples
@@ -894,8 +897,8 @@ class FidelityKernel(MerlinModule):
 
     def forward(
         self,
-        x1: float | np.ndarray | Tensor,
-        x2: float | np.ndarray | Tensor | None = None,
+        x1: float | np.ndarray | torch.Tensor,
+        x2: float | np.ndarray | torch.Tensor | None = None,
     ):
         """Calculate the quantum kernel for input data ``x1`` and ``x2``.
 
@@ -904,9 +907,9 @@ class FidelityKernel(MerlinModule):
 
         Parameters
         ----------
-        x1 : float | np.ndarray | Tensor
+        x1 : float | np.ndarray | torch.Tensor
             First input datapoint or dataset.
-        x2 : float | np.ndarray | Tensor | None, optional
+        x2 : float | np.ndarray | torch.Tensor | None
             Second input datapoint or dataset. If omitted, the training kernel
             matrix for ``x1`` is computed.
 
@@ -1131,22 +1134,23 @@ class FidelityKernel(MerlinModule):
         ----------
         input_size : int
             Classical feature dimension.
-        shots : int, optional
-            Number of pseudo-sampling shots.
-        sampling_method : str, optional
-            Sampling method used when ``shots`` is positive.
-        computation_space : ComputationSpace | str | None, optional
+        shots : int
+            Number of pseudo-sampling shots. Default is ``0``.
+        sampling_method : str
+            Sampling method used when ``shots`` is positive. Default is
+            ``"multinomial"``.
+        computation_space : ComputationSpace | str | None
             Logical computation subspace.
-        force_psd : bool, optional
+        force_psd : bool
             Whether to project the training kernel matrix to the nearest
-            positive semi-definite matrix.
-        dtype : str | torch.dtype, optional
-            Target dtype for internal tensors.
-        device : torch.device | None, optional
+            positive semi-definite matrix. Default is ``True``.
+        dtype : str | torch.dtype
+            Target dtype for internal tensors. Default is ``torch.float32``.
+        device : torch.device | None
             Device on which to execute computations.
-        angle_encoding_scale : float, optional
-            Global scaling applied to angle encoding features.
-        n_modes : int | None, optional
+        angle_encoding_scale : float
+            Global scaling applied to angle encoding features. Default is ``1.0``.
+        n_modes : int | None
             Number of photonic modes used by the helper construction.
 
         Returns

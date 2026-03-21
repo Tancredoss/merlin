@@ -43,7 +43,7 @@ class DetectorTransform(torch.nn.Module):
         Raw Fock states produced by the simulator (as tuples or lists of integers).
     detectors : Sequence[pcvl.Detector | None]
         One detector per optical mode. Each detector must expose a ``detect``
-        method compatible with :class:`perceval.components.detector.Detector`.
+        method compatible with :class:`pcvl.Detector`.
     dtype : torch.dtype | None
         Torch dtype for the transform matrix. Defaults to
         ``torch.float32``.

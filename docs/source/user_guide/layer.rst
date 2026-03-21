@@ -22,10 +22,10 @@ Overview
 - **Multiple construction paths** – Build layers from
   the convenience :meth:`~merlin.algorithms.layer.QuantumLayer.simple` factory,
   a :class:`~merlin.builder.circuit_builder.CircuitBuilder`, a custom
-  :class:`perceval.components.linear_circuit.Circuit` or a fully specified :class:`perceval.components.experiment.Experiment`.
+  :class:`pcvl.Circuit` or a fully specified :class:`pcvl.Experiment`.
 - **Detector awareness** – Layers automatically derive detector transforms from
   the experiment, enabling threshold, PNR, or hybrid detection schemes.
-- **Photon-loss aware** – Experiments carrying a :class:`perceval.utils.noise_model.NoiseModel`
+- **Photon-loss aware** – Experiments carrying a :class:`pcvl.NoiseModel`
   trigger an automatic photon-loss transform so survival and loss outcomes share
   a single, normalised output distribution.
 
@@ -80,7 +80,7 @@ Use MerLin’s :class:`~merlin.builder.circuit_builder.CircuitBuilder` utilities
 Custom circuit
 ~~~~~~~~~~~~~~
 
-When you already have a :class:`perceval.components.linear_circuit.Circuit`, provide the classical input
+When you already have a :class:`pcvl.Circuit`, provide the classical input
 layout and the trainable parameter prefixes explicitly. This initialization requires
 a good understanding of Perceval.
 
@@ -109,12 +109,12 @@ a good understanding of Perceval.
 .. note::
 
   ``input_state=[...]`` is accepted as a convenience input, but the layer stores it as a Perceval
-  `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ (access the occupation vector via ``list(layer.input_state)``).
+  `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ (access the occupation vector via ``list(layer.input_state)``).
 
 Experiment-driven
 ~~~~~~~~~~~~~~~~~
 
-If you want to simulate a noise model or specify detectors characteristics, configure a :class:`perceval.components.experiment.Experiment` and pass it directly. The QuantumLayer inherits the circuit, detectors, and any photon-loss noise model you attached. This scheme is the one that gives the user the most options when utilizing a QuantumLayer.
+If you want to simulate a noise model or specify detectors characteristics, configure a :class:`pcvl.Experiment` and pass it directly. The QuantumLayer inherits the circuit, detectors, and any photon-loss noise model you attached. This scheme is the one that gives the user the most options when utilizing a QuantumLayer.
 
 .. code-block:: python
 

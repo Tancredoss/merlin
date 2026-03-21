@@ -346,19 +346,22 @@ class SLOSComputeGraph:
         n_photons : int
             Number of photons in the input state given to the model during the
             forward pass.
-        output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None, optional
+        output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None
             Function applied to output states before aggregation.
-        computation_space : ComputationSpace, default=ComputationSpace.UNBUNCHED
-            Computation subspace used to build the graph.
-        keep_keys : bool, default=True
+        computation_space : ComputationSpace
+            Computation subspace used to build the graph. Default is
+            ``ComputationSpace.UNBUNCHED``.
+        keep_keys : bool
             If ``True``, return output state keys alongside computed tensors.
-        device : torch.device | str | None, optional
+            Default is ``True``.
+        device : torch.device | str | None
             Optional device to place tensors on (CPU, CUDA, etc.).
-        dtype : torch.dtype, default=torch.float
-            Data type precision for floating point calculations (default: torch.float)
+        dtype : torch.dtype
+            Data type precision for floating point calculations. Default is
+            ``torch.float``.
             Use torch.float16 for half precision, torch.float for single precision,
             or torch.float64 for double precision
-        index_photons : list[tuple[int, ...]] | None, optional
+        index_photons : list[tuple[int, ...]] | None
             Bounds for each photon placement. Each tuple stores the minimum and
             maximum mode index allowed for one photon.
 
@@ -885,8 +888,9 @@ class SLOSComputeGraph:
             Previously evaluated input occupation list.
         input_state : list[int]
             New input occupation list.
-        changed_unitary : bool, default=False
-            Whether cached inverse tensors must be recomputed.
+        changed_unitary : bool
+            Whether cached inverse tensors must be recomputed. Default is
+            ``False``.
 
         Returns
         -------
@@ -1043,20 +1047,20 @@ def build_slos_distribution_computegraph(
         Number of modes in the circuit.
     n_photons : int
         Total number of photons injected in the circuit.
-    output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None, optional
+    output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None
         Mapping applied to each output Fock state, allowing post-processing.
-    computation_space : ComputationSpace | None, optional
+    computation_space : ComputationSpace | None
         Logical computation subspace used to build the basis and transitions.
         When omitted, defaults to ``ComputationSpace.UNBUNCHED``.
-    no_bunching : bool | None, optional
+    no_bunching : bool | None
         Deprecated legacy flag. Use ``computation_space`` instead.
-    keep_keys : bool, default=True
-        Whether to keep the list of mapped Fock states.
-    device : torch.device | str | None, optional
+    keep_keys : bool
+        Whether to keep the list of mapped Fock states. Default is ``True``.
+    device : torch.device | str | None
         Device on which tensors should be allocated.
-    dtype : torch.dtype, default=torch.float
-        Real dtype controlling numerical precision.
-    index_photons : list[tuple[int, ...]] | None, optional
+    dtype : torch.dtype
+        Real dtype controlling numerical precision. Default is ``torch.float``.
+    index_photons : list[tuple[int, ...]] | None
         Bounds for each photon placement.
 
     Returns
@@ -1242,13 +1246,14 @@ def compute_slos_distribution(
         shape ``(batch_size, m, m)``.
     input_state : list[int]
         Number of photons in every mode of the circuit.
-    output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None, optional
+    output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None
         Function that maps output states.
-    computation_space : ComputationSpace, default=ComputationSpace.UNBUNCHED
-        Computation subspace used to build the graph.
-    keep_keys : bool, default=True
-        If ``True``, output state keys are returned.
-    index_photons : list[tuple[int, ...]] | None, optional
+    computation_space : ComputationSpace
+        Computation subspace used to build the graph. Default is
+        ``ComputationSpace.UNBUNCHED``.
+    keep_keys : bool
+        If ``True``, output state keys are returned. Default is ``True``.
+    index_photons : list[tuple[int, ...]] | None
         Bounds for each photon placement.
 
     Returns

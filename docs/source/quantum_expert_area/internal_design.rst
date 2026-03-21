@@ -58,7 +58,7 @@ FeedForwardBlock
 
 ``FeedForwardBlock`` is a new experimental block that consumes a full Perceval
 experiment containing detectors and one or more
-:class:`perceval.components.feed_forward_configurator.FFCircuitProvider`
+:class:`pcvl.FFCircuitProvider`
 instances. The block parses the experiment into a sequence of *stages*:
 
 1. A unitary prefix (collapsed into a single :class:`~merlin.algorithms.layer.QuantumLayer`).

@@ -2,7 +2,7 @@ merlin.measurement.photon_loss module
 =====================================
 
 Photon loss utilities let you incorporate Perceval ``NoiseModel`` instances
-directly inside a :class:`perceval.components.experiment.Experiment`. The resulting
+directly inside a :class:`pcvl.Experiment`. The resulting
 :class:`~merlin.algorithms.layer.QuantumLayer` automatically inserts a
 :class:`~merlin.measurement.photon_loss.PhotonLossTransform` before any detector
 mapping, expanding the classical basis with loss outcomes whilst keeping

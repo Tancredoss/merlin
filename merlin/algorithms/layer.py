@@ -82,8 +82,8 @@ class QuantumLayer(MerlinModule):
 
     This layer can be created either from a
     :class:`~merlin.builder.circuit_builder.CircuitBuilder` instance, a
-    pre-compiled :class:`perceval.components.linear_circuit.Circuit`, or an
-    :class:`perceval.components.experiment.Experiment`.
+    pre-compiled :class:`pcvl.Circuit`, or an
+    :class:`pcvl.Experiment`.
     """
 
     @sanitize_parameters
@@ -128,22 +128,22 @@ class QuantumLayer(MerlinModule):
 
         Parameters
         ----------
-        input_size : int | None, optional
+        input_size : int | None
             Size of the classical input vector when angle encoding is used
             (``amplitude_encoding=False``). If omitted, it is inferred from the
             circuit metadata (input parameter prefixes and/or encoding specs).
             Must be omitted when ``amplitude_encoding=True``.
-        builder : CircuitBuilder | None, optional
+        builder : CircuitBuilder | None
             High-level circuit builder that defines trainable structure, input
             encoders and their prefixes. Mutually exclusive with ``circuit`` and
             ``experiment``.
-        circuit : pcvl.Circuit | None, optional
+        circuit : pcvl.Circuit | None
             A fully defined Perceval circuit. Mutually exclusive with ``builder``
             and ``experiment``.
-        experiment : pcvl.Experiment | None, optional
+        experiment : pcvl.Experiment | None
             A Perceval experiment. Must be unitary and without post-selection or
             heralding. Mutually exclusive with ``builder`` and ``circuit``.
-        input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None, optional
+        input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
             Logical input state of the circuit. Accepted forms:
             - ``StateVector`` (preferred, canonical type),
             - ``pcvl.StateVector`` (converted via ``StateVector.from_perceval()``),
@@ -152,15 +152,15 @@ class QuantumLayer(MerlinModule):
             - ``torch.Tensor`` (DEPRECATED - will be removed in 0.4).
             If QuantumLayer is built from an experiment, the experiment's input state is used.
             If omitted, ``n_photons`` must be provided to derive a default state.
-        n_photons : int | None, optional
+        n_photons : int | None
             Number of photons used to infer a default input state and to size the
             computation space when amplitude encoding is enabled.
-        trainable_parameters : list[str] | None, optional
+        trainable_parameters : list[str] | None
             For custom circuits/experiments, the list of Perceval parameter
             prefixes to expose as trainable PyTorch parameters. When a
             ``builder`` is provided, these are taken from the builder and this
             argument must be omitted.
-        input_parameters : list[str] | None, optional
+        input_parameters : list[str] | None
             Perceval parameter prefixes used for classical (angle) encoding. For
             amplitude encoding, this must be empty/None.
         amplitude_encoding : bool, default: False
@@ -170,7 +170,7 @@ class QuantumLayer(MerlinModule):
             the first positional argument and propagates it through the quantum
             layer; ``input_size`` must not be set in this mode and
             ``n_photons`` must be provided.
-        computation_space : ComputationSpace | str | None, optional
+        computation_space : ComputationSpace | str | None
             Logical computation subspace to use: one of ``{"fock", "unbunched",
             "dual_rail"}``. If omitted, defaults to ``UNBUNCHED``. This argument
             is deprecated; move it into ``MeasurementStrategy.probs(...)``.
@@ -188,9 +188,9 @@ class QuantumLayer(MerlinModule):
             - ``MeasurementKind.PROBABILITIES`` returns a ``ProbabilityDistribution``
             - ``MeasurementKind.PARTIAL`` returns a ``PartialMeasurement``.
             - ``MeasurementKind.MODE_EXPECTATIONS`` returns a ``torch.Tensor``.
-        device : torch.device | None, optional
+        device : torch.device | None
             Target device for internal tensors (e.g., ``torch.device("cuda")``).
-        dtype : torch.dtype | None, optional
+        dtype : torch.dtype | None
             Precision for internal tensors (e.g., ``torch.float32``). The matching
             complex dtype is chosen automatically.
 
@@ -687,7 +687,7 @@ class QuantumLayer(MerlinModule):
 
         Parameters
         ----------
-        input_state : pcvl.BasicState | tuple | list | torch.Tensor | StateVector
+        input_state : pcvl.BasicState | tuple | list | torch.Tensor | merlin.core.state_vector.StateVector
             Input state to store on the layer and underlying computation
             process.
         """
@@ -755,13 +755,13 @@ class QuantumLayer(MerlinModule):
 
         - ``torch.Tensor`` (float): angle encoding (compatible with ``nn.Sequential``)
         - ``torch.Tensor`` (complex): amplitude encoding
-        - ``StateVector``: amplitude encoding (preferred for quantum state injection)
+        - ``merlin.core.state_vector.StateVector``: amplitude encoding (preferred for quantum state injection)
 
         Parameters
         ----------
-        input_parameters : torch.Tensor | StateVector
+        input_parameters : torch.Tensor | merlin.core.state_vector.StateVector
             Input data. For angle encoding, pass float tensors. For amplitude
-            encoding, pass a single ``StateVector`` or complex tensor.
+            encoding, pass a single ``merlin.core.state_vector.StateVector`` or complex tensor.
         shots : int | None
             Number of samples; if 0 or None, return exact amplitudes/probabilities.
         sampling_method : str | None
@@ -771,7 +771,7 @@ class QuantumLayer(MerlinModule):
 
         Returns
         -------
-        torch.Tensor | PartialMeasurement | StateVector | ProbabilityDistribution
+        torch.Tensor | PartialMeasurement | merlin.core.state_vector.StateVector | ProbabilityDistribution
             Output after measurement mapping.
             Depending on the return_object argument and measurement strategy defined in the input, the output
             type will be different. Check the constructor for more details.
