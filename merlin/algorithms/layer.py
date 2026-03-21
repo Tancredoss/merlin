@@ -1310,7 +1310,7 @@ class QuantumLayer(MerlinModule):
 
         Returns
         -------
-        nn.Module
+        torch.nn.Module
             QuantumLayer configured with the described architecture.
         """
         n_modes = input_size + 1

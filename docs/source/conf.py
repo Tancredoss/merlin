@@ -130,7 +130,7 @@ typehints_use_rtype = False
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True
 napoleon_use_param = True
-napoleon_use_rtype = False
+napoleon_use_rtype = True
 
 # Suppress duplicate object warnings for re-exported classes
 suppress_warnings.extend(["autodoc.import_object"])

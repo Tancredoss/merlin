@@ -270,7 +270,7 @@ class QuantumBridge(nn.Module):
 
         Returns
         -------
-        `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_
+        :class:`pcvl.BasicState`
             Photonic Fock state produced by the current qubit grouping
             convention.
 

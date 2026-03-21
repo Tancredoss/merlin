@@ -666,7 +666,7 @@ class CircuitBuilder:
 
         Returns
         -------
-        Circuit
+        merlin.core.circuit.Circuit
             Circuit instance populated with components.
         """
         return self.circuit

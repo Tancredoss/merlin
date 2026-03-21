@@ -74,7 +74,7 @@ class OutputMapper:
 
         Returns
         -------
-        nn.Module
+        torch.nn.Module
             PyTorch module mapping amplitudes or probabilities to the desired
             output representation.
 
