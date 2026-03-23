@@ -42,12 +42,12 @@ def pcvl_to_tensor(
     ----------
     state_vector : pcvl.StateVector
         Perceval state vector.
-    computation_space : ComputationSpace, default=ComputationSpace.FOCK
-        Computation space of the state vector following combinadics ordering.
-    dtype : torch.dtype, default=torch.complex64
-        Desired torch dtype of the output tensor.
-    device : torch.device, default=torch.device("cpu")
-        Desired torch device of the output tensor.
+    computation_space : merlin.core.computation_space.ComputationSpace
+        Computation space of the state vector following combinadics ordering. Default is ``ComputationSpace.FOCK``
+    dtype : torch.dtype
+        Desired torch dtype of the output tensor. Default is ``torch.complex64``.
+    device : torch.device
+        Desired torch device of the output tensor. Defalut is ``torch.device("cpu")``.
 
     Returns
     -------

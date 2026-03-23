@@ -182,7 +182,7 @@ class InitializationContext:
         Attached noise model, if any.
     has_custom_noise : bool
         Whether the experiment defines custom noise.
-    input_state : StateVector | pcvl.BasicState | torch.Tensor | None
+    input_state : merlin.core.state_vector.StateVector | pcvl.BasicState | torch.Tensor | None
         Normalized input state.
     n_photons : int | None
         Resolved photon count.
@@ -200,7 +200,7 @@ class InitializationContext:
         Whether custom detectors are configured.
     computation_space : ComputationSpace
         Resolved computation space.
-    measurement_strategy : MeasurementStrategyLike
+    measurement_strategy : :data:`merlin.measurement.strategies.MeasurementStrategyLike`
         Measurement strategy used by the layer.
     warnings : list[str]
         Initialization warnings to surface to the caller.
@@ -309,8 +309,8 @@ def prepare_input_state(
 
     Parameters
     ----------
-    input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
-        The input state in various formats. ``StateVector`` is the canonical type.
+    input_state : :class:`~merlin.core.state_vector.StateVector` | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
+        The input state in various formats. :class:`~merlin.core.state_vector.StateVector` is the canonical type.
         Legacy formats are auto-converted with deprecation warnings where appropriate.
     n_photons : int | None
         Number of photons (used for default state generation).
@@ -329,7 +329,7 @@ def prepare_input_state(
 
     Returns
     -------
-    tuple[StateVector | pcvl.BasicState | torch.Tensor | None, int | None]
+    tuple[merlin.core.state_vector.StateVector | pcvl.BasicState | torch.Tensor | None, int | None]
         The normalized input state and resolved photon count.
 
     Raises
@@ -629,7 +629,7 @@ def setup_noise_and_detectors(
         Resolved circuit used to determine the number of modes.
     computation_space : ComputationSpace
         Logical computation space requested by the layer.
-    measurement_strategy : MeasurementStrategyLike
+    measurement_strategy : :data:`merlin.measurement.strategies.MeasurementStrategyLike`
         Measurement strategy used to validate detector and noise compatibility.
 
     Returns

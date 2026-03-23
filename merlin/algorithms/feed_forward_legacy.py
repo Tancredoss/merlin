@@ -404,8 +404,8 @@ class FeedForwardBlockLegacy(torch.nn.Module):
             Stores intermediate probabilities.
         outputs : dict
             Stores final output probabilities for all branches.
-        depth : int=0
-            Current recursion depth.
+        depth : int
+            Current recursion depth. Default is 0.
         x : torch.Tensor | None
             Classical input features.
         """
@@ -667,7 +667,7 @@ class PoolingFeedForwardLegacy(torch.nn.Module):
         Specifies how input modes are grouped (pooled) into output modes.
         Each sublist contains the indices of input modes to pool together
         for one output mode. If None, an even pooling scheme is automatically generated.
-    no_bunching : bool | None (deprecated)
+    no_bunching : bool | None
         Deprecated and now removed; use computation_space in MeasurementStrategy instead.
 
     Attributes

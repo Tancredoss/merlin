@@ -16,7 +16,9 @@ Modules
    * - :doc:`merlin.algorithms.kernels`
      - Quantum feature maps, kernel builders, and fidelity-kernel modules.
    * - :doc:`merlin.algorithms.layer`
-     - The public :class:`~merlin.algorithms.layer.QuantumLayer` interface and related layer utilities.
+     - The public :class:`~merlin.algorithms.layer.QuantumLayer` interface.
+   * - :doc:`merlin.algorithms.layer_utils`
+     - Utility functions for the :class:`~merlin.algorithms.layer.QuantumLayer`.
    * - :doc:`merlin.algorithms.loss`
      - Loss functions such as :class:`~merlin.algorithms.loss.NKernelAlignment` for kernel training workflows.
    * - :doc:`merlin.algorithms.module`

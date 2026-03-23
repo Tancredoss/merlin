@@ -66,7 +66,7 @@ def get_data_train():
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray, DatasetMetadata]
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
         Training images, labels, and dataset metadata.
     """
     return get_data_generic(
@@ -82,7 +82,7 @@ def get_data_test():
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray, DatasetMetadata]
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
         Test images, labels, and dataset metadata.
     """
     return get_data_generic(

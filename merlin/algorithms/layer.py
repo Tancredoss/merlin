@@ -755,13 +755,13 @@ class QuantumLayer(MerlinModule):
 
         - ``torch.Tensor`` (float): angle encoding (compatible with ``nn.Sequential``)
         - ``torch.Tensor`` (complex): amplitude encoding
-        - ``merlin.core.state_vector.StateVector``: amplitude encoding (preferred for quantum state injection)
+        - :class:`~merlin.core.state_vector.StateVector`: amplitude encoding (preferred for quantum state injection)
 
         Parameters
         ----------
         input_parameters : torch.Tensor | merlin.core.state_vector.StateVector
             Input data. For angle encoding, pass float tensors. For amplitude
-            encoding, pass a single ``merlin.core.state_vector.StateVector`` or complex tensor.
+            encoding, pass a single :class:`~merlin.core.state_vector.StateVector` or complex tensor.
         shots : int | None
             Number of samples; if 0 or None, return exact amplitudes/probabilities.
         sampling_method : str | None

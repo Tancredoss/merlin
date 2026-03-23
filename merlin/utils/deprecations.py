@@ -33,8 +33,8 @@ def raise_no_bunching_deprecated(*, stacklevel: int = 2) -> None:
 
     Parameters
     ----------
-    stacklevel : int, default=2
-        Warning stack level used for the emitted deprecation warning.
+    stacklevel : int
+        Warning stack level used for the emitted deprecation warning. Default is ``2``.
 
     Raises
     ------
@@ -275,7 +275,7 @@ def normalize_measurement_strategy(
 
     Parameters
     ----------
-    measurement_strategy : MeasurementStrategyLike | str | None
+    measurement_strategy : :data:`merlin.measurement.strategies.MeasurementStrategyLike` | str | None
         Measurement strategy provided by the caller. Supports the modern
         strategy object, legacy enum aliases, legacy strings, or ``None``.
     computation_space : ComputationSpace | str | None
@@ -283,7 +283,7 @@ def normalize_measurement_strategy(
 
     Returns
     -------
-    tuple[MeasurementStrategyLike, ComputationSpace]
+    tuple[:data:`merlin.measurement.strategies.MeasurementStrategyLike`, ComputationSpace]
         Normalized measurement strategy and resolved computation space.
 
     Raises
