@@ -21,6 +21,13 @@
     "tags": ["Tutorial","Classification", "Moons", "Load_digits", "CircuitBuilder"]
   },
   {
+    "title": "Binary classification (Iris)",
+    "summary": "How to use MerLin for binary classification. Includes usage of a Variational Quantum Circuit (VQC) and a quantum kernel method.",
+    "image": "_static/img/binary_iris.png",
+    "doc": "notebooks/binary_classification.ipynb",
+    "tags": ["Tutorial", "Binary Classification", "Iris", "VQC", "Quantum kernel method"]
+  },
+  {
     "title": "Build a hybrid model",
     "summary": "Build a hybrid PyTorch model with classical layers around a quantum layer.",
     "image": "_static/reproduced_papers/hqnn/blobs_dataset.png",

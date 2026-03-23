@@ -1,10 +1,10 @@
 merlin.bridge package
 ======================
 
-.. automodule:: merlin.bridge.bridge
+.. automodule:: merlin.bridge
    :no-members:
 
-.. currentmodule:: merlin.bridge.bridge
+.. currentmodule:: merlin.bridge
 
 Modules
 -------
