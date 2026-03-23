@@ -99,8 +99,11 @@ Discover more usages of MerLin
    ../notebooks/FromSimpleToBuilder
    ../notebooks/HelloWorldMerLinCloud
    ../notebooks/Kernels
+   ../notebooks/binary_classification
    ../notebooks/classifying_circles_from_installation
    ../notebooks/iris_classification
+   ../notebooks/QORC-basics
+   ../notebooks/QORC-demo-MNIST
    ../notebooks/release_0,3_highlights
 
 Based on reproduced papers
