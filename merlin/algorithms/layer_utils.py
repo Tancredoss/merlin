@@ -200,7 +200,7 @@ class InitializationContext:
         Whether custom detectors are configured.
     computation_space : ComputationSpace
         Resolved computation space.
-    measurement_strategy : :data:`merlin.measurement.strategies.MeasurementStrategyLike`
+    measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
         Measurement strategy used by the layer.
     warnings : list[str]
         Initialization warnings to surface to the caller.
@@ -629,7 +629,7 @@ def setup_noise_and_detectors(
         Resolved circuit used to determine the number of modes.
     computation_space : ComputationSpace
         Logical computation space requested by the layer.
-    measurement_strategy : :data:`merlin.measurement.strategies.MeasurementStrategyLike`
+    measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
         Measurement strategy used to validate detector and noise compatibility.
 
     Returns

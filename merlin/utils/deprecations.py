@@ -275,7 +275,7 @@ def normalize_measurement_strategy(
 
     Parameters
     ----------
-    measurement_strategy : :data:`merlin.measurement.strategies.MeasurementStrategyLike` | str | None
+    measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike` | str | None
         Measurement strategy provided by the caller. Supports the modern
         strategy object, legacy enum aliases, legacy strings, or ``None``.
     computation_space : ComputationSpace | str | None
@@ -283,7 +283,7 @@ def normalize_measurement_strategy(
 
     Returns
     -------
-    tuple[:data:`merlin.measurement.strategies.MeasurementStrategyLike`, ComputationSpace]
+    tuple[:data:`~merlin.measurement.strategies.MeasurementStrategyLike`, ComputationSpace]
         Normalized measurement strategy and resolved computation space.
 
     Raises

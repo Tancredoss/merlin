@@ -30,7 +30,7 @@ API Perceval Aliases
 
    Alias for :class:`perceval.components.detector.Detector`.
    
-   External API: `Perceval Detector <https://perceval.quandela.net/docs/v1.1/reference/components/detector.html#perceval.components.detector.Detector>`_
+   External API: `Perceval Detector <https://perceval.quandela.net/docs/v1.1/reference/components/detector.html>`_
 
 .. py:class:: pcvl.Experiment
    :canonical: perceval.components.experiment.Experiment

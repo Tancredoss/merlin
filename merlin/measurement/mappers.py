@@ -62,7 +62,7 @@ class OutputMapper:
 
         Parameters
         ----------
-        strategy : :data:`merlin.measurement.strategies.MeasurementStrategyLike`
+        strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
             Measurement mapping strategy to use.
         computation_space : ComputationSpace
             Computation space for the measurement.

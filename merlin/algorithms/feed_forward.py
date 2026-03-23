@@ -190,7 +190,7 @@ class FeedForwardBlock(MerlinModule):
     computation_space : ComputationSpace
         Currently restricted to
         :class:`~merlin.core.computation_space.ComputationSpace`\ ``.FOCK``.
-    measurement_strategy : :data:`merlin.measurement.strategies.MeasurementStrategyLike`
+    measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
         Controls how classical outputs are produced.
 
         - ``MeasurementStrategy.probs(computation_space)`` (default) returns a
