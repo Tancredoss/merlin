@@ -593,7 +593,7 @@ class ComputationProcessFactory:
             Prefixes of input-driven circuit parameters.
         computation_space : ComputationSpace | None
             Computation space used for basis enumeration.
-        kwargs
+        **kwargs
             Additional keyword arguments forwarded to
             :class:`ComputationProcess`.
 

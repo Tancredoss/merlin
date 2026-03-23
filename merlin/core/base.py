@@ -41,9 +41,9 @@ class AbstractComputationProcess(ABC):
 
         Parameters
         ----------
-        args
+        *args
             Positional arguments for the computation.
-        kwargs
+        **kwargs
             Keyword arguments for the computation.
         """
         pass

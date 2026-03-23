@@ -250,9 +250,9 @@ class StateVector:
 
         Parameters
         ----------
-        args
+        *args
             Positional arguments forwarded to :meth:`torch.Tensor.to`.
-        kwargs
+        **kwargs
             Keyword arguments forwarded to :meth:`torch.Tensor.to`.
 
         Returns

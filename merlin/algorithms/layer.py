@@ -1069,9 +1069,9 @@ class QuantumLayer(MerlinModule):
 
         Parameters
         ----------
-        args
+        *args
             Positional arguments forwarded to :meth:`torch.nn.Module.to`.
-        kwargs
+        **kwargs
             Keyword arguments forwarded to :meth:`torch.nn.Module.to`.
 
         Returns
