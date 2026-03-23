@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Measurement Strategy Guide",
+    "summary": "An overview of the measurement strategies in MerLin.",
+    "image": "_static/img/partial_measurement.png",
+    "doc": "user_guide/measurement_strategy",
+    "tags": ["Introduction", "MeasurementStrategy", "Overview"]
+  },
+  {
+    "title": "Computation Spaces Guide",
+    "summary": "An overview of the computation spaces in MerLin.",
+    "image": "_static/img/computation_space.png",
+    "doc": "user_guide/computation_space",
+    "tags": ["Introduction", "MeasurementStrategy", "Overview"]
+  },
+  {
+    "title": "A guide to grouping",
+    "summary": "Master the output sizes of your QuantumLayers with grouping.",
+    "image": "_static/img/grouping.png",
+    "doc": "user_guide/grouping",
+    "tags": ["Introduction", "Grouping", "Overview"]
+  }
+]

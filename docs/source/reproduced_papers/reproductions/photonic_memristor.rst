@@ -128,5 +128,3 @@ Citation
       doi={10.48550/arXiv.2504.18694},
       url={https://arxiv.org/abs/2504.18694}
    }
-
-----

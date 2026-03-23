@@ -171,7 +171,7 @@ class CircuitBuilder:
             angle: Optional fixed value for the rotations (alias of ``value``).
             value: Optional fixed value for the rotations (alias of ``angle``).
             name: Optional stem used for generated parameter names.
-            role: Explicit :class:`ParameterRole` taking precedence over other flags.
+            role: Explicit :class:`~merlin.core.components.ParameterRole` taking precedence over other flags.
 
         Returns:
             CircuitBuilder: ``self`` for fluent chaining.
@@ -269,11 +269,10 @@ class CircuitBuilder:
             modes: Optional list of circuit modes to target. Defaults to all modes.
             name: Prefix used for generated input parameters. Defaults to ``"px"``.
             scale: Global scaling factor applied before angle mapping.
-            subset_combinations: When ``True``, generate higher-order feature
-                combinations (up to ``max_order``) matching the historical
-                subset encoding utility.
-            max_order: Optional cap on the size of feature combinations when
-                ``subset_combinations`` is enabled. ``None`` uses all orders.
+            subset_combinations: When ``True``, generate higher-order feature combinations
+            (up to ``max_order``) matching the historical subset encoding utility.
+            max_order: Optional cap on the size of feature combinations when ``subset_combinations``
+            is enabled. ``None`` uses all orders.
 
         Returns:
             CircuitBuilder: ``self`` for fluent chaining.
@@ -382,8 +381,8 @@ class CircuitBuilder:
 
         Args:
             modes: Optional list describing the span. ``None`` targets all modes;
-                one element targets ``modes[0]`` through the final mode; two elements
-                target the inclusive range ``[modes[0], modes[1]]``.
+            one element targets ``modes[0]`` through the final mode; two elements
+            target the inclusive range ``[modes[0], modes[1]]``.
             trainable: Whether internal phase shifters should be trainable.
             model: ``\"mzi\"`` or ``\"bell\"`` to select the internal interferometer template.
             name: Optional prefix used for generated parameter names.
@@ -466,7 +465,7 @@ class CircuitBuilder:
 
         Args:
             targets: Tuple or list of tuples describing explicit mode pairs. When
-                omitted, nearest neighbours over ``modes`` (or all modes) are used.
+            omitted, nearest neighbours over ``modes`` (or all modes) are used.
             depth: Number of sequential passes to apply (``>=1``).
             theta: Baseline mixing angle for fixed beam splitters.
             phi: Baseline relative phase for fixed beam splitters.

@@ -2,6 +2,10 @@ merlin.datasets.iris module
 ===========================
 
 .. automodule:: merlin.datasets.iris
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
+
+.. currentmodule:: merlin.datasets.iris
+
+.. autofunction:: get_data_train
+
+.. autofunction:: get_data_test
