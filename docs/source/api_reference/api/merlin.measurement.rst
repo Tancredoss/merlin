@@ -2,9 +2,7 @@ merlin.measurement package
 ==========================
 
 .. automodule:: merlin.measurement
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
 Submodules
 ----------

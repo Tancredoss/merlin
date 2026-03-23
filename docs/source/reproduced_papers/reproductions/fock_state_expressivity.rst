@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
+========================================================================
 Fock State-enhanced Expressivity of Quantum Machine Learning Models
-====================================================
+========================================================================
 
 .. admonition:: Paper Information
    :class: note
@@ -20,24 +20,24 @@ Fock State-enhanced Expressivity of Quantum Machine Learning Models
    **Reproducer**: Philippe Schoeb (philippe.schoeb@quandela.com)
 
 Abstract
-========
+========================================================================
 
 This paper proposes a data-encoding scheme that projects the classical data points into the high-dimensional Fock space using a photonic circuit. Their efficient methodology serves as foundational work for using photonic quantum systems for machine learning. In addition, it delves into the theory behind the expressivity of photonic quantum circuits and demonstrates their findings with experimental results.
 
 Furthermore, it presents three different noisy photonic intermediate-scale binary classification methods.
 
 Significance
-============
+========================================================================
 
 This paper introduces a data-embedding process that is now commonly used in photonic quantum machine learning because it is more effective than the previously used methods. It also showcases the expressivity of photonic quantum circuits that is dependent on the number of photons used.
 
 MerLin Implementation
-=====================
+========================================================================
 
 In brief, MerLin is used in our implementations to define quantum layers that are part of a hybrid network model for which PyTorch is used to define the classical layers.
 
 Key Contributions
-=================
+========================================================================
 
 **Display the expressive power of the variational linear quantum photonic circuit**
   * We have shown that the expressive power of a VQC depends on the number of photons used. More specifically, we have obtained that a VQC using 1 photon (initial state : [1, 0, 0]) cannot fit a degree 3 Fourier series. Then, we have that a VQC with 2 photons (intial state : [1, 1, 0]) can reach a better fit but does not have expressive power needed to do so perfectly. Finally, using 3 photons (intial state : [1, 1, 1]), the VQC can fit the target function without problem.
@@ -58,7 +58,7 @@ Key Contributions
   * The classical random kitchen sinks algorithm was also implemented to allow direct comparison.
 
 Implementation Details
-======================
+========================================================================
 
 The key role of MerLin in our implementations is to give us access to trainable quantum layers. Then, we can include this quantum layer in our model using torch.nn.Sequential.
 
@@ -83,7 +83,7 @@ The key role of MerLin in our implementations is to give us access to trainable 
    )
 
 Interactive Exploration
-=======================
+========================================================================
 
 **Jupyter Notebooks**:
 
@@ -105,7 +105,7 @@ This notebook provides a tutorial on how to use a photonic quantum circuit as a 
 This notebook provides a tutorial on how to use a photonic quantum circuit to approximate the random kitchen sinks algorithm with or without training. It also allows you to experiment by varying several hyperparameters.
 
 Extensions and Future Work
-==========================
+========================================================================
 
 The MerLin implementation extends beyond the original paper:
 
@@ -126,7 +126,7 @@ The MerLin implementation extends beyond the original paper:
   * For the experiement on Algorithm 2: **Linear quantum photonic circuits as Gaussian kernel samplers**, further investigation is needed to fully understand why the obtained fits are significantly less accurate than the ones presented in the reference paper and to solve this issue.
 
 Citation
-========
+========================================================================
 
 .. code-block:: bibtex
 
@@ -142,5 +142,3 @@ Citation
    author={Gan, Beng Yee and Leykam, Daniel and Angelakis, Dimitris G.},
    year={2022},
    month=jun }
-
-----

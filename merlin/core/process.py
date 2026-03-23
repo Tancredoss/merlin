@@ -224,7 +224,7 @@ class ComputationProcess(AbstractComputationProcess):
         normalises the input state (if it is not already normalised), filters
         out components with zero amplitude, and then queries the simulation
         graph for batches of Fock states. Each batch feeds
-        :meth:`SLOSComputeGraph.compute_batch`, producing a tensor that contains
+        :meth:`~merlin.pcvl_pytorch.slos_torchscript.SLOSComputeGraph.compute_batch`, producing a tensor that contains
         the amplitudes of all reachable output states for the selected input
         components. The partial results are accumulated into a preallocated
         tensor and finally weighted by the complex coefficients of

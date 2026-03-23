@@ -8,7 +8,7 @@ As part of the reproduction effort, a lot of interesting QML papers were found. 
 
 
 Introductory papers to photonic QML
-=======================
+===================================
 
 .. bibliography:: QML_library_other_papers.bib
    :all:
@@ -22,14 +22,14 @@ Reproduced papers
    :list: bullet
 
 Reproduced papers in progress
-=================
+==============================
 
 .. bibliography:: QML_library_reproduced_papers_in_progress.bib
    :all:
    :list: bullet
 
 Reproduced papers to do
-=================
+========================
 
 .. bibliography:: QML_library_reproduced_papers_to_do.bib
    :all:

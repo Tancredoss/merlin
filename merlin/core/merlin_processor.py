@@ -40,14 +40,8 @@ class MerlinProcessor:
 
     Args:
         remote_processor: A Perceval RemoteProcessor (legacy path).
-        session:          A Perceval ISession — e.g. from Scaleway or Perceval
-                          Cloud (preferred path).  Exactly one of
-                          ``remote_processor`` or ``session`` must be provided.
-        token:            Optional auth token forwarded to cloned
-                          RemoteProcessors.  When omitted the token is
-                          auto-extracted from the RP's handler, which
-                          covers both inline-token and
-                          ``RemoteConfig.set_token()`` workflows.
+        session: A Perceval ISession, for example from Scaleway or Perceval Cloud (preferred path). Exactly one of ``remote_processor`` or ``session`` must be provided.
+        token: Optional auth token forwarded to cloned RemoteProcessors. When omitted the token is auto-extracted from the RP's handler, which covers both inline-token and ``RemoteConfig.set_token()`` workflows.
     """
 
     DEFAULT_MAX_SHOTS: int = 100_000
@@ -259,9 +253,11 @@ class MerlinProcessor:
         def _status():
             js = state.get("current_status")
             return {
-                "state": "COMPLETE"
-                if fut.done() and not js
-                else (js.get("state") if js else "IDLE"),
+                "state": (
+                    "COMPLETE"
+                    if fut.done() and not js
+                    else (js.get("state") if js else "IDLE")
+                ),
                 "progress": js.get("progress") if js else 0.0,
                 "message": js.get("message") if js else None,
                 "chunks_total": state["chunks_total"],
@@ -652,9 +648,11 @@ class MerlinProcessor:
         return RemoteProcessor(
             name=rp.name,
             token=self._token,
-            url=rp.get_rpc_handler().url
-            if hasattr(rp.get_rpc_handler(), "url")
-            else None,
+            url=(
+                rp.get_rpc_handler().url
+                if hasattr(rp.get_rpc_handler(), "url")
+                else None
+            ),
             proxies=rp.proxies,
         )
 

@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-===============
+=========================================================
 Basic Concepts
-===============
+=========================================================
 
 This guide introduces the fundamental concepts behind Merlin's approach to quantum neural networks.
 
@@ -13,7 +13,7 @@ Merlin centres on three high-level tools you will see throughout the quickstart:
 - **QuantumLayer** for dropping your circuit into any PyTorch model with automatic differentiation support.
 
 Conceptual Overview
-===================
+=========================================================
 
 Merlin bridges the gap between physical quantum circuits and high-level machine learning interfaces through a layered architecture. From lowest to highest level:
 
@@ -27,7 +27,7 @@ Merlin bridges the gap between physical quantum circuits and high-level machine 
 Let's explore each level in detail.
 
 1. Physical Foundation: Photonic Circuits
-=========================================
+=========================================================
 
 At the foundation, Merlin uses **photonic quantum computing**, where information is encoded in photons (particles of light) traveling through optical circuits. These circuits consist of:
 
@@ -42,6 +42,7 @@ On the image above, you can see a 12-mode interferometer with 6 photons entering
 Here, we could write
 
 .. code-block:: python
+    
     # A simple photonic system
     n_modes = 12        # 4 optical pathways
     n_photons = 6     # 2 photons for quantum interference
@@ -58,7 +59,7 @@ First, we present the overview of the building of a QuantumLayer, brick by brick
 Overview of the Merlin hybrid workflow.
 
 2. Backend : Mathematical Models
-========================================
+=========================================================
 
 To run this `layer`, the **Backend** provides mathematical representations of quantum circuits, handling the complex quantum mechanics while exposing a clean interface for machine learning.
 
@@ -72,7 +73,7 @@ Key responsibilities:
 Merlin comes with high-performance classical simulators (SLOS and Clifford-based modes) so you can prototype and train without immediate access to hardware. Switching to hardware later only requires changing the backend configuration.
 
 3. Encoding: Classical-to-Quantum Mapping
-=========================================
+=========================================================
 
 **Encoding** defines how classical input features are mapped to quantum circuit parameters. This is crucial because quantum circuits operate on phases and amplitudes, not raw feature values.
 
@@ -83,7 +84,7 @@ Merlin comes with high-performance classical simulators (SLOS and Clifford-based
 3. **Circuit Mapping**: Distribute to quantum parameters based on the configured circuit
 
 Angle Encoding
-^^^^^^^^^^^^^^
+--------------
 
 **Angle encoding** rotates programmable elements of the circuit by an angle proportional to each classical feature.
 
@@ -98,7 +99,7 @@ Angle Encoding
 Angle encoding keeps circuit depth compact while still giving continuous control over the interferometer. Keep signals normalized (or pass them through a bounded activation such as ``torch.tanh``) so the mapped rotation angles remain in a sensible range.
 
 Amplitude Encoding
-^^^^^^^^^^^^^^^^^^
+------------------
 
 **Amplitude encoding** maps classical data directly into the amplitudes of a quantum
 state. Rather than turning features into phase-shifter angles, you represent your data
@@ -124,7 +125,7 @@ For a detailed comparison of angle vs. amplitude encoding and complete runnable 
 see :doc:`../user_guide/angle_amplitude_encoding`.
 
 Initial State Patterns
-^^^^^^^^^^^^^^^^^^^^^^
+----------------------
 
 The initial distribution of photons affects quantum behavior:
 
@@ -143,7 +144,7 @@ Different patterns create different types of quantum interference and correlatio
 For detailed encoding strategies and optimization techniques, see :doc:`../user_guide/angle_amplitude_encoding`.
 
 4. Measurement Strategy: Quantum-to-Classical Conversion
-==================================================
+=========================================================
 
 **Measurement Strategy** converts quantum measurement results (probability distributions or amplitudes) into classical outputs.
 
@@ -164,7 +165,8 @@ To reduce the dimensionality of the Fock distribution after measurement, compose
 For detailed comparisons and selection guidelines, see :doc:`../user_guide/measurement_strategy` and :doc:`../user_guide/grouping`.
 
 Grouping strategies
--------------------
+---------------------------------------------------------
+
 
 Two simple, built-in grouping strategies are provided to reduce the high-dimensional
 Fock outputs to a smaller set of classical features:
@@ -185,7 +187,7 @@ Example::
         interleaved = ML.ModGrouping(quantum_layer.output_size, 3)
 
 5. High-Level Interface: QuantumLayer
-=====================================
+=========================================================
 
 The **QuantumLayer** combines all these concepts into a PyTorch-compatible interface that plays nicely with standard deep learning tooling. Build a circuit with the builder interface, then pass it to the layer alongside the parameters you want Merlin to manage:
 
@@ -224,36 +226,36 @@ Key parameters to tune when instantiating :class:`~merlin.algorithms.layer.Quant
 - ``return_object``: Choose to return a typed object as the forward output depending  on the ``measurement_strategy``.  The default value is False. Take a look at :doc:`../api_reference/api/merlin.algorithms.layer` for more details about the return types.
 
 Encoding mode is inferred from the input type
-----------------------------------------------
+---------------------------------------------------------
 
 The layer decides between angle and amplitude encoding based on what you pass to
 ``forward()``:
 
 - **Real** ``torch.Tensor`` → angle encoding (features mapped to phase shifters).
-- :class:`~merlin.core.state_vector.StateVector` → amplitude encoding (use :meth:`~StateVector.from_tensor` for classical data).
+- :class:`~merlin.core.state_vector.StateVector` → amplitude encoding (use :meth:`~merlin.core.state_vector.StateVector.from_tensor` for classical data).
 - **Complex** ``torch.Tensor`` → amplitude encoding (tensor variant).
 
 No special constructor flags are needed — just pass the right type.
 
 Typed outputs with ``return_object=True``
------------------------------------------
+---------------------------------------------------------
 
 By default, the output of the QuantumLayer's forward function is a ``torch.Tensor``. However if the parameter ``return_object`` is set to True in the initialization
 (it is False by default), the layer returns typed Merlin objects instead of bare tensors, carrying metadata such as mode count, photon number, and computation space:
 
 - ``.probs()`` → :class:`~merlin.core.probability_distribution.ProbabilityDistribution`, an object that regroups all of the possible outcomes and their probabilities.
-For more details, :doc:`/api_reference/api/merlin.algorithms.core.probability_distribution`.
+    For more details, :doc:`/api_reference/api/merlin.core.probability_distribution`.
 - ``.amplitudes()`` → :class:`~merlin.core.state_vector.StateVector`, an object that regroups all of the possible state_vectors at the end of the circuit and their basis state decomposition.
-For more details, :doc:`/api_reference/api/merlin.algorithms.core.state_vector`.
+    For more details, :doc:`/api_reference/api/merlin.core.state_vector`.
 - ``.mode_expectations()`` → ``torch.Tensor``
 
 Even when ``return_object=False``,
 - ``.partial()`` → :class:`~merlin.core.partial_measurement.PartialMeasurement`, an object that regroups all of the measurement results and possible output ``StateVectors``.
-For more details, :doc:`/api_reference/api/merlin.algorithms.core.partial_measurement`.
+For more details, :doc:`/api_reference/api/merlin.core.partial_measurement`.
 
 
 Putting It All Together
-=======================
+=========================================================
 
 Here's how all these concepts work together in practice:
 
@@ -311,7 +313,7 @@ Here's how all these concepts work together in practice:
 
 
 Design Guidelines
-=================
+=========================================================
 
 When choosing configurations, consider these general principles:
 

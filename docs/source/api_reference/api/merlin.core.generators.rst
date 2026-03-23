@@ -1,5 +1,5 @@
 merlin.core.generators module (removed)
-======================================
+========================================
 
 .. warning:: *Deprecated since version 0.3:*
     This module has been removed.

@@ -1,0 +1,16 @@
+[
+  {
+    "title": "Feedforward circuits",
+    "summary": "Circuits using partial measurements to determine the configuration of the downstream circuit.",
+    "image": "_static/img/QCNN_adaptive.png",
+    "doc": "user_guide/feed_forward",
+    "tags": ["Introduction", "PartialMeasurement", "FeedForwardBlock", "Overview"]
+  },
+  {
+    "title": "Kernels",
+    "summary": "Introduction to photonic quantum kernel algorithms.",
+    "image": "_static/img/kernel_trick.png",
+    "doc": "user_guide/kernels",
+    "tags": ["Introduction","Tutorials","Kernels"]
+  }
+]

@@ -90,7 +90,7 @@ Choose your path based on your background and goals:
   baselines. See :doc:`performance/index` for benchmarking and hardware constraints.
 
 **Curious Explorers**
-  Browse :doc:`notebooks/index` for practical tutorials, or dive into
+  Browse :doc:`examples/index` for practical tutorials, or dive into
   :doc:`user_guide/index` for comprehensive guidance on workflows and patterns.
 
 Installation
@@ -194,7 +194,7 @@ Next Steps
 
 - **Get started**: :doc:`quickstart/index`
 - **Understand MerLin**: :doc:`user_guide/index`
-- **Explore examples**: :doc:`examples/index
+- **Explore examples**: :doc:`examples/index`
 - **Reproduce papers**: :doc:`reproduced_papers/index`
 - **Contribute**: :doc:`contribution`
 - **API reference**: :doc:`api_reference/index`

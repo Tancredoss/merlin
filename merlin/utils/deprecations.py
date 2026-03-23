@@ -257,18 +257,39 @@ def normalize_measurement_strategy(
 ) -> tuple[MeasurementStrategyLike, ComputationSpace]:
     """Normalize measurement strategy + computation space with deprecation warnings.
 
-    Enforces the v0.3 requirement that computation_space must live inside MeasurementStrategy
-    when using the new factory methods (probs, mode_expectations, partial).
+    Enforces the v0.3 requirement that ``computation_space`` must live inside
+    ``MeasurementStrategy`` when using the new factory methods.
 
-    Rules:
-    1. If MeasurementStrategy instance (new API) + constructor computation_space provided
-       → ERROR: user must move computation_space into the factory method
-    2. If measurement_strategy is None and computation_space provided
-       → OK with deprecation warning (default to MeasurementStrategy.probs(computation_space))
-    3. If legacy enum (PROBABILITIES, etc) + constructor computation_space
-       → OK with deprecation warning (backward compat)
-    4. If MeasurementStrategy instance only → use its computation_space
-    5. If legacy enum only → wrap with computation_space param
+    Parameters
+    ----------
+    measurement_strategy : MeasurementStrategyLike | str | None
+        User-provided measurement strategy. May be ``None``, a strategy
+        instance, a legacy enum value, or a deprecated string alias.
+    computation_space : ComputationSpace | str | None
+        Optional computation space provided alongside the strategy.
+
+    Returns
+    -------
+    tuple[MeasurementStrategyLike, ComputationSpace]
+        Normalized measurement strategy and resolved computation space.
+
+    Notes
+    -----
+    Normalization rules:
+
+    1. If a ``MeasurementStrategy`` instance from the new API is passed
+       together with constructor-level ``computation_space``, an error is
+       raised and the computation space must be moved into the factory method.
+    2. If ``measurement_strategy`` is ``None`` and ``computation_space`` is
+       provided, ``MeasurementStrategy.probs(computation_space)`` is used with
+       a deprecation warning.
+    3. If a legacy enum value such as ``PROBABILITIES`` is used with
+       constructor-level ``computation_space``, the input is accepted with a
+       deprecation warning for backward compatibility.
+    4. If only a ``MeasurementStrategy`` instance is provided, its embedded
+       computation space is used.
+    5. If only a legacy enum is provided, it is wrapped using the resolved
+       computation space.
     """
     from ..measurement.strategies import (
         MeasurementKind,
