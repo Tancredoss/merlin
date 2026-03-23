@@ -12,7 +12,7 @@ Physical and Mathematical background
 
 .. merlin-gallery::
    :data: _data/galleries/quantum_expert/phy_mat_back.json
-   :columns: 3
+   :columns: 2
 
 
 Algorithm Design
@@ -21,6 +21,14 @@ Algorithm Design
 .. merlin-gallery::
    :data: _data/galleries/quantum_expert/algo_design.json
    :columns: 2
+
+Experiment support
+===================
+
+.. merlin-gallery::
+   :data: _data/galleries/quantum_expert/exp_support.json
+   :columns: 2
+
 
 More on the QuantumBridge
 ===================

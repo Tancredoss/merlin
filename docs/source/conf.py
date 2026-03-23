@@ -128,7 +128,7 @@ html_theme = "renku"
 html_static_path = ["_static"]
 
 html_theme_options = {
-    "navigation_depth": 2,
+    "navigation_depth": 4,
     "titles_only": False,
     "version_selector": True,
 }

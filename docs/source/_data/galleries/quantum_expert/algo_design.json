@@ -1,9 +1,9 @@
 [
-      {
-    "title": "Experiment Support",
-    "summary": "How to have full control of the measurement of all the optical modes.",
-    "image": "_static/img/noise_measure.png",
-    "doc": "quantum_expert_area/experiment_support.rst",
-    "tags": ["Perceval Experiment", "QuantumLayer", "FeatureMap","Noise"]
+    {
+    "title": "Internal Design",
+    "summary": "Overview of key internal design elements that underpin MerLin's simulation pipeline and advanced workflows.",
+    "image": "_static/img/QCNN_adaptive.png",
+    "doc": "quantum_expert_area/internal_design.rst",
+    "tags": ["Partial Detectors", "Feed forward", "SLOS"]
   }
 ]
