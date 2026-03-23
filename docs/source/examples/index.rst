@@ -104,10 +104,8 @@ Discover more usages of MerLin
    ../notebooks/classifying_circles_from_installation
    ../notebooks/iris_classification
    ../notebooks/QORC-basics
-   ../notebooks/QORC-demo-MNIST
+   ../notebooks/QORC-timeseries
    ../notebooks/release_0,3_highlights
-   ../notebooks/QORC-basics
-   ../notebooks/binary_classification
 
 Based on reproduced papers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
