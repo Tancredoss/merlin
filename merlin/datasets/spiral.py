@@ -50,7 +50,7 @@ def get_data(num_instances=1500, num_features=10, num_classes=3, random_seed=42)
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray, DatasetMetadata]
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
         Generated features, labels, and dataset metadata.
 
     Notes

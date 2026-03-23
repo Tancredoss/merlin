@@ -1,8 +1,22 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-===========
-API Aliases
-===========
+===========================
+API Perceval Aliases
+===========================
+
+.. py:class:: pcvl.BasicState
+   :canonical: perceval.utils.states.BasicState
+
+   Alias for :class:`perceval.utils.states.BasicState`.
+   
+   External API: `Perceval States API <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_
+
+.. py:class:: pcvl.BSDistribution
+   :canonical: perceval.BSDistribution
+
+   Alias for :class:`perceval.BSDistribution`.
+   
+   External API: `Perceval BSDistribution <https://perceval.quandela.net/docs/v1.1/reference/index.html>`_
 
 .. py:class:: pcvl.Circuit
    :canonical: perceval.components.linear_circuit.Circuit
@@ -11,12 +25,26 @@ API Aliases
    
    External API: `Perceval Circuit <https://perceval.quandela.net/docs/v1.1/reference/components/circuit.html>`_
 
+.. py:class:: pcvl.Detector
+   :canonical: perceval.components.detector.Detector
+
+   Alias for :class:`perceval.components.detector.Detector`.
+   
+   External API: `Perceval Detector <https://perceval.quandela.net/docs/v1.1/reference/components/detector.html#perceval.components.detector.Detector>`_
+
 .. py:class:: pcvl.Experiment
    :canonical: perceval.components.experiment.Experiment
 
    Alias for :class:`perceval.components.experiment.Experiment`.
    
    External API: `Perceval Experiment <https://perceval.quandela.net/docs/v1.1/reference/components/experiment.html>`_
+
+.. py:class:: pcvl.FFCircuitProvider
+   :canonical: perceval.components.feed_forward_configurator.FFCircuitProvider
+
+   Alias for :class:`perceval.components.feed_forward_configurator.FFCircuitProvider`.
+   
+   External API: `Perceval FFCircuitProvider <https://perceval.quandela.net/docs/v1.1/reference/components/feed_forward_configurator.html>`_
 
 .. py:class:: pcvl.NoiseModel
    :canonical: perceval.utils.noise_model.NoiseModel
@@ -32,37 +60,6 @@ API Aliases
    
    External API: `Perceval RemoteProcessor <https://perceval.quandela.net/docs/v1.1/reference/runtime/remote_processor.html>`_
 
-.. py:class:: pcvl.FFCircuitProvider
-   :canonical: perceval.components.feed_forward_configurator.FFCircuitProvider
-
-   Alias for :class:`perceval.components.feed_forward_configurator.FFCircuitProvider`.
-   
-   External API: `Perceval FFCircuitProvider <https://perceval.quandela.net/docs/v1.1/reference/components/feed_forward_configurator.html>`_
-
-
-.. py:class:: pcvl.Detector
-   :canonical: perceval.components.detector.Detector
-
-   Alias for :class:`perceval.components.detector.Detector`.
-   
-   External API: `Perceval Detector <https://perceval.quandela.net/docs/v1.1/reference/components/detector.html#perceval.components.detector.Detector>`_
-
-
-
-.. py:class:: Tensor
-   :canonical: torch.Tensor
-
-   Alias for :class:`torch.Tensor`.
-   
-   External API: `PyTorch Tensor <https://pytorch.org/docs/stable/tensors.html#torch.Tensor>`_
-
-.. py:class:: pcvl.BasicState
-   :canonical: perceval.utils.states.BasicState
-
-   Alias for :class:`perceval.utils.states.BasicState`.
-   
-   External API: `Perceval States API <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_
-
 .. py:class:: pcvl.StateVector
    :canonical: exqalibur.StateVector
 
@@ -70,30 +67,4 @@ API Aliases
    
    External API: `Exqalibur API <https://perceval.quandela.net/docs/v1.1/reference/exqalibur/index.html>`_
 
-.. py:class:: pcvl.BSDistribution
-   :canonical: perceval.BSDistribution
 
-   Alias for :class:`perceval.BSDistribution`.
-   
-   External API: `Perceval BSDistribution <https://perceval.quandela.net/docs/v1.1/reference/index.html>`_
-
-.. py:class:: np.ndarray
-   :canonical: numpy.ndarray
-
-   Alias for :class:`numpy.ndarray`.
-   
-   External API: `NumPy ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
-
-.. py:class:: Path
-   :canonical: pathlib.Path
-
-   Alias for :class:`pathlib.Path`.
-   
-   External API: `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_
-
-.. py:class:: pd.DataFrame
-   :canonical: pandas.DataFrame
-
-   Alias for :class:`pandas.DataFrame`.
-   
-   External API: `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`_

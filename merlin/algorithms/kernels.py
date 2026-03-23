@@ -71,7 +71,7 @@ class FeatureMap:
         Torch dtype used when constructing the unitary.
     device : torch.device | None
         Torch device on which unitaries are evaluated.
-    encoder : Callable[[Tensor], Tensor] | None
+    encoder : Callable[[torch.Tensor], torch.Tensor] | None
         Optional custom encoder used when the raw input shape does not match the
         circuit parameter layout.
     """
@@ -181,14 +181,14 @@ class FeatureMap:
 
         Parameters
         ----------
-        x : Tensor
+        x : torch.Tensor
             Input feature tensor expected to be one-dimensional.
         k : int
             Desired number of encoded features to return.
 
         Returns
         -------
-        Tensor
+        torch.Tensor
             Encoded tensor of length ``k`` on the configured device and dtype.
         """
         x = x.to(dtype=self.dtype, device=self.device).reshape(-1)
@@ -222,12 +222,12 @@ class FeatureMap:
 
         Parameters
         ----------
-        x : Tensor
+        x : torch.Tensor
             Input feature tensor to be embedded.
 
         Returns
         -------
-        Tensor
+        torch.Tensor
             Encoded tensor matching the circuit's expected parameter length.
         """
         x = x.to(dtype=self.dtype, device=self.device).reshape(-1)
@@ -273,14 +273,14 @@ class FeatureMap:
 
         Parameters
         ----------
-        x : Tensor
+        x : torch.Tensor
             Flattened input feature tensor.
         spec : dict[str, object]
             Metadata describing combinations and scales produced by the builder.
 
         Returns
         -------
-        Tensor
+        torch.Tensor
             Encoded tensor obeying the combination rules.
         """
         combos = spec.get("combinations", [])
@@ -327,10 +327,10 @@ class FeatureMap:
 
         Parameters
         ----------
-        x : torch.Tensor | np.ndarray | float
+        x : torch.Tensor | numpy.ndarray | float
             Single datapoint to embed; accepts scalars, NumPy arrays, or
             tensors.
-        training_parameters : Tensor
+        training_parameters : torch.Tensor
             Optional overriding trainable tensors.
 
         Returns
@@ -370,7 +370,7 @@ class FeatureMap:
 
         Parameters
         ----------
-        x : torch.Tensor | np.ndarray | float | int
+        x : torch.Tensor | numpy.ndarray | float | int
             Candidate input data.
 
         Returns
@@ -907,15 +907,15 @@ class FidelityKernel(MerlinModule):
 
         Parameters
         ----------
-        x1 : float | np.ndarray | torch.Tensor
+        x1 : float | numpy.ndarray | torch.Tensor
             First input datapoint or dataset.
-        x2 : float | np.ndarray | torch.Tensor | None
+        x2 : float | numpy.ndarray | torch.Tensor | None
             Second input datapoint or dataset. If omitted, the training kernel
             matrix for ``x1`` is computed.
 
         Returns
         -------
-        Tensor
+        torch.Tensor
             Scalar kernel value for datapoints, or a kernel matrix for datasets.
         """
         # Convert inputs to tensors and ensure they are on the correct device

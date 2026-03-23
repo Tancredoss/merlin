@@ -12,8 +12,8 @@ By integrating photonic circuit simulation with PyTorch and scikit-learn, MerLin
 **Explore MerLin**
 
 .. merlin-gallery::
-   :data: _data/galleries/welcome_intro_cards_3.json
-   :columns: 3
+   :data: _data/galleries/welcome_intro_cards_4.json
+   :columns: 4
 
 What you can do with MerLin
 ---------------------------

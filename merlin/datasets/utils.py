@@ -39,7 +39,7 @@ def get_venv_data_dir() -> Path:
 
     Returns
     -------
-    Path
+    pathlib.Path
         Dataset cache directory path.
     """
     if hasattr(sys, "real_prefix") or (
@@ -94,14 +94,14 @@ def fetch(url: str, data_dir: Path = None, force: bool = False) -> Path:
     ----------
     url : str
         URL to fetch.
-    data_dir : Path | None
+    data_dir : pathlib.Path | None
         Optional override for the cache directory.
     force : bool
         Whether to re-download the file even if it is already cached.
 
     Returns
     -------
-    Path
+    pathlib.Path
         Path to the downloaded or extracted file.
     """
     if data_dir is None:
@@ -158,13 +158,13 @@ def read_idx(filepath: Path) -> tuple[np.ndarray, dict]:
 
     Parameters
     ----------
-    filepath : Path
+    filepath : pathlib.Path
         Path to the IDX file.
 
     Returns
     -------
-    Tuple[np.ndarray, dict]
-        Tuple[np.ndarray, dict]: Tuple containing:
+    Tuple[numpy.ndarray, dict]
+        Tuple[numpy.ndarray, dict]: Tuple containing:
             - numpy array with the data
             - metadata dictionary with magic number, data type, and dimensions
             - numpy array with the data
@@ -226,7 +226,7 @@ def df_to_xy(
 
     Parameters
     ----------
-    df : pd.DataFrame
+    df : pandas.DataFrame
         Input DataFrame.
     feature_cols : list | None
         Column names to use as features. If ``None``, all non-label columns are
@@ -237,7 +237,7 @@ def df_to_xy(
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray]
+    tuple[numpy.ndarray, numpy.ndarray]
         Feature matrix ``X`` and label array ``y``.
     """
     if feature_cols is None and label_cols is None:
@@ -266,12 +266,12 @@ def read_mnist_images(filepath: Path) -> np.ndarray:
 
     Parameters
     ----------
-    filepath : Path
+    filepath : pathlib.Path
         Path to the MNIST image file.
 
     Returns
     -------
-    np.ndarray
+    numpy.ndarray
         Image array with shape ``(n_images, 28, 28)``.
     """
     data, metadata = read_idx(filepath)
@@ -290,12 +290,12 @@ def read_mnist_labels(filepath: Path) -> np.ndarray:
 
     Parameters
     ----------
-    filepath : Path
+    filepath : pathlib.Path
         Path to the MNIST label file.
 
     Returns
     -------
-    np.ndarray
+    numpy.ndarray
         Label array.
     """
     data, metadata = read_idx(filepath)
@@ -325,7 +325,7 @@ def get_data_generic(subset: str, url_images: str, url_labels: str, metadata: di
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray, DatasetMetadata]
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
         Images, labels, and structured dataset metadata.
     """
     train_images_path = fetch(url_images)

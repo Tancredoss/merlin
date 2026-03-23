@@ -60,14 +60,14 @@ class NKernelAlignment(_Loss):
 
         Parameters
         ----------
-        input : Tensor
+        input : torch.Tensor
             Kernel matrix.
-        target : Tensor
+        target : torch.Tensor
             Binary label vector in ``{-1, +1}`` or target kernel matrix.
 
         Returns
         -------
-        Tensor
+        torch.Tensor
             Scalar loss value.
 
         Raises
