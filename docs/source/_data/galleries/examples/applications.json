@@ -2,9 +2,9 @@
   {
     "title": "Binary Classification",
     "summary": "Comparing VQC and kernel approaches on a simple classification task.",
-    "image": "_static/img/MerLin_black.png",
-    "doc": "examples/index",
-    "tags": ["Variational", "Kernels", "DATASET", "Coming soon!"]
+    "image": "_static/examples/binary-classification.png",
+    "doc": "notebooks/binary_classification.ipynb",
+    "tags": ["VQC", "Kernels", "QuantumLayer", "Iris"]
   },
   {
     "title": "Image Classification",

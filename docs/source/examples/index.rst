@@ -13,21 +13,21 @@ Latest Release
    :contour-color: #f2994a
 
 Getting Started
------------------------
+---------------
 .. merlin-gallery::
    :data: _data/galleries/examples/getting_started.json
    :columns: 4
    :contour-color: #5648ED
 
 Core Concepts
------------------------
+-------------
 .. merlin-gallery::
    :data: _data/galleries/examples/core_concepts.json
    :columns: 4
    :contour-color: #5648ED
 
 Model Families
------------------------
+--------------
 .. merlin-gallery::
    :data: _data/galleries/examples/model_families_1.json
    :columns: 4
@@ -45,15 +45,22 @@ Application examples
    :columns: 4
    :contour-color: #5648ED
 
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../notebooks/binary_classification
+   ../notebooks/QORC-timeseries
+
 Hardware Examples
------------------------
+-----------------
 .. merlin-gallery::
    :data: _data/galleries/examples/hardware_examples.json
    :columns: 3
    :contour-color: #5648ED
 
 Research and Paper reproductions
------------------------
+--------------------------------
 QML research at Quandela
 
 .. merlin-gallery::
@@ -69,7 +76,7 @@ Highlights of the reproduced papers
     :contour-color: #5648ED
 
 Benchmarks and Evaluations
------------------------
+--------------------------
 .. merlin-gallery::
    :data: _data/galleries/examples/benchmarks.json
    :columns: 3
