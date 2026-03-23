@@ -45,17 +45,6 @@ Application examples
    :columns: 4
    :contour-color: #5648ED
 
-.. merlin-gallery::
-   :data: _data/galleries/examples/applications_examples_1.json
-   :columns: 3
-   :contour-color: #5648ED
-
-.. merlin-gallery::
-   :data: _data/galleries/examples/applications_examples_2.json
-   :columns: 3
-   :contour-color: #5648ED
-
-
 Hardware Examples
 -----------------------
 .. merlin-gallery::
