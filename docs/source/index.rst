@@ -41,12 +41,13 @@ constraints.
    Welcome <self>
    Quickstart <quickstart/index>
    user_guide/index
-   quantum_expert_area/index
    examples/index
    reproduced_papers/index
-   contribution
+   quantum_expert_area/index
    api_reference/index
    performance/index
+   contribution
+   research_ecosystem
    QML_library/index
 
 Reproducing State-of-the-art QML Papers
