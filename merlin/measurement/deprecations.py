@@ -1,6 +1,6 @@
-"""Measurement-specific deprecation helpers."""
+"""Measurement-specific deprecation helpers.
 
-"""Can be removed when MeasurementStrategy enum is fully deprecated."""
+Can be removed when MeasurementStrategy enum is fully deprecated."""
 
 # MIT License
 #

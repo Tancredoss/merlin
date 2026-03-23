@@ -168,7 +168,7 @@ class ProbabilityDistribution:
         return len(self.basis)
 
     def to(self, *args, **kwargs) -> ProbabilityDistribution:
-        """Return a new ``ProbabilityDistribution`` with tensor (and logical_performance) moved/cast via ``torch.Tensor.to``..
+        """Return a new ``ProbabilityDistribution`` with tensor (and logical_performance) moved/cast via ``torch.Tensor.to``.
 
         Parameters
         ----------

@@ -571,7 +571,7 @@ class SLOSComputeGraph:
 
     def compute(
         self, unitary: torch.Tensor, input_state: list[int]
-    ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
+    ) -> tuple[list[tuple[int, ...]] | None, torch.Tensor]:
         """
         Compute amplitudes with the pre-built graph.
 
@@ -580,7 +580,7 @@ class SLOSComputeGraph:
         unitary : torch.Tensor
             Single unitary matrix with shape ``(m, m)`` or batch of unitaries
             with shape ``(batch_size, m, m)``. The dtype must match the complex
-            dtype associated with the graph ``dtype``. or example, for torch.float32,
+            dtype associated with the graph ``dtype``. For example, for torch.float32,
             use torch.cfloat; for torch.float64, use torch.cdouble.
         input_state : list[int]
             Input occupation list of length ``m`` containing ``n_photons``
@@ -678,7 +678,7 @@ class SLOSComputeGraph:
 
     def compute_batch(
         self, unitary: torch.Tensor, input_states: list[list[int]]
-    ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
+    ) -> tuple[list[tuple[int, ...]] | None, torch.Tensor]:
         """
         Compute the probability distribution using the pre-built graph.
 
@@ -875,7 +875,7 @@ class SLOSComputeGraph:
         input_state_prev: list[int],
         input_state: list[int],
         changed_unitary=False,
-    ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
+    ) -> torch.Tensor:
         """
         Update amplitudes incrementally after a change in input occupation.
 

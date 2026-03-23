@@ -47,7 +47,7 @@ def pcvl_to_tensor(
     dtype : torch.dtype
         Desired torch dtype of the output tensor. Default is ``torch.complex64``.
     device : torch.device
-        Desired torch device of the output tensor. Defalut is ``torch.device("cpu")``.
+        Desired torch device of the output tensor. Default is ``torch.device("cpu")``.
 
     Returns
     -------
