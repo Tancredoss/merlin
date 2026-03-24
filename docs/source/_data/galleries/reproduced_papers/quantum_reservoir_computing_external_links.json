@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Run Quantum Reservoir Reproduction",
+    "summary": "Code reproduction for quantum optical reservoir computing with boson sampling.",
+    "image": "_static/img/reservoir_scheme.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/QORC",
+    "tags": ["External Link", "Reservoir Computing", "Repository"]
+  }
+]

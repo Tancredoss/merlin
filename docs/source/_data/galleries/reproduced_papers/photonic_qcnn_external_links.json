@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Run Photonic QCNN Reproduction",
+    "summary": "Code reproduction for photonic QCNN with adaptive state injection.",
+    "image": "_static/reproduced_papers/PhotonicQCNN.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/photonic_QCNN",
+    "tags": ["External Link", "Photonic QCNN", "Repository"]
+  }
+]

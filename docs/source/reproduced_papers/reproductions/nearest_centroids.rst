@@ -19,6 +19,14 @@ Nearest Centroid Classification on a Trapped Ion Quantum Computer
 
    **Reproducer**: Benjamin Stott (benjamin.stott@quandela.com)
 
+Project Repository
+==================
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/nearest_centroids_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
 ========
 

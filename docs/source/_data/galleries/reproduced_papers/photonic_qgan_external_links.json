@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Run Photonic QGAN Reproduction",
+    "summary": "Code reproduction for photonic quantum GAN training workflows.",
+    "image": "_static/reproduced_papers/photonicQGAN.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/photonic_QGAN",
+    "tags": ["External Link", "Photonic QGAN", "Repository"]
+  }
+]

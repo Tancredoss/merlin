@@ -15,6 +15,14 @@ Quantum Adversarial Machine Learning
 
    **Reproducer:** Benjamin Stott (benjamin.stott@quandela.com)
 
+Project Repository
+------------------
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/quantum_adversarial_ml_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
 --------
 

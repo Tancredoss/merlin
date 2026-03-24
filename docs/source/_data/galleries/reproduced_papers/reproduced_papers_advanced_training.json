@@ -32,7 +32,7 @@
     "summary": "Hybrid transfer learning with frozen classical feature extractors and trainable quantum heads.",
     "image": "_static/reproduced_papers/TransferLearning.png",
     "doc": "reproduced_papers/reproductions/quantum_transfer_learning",
-    "tags": ["Mari et al.", "2020", "Complete", "Image TBD"]
+    "tags": ["Mari et al.", "2020", "Complete", "Transfer learning"]
   },
   {
     "title": "Quantum Relational Knowledge Distillation",

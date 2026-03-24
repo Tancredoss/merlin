@@ -19,6 +19,14 @@ Limitations of Amplitude Encoding on Quantum Classification
 
    **Reproducer**: Louis-Félix Vigneux (louis-felix.vigneux@quandela.com)
 
+Project Repository
+==================
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/amplitude_limitations_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
 ========
 

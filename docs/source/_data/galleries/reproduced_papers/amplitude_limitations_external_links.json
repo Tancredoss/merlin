@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Reproduce Amplitude Encoding Limitations",
+    "summary": "Code and experiments for the amplitude-encoding limitations study.",
+    "image": "_static/reproduced_papers/AA_study.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/AA_study",
+    "tags": ["External Link", "Amplitude Encoding", "Repository"]
+  }
+]

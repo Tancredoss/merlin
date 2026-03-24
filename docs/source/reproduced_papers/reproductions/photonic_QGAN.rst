@@ -19,6 +19,14 @@ Photonic Quantum Generative Adversarial Networks for Classical Data
 
    **Reproducer**: Alexia Salavrakos & Cassandre Notton (cassandre.notton@quandela.com)
 
+Project Repository
+==================
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/photonic_qgan_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
 ========
 
