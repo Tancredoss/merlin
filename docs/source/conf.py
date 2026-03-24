@@ -41,7 +41,6 @@ Then this file is interpreted
 """
 
 import os
-import re
 import sys
 from datetime import datetime
 from importlib.metadata import metadata
