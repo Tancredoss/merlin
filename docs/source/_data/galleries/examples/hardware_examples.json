@@ -7,7 +7,7 @@
     "tags": ["Documentation","Quandela Cloud","MerlinProcessor"]
   },
   {  
-    "title": "Comparing simulation and hardware reservoirs",
+    "title": "Comparing simulation and hardware reservoirs on Ascella QPU",
     "summary": "A comparison of the performance of an optical reservoir on a simulated quantum layer and on Ascella QPU.",
     "image": "_static/examples/Fig_5_PAQML_paper.png",
     "doc": "notebooks/QORC-demo-MNIST.ipynb",
