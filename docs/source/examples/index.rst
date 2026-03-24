@@ -29,12 +29,7 @@ Core Concepts
 Model Families
 --------------
 .. merlin-gallery::
-   :data: _data/galleries/examples/model_families_1.json
-   :columns: 4
-   :contour-color: #5648ED
-
-.. merlin-gallery::
-   :data: _data/galleries/examples/model_families_2.json
+   :data: _data/galleries/examples/model_families.json
    :columns: 4
    :contour-color: #5648ED
 
@@ -58,6 +53,13 @@ Hardware Examples
    :data: _data/galleries/examples/hardware_examples.json
    :columns: 3
    :contour-color: #5648ED
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../notebooks/QORC-demo-MNIST
+   ../notebooks/HelloWorldMerLinCloud.ipynb
 
 Research and Paper reproductions
 --------------------------------
