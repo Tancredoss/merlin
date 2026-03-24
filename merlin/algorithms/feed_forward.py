@@ -189,7 +189,7 @@ class FeedForwardBlock(MerlinModule):
         branches switch to amplitude encoding and the classical tensor is ignored.
     computation_space : ComputationSpace
         Currently restricted to
-        :class:`~merlin.core.computation_space.ComputationSpace`\ ``.FOCK``.
+        :class:`~merlin.core.computation_space.ComputationSpace`\\ ``.FOCK``.
     measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
         Controls how classical outputs are produced.
 
