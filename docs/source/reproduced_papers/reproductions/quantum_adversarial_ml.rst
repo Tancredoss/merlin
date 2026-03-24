@@ -130,11 +130,6 @@ classical compression.
        model, train_loader, attack_method="bim", epsilon=0.1, epochs=100,
    )
 
-Code Access and Documentation
-=============================
-
-**GitHub Repository**: `merlin/reproductions/quantum_adversarial_ml <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/quantum_adversarial_ml>`_
-
 
 Extensions and Future Work
 --------------------------
