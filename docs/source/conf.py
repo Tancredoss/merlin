@@ -74,6 +74,7 @@ release = merlin_metadata["Version"]
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.mathjax",
+    "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
     "sphinx.ext.autosectionlabel",
     "sphinxcontrib.bibtex",
@@ -89,6 +90,7 @@ intersphinx_mapping = {
     "torch": ("https://pytorch.org/docs/stable", None),
     "perceval": ("https://perceval.quandela.net/docs/v1.1/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
+    "pandas": ("https://pandas.pydata.org/docs/", None),
 }
 
 
@@ -123,6 +125,13 @@ autodoc_default_options = {
     "show-inheritance": True,
     "imported-members": False,  # Don't document imported members to avoid duplicates
 }
+autodoc_typehints = "signature"
+
+typehints_use_rtype = False
+napoleon_google_docstring = False
+napoleon_numpy_docstring = True
+napoleon_use_param = True
+napoleon_use_rtype = True
 
 # Suppress duplicate object warnings for re-exported classes
 suppress_warnings.extend(["autodoc.import_object"])
@@ -150,7 +159,7 @@ html_theme = "renku"
 html_static_path = ["_static"]
 
 html_theme_options = {
-    "navigation_depth": 2,
+    "navigation_depth": 4,
     "titles_only": False,
     "version_selector": True,
 }

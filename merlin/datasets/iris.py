@@ -107,11 +107,25 @@ IRIS_METADATA = {
 
 
 def get_data_train() -> tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]:
+    """Load the Iris training split.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
+        Training features, labels, and dataset metadata.
+    """
     IRIS_METADATA["subset"] = "train"
     return train_features, train_labels, DatasetMetadata.from_dict(IRIS_METADATA)
 
 
 def get_data_test() -> tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]:
+    """Load the Iris test split.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
+        Test features, labels, and dataset metadata.
+    """
     IRIS_METADATA["subset"] = "test"
     return test_features, test_labels, DatasetMetadata.from_dict(IRIS_METADATA)
 

@@ -62,6 +62,13 @@ FASHION_MNIST_METADATA = {
 
 
 def get_data_train():
+    """Load the Fashion-MNIST training split.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
+        Training images, labels, and dataset metadata.
+    """
     return get_data_generic(
         subset="train",
         url_images="https://github.com/zalandoresearch/fashion-mnist/raw/refs/heads/master/data/fashion/train-images-idx3-ubyte.gz",
@@ -71,6 +78,13 @@ def get_data_train():
 
 
 def get_data_test():
+    """Load the Fashion-MNIST test split.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
+        Test images, labels, and dataset metadata.
+    """
     return get_data_generic(
         subset="test",
         url_images="https://github.com/zalandoresearch/fashion-mnist/raw/refs/heads/master/data/fashion/t10k-images-idx3-ubyte.gz",

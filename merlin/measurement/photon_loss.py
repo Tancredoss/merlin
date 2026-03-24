@@ -83,13 +83,16 @@ class PhotonLossTransform(torch.nn.Module):
     """
     Linear map applying per-mode photon loss to a Fock probability vector.
 
-    Args:
-        simulation_keys: Iterable describing the raw Fock states produced by the
-        simulator (as tuples or lists of integers).
-        survival_probs: One survival probability per optical mode.
-        dtype: Optional torch dtype for the transform matrix. Defaults to
-        ``torch.float32``.
-        device: Optional device used to stage the transform matrix.
+    Parameters
+    ----------
+    simulation_keys : Sequence[Sequence[int]] | torch.Tensor
+        Raw Fock states produced by the simulator.
+    survival_probs : Sequence[float]
+        One survival probability per optical mode.
+    dtype : torch.dtype | None
+        Torch dtype for the transform matrix. Defaults to ``torch.float32``.
+    device : torch.device | str | None
+        Device used to stage the transform matrix.
     """
 
     def __init__(
@@ -100,6 +103,19 @@ class PhotonLossTransform(torch.nn.Module):
         dtype: torch.dtype | None = None,
         device: torch.device | str | None = None,
     ) -> None:
+        """Initialize the photon-loss transform.
+
+        Parameters
+        ----------
+        simulation_keys : Sequence[Sequence[int]] | torch.Tensor
+            Raw Fock states produced by the simulator.
+        survival_probs : Sequence[float]
+            One survival probability per optical mode.
+        dtype : torch.dtype | None
+            Torch dtype for the transform matrix. Defaults to ``torch.float32``.
+        device : torch.device | str | None
+            Device used to stage the transform matrix.
+        """
         super().__init__()
 
         if simulation_keys is None or len(simulation_keys) == 0:
@@ -269,7 +285,7 @@ class PhotonLossTransform(torch.nn.Module):
 
     @property
     def output_size(self) -> int:
-        """Number of classical outcomes after photon loss."""
+        """int: Number of classical outcomes after photon loss."""
         return len(self._loss_keys)
 
     @property
@@ -278,14 +294,17 @@ class PhotonLossTransform(torch.nn.Module):
         return self._is_identity
 
     def forward(self, distribution: torch.Tensor) -> torch.Tensor:
-        """
-        Apply the photon loss transform to a Fock probability vector.
+        """Apply the photon-loss transform to a Fock probability vector.
 
-        Args:
-            distribution: A Fock probability vector as a 1D torch tensor.
+        Parameters
+        ----------
+        distribution : torch.Tensor
+            Fock probability vector.
 
-        Returns:
-            A Fock probability vector after photon loss.
+        Returns
+        -------
+        torch.Tensor
+            Probability vector after photon loss as a 1D torch tensor.
         """
         if self._is_identity:
             return distribution
@@ -294,6 +313,20 @@ class PhotonLossTransform(torch.nn.Module):
         return distribution @ matrix
 
     def to(self, *args, **kwargs):
+        """Move the transform to a new device or dtype.
+
+        Parameters
+        ----------
+        *args
+            Positional arguments forwarded to :meth:`torch.nn.Module.to`.
+        **kwargs
+            Keyword arguments forwarded to :meth:`torch.nn.Module.to`.
+
+        Returns
+        -------
+        PhotonLossTransform
+            Updated transform instance.
+        """
         result = super().to(*args, **kwargs)
 
         dtype = kwargs.get("dtype")
@@ -317,13 +350,18 @@ def resolve_photon_loss(
 ) -> tuple[list[float], bool]:
     """Resolve photon loss from the experiment's noise model.
 
-    Args:
-        experiment: The quantum experiment carrying the noise model.
-        n_modes: Number of photonic modes to cover.
+    Parameters
+    ----------
+    experiment : pcvl.Experiment
+        Quantum experiment carrying the noise model.
+    n_modes : int
+        Number of photonic modes to cover.
 
-    Returns:
-        Tuple containing the per-mode survival probabilities and a flag indicating
-        whether an effective noise model was provided.
+    Returns
+    -------
+    tuple[list[float], bool]
+        Per-mode survival probabilities and a flag indicating whether an
+        effective noise model was provided.
     """
     survival_probs = [1.0] * n_modes  # Default: no loss
     empty_noise_model = True

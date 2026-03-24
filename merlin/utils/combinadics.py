@@ -60,6 +60,25 @@ class Combinadics:
     """
 
     def __init__(self, scheme: str, n: int, m: int) -> None:
+        """
+        Initialize the combinatorial ranking scheme.
+
+        Parameters
+        ----------
+        scheme : str
+            Enumeration strategy. Supported values are ``"fock"``,
+            ``"unbunched"``, and ``"dual_rail"``.
+        n : int
+            Number of photons. Must be non-negative.
+        m : int
+            Number of modes. Must be at least one.
+
+        Raises
+        ------
+        ValueError
+            If an unsupported scheme is provided or the parameters violate the
+            constraints of the selected scheme.
+        """
         scheme_lower = scheme.lower()
         if scheme_lower not in {"fock", "unbunched", "dual_rail"}:
             raise ValueError('scheme must be one of {"fock","unbunched","dual_rail"}')
@@ -118,7 +137,7 @@ class Combinadics:
 
         Returns
         -------
-        Tuple[int, ...]
+        tuple[int, ...]
             Photon counts per mode.
 
         Raises
@@ -213,7 +232,7 @@ class Combinadics:
 
         Returns
         -------
-        Iterator[Tuple[int, ...]]
+        Iterator[tuple[int, ...]]
             Generator over states matching the configured scheme.
         """
 
@@ -229,7 +248,7 @@ class Combinadics:
 
         Returns
         -------
-        list[Tuple[int, ...]]
+        list[tuple[int, ...]]
             State list matching :meth:`iter_states`.
         """
 

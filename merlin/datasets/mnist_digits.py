@@ -97,6 +97,13 @@ MNIST_METADATA_PERCEVALQUEST = {
 
 
 def get_data_train_original():
+    """Load the original MNIST training split.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
+        Training images, labels, and dataset metadata.
+    """
     return get_data_generic(
         subset="train",
         url_images="https://storage.googleapis.com/cvdf-datasets/mnist/train-images-idx3-ubyte.gz",
@@ -106,6 +113,13 @@ def get_data_train_original():
 
 
 def get_data_test_original():
+    """Load the original MNIST test split.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
+        Test images, labels, and dataset metadata.
+    """
     return get_data_generic(
         subset="test",
         url_images="https://storage.googleapis.com/cvdf-datasets/mnist/t10k-images-idx3-ubyte.gz",
@@ -115,15 +129,24 @@ def get_data_test_original():
 
 
 def get_data_train_percevalquest():
+    """Load the Perceval Quest MNIST training split.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
+        Training images, labels, and dataset metadata.
+    """
     train = fetch(
         "https://raw.githubusercontent.com/Quandela/HybridAIQuantum-Challenge/refs/heads/main/data/train.csv"
     )
     # val = fetch("https://github.com/Quandela/HybridAIQuantum-Challenge/blob/main/data/val.csv")
     df_train = pd.read_csv(train)
-    X = np.stack([
-        np.array(ast.literal_eval(img), dtype=float).reshape(28, 28)
-        for img in df_train["image"]
-    ])
+    X = np.stack(
+        [
+            np.array(ast.literal_eval(img), dtype=float).reshape(28, 28)
+            for img in df_train["image"]
+        ]
+    )
     y = df_train["label"].to_numpy()
     MNIST_METADATA_PERCEVALQUEST["num_instances"] = len(X)
     MNIST_METADATA_PERCEVALQUEST["subset"] = "train"
@@ -131,14 +154,23 @@ def get_data_train_percevalquest():
 
 
 def get_data_test_percevalquest():
+    """Load the Perceval Quest MNIST validation split.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
+        Validation images, labels, and dataset metadata.
+    """
     val = fetch(
         "https://raw.githubusercontent.com/Quandela/HybridAIQuantum-Challenge/refs/heads/main/data/val.csv"
     )
     df_val = pd.read_csv(val)
-    X = np.stack([
-        np.array(ast.literal_eval(img), dtype=float).reshape(28, 28)
-        for img in df_val["image"]
-    ])
+    X = np.stack(
+        [
+            np.array(ast.literal_eval(img), dtype=float).reshape(28, 28)
+            for img in df_val["image"]
+        ]
+    )
     y = df_val["label"].to_numpy()
     MNIST_METADATA_PERCEVALQUEST["num_instances"] = len(X)
     MNIST_METADATA_PERCEVALQUEST["subset"] = "val"

@@ -30,15 +30,43 @@ from ..measurement.process import SamplingProcess
 
 
 class AutoDiffProcess:
-    """Handles automatic differentiation backend and sampling noise integration."""
+    """Handles automatic differentiation backend and sampling noise integration.
+
+    Parameters
+    ----------
+    sampling_method : str
+        Sampling method used to initialize the internal sampling process.
+    """
 
     def __init__(self, sampling_method: str = "multinomial"):
+        """Initialize the autodiff sampling helper.
+
+        Parameters
+        ----------
+        sampling_method : str
+            Sampling method used to initialize the internal sampling process.
+        """
         self.sampling_noise = SamplingProcess(method=sampling_method)
 
     def autodiff_backend(
         self, needs_gradient: bool, apply_sampling: bool, shots: int
     ) -> tuple[bool, int]:
-        """Determine sampling configuration based on gradient requirements."""
+        """Determine sampling configuration based on gradient requirements.
+
+        Parameters
+        ----------
+        needs_gradient : bool
+            Whether gradients are currently required.
+        apply_sampling : bool
+            Whether sampling was requested.
+        shots : int
+            Requested number of shots.
+
+        Returns
+        -------
+        tuple[bool, int]
+            Effective sampling flag and effective number of shots.
+        """
         if needs_gradient and (apply_sampling or shots > 0):
             warnings.warn(
                 "Sampling was requested but is disabled because gradients are being computed. "

@@ -62,8 +62,9 @@ Hardware Examples
    ../notebooks/HelloWorldMerLinCloud.ipynb
 
 Research and Paper reproductions
---------------------------------
+----------------------------------
 QML research at Quandela
+--------------------------------
 
 .. merlin-gallery::
     :data: _data/galleries/examples/qml_research.json
@@ -78,14 +79,14 @@ Highlights of the reproduced papers
     :contour-color: #5648ED
 
 Benchmarks and Evaluations
---------------------------
+-----------------------------------
 .. merlin-gallery::
    :data: _data/galleries/examples/benchmarks.json
    :columns: 3
    :contour-color: #5648ED
 
 Browse through our notebooks
-----------------------------
+------------------------------
 .. merlin-gallery::
    :data: _data/galleries/examples/other_notebooks_1.json
    :columns: 3
@@ -105,7 +106,7 @@ Discover more usages of MerLin
    ../notebooks/classifying_circles_from_installation
    ../notebooks/iris_classification
    ../notebooks/QORC-basics
-   ../notebooks/QORC-demo-MNIST
+   ../notebooks/QORC-timeseries
    ../notebooks/release_0,3_highlights
 
 Based on reproduced papers

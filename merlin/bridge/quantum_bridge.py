@@ -37,33 +37,32 @@ from ..utils.dtypes import resolve_float_complex
 
 
 class QuantumBridge(nn.Module):
-    """
-    Passive bridge between a qubit statevector (PyTorch tensor) and a Merlin QuantumLayer.
+    """Passive bridge between a qubit statevector (PyTorch Tensor) and a Merlin QuantumLayer.
 
-    The bridge applies a fixed transition matrix that maps computational-basis amplitudes
-    into the selected photonic computation space (Fock, unbunched, or dual-rail).
+    The bridge applies a fixed transition matrix that maps
+    computational-basis amplitudes into the selected photonic computation
+    space (Fock, unbunched, or dual-rail).
 
     Parameters
     ----------
-    n_photons
+    n_photons : int
         Number of logical photons (equals ``len(qubit_groups)``).
-    n_modes
+    n_modes : int
         Total number of photonic modes that will be simulated downstream.
-    qubit_groups
+    qubit_groups : Sequence[int] | None
         Logical grouping of qubits; ``[2, 1]`` means one photon is spread
         over ``2**2`` modes and another over ``2**1`` modes.
-    wires_order
+    wires_order : Literal["little", "big"]
         Endianness used to interpret computational basis strings.
-    computation_space
+    computation_space : ComputationSpace
         Target photonic computation space. Accepts a
-        :class:`~merlin.core.computation_space.ComputationSpace` enum or a string (``"fock"``, ``"unbunched"``,
-        ``"dual_rail"``).
-    normalize
+        :class:`~merlin.core.computation_space.ComputationSpace` enum value.
+    normalize : bool
         Whether to L2-normalise input statevectors before applying the
         transition matrix.
-    device
+    device : torch.device | None
         Optional device on which to place the output tensor.
-    dtype
+    dtype : torch.dtype
         Real dtype that determines the corresponding complex dtype for amplitudes.
     """
 
@@ -79,6 +78,35 @@ class QuantumBridge(nn.Module):
         device: torch.device | None = None,
         dtype: torch.dtype = torch.float32,
     ):
+        """Initialize the passive qubit-to-photonic bridge.
+
+        Parameters
+        ----------
+        n_photons : int
+            Number of logical photons.
+        n_modes : int
+            Total number of photonic modes in the target computation space.
+        qubit_groups : Sequence[int] | None
+            Logical grouping of qubits per photon.
+        wires_order : Literal["little", "big"]
+            Endianness used to interpret computational basis strings.
+        computation_space : ComputationSpace
+            Target photonic computation space.
+        normalize : bool
+            Whether to normalize input statevectors before projection.
+        device : torch.device | None
+            Optional device on which the transition matrix is stored.
+        dtype : torch.dtype
+            Real dtype that determines the complex dtype used internally.
+
+        Raises
+        ------
+        ValueError
+            If the bridge configuration is inconsistent.
+        TypeError
+            If ``computation_space`` is not a
+            :class:`~merlin.core.computation_space.ComputationSpace` value.
+        """
         super().__init__()
         if wires_order not in ("little", "big"):
             raise ValueError("wires_order must be 'little' or 'big'.")
@@ -149,24 +177,27 @@ class QuantumBridge(nn.Module):
 
     @property
     def basis_occupancies(self) -> tuple[tuple[int, ...], ...]:
-        """QLOQ occupancies indexed like the computational basis."""
+        """tuple[tuple[int, ...], ...]: QLOQ occupancies in computational-basis order."""
         return tuple(self._generate_qloq_basis())
 
     @property
     def output_basis(self):  # type: ignore[override]
-        """Iterator over occupancies enumerating the selected computation space."""
+        """Iterator[tuple[int, ...]]: Occupancies enumerating the selected computation space."""
         return self._output_enum.iter_states()
 
     @property
     def n_modes(self) -> int:
+        """int: Total number of photonic modes."""
         return self._n_modes
 
     @property
     def n_photons(self) -> int:
+        """int: Number of logical photons."""
         return self._n_photons
 
     @property
     def output_size(self) -> int:
+        """int: Size of the selected photonic computation space."""
         return self._output_size
 
     def _build_transition_matrix(self) -> torch.Tensor:
@@ -239,8 +270,15 @@ class QuantumBridge(nn.Module):
 
         Returns
         -------
-        `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_
-            Photonic Fock state produced by the current qubit grouping convention.
+        :class:`pcvl.BasicState`
+            Photonic Fock state produced by the current qubit grouping
+            convention.
+
+        Raises
+        ------
+        ValueError
+            If ``bitstring`` length is inconsistent with the bridge
+            configuration.
         """
         if len(bitstring) != self.n_qubits:
             raise ValueError(

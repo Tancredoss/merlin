@@ -41,11 +41,14 @@ from .strategies import (
 
 
 class OutputMapper:
-    """
-    Handles mapping quantum state amplitudes or probabilities to classical outputs.
+    """Handles mapping quantum state amplitudes or probabilities to classical outputs.
 
     This class provides factory methods for creating different types of output mappers
     that convert quantum state amplitudes or probabilities to classical outputs.
+
+    Parameters
+    ----------
+    None
     """
 
     @staticmethod
@@ -55,21 +58,30 @@ class OutputMapper:
         keys: list[tuple[int, ...]] | None = None,
         dtype: torch.dtype | None = None,
     ):
-        """
-        Create an output mapping based on the specified strategy.
+        """Create an output mapping for the requested measurement strategy.
 
-        Args:
-            strategy: The measurement mapping strategy to use
-            computation_space: The computation space for the measurement.
-            keys: (Only used for ModeExpectations measurement strategy) List of tuples that represent the possible quantum Fock states.
+        Parameters
+        ----------
+        strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
+            Measurement mapping strategy to use.
+        computation_space : ComputationSpace
+            Computation space for the measurement.
+        keys : list[tuple[int, ...]] | None
+            List of Fock states. Required for mode-expectation mappings.
             For example, keys = [(0,1,0,2), (1,0,1,0), ...]
-            dtype: Target dtype for internal tensors. Defaults to torch.float32.
+        dtype : torch.dtype | None
+            Target dtype for internal tensors.
 
-        Returns:
-            A PyTorch module that maps the per state amplitudes or probabilities to the desired format.
+        Returns
+        -------
+        torch.nn.Module
+            PyTorch module mapping amplitudes or probabilities to the desired
+            output representation.
 
-        Raises:
-            ValueError: If strategy is unknown
+        Raises
+        ------
+        ValueError
+            If ``strategy`` is unknown or required ``keys`` are missing.
         """
         try:
             kind = _resolve_measurement_kind(strategy)
@@ -90,18 +102,29 @@ class OutputMapper:
 
 
 class Probabilities(nn.Module):
-    """Maps quantum state amplitudes or probabilities to the complete Fock state probability distribution."""
+    """Map amplitudes or probabilities to a full Fock-state distribution.
+
+    Parameters
+    ----------
+    None
+    """
 
     def __init__(self):
+        """Initialize the probability mapper."""
         super().__init__()
 
     def forward(self, x):
         """Compute the probability distribution of possible Fock states from amplitudes or probabilities.
 
-        Args:
-            x: Input Fock states amplitudes or probabilities of shape (n_batch, num_states) or (num_states,)
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input amplitudes or probabilities with shape ``(num_states,)`` or
+            ``(batch_size, num_states)``.
 
-        Returns:
+        Returns
+        -------
+        torch.Tensor
             Fock states probability tensor of shape (batch_size, num_states) or (num_states,)
         """
         trailing_dim = x.shape[-1]
@@ -122,7 +145,18 @@ class Probabilities(nn.Module):
 
 
 class ModeExpectations(nn.Module):
-    """Maps quantum state amplitudes or probabilities to the per mode expected number of photons."""
+    """Map amplitudes or probabilities to per-mode expected photon counts.
+
+    Parameters
+    ----------
+    computation_space : ComputationSpace
+        Computation space used to interpret the keys.
+    keys : list[tuple[int, ...]]
+        List of tuples describing the possible Fock states output from the circuit preceding the output
+        mapping. e.g., [(0,1,0,2), (1,0,1,0), ...]
+    dtype : torch.dtype | None
+        Target dtype for internal tensors.
+    """
 
     def __init__(
         self,
@@ -131,13 +165,17 @@ class ModeExpectations(nn.Module):
         *,
         dtype: torch.dtype | None = None,
     ):
-        """Initialize the expectation grouping mapper.
+        """Initialize the mode-expectation mapper.
 
-        Args:
-            computation_space: The computation space (FOCK, UNBUNCHED, DUAL_RAIL).
-            keys: List of tuples describing the possible Fock states output from the circuit preceding the output
-                  mapping. e.g., [(0,1,0,2), (1,0,1,0), ...]
-            dtype: Target dtype for internal tensors. Defaults to torch.float32.
+        Parameters
+        ----------
+        computation_space : ComputationSpace
+            Computation space used to interpret the keys.
+        keys : list[tuple[int, ...]]
+            List of tuples describing the possible Fock states output from the circuit preceding the output
+            mapping. e.g., [(0,1,0,2), (1,0,1,0), ...]
+        dtype : torch.dtype | None
+            Target dtype for internal tensors.
         """
         super().__init__()
         self.computation_space = computation_space
@@ -169,28 +207,34 @@ class ModeExpectations(nn.Module):
     def marginalize_per_mode(
         self, probability_distribution: torch.Tensor
     ) -> torch.Tensor:
-        """
-        Marginalize Fock state probabilities to get per-mode occupation expected values.
+        """Marginalize Fock-state probabilities into per-mode expectations.
 
-        Args:
-            probability_distribution (torch.Tensor): Tensor of shape (N, num_keys) with probabilities
-                for each Fock state, with requires_grad=True
+        Parameters
+        ----------
+        probability_distribution : torch.Tensor
+            Tensor of probabilities for each Fock state.
 
-        Returns:
-            torch.Tensor: Shape (N, num_modes) with marginal per mode expected number of photons
+        Returns
+        -------
+        torch.Tensor
+            Per-mode expected photon counts.
         """
         marginalized = probability_distribution @ self.mask.T
         return marginalized
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Convert the per state amplitudes to per state probabilities if x are amplitudes. Then, marginalize the per state probability distribution into a per mode expected value.
+        """Compute per-mode expectations from amplitudes or probabilities.
 
-        Args:
-            x: Input Fock states amplitudes or probabilities of shape (n_batch, num_states) or (num_states,)
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input amplitudes or probabilities with shape ``(num_states,)`` or
+            ``(batch_size, num_states)``.
 
-        Returns:
-            Expected value tensor of shape (batch_size, num_modes)
+        Returns
+        -------
+        torch.Tensor
+            Expected photon counts per mode.
         """
         # Validate input
         if x.dim() not in [1, 2]:
@@ -220,6 +264,7 @@ class Amplitudes(nn.Module):
     """
 
     def __init__(self):
+        """Initialize the amplitude passthrough mapper."""
         super().__init__()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

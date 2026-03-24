@@ -32,7 +32,7 @@ Given a photonic feature map that embeds a classical datapoint :math:`x \in \mat
 - When :math:`x_1 = x_2`, the kernel returns 1 (perfect similarity)
 
 
-In MerLin, :class:`~merlin.algorithms.kernels.FidelityKernel` evaluates this kernel efficiently with the SLOS simulator, optionally including photon-loss and detector models from a :class:`perceval.components.experiment.Experiment`.
+In MerLin, :class:`~merlin.algorithms.kernels.FidelityKernel` evaluates this kernel efficiently with the SLOS simulator, optionally including photon-loss and detector models from a :class:`pcvl.Experiment`.
 
 Core building blocks
 --------------------
@@ -40,7 +40,7 @@ Core building blocks
 MerLin exposes three cooperating components:
 
 - :class:`~merlin.algorithms.kernels.FeatureMap`
-  Encodes classical inputs into a photonic circuit and produces the corresponding unitary matrix. You can pass a pre-built :class:`perceval.components.linear_circuit.Circuit`, a declarative :class:`~merlin.builder.circuit_builder.CircuitBuilder`, or a full :class:`perceval.components.experiment.Experiment`.
+  Encodes classical inputs into a photonic circuit and produces the corresponding unitary matrix. You can pass a pre-built :class:`pcvl.Circuit`, a declarative :class:`~merlin.builder.circuit_builder.CircuitBuilder`, or a full :class:`pcvl.Experiment`.
 
 - :class:`~merlin.algorithms.kernels.FidelityKernel`
   Given a feature map and an input Fock state, computes Gram matrices (train/test) by simulating transition probabilities through SLOS. Supports optional sampling, photon loss and detector transforms.
@@ -61,7 +61,7 @@ Quick Start Decision Guide
     → Create a ``FeatureMap`` from your circuit, then wrap in ``FidelityKernel``
 
 **"I need to model realistic hardware effects"**
-    → Create a ``perceval.Experiment`` with ``NoiseModel`` and detectors
+    → Create a :class:`pcvl.Experiment` with :class:`pcvl.NoiseModel` and detectors
 
 **"I want to compare classical vs quantum performance"**
     → Compute both kernel matrices and use with scikit-learn ``SVC(kernel="precomputed")``
@@ -80,7 +80,7 @@ The resulting vector is then sent to the Torch converter (:class:`~merlin.pcvl_p
 Detectors, photon loss and experiments
 --------------------------------------
 
-If the feature map exposes a :class:`perceval.components.experiment.Experiment`, the kernel composes a photon‑loss transform derived from the experiment's :class:`perceval.utils.noise_model.NoiseModel` and then applies detector transforms (threshold or PNR) before reading probabilities. This means kernel values naturally reflect survival probabilities and detector post‑processing.
+If the feature map exposes a :class:`pcvl.Experiment`, the kernel composes a photon‑loss transform derived from the experiment's :class:`pcvl.NoiseModel` and then applies detector transforms (threshold or PNR) before reading probabilities. This means kernel values naturally reflect survival probabilities and detector post‑processing.
 
 If no experiment is provided, the kernel constructs one from the circuit (unitary, no detectors, no noise).
 
@@ -276,7 +276,7 @@ Declarative builder + kernel
 .. note::
 
   ``input_state=[...]`` is accepted for convenience and is converted to a Perceval
-  `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ internally.
+  `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ internally.
 
 Using with scikit‑learn (precomputed kernel)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

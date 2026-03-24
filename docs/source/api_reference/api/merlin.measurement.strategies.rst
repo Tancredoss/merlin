@@ -36,7 +36,7 @@ Partial measurement
 -------------------
 
 Partial measurement is explicit and validated. It returns a
-:class:`merlin.core.partial_measurement.PartialMeasurement`.
+:class:`~merlin.core.partial_measurement.PartialMeasurement`.
 
 .. code-block:: python
 
@@ -136,5 +136,7 @@ Reference
    :members:
    :undoc-members:
    :show-inheritance:
+
+.. autodata:: MeasurementStrategyLike
 
 .. autofunction:: resolve_measurement_strategy

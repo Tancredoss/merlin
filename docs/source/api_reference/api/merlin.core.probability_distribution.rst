@@ -24,6 +24,8 @@ ProbabilityDistribution
    :member-order: bysource
    :show-inheritance:
 
+.. autodata:: Basis
+
 
 Notes and Examples
 ------------------

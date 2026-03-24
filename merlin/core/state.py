@@ -34,7 +34,7 @@ import perceval as pcvl  # type: ignore
 
 
 class StatePattern(str, Enum):
-    """Input photon state patterns."""
+    """Enumeration of supported input photon state patterns."""
 
     DEFAULT = "default"
     SPACED = "spaced"
@@ -47,18 +47,26 @@ def generate_state(
     n_photons: int,
     state_pattern: StatePattern | str = StatePattern.DEFAULT,
 ) -> pcvl.BasicState:
-    """Generate a Perceval Fock input state as a `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_.
+    """Generate a Perceval Fock input state as a `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_.
 
-    Args:
-        n_modes: Number of photonic modes.
-        n_photons: Total number of photons.
-        state_pattern: Placement strategy for the photons.
+    Parameters
+    ----------
+    n_modes : int
+        Number of photonic modes.
+    n_photons : int
+        Total number of photons.
+    state_pattern : StatePattern | str
+        Placement strategy for the photons.
 
-    Returns:
-        A `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ instance.
+    Returns
+    -------
+    pcvl.BasicState
+        Generated Perceval basic state.
 
-    Raises:
-        ValueError: If the inputs are inconsistent or the pattern is unknown.
+    Raises
+    ------
+    ValueError
+        If the inputs are inconsistent or the pattern is unknown.
     """
 
     occ = _generate_occupation(n_modes, n_photons, state_pattern)

@@ -30,14 +30,41 @@ from ..core.computation_space import ComputationSpace
 
 
 def probabilities_from_amplitudes(amplitudes: torch.Tensor) -> torch.Tensor:
-    """Convert complex amplitudes into probabilities."""
+    """
+    Convert complex amplitudes into probabilities.
+
+    Parameters
+    ----------
+    amplitudes : torch.Tensor
+        Complex amplitude tensor.
+
+    Returns
+    -------
+    torch.Tensor
+        Probability tensor computed elementwise from ``amplitudes``.
+    """
     return amplitudes.real**2 + amplitudes.imag**2
 
 
 def normalize_probabilities(
     probabilities: torch.Tensor, computation_space: ComputationSpace | None
 ) -> torch.Tensor:
-    """Normalize probabilities for computation spaces that require it."""
+    """
+    Normalize probabilities for computation spaces that require it.
+
+    Parameters
+    ----------
+    probabilities : torch.Tensor
+        Probability tensor to normalize.
+    computation_space : ComputationSpace | None
+        Computation space that determines whether normalization is required.
+
+    Returns
+    -------
+    torch.Tensor
+        Normalized probability tensor. For computation spaces that do not
+        require renormalization, the input tensor is returned unchanged.
+    """
     if computation_space not in (
         ComputationSpace.UNBUNCHED,
         ComputationSpace.DUAL_RAIL,
@@ -59,7 +86,21 @@ def normalize_probabilities(
 def normalize_probabilities_and_amplitudes(
     amplitudes: torch.Tensor, computation_space: ComputationSpace | None
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return probabilities and renormalized amplitudes when required."""
+    """
+    Return probabilities and renormalized amplitudes when required.
+
+    Parameters
+    ----------
+    amplitudes : torch.Tensor
+        Complex amplitude tensor.
+    computation_space : ComputationSpace | None
+        Computation space that determines whether renormalization is required.
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor]
+        Probability tensor and possibly renormalized amplitude tensor.
+    """
     probabilities = probabilities_from_amplitudes(amplitudes)
 
     if computation_space in (

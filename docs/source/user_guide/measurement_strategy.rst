@@ -117,7 +117,7 @@ Partial measurement is a specific kind of measurement strategy. With this measur
 Photon Loss-aware & Detector-aware execution
 ============================================
 
-When a :class:`perceval.components.experiment.Experiment` is provided, the :class:`~merlin.algorithms.layer.QuantumLayer`
+When a :class:`pcvl.Experiment` is provided, the :class:`~merlin.algorithms.layer.QuantumLayer`
 derives a photon loss transform and a detector transform that remaps raw Fock-state probabilities to the classical
 outcomes defined by the experiment. The photon loss mapping is applied first. Then, the detector mapping is applied. Lastly, the
 measurement strategy converts the distribution into classical features. As a consequence:

@@ -34,12 +34,39 @@ class ComputationSpace(str, Enum):
 
     @classmethod
     def default(cls, *, no_bunching: bool) -> "ComputationSpace":
-        """Derive the default computation space from the legacy `no_bunching` flag."""
+        """Derive the default computation space from the legacy flag.
+
+        Parameters
+        ----------
+        no_bunching : bool
+            Legacy flag indicating whether bunching should be disallowed.
+
+        Returns
+        -------
+        ComputationSpace
+            Default computation space matching the legacy behavior.
+        """
         return cls.UNBUNCHED if no_bunching else cls.FOCK
 
     @classmethod
     def coerce(cls, value: "ComputationSpace | str") -> "ComputationSpace":
-        """Normalize user-provided values (enum instances or case-insensitive strings)."""
+        """Normalize user-provided values (enum instances or case-insensitive strings).
+
+        Parameters
+        ----------
+        value : ComputationSpace | str
+            Enum instance or case-insensitive string value.
+
+        Returns
+        -------
+        ComputationSpace
+            Normalized computation space value.
+
+        Raises
+        ------
+        ValueError
+            If ``value`` does not match a supported computation space.
+        """
         if isinstance(value, cls):
             return value
         if isinstance(value, str):

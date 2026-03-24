@@ -28,7 +28,19 @@ _NO_BUNCHING_REMOVED_MESSAGE = (
 
 
 def raise_no_bunching_deprecated(*, stacklevel: int = 2) -> None:
-    """Warn and raise when deprecated no_bunching is used."""
+    """
+    Warn and raise when deprecated ``no_bunching`` is used.
+
+    Parameters
+    ----------
+    stacklevel : int
+        Warning stack level used for the emitted deprecation warning. Default is ``2``.
+
+    Raises
+    ------
+    ValueError
+        Always raised after emitting the deprecation warning.
+    """
     warnings.warn(
         _NO_BUNCHING_REMOVED_MESSAGE,
         DeprecationWarning,
@@ -255,41 +267,46 @@ def normalize_measurement_strategy(
     measurement_strategy: MeasurementStrategyLike | str | None,
     computation_space: ComputationSpace | str | None,
 ) -> tuple[MeasurementStrategyLike, ComputationSpace]:
-    """Normalize measurement strategy + computation space with deprecation warnings.
+    """
+    Normalize measurement strategy and computation space with deprecation warnings.
 
     Enforces the v0.3 requirement that ``computation_space`` must live inside
     ``MeasurementStrategy`` when using the new factory methods.
 
     Parameters
     ----------
-    measurement_strategy : MeasurementStrategyLike | str | None
-        User-provided measurement strategy. May be ``None``, a strategy
-        instance, a legacy enum value, or a deprecated string alias.
+    measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike` | str | None
+        Measurement strategy provided by the caller. Supports the modern
+        strategy object, legacy enum aliases, legacy strings, or ``None``.
     computation_space : ComputationSpace | str | None
-        Optional computation space provided alongside the strategy.
+        Computation space provided alongside the strategy.
 
     Returns
     -------
-    tuple[MeasurementStrategyLike, ComputationSpace]
+    tuple[:data:`~merlin.measurement.strategies.MeasurementStrategyLike`, ComputationSpace]
         Normalized measurement strategy and resolved computation space.
+
+    Raises
+    ------
+    TypeError
+        If the provided strategy is incompatible with the separate
+        ``computation_space`` argument or cannot be normalized.
+    ValueError
+        If a modern ``MeasurementStrategy`` does not define a computation
+        space.
 
     Notes
     -----
-    Normalization rules:
+    The normalization follows these rules:
 
-    1. If a ``MeasurementStrategy`` instance from the new API is passed
-       together with constructor-level ``computation_space``, an error is
-       raised and the computation space must be moved into the factory method.
-    2. If ``measurement_strategy`` is ``None`` and ``computation_space`` is
-       provided, ``MeasurementStrategy.probs(computation_space)`` is used with
-       a deprecation warning.
-    3. If a legacy enum value such as ``PROBABILITIES`` is used with
-       constructor-level ``computation_space``, the input is accepted with a
-       deprecation warning for backward compatibility.
-    4. If only a ``MeasurementStrategy`` instance is provided, its embedded
-       computation space is used.
-    5. If only a legacy enum is provided, it is wrapped using the resolved
-       computation space.
+    1. If MeasurementStrategy instance (new API) + constructor computation_space provided
+       → ERROR: user must move computation_space into the factory method
+    2. If measurement_strategy is None and computation_space provided
+       → OK with deprecation warning (default to MeasurementStrategy.probs(computation_space))
+    3. If legacy enum (PROBABILITIES, etc) + constructor computation_space
+       → OK with deprecation warning (backward compat)
+    4. If MeasurementStrategy instance only → use its computation_space
+    5. If legacy enum only → wrap with computation_space param
     """
     from ..measurement.strategies import (
         MeasurementKind,
@@ -393,7 +410,22 @@ def normalize_measurement_strategy(
 
 
 def warn_deprecated_enum_access(owner: str, name: str) -> bool:
-    """Warn on deprecated enum-style attribute access and return True if handled."""
+    """
+    Warn on deprecated enum-style attribute access.
+
+    Parameters
+    ----------
+    owner : str
+        Name of the owning class.
+    name : str
+        Deprecated enum-style attribute being accessed.
+
+    Returns
+    -------
+    bool
+        ``True`` if the access was recognized and handled, ``False``
+        otherwise.
+    """
     if owner == "MeasurementStrategy" and name in _MEASUREMENT_STRATEGY_ENUM_MIGRATIONS:
         replacement = _MEASUREMENT_STRATEGY_ENUM_MIGRATIONS[name]
         warnings.warn(
@@ -429,16 +461,34 @@ def sanitize_parameters(
 
 
 def sanitize_parameters(*args: Any, **_kw: Any) -> Any:
-    """Decorator to centralize parameter sanitization for method calls.
+    """
+    Decorate methods to centralize parameter sanitization.
 
-    Usage:
-    - As a plain decorator: `@sanitize_parameters` (no parentheses)
-    - As a factory with processors: `@sanitize_parameters(proc1, proc2, ...)`
+    Parameters
+    ----------
+    args : Any
+        Either the decorated callable itself, for bare decorator usage, or a
+        sequence of sanitizer callables for factory usage.
+    _kw : Any
+        Unused keyword arguments accepted for signature flexibility.
 
-    Behavior:
-    - Emits standardized warnings/errors based on the global deprecation registry.
-    - Applies converter functions registered for present deprecated params.
-    - Applies any additional `processors(qual, kwargs)` provided, sequentially, each receiving and returning kwargs.
+    Returns
+    -------
+    Any
+        Decorated callable or decorator factory result, depending on how the
+        function is invoked.
+
+    Notes
+    -----
+    Supported usage patterns are:
+
+    1. ``@sanitize_parameters``
+    2. ``@sanitize_parameters(proc1, proc2, ...)``
+
+    The decorator emits standardized warnings or errors based on the global
+    deprecation registry, applies registered converter functions for present
+    deprecated parameters, and then applies any additional processors
+    sequentially.
     """
 
     def _build_decorator(

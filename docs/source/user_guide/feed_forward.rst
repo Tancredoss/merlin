@@ -24,11 +24,11 @@ FeedForwardBlock in MerLin
 Modern MerLin versions model feedforward circuits via the
 :class:`~merlin.algorithms.feed_forward.FeedForwardBlock` class.  Instead of
 describing the block procedurally, you simply provide a complete
-:class:`perceval.components.experiment.Experiment` containing:
+:class:`pcvl.Experiment` containing:
 
 1. The unitary layers between measurements.
 2. Explicit detector declarations (PNR, threshold, ...).
-3. One or more :class:`perceval.components.feed_forward_configurator.FFCircuitProvider`
+3. One or more :class:`pcvl.FFCircuitProvider`
    instances that describe how the circuit is reconfigured after the detectors fire.
 
 ``FeedForwardBlock`` parses the experiment, creates the appropriate

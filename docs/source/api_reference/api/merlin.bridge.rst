@@ -6,11 +6,17 @@ merlin.bridge package
 
 .. currentmodule:: merlin.bridge
 
+Modules
+-------
 
-Submodules
-----------
+.. list-table::
+   :widths: 35 65
+   :header-rows: 0
+
+   * - :doc:`merlin.bridge.quantum_bridge`
+     - State-conversion tools built around :class:`~merlin.bridge.quantum_bridge.QuantumBridge` for qubit, Fock, and basis translations.
 
 .. toctree::
-   :maxdepth: 4
+   :hidden:
 
    merlin.bridge.quantum_bridge

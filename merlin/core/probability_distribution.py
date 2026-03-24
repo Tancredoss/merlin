@@ -107,15 +107,15 @@ class ProbabilityDistribution:
 
     Parameters
     ----------
-    tensor:
+    tensor : torch.Tensor
         Dense or sparse probabilities; leading dimensions are treated as batch axes.
-    n_modes:
+    n_modes : int
         Number of modes in the Fock space.
-    n_photons:
+    n_photons : int
         Total photon number represented by the distribution.
-    computation_space:
+    computation_space : ComputationSpace
         Basis enumeration used to order amplitudes (``fock``, ``unbunched``, ``dual_rail``).
-    logical_performance:
+    logical_performance : torch.Tensor | None
         Optional per-batch scalar tracking kept/total probability after filtering.
 
     Notes
@@ -155,6 +155,7 @@ class ProbabilityDistribution:
 
     @property
     def basis(self) -> Basis:
+        """:data:`merlin.core.probability_distribution.Basis`: Basis enumeration associated with the current tensor."""
         return (
             self._custom_basis
             if self._custom_basis is not None
@@ -163,10 +164,24 @@ class ProbabilityDistribution:
 
     @property
     def basis_size(self) -> int:
+        """int: Number of basis states represented by the distribution."""
         return len(self.basis)
 
     def to(self, *args, **kwargs) -> ProbabilityDistribution:
-        """Return a new ``ProbabilityDistribution`` with tensor (and logical_performance) moved/cast via ``torch.Tensor.to``."""
+        """Return a new ``ProbabilityDistribution`` with tensor (and logical_performance) moved/cast via ``torch.Tensor.to``.
+
+        Parameters
+        ----------
+        *args
+            Positional arguments forwarded to :meth:`torch.Tensor.to`.
+        **kwargs
+            Keyword arguments forwarded to :meth:`torch.Tensor.to`.
+
+        Returns
+        -------
+        ProbabilityDistribution
+            Converted probability distribution.
+        """
         new_tensor = self.tensor.to(*args, **kwargs)
         new_lp = None
         if self.logical_performance is not None:
@@ -181,7 +196,13 @@ class ProbabilityDistribution:
         )
 
     def clone(self) -> ProbabilityDistribution:
-        """Return a cloned ``ProbabilityDistribution`` with metadata and logical performance copied."""
+        """Return a cloned distribution with metadata and logical performance preserved.
+
+        Returns
+        -------
+        ProbabilityDistribution
+            Cloned probability distribution.
+        """
         new_lp = None
         if self.logical_performance is not None:
             new_lp = self.logical_performance.clone()
@@ -195,7 +216,13 @@ class ProbabilityDistribution:
         )
 
     def detach(self) -> ProbabilityDistribution:
-        """Return a detached ``ProbabilityDistribution`` sharing data without gradients."""
+        """Return a detached ``ProbabilityDistribution`` sharing data without gradients.
+
+        Returns
+        -------
+        ProbabilityDistribution
+            Detached probability distribution.
+        """
         new_lp = None
         if self.logical_performance is not None:
             new_lp = self.logical_performance.detach()
@@ -209,7 +236,18 @@ class ProbabilityDistribution:
         )
 
     def requires_grad_(self, requires_grad: bool = True) -> ProbabilityDistribution:
-        """Set ``requires_grad`` on underlying tensors and return self."""
+        """Set ``requires_grad`` on underlying tensors and return self.
+
+        Parameters
+        ----------
+        requires_grad : bool
+            Whether gradients should be tracked.
+
+        Returns
+        -------
+        ProbabilityDistribution
+            The updated instance.
+        """
         self.tensor.requires_grad_(requires_grad)
         if self.logical_performance is not None:
             self.logical_performance.requires_grad_(requires_grad)
@@ -217,10 +255,12 @@ class ProbabilityDistribution:
 
     @property
     def is_sparse(self) -> bool:
+        """bool: Whether the underlying tensor uses sparse storage."""
         return self.tensor.is_sparse
 
     @property
     def is_normalized(self) -> bool:
+        """bool: Probability distributions are always normalized by construction."""
         return True
 
     def _tensor_coalesced(self) -> torch.Tensor:
@@ -307,13 +347,17 @@ class ProbabilityDistribution:
 
         Parameters
         ----------
-        tensor:
+        tensor : torch.Tensor
             Dense or sparse probability tensor; last dimension must match the basis size.
-        n_modes / n_photons:
+        n_modes : int
+            Number of modes in the represented Fock space.
+        n_photons : int
             Metadata for basis construction.
-        computation_space:
+        computation_space : ComputationSpace | str | None
             Optional basis scheme; defaults to ``fock``.
-        dtype / device:
+        dtype : torch.dtype | None
+            Optional override for output tensor dtype.
+        device : torch.device | None
             Optional overrides for output tensor placement and precision.
 
         Raises
@@ -344,11 +388,13 @@ class ProbabilityDistribution:
 
         Parameters
         ----------
-        state_vector:
+        state_vector : Any
             Source amplitudes; must expose ``to_dense``, ``n_modes``, and ``n_photons``.
-        dtype / device:
+        dtype : torch.dtype | None
+            Optional override for output tensor dtype.
+        device : torch.device | None
             Optional overrides for output tensor placement and precision.
-        computation_space:
+        computation_space : ComputationSpace | str | None
             Optional basis scheme; defaults to ``fock``.
         """
         dense = state_vector.to_dense()
@@ -378,11 +424,13 @@ class ProbabilityDistribution:
 
         Parameters
         ----------
-        distribution:
+        distribution : pcvl.BSDistribution
             Input Perceval distribution.
-        dtype / device:
+        dtype : torch.dtype | None
+            Optional override for output tensor dtype.
+        device : torch.device | None
             Optional overrides for output tensor placement and precision.
-        sparse:
+        sparse : bool | None
             Force dense or sparse output; default auto-selects based on fill ratio.
 
         Raises
@@ -447,7 +495,14 @@ class ProbabilityDistribution:
         return cls(dense, n_modes, n_photons, computation_space=ComputationSpace.FOCK)
 
     def to_perceval(self):
-        """Convert to Perceval ``BSDistribution`` (single) or list for batches."""
+        """Convert to Perceval ``BSDistribution`` (single) or list for batches.
+
+        Returns
+        -------
+        pcvl.BSDistribution | list[pcvl.BSDistribution]
+            Single distribution for 1D tensors, or one distribution per batch
+            entry for batched tensors.
+        """
         basis = self.basis
         tensor = self.normalize().tensor
         if tensor.ndim == 1:
@@ -524,11 +579,13 @@ class ProbabilityDistribution:
 
     def filter(
         self,
-        rule: ComputationSpace
-        | str
-        | Callable[[tuple[int, ...]], bool]
-        | Iterable[Sequence[int]]
-        | tuple[ComputationSpace | str, Callable[[tuple[int, ...]], bool]],
+        rule: (
+            ComputationSpace
+            | str
+            | Callable[[tuple[int, ...]], bool]
+            | Iterable[Sequence[int]]
+            | tuple[ComputationSpace | str, Callable[[tuple[int, ...]], bool]]
+        ),
     ) -> ProbabilityDistribution:
         """Apply post-selection filter and renormalize probabilities.
 
