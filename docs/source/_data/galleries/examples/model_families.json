@@ -1,0 +1,58 @@
+[
+  {
+    "title": "Kernel Methods: Fidelity kernel classification",
+    "summary": "Introduction to these two encoding strategies and their tradeoffs.",
+    "image": "_static/img/Iris_pipeline.png",
+    "doc": "notebooks/Kernels.ipynb",
+    "tags": ["Tutorial", "Kernels", "FidelityKernel","Iris"]
+  },
+  {
+    "title": "Kernel Methods: Quantum Kernel vs Clasical Kernel",
+    "summary": "Comparing classical kernels with quantum fidelity kernels on a simple dataset.",
+    "image": "_static/img/MerLin_black.png",
+    "doc": "examples/index",
+    "tags": ["Comparison", "Kernels","DATASET", "Coming soon!"]
+  },
+  {
+    "title": "The Basics of Quantum Optical Reservoir Computing",
+    "summary": "Introduction to the quantum optical reservoir computing and classical readout.",
+    "image": "_static/img/reservoir_scheme.png",
+    "doc": "notebooks/QORC-basics.ipynb",
+    "tags": ["QORC","Reservoir","Tutorial","Classification"]
+  },
+  {
+    "title": "Variational Quantum Models: Classification",
+    "summary": "Training a variational photonic circuit on a simple classification task.",
+    "image": "_static/img/Iris_pipeline.png",
+    "doc": "notebooks/iris_classification",
+    "tags": ["Tutorial","Comparison","MLP","Iris"]
+  },
+  {
+    "title": "Variational Quantum Models: Impact of the Photon Number",
+    "summary": "How photon number affects expressivity and Fourier components?",
+    "image": "_static/examples/VQC_plot.png",
+    "doc": "notebooks/reproduced_papers/GanEtAl_VQC_classification",
+    "tags": ["Reproduced paper","Variational", "Number of Photons","Moons","Circles","Linear"]
+  },
+  {
+    "title": "Computer Vision: Image Classification with QuantumLayers",
+    "summary": "Exploration of the hybrid classical-quantum pipeline for image classification.",
+    "image": "_static/img/MerLin_black.png",
+    "doc": "examples/index",
+    "tags": ["Hybrid","Computer vision","DATASET", "Coming soon!"]
+  },
+  {
+    "title": "Computer Vision: Image Classification with a Photonic QCNN",
+    "summary": "Building a photonic quantum convolutional neural network.",
+    "image": "_static/reproduced_papers/PhotonicQCNN_state_injection.png",
+    "doc": "notebooks/reproduced_papers/photonic_QCNN.ipynb",
+    "tags": ["QCNN","Computer vision","Reproduced paper", "MNIST"]
+  },
+  {
+    "title": "Generative Models: Photonic QGAN",
+    "summary": "How to generate image patches using a photonic generator and classical discriminator.",
+    "image": "_static/reproduced_papers/photonicQGAN.png",
+    "doc": "reproduced_papers/reproductions/photonic_QGAN.rst",
+    "tags": ["Photonic QGAN","Generative Models","Reproduced paper","DATASET", "Coming soon!"]
+  }
+]
