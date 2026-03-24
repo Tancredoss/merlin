@@ -1,0 +1,9 @@
+[
+    {
+    "title": "Internal Design",
+    "summary": "Overview of key internal design elements that underpin MerLin's simulation pipeline and advanced workflows.",
+    "image": "_static/img/QCNN_adaptive.png",
+    "doc": "quantum_expert_area/internal_design.rst",
+    "tags": ["Partial Detectors", "Feed forward", "SLOS"]
+  }
+]

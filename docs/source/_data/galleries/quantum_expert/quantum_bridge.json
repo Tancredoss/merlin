@@ -1,0 +1,9 @@
+[
+      {
+    "title": "QuantumBridge",
+    "summary": "Internal workings of the Quantum Bridge for advanced users who want to understand the QLOQ (Qubit Logic on Qudits) encoding scheme and customize their qubit-to-photonic mappings.",
+    "image": "_static/img/quantumbridge.png",
+    "doc": "quantum_expert_area/quantum_bridge.rst",
+    "tags": ["Quantum_bridge","Encoding","Performance", "Best Practices", ""]
+  }
+]
