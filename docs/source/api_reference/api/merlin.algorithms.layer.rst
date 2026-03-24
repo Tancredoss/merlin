@@ -2,15 +2,20 @@ merlin.algorithms.layer module
 ==============================
 
 .. automodule:: merlin.algorithms.layer
+   :no-members:
+
+.. currentmodule:: merlin.algorithms.layer
+
+.. autoclass:: QuantumLayer
    :members:
    :undoc-members:
    :show-inheritance:
 
 .. note::
 
-   Quantum layers built from a :class:`perceval.Experiment` now apply the experiment's per-mode detector configuration before returning classical outputs. When no detectors are specified, ideal photon-number resolving detectors are used by default.
+   Quantum layers built from a :class:`perceval.components.experiment.Experiment` now apply the experiment's per-mode detector configuration before returning classical outputs. When no detectors are specified, ideal photon-number resolving detectors are used by default.
 
-   If the experiment carries a :class:`perceval.NoiseModel` (via ``experiment.noise``), MerLin inserts a :class:`~merlin.measurement.photon_loss.PhotonLossTransform` ahead of any detector transform. The resulting ``output_keys`` and ``output_size`` therefore include every survival/loss configuration implied by the model, and amplitude read-out is disabled whenever custom detectors or photon loss are present.
+   If the experiment carries a :class:`perceval.utils.noise_model.NoiseModel` (via ``experiment.noise``), MerLin inserts a :class:`~merlin.measurement.photon_loss.PhotonLossTransform` ahead of any detector transform. The resulting ``output_keys`` and ``output_size`` therefore include every survival/loss configuration implied by the model, and amplitude read-out is disabled whenever custom detectors or photon loss are present.
 
 Example: Quickstart QuantumLayer
 --------------------------------
@@ -152,15 +157,15 @@ Fock state (a precise configuration of ``n_photons`` over ``m`` modes) or a supe
 computation space (for example Bell pairs or GHZ states). :class:`~merlin.algorithms.layer.QuantumLayer` accepts the
 following representations:
 
-* :class:`perceval.BasicState` – a single configuration such as ``pcvl.BasicState([1, 0, 1, 0])``;
-* :class:`perceval.StateVector` – an arbitrary superposition of basic states with complex amplitudes;
+* `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ – a single configuration such as ``pcvl.BasicState([1, 0, 1, 0])``;
+* :class:`~exqalibur.StateVector` – an arbitrary superposition of basic states with complex amplitudes;
 * Python lists/tuples, e.g. ``[1, 0, 1, 0]``. These are accepted as convenience inputs and are immediately converted
-    to a Perceval :class:`perceval.BasicState`.
+    to a Perceval `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_.
 
 .. note::
 
      For Fock/occupation inputs, :class:`~merlin.algorithms.layer.QuantumLayer` stores ``.input_state`` as a Perceval
-     :class:`perceval.BasicState`. If you need the raw occupation vector, use ``list(layer.input_state)``.
+     `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_. If you need the raw occupation vector, use ``list(layer.input_state)``.
 
 When ``input_state`` is passed, the layer always injects that photonic state. In more elaborate pipelines you may want
 to cascade circuits and let the output amplitudes of the previous layer become the input state of the next. Merlin

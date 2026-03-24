@@ -2,15 +2,30 @@ merlin.algorithms.kernels module
 ================================
 
 .. automodule:: merlin.algorithms.kernels
-   :members: FeatureMap, FidelityKernel, KernelCircuitBuilder
+   :no-members:
+
+.. currentmodule:: merlin.algorithms.kernels
+
+.. autoclass:: FeatureMap
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: FidelityKernel
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: KernelCircuitBuilder
+   :members:
    :undoc-members:
    :show-inheritance:
 
 .. note::
 
    When the wrapped :class:`~merlin.algorithms.kernels.FeatureMap` exposes a
-   :class:`perceval.Experiment`, fidelity kernels compose the attached
-   :class:`perceval.NoiseModel` (photon loss) before applying any detector
+   :class:`perceval.components.experiment.Experiment`, fidelity kernels compose the attached
+   :class:`perceval.utils.noise_model.NoiseModel` (photon loss) before applying any detector
    transforms. The resulting kernel values therefore reflect both survival
    probabilities and detector post-processing.
 

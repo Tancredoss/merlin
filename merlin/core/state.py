@@ -47,7 +47,7 @@ def generate_state(
     n_photons: int,
     state_pattern: StatePattern | str = StatePattern.DEFAULT,
 ) -> pcvl.BasicState:
-    """Generate a Perceval Fock input state as a ``BasicState``.
+    """Generate a Perceval Fock input state as a `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_.
 
     Args:
         n_modes: Number of photonic modes.
@@ -55,7 +55,7 @@ def generate_state(
         state_pattern: Placement strategy for the photons.
 
     Returns:
-        A ``perceval.BasicState`` instance.
+        A `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ instance.
 
     Raises:
         ValueError: If the inputs are inconsistent or the pattern is unknown.

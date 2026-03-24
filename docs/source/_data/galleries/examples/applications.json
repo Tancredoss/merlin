@@ -1,0 +1,51 @@
+[ 
+  {
+    "title": "Binary Classification",
+    "summary": "Comparing VQC and kernel approaches on a simple classification task.",
+    "image": "_static/examples/binary-classification.png",
+    "doc": "notebooks/binary_classification.ipynb",
+    "tags": ["VQC", "Kernels", "QuantumLayer", "Iris"]
+  },
+  {
+    "title": "Image Classification",
+    "summary": "Overview of MerLin approaches for computer vision tasks.",
+    "image": "_static/img/MerLin_black.png",
+    "doc": "examples/index",
+    "tags": ["Computer vision","DATASET", "Coming soon!"]
+  },
+  {
+    "title": "Self-Supervised Learning",
+    "summary": "Exploring self-supervised learning techniques for image classification",
+    "image": "_static/reproduced_papers/qSSL/qSSL_model.png",
+    "doc": "reproduced_papers/reproductions/qssl",
+    "tags": ["Paper reproduction", "Image Classification", "Self-Supervised Learning", "Qiskit"]
+  },
+ {
+    "title": "Quantum Transfer Learning",
+    "summary": "Hybrid transfer learning with frozen classical feature extractors and trainable quantum heads.",
+    "image": "_static/reproduced_papers/TransferLearning.png",
+    "doc": "reproduced_papers/reproductions/quantum_transfer_learning",
+    "tags": ["Paper reproduction", "Image Classification", "Transfer Learning", "Pennylane"]
+  },
+  {
+    "title": "Time-series forecasting using QORC",
+    "summary": "Forecasting the Lorenz attractor time series with a quantum optical reservoir computing model",
+    "image": "_static/examples/Lorenz-series.png",
+    "doc": "notebooks/QORC-timeseries",
+    "tags": ["Time-series", "Forecasting", "QORC", "Reservoir"]
+  },
+  {
+    "title": "Time-series Prediction",
+    "summary": "Overview of sequential models (QORC, QRNN, QLSTM).",
+    "image": "_static/img/MerLin_black.png",
+    "doc": "examples/index",
+    "tags": ["QORC","QRNN","QLSTM","DATASET", "Coming soon!"]
+  },
+  {
+    "title": "Adversarial Robustness",
+    "summary": "Studying vulnerability of quantum models to adversarial perturbations.",
+    "image": "_static/reproduced_papers/AdversarialML.png",
+    "doc": "reproduced_papers/reproductions/quantum_adversarial_ml.rst",
+    "tags": ["Adversarial","DATASET", "Coming soon!"]
+  }
+]
