@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
+====================================================================================
 Distributed Quantum Neural Networks on Distributed Photonic Quantum Computing
-====================================================
+====================================================================================
 
 .. admonition:: Paper Information
    :class: note
@@ -19,8 +19,16 @@ Distributed Quantum Neural Networks on Distributed Photonic Quantum Computing
 
    **Reproducer**: Louis-Félix Vigneux (louis-felix.vigneux@quandela.com)
 
+Project Repository
+====================================================================================
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/distributed_nn_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
-========
+====================================================================================
 
 This paper presents a novel way to do use a QPU to do machine learning. Indeed, with the use of distributed learning, boson samplers are used as advanced compression techniques for the parameters of a CNN. Indeed with the use of a simple MPS layer to map the quantum output to parameters, the boson samplers are trained to generate all of the parameters of the classical CNN. The model is used to classify the full 10 MNIST digits.
 
@@ -35,17 +43,17 @@ The data to classify only goes through the classical model that is not trained d
 The paper also compares the performance of the quantum model with classical parameter compression techniques to show the utility of quantum.
 
 Significance
-============
+====================================================================================
 
 Most papers in QML use the QPU as a main part in the model classifying the data. Here, the boson samplers do not treat the data directly as it only trains the parameters of the CNN that actually classifies the data. This paper is significant since it is a way to observe the advantages of quantum (few quantum parameters to train to generate exponential classical parameters) while using all of the benefits of big classical models. Also, only small boson samplers are needed, which is useful for the current limited access to quantum resources.
 
 MerLin Implementation
-=====================
+====================================================================================
 
 MerLin is used to instantiate the boson samplers that generate the classical data. It also allows us to use faster gradient-based optimization instead of the COBYLA optimizer used in the paper.
 
 Key Contributions Reproduced
-============================
+====================================================================================
 
 **Investigate the relation between the bond dimension of the MPS and the CNN's accuracy**
   * We classify a subset of the MNIST dataset and vary the MPS' bond dimension (1 to 10) to increase the representability of the model and the number of parameters.
@@ -58,7 +66,7 @@ Key Contributions Reproduced
 
 
 Implementation Details
-======================
+====================================================================================
 
 The key role of MerLin is to train efficiently the boson samplers. We use a QuantumLayer to do so.
 
@@ -75,13 +83,13 @@ The key role of MerLin is to train efficiently the boson samplers. We use a Quan
 Where the `circuit` is a `Perceval` circuit implementing the interferometer described in the paper.
 
 Experimental Results
-====================
+====================================================================================
 
 To see the result plots, consult the  `ReadMe <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/DQNN/README.md>`_ of the project.
 
 
 Code Access and Documentation
-=============================
+====================================================================================
 
 **GitHub Repository**: `merlin/reproductions/DQNN <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/DQNN/>`_
 
@@ -93,8 +101,7 @@ The complete implementation includes:
 * A tutorial on how to use the code
 
 Citation
-========
-
+====================================================================================
 .. code-block:: bibtex
 
   @misc{chen_distributed_2025,
@@ -109,5 +116,3 @@ Citation
       note = {arXiv:2505.08474 [quant-ph]},
       keywords = {Computer Science - Artificial Intelligence, Computer Science - Distributed, Parallel, and Cluster Computing, Quantum Physics},
   }
-
-----

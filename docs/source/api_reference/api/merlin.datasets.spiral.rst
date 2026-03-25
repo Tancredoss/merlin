@@ -2,6 +2,8 @@ merlin.datasets.spiral module
 =============================
 
 .. automodule:: merlin.datasets.spiral
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
+
+.. currentmodule:: merlin.datasets.spiral
+
+.. autofunction:: get_data

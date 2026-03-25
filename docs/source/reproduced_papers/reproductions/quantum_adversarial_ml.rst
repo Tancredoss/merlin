@@ -15,6 +15,14 @@ Quantum Adversarial Machine Learning
 
    **Reproducer:** Benjamin Stott (benjamin.stott@quandela.com)
 
+Project Repository
+------------------
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/quantum_adversarial_ml_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
 --------
 
@@ -121,11 +129,6 @@ classical compression.
    robust_model = adversarial_training(
        model, train_loader, attack_method="bim", epsilon=0.1, epochs=100,
    )
-
-Code Access and Documentation
-=============================
-
-**GitHub Repository**: `merlin/reproductions/quantum_adversarial_ml <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/quantum_adversarial_ml>`_
 
 
 Extensions and Future Work

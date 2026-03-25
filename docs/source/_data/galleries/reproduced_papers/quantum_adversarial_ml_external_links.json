@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Run Quantum Adversarial ML Reproduction",
+    "summary": "Code reproduction for adversarial attacks and defenses on quantum models.",
+    "image": "_static/reproduced_papers/AdversarialML.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/quantum_adversarial_ml",
+    "tags": ["External Link", "Adversarial ML", "Repository"]
+  }
+]

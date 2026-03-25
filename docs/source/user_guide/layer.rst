@@ -17,16 +17,15 @@ Overview
 - **Input encoding strategies** - Pick a data encoding method: angle or amplitude encoding.. See :doc:`./angle_amplitude_encoding` for more information.
 - **Output measurement strategies** – Select between probabilities, per-mode expectations,
   or raw amplitudes through :class:`~merlin.measurement.strategies.MeasurementStrategy`.
-  The layer validates incompatible combinations (e.g. detectors with amplitude read-out). For more information ont this and all of the possible output configurations, visit :doc:`./measurement_strategy`.
-  - **Grouping strategy** – The grouping strategy to format the output of the QuantumLayer to the desired size can be defined directly in
-    the measurement_strategy parameter. See :doc:`./grouping` for more information.
+  The layer validates incompatible combinations (e.g. detectors with amplitude read-out). For more information on this and all possible output configurations, visit :doc:`./measurement_strategy`.
+  Grouping can be configured directly in the measurement strategy parameter. See :doc:`./grouping` for more information.
 - **Multiple construction paths** – Build layers from
   the convenience :meth:`~merlin.algorithms.layer.QuantumLayer.simple` factory,
   a :class:`~merlin.builder.circuit_builder.CircuitBuilder`, a custom
-  :class:`perceval.Circuit` or a fully specified :class:`perceval.Experiment`.
+  :class:`pcvl.Circuit` or a fully specified :class:`pcvl.Experiment`.
 - **Detector awareness** – Layers automatically derive detector transforms from
   the experiment, enabling threshold, PNR, or hybrid detection schemes.
-- **Photon-loss aware** – Experiments carrying a :class:`perceval.NoiseModel`
+- **Photon-loss aware** – Experiments carrying a :class:`pcvl.NoiseModel`
   trigger an automatic photon-loss transform so survival and loss outcomes share
   a single, normalised output distribution.
 
@@ -57,7 +56,7 @@ learning experts without any prior knowledge in quantum machine learning.
 CircuitBuilder
 ~~~~~~~~~~~~~~
 
-Use MerLin’s :class:`CircuitBuilder` utilities to describe a circuit at a higher level. The builder maintains a record of the trainable parameters and the parameters used as layer inputs. A prefix-based naming scheme separates trainable parameters from those used as layer inputs. This is an ideal tool for quantum machine learning experts who do not have any experience with Perceval.". More information in the CircuitBuilder API reference: :class:`~merlin.builder.circuit_builder.CircuitBuilder`
+Use MerLin’s :class:`~merlin.builder.circuit_builder.CircuitBuilder` utilities to describe a circuit at a higher level. The builder maintains a record of the trainable parameters and the parameters used as layer inputs. A prefix-based naming scheme separates trainable parameters from those used as layer inputs. This is an ideal tool for quantum machine learning experts who do not have any experience with Perceval. More information in the CircuitBuilder API reference: :class:`~merlin.builder.circuit_builder.CircuitBuilder`
 
 .. code-block:: python
 
@@ -81,7 +80,7 @@ Use MerLin’s :class:`CircuitBuilder` utilities to describe a circuit at a high
 Custom circuit
 ~~~~~~~~~~~~~~
 
-When you already have a :class:`perceval.Circuit`, provide the classical input
+When you already have a :class:`pcvl.Circuit`, provide the classical input
 layout and the trainable parameter prefixes explicitly. This initialization requires
 a good understanding of Perceval.
 
@@ -110,12 +109,12 @@ a good understanding of Perceval.
 .. note::
 
   ``input_state=[...]`` is accepted as a convenience input, but the layer stores it as a Perceval
-  :class:`perceval.BasicState` (access the occupation vector via ``list(layer.input_state)``).
+  `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ (access the occupation vector via ``list(layer.input_state)``).
 
 Experiment-driven
 ~~~~~~~~~~~~~~~~~
 
-If you want to simulate a noise model or specify detectors characteristics, configure a :class:`perceval.Experiment` and pass it directly. The QuantumLayer inherits the circuit, detectors, and any photon-loss noise model you attached. This scheme is the one that gives the user the most options when utilizing a QuantumLayer.
+If you want to simulate a noise model or specify detectors characteristics, configure a :class:`pcvl.Experiment` and pass it directly. The QuantumLayer inherits the circuit, detectors, and any photon-loss noise model you attached. This scheme is the one that gives the user the most options when utilizing a QuantumLayer.
 
 .. code-block:: python
 
@@ -141,9 +140,9 @@ If you want to simulate a noise model or specify detectors characteristics, conf
    probs = layer()
    detector_keys = layer.output_keys
 
------------
+---------------------------------
 Photon loss and detectors
------------
+---------------------------------
 
 - Without an experiment, the layer defaults to ideal PNR detection on every
   mode, mirroring Perceval’s default behaviour.
@@ -173,11 +172,12 @@ Notes
    *Deprecated since version 0.3:* The use of the ``no_bunching`` flag  is deprecated and is removed since version 0.3.0.
    Use the ``computation_space`` flag inside ``measurement_strategy`` instead. See :doc:`/user_guide/migration_guide`.
 
------------
+----------------------
 API Reference
------------
+----------------------
 
 .. autoclass:: merlin.algorithms.layer.QuantumLayer
    :members:
    :undoc-members:
    :show-inheritance:
+   :noindex:

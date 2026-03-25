@@ -24,11 +24,11 @@ FeedForwardBlock in MerLin
 Modern MerLin versions model feedforward circuits via the
 :class:`~merlin.algorithms.feed_forward.FeedForwardBlock` class.  Instead of
 describing the block procedurally, you simply provide a complete
-:class:`perceval.Experiment` containing:
+:class:`pcvl.Experiment` containing:
 
 1. The unitary layers between measurements.
 2. Explicit detector declarations (PNR, threshold, ...).
-3. One or more :class:`perceval.components.feed_forward_configurator.FFCircuitProvider`
+3. One or more :class:`pcvl.FFCircuitProvider`
    instances that describe how the circuit is reconfigured after the detectors fire.
 
 ``FeedForwardBlock`` parses the experiment, creates the appropriate
@@ -51,20 +51,20 @@ propagated in amplitude-encoding mode.
 * ``merlin.MeasurementStrategy.probs()`` (default): returns a tensor of shape
   ``(batch_size, len(output_keys))``. Each column already corresponds to the
   fully specified Fock state listed in
-  :pyattr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_keys`.
+  :py:attr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_keys`.
 * ``merlin.MeasurementStrategy.mode_expectations()``: returns a tensor of shape
   ``(batch_size, num_modes)`` containing the per-mode photon expectations
   aggregated across **all** measurement keys. The
-  :pyattr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_keys` list is
+  :py:attr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_keys` list is
   retained for metadata while
-  :pyattr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_state_sizes`
+  :py:attr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_state_sizes`
   stores ``num_modes`` for each entry.
 * ``merlin.MeasurementStrategy.amplitudes()``: list of tuples
   ``(measurement_key, branch_probability, remaining_photons, amplitudes)``
   describing the mixed state produced after every partial measurement.
 
 For tensor outputs the attribute
-:pyattr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_keys` lists the
+:py:attr:`~merlin.algorithms.feed_forward.FeedForwardBlock.output_keys` lists the
 measurement tuple corresponding to each column. ``merlin.MeasurementStrategy.probs()`` therefore
 directly aligns with the dictionary keys, whereas ``merlin.MeasurementStrategy.mode_expectations()``
 retains the key ordering purely as metadata because the returned tensor is
@@ -77,6 +77,7 @@ API Reference
    :members:
    :undoc-members:
    :show-inheritance:
+   :noindex:
 
 Example
 -------
@@ -120,4 +121,4 @@ Further Reading
 ---------------
 - :doc:`/quantum_expert_area/internal_design`
 - For circuit specific optimizations: :doc:`/quantum_expert_area/building_intuition`
-- Output mapping startegies: :doc:`/user_guide/grouping`
+- Output mapping strategies: :doc:`/user_guide/grouping`

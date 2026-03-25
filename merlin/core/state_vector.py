@@ -26,7 +26,7 @@ This module provides a lightweight :class:`StateVector` wrapper that keeps the
 Fock-space metadata (number of modes, number of photons, basis ordering) tied to
 its amplitude tensor. It supports dense and sparse tensors, Fock ordering via
 :class:`~merlin.utils.combinadics.Combinadics`, and conversion to/from
-:class:`perceval.StateVector`.
+:class:`exqalibur.StateVector`.
 """
 
 from __future__ import annotations
@@ -180,14 +180,14 @@ class StateVector:
 
     Parameters
     ----------
-    tensor:
+    tensor : torch.Tensor
         Dense or sparse amplitude tensor; leading dimensions (if any) are treated
         as batch axes.
-    n_modes:
+    n_modes : int
         Number of modes in the Fock space.
-    n_photons:
+    n_photons : int
         Total photon number represented by the state.
-    _normalized:
+    _normalized : bool
         Internal flag tracking whether the stored tensor is normalized.
 
     Notes
@@ -219,6 +219,7 @@ class StateVector:
 
     @property
     def is_normalized(self) -> bool:
+        """bool: Whether the stored tensor is already normalized."""
         return self._normalized
 
     def _normalized_tensor(self) -> torch.Tensor:
@@ -245,14 +246,33 @@ class StateVector:
         return _basis_size(self.n_modes, self.n_photons)
 
     def to(self, *args, **kwargs) -> StateVector:
-        """Return a new ``StateVector`` with the tensor moved/cast via ``torch.Tensor.to``."""
+        """Return a new state vector moved or cast via ``torch.Tensor.to``.
+
+        Parameters
+        ----------
+        *args
+            Positional arguments forwarded to :meth:`torch.Tensor.to`.
+        **kwargs
+            Keyword arguments forwarded to :meth:`torch.Tensor.to`.
+
+        Returns
+        -------
+        StateVector
+            Converted state vector.
+        """
         new_tensor = self.tensor.to(*args, **kwargs)
         return StateVector(
             new_tensor, self.n_modes, self.n_photons, _normalized=self._normalized
         )
 
     def clone(self) -> StateVector:
-        """Return a cloned ``StateVector`` with identical metadata and normalization flag."""
+        """Return a cloned state vector with identical metadata and normalization flag.
+
+        Returns
+        -------
+        StateVector
+            Cloned state vector.
+        """
         return StateVector(
             self.tensor.clone(),
             self.n_modes,
@@ -261,7 +281,13 @@ class StateVector:
         )
 
     def detach(self) -> StateVector:
-        """Return a detached ``StateVector`` sharing data without gradients."""
+        """Return a detached ``StateVector`` sharing data without gradients.
+
+        Returns
+        -------
+        StateVector
+            Detached state vector.
+        """
         return StateVector(
             self.tensor.detach(),
             self.n_modes,
@@ -270,7 +296,18 @@ class StateVector:
         )
 
     def requires_grad_(self, requires_grad: bool = True) -> StateVector:
-        """Set ``requires_grad`` on the underlying tensor and return self."""
+        """Set ``requires_grad`` on the underlying tensor and return self.
+
+        Parameters
+        ----------
+        requires_grad : bool
+            Whether gradients should be tracked.
+
+        Returns
+        -------
+        StateVector
+            The updated instance.
+        """
         self.tensor.requires_grad_(requires_grad)
         return self
 
@@ -313,13 +350,11 @@ class StateVector:
     def to_perceval(self) -> pcvl.StateVector | list[pcvl.StateVector]:
         """Convert to ``pcvl.StateVector``.
 
-        Args:
-            None
-
-        Returns:
-            pcvl.StateVector | list[pcvl.StateVector]: A Perceval state for 1D tensors,
-            or a list for batched tensors, with amplitudes preserved (no extra
-            renormalization).
+        Returns
+        -------
+        pcvl.StateVector | list[pcvl.StateVector]
+            A Perceval state for 1D tensors, or a list for batched tensors,
+            with amplitudes preserved (no extra renormalization ).
         """
         basis = self.basis
         if self.tensor.ndim == 1:
@@ -431,17 +466,28 @@ class StateVector:
     ) -> StateVector:
         """Build from a ``pcvl.StateVector``.
 
-        Args:
-            state_vector: Perceval state to wrap.
-            dtype: Optional target dtype.
-            device: Optional target device.
-            sparse: Force sparse/dense; if None use density heuristic (<=30%).
+        Parameters
+        ----------
+        state_vector : pcvl.StateVector
+            Perceval state to wrap.
+        dtype : torch.dtype | None
+            Optional target dtype.
+        device : torch.device | None
+            Optional target device.
+        sparse : bool | None
+            Force sparse or dense output. If ``None``, a density heuristic is
+            used.
 
-        Returns:
-            StateVector: Merlin wrapper with metadata and preserved amplitudes.
+        Returns
+        -------
+        StateVector
+            Merlin wrapper with metadata and preserved amplitudes.
 
-        Raises:
-            ValueError: If the Perceval state is empty or has inconsistent photon/mode counts.
+        Raises
+        ------
+        ValueError
+            If the Perceval state is empty or has inconsistent photon or mode
+            counts.
         """
         items = list(state_vector)
         if not items:
@@ -516,14 +562,21 @@ class StateVector:
     ) -> StateVector:
         """Create a one-hot state from a Fock occupation list/BasicState.
 
-        Args:
-            state: Occupation numbers per mode.
-            dtype: Optional target dtype.
-            device: Optional target device.
-            sparse: Build sparse layout when True.
+        Parameters
+        ----------
+        state : Sequence[int] | pcvl.BasicState
+            Occupation numbers per mode.
+        dtype : torch.dtype | None
+            Optional target dtype.
+        device : torch.device | None
+            Optional target device.
+        sparse : bool
+            Whether to build a sparse tensor.
 
-        Returns:
-            StateVector: One-hot state.
+        Returns
+        -------
+        StateVector
+            One-hot state vector.
         """
         counts = _basic_state_counts(state)
         n_modes = len(counts)
@@ -559,18 +612,28 @@ class StateVector:
     ) -> StateVector:
         """Wrap an existing tensor with explicit metadata.
 
-        Args:
-            tensor: Dense or sparse amplitude tensor.
-            n_modes: Number of modes.
-            n_photons: Total photons.
-            dtype: Optional target dtype.
-            device: Optional target device.
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            Dense or sparse amplitude tensor.
+        n_modes : int
+            Number of modes.
+        n_photons : int
+            Total photons.
+        dtype : torch.dtype | None
+            Optional target dtype.
+        device : torch.device | None
+            Optional target device.
 
-        Returns:
-            StateVector: Wrapped tensor.
+        Returns
+        -------
+        StateVector
+            Wrapped tensor with metadata.
 
-        Raises:
-            ValueError: If the last dimension does not match the basis size.
+        Raises
+        ------
+        ValueError
+            If the last dimension does not match the basis size.
         """
         basis_size = _basis_size(n_modes, n_photons)
         _ensure_last_dim(tensor, basis_size)
@@ -588,15 +651,23 @@ class StateVector:
         If any operand is dense, the result is dense. Supports one-hot fast path.
         The resulting state is normalized before returning.
 
-        Args:
-            other: Another StateVector or a BasicState/occupation list.
-            sparse: Override sparsity of the result; default keeps dense if any input dense.
+        Parameters
+        ----------
+        other : StateVector | Sequence[int] | pcvl.BasicState
+            Another state vector or a basic state / occupation list.
+        sparse : bool | None
+            Override sparsity of the result. By default the result remains
+            dense if any input is dense.
 
-        Returns:
-            StateVector: Combined state with summed modes/photons (normalized).
+        Returns
+        -------
+        StateVector
+            Combined state with summed modes and photons (normalized).
 
-        Raises:
-            ValueError: If tensors are not 1D.
+        Raises
+        ------
+        ValueError
+            If tensors are not one-dimensional.
         """
         if not isinstance(other, StateVector):
             other = StateVector.from_basic_state(
@@ -714,14 +785,20 @@ class StateVector:
     def __add__(self, other: StateVector) -> StateVector:
         """Add two states without renormalization (lazy norm, like Perceval).
 
-        Args:
-            other: StateVector with matching metadata.
+        Parameters
+        ----------
+        other : StateVector
+            State vector with matching metadata.
 
-        Returns:
-            StateVector: Sum with raw amplitudes preserved.
+        Returns
+        -------
+        StateVector
+            Sum with raw amplitudes preserved.
 
-        Raises:
-            ValueError: If metadata mismatches.
+        Raises
+        ------
+        ValueError
+            If metadata mismatches.
         """
         if not isinstance(other, StateVector):
             return NotImplemented
@@ -745,14 +822,20 @@ class StateVector:
     def __sub__(self, other: StateVector) -> StateVector:
         """Subtract two states without renormalization (lazy norm).
 
-        Args:
-            other: StateVector with matching metadata.
+        Parameters
+        ----------
+        other : StateVector
+            State vector with matching metadata.
 
-        Returns:
-            StateVector: Difference with raw amplitudes preserved.
+        Returns
+        -------
+        StateVector
+            Difference with raw amplitudes preserved.
 
-        Raises:
-            ValueError: If metadata mismatches.
+        Raises
+        ------
+        ValueError
+            If metadata mismatches.
         """
         if not isinstance(other, StateVector):
             return NotImplemented
@@ -816,11 +899,15 @@ class StateVector:
     def index(self, state: Sequence[int] | pcvl.BasicState) -> int | None:
         """Return basis index for the given Fock state.
 
-        Args:
-            state: Occupation list or BasicState.
+        Parameters
+        ----------
+        state : Sequence[int] | pcvl.BasicState
+            Occupation list or basic state.
 
-        Returns:
-            int | None: Basis index, or None if not present (or zero in sparse tensor).
+        Returns
+        -------
+        int | None
+            Basis index, or ``None`` if not present.
         """
         target = _basic_state_tuple(state)
         basis = self.basis
@@ -837,14 +924,20 @@ class StateVector:
     def __getitem__(self, state: Sequence[int] | pcvl.BasicState) -> torch.Tensor:
         """Amplitude lookup for a given Fock state.
 
-        Args:
-            state: Occupation list or BasicState.
+        Parameters
+        ----------
+        state : Sequence[int] | pcvl.BasicState
+            Occupation list or basic state.
 
-        Returns:
-            torch.Tensor: Amplitude (scalar or batch-aligned tensor).
+        Returns
+        -------
+        torch.Tensor
+            Amplitude scalar or batch-aligned tensor.
 
-        Raises:
-            KeyError: If the state is outside the basis.
+        Raises
+        ------
+        KeyError
+            If the state is outside the basis.
         """
         target = _basic_state_tuple(state)
         basis = self.basis

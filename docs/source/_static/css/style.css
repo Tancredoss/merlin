@@ -154,3 +154,21 @@ a {
     text-transform: uppercase;
     padding: 2px 7px;
 }
+
+/* Show the destination page title above previous/next footer buttons */
+.rst-footer-buttons a.btn::before {
+    content: attr(title);
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 0.35rem;
+    color: #5d6068;
+    white-space: normal;
+}
+
+.rst-footer-buttons a.btn {
+    max-width: 48%;
+    white-space: normal;
+    min-height: 4.5rem;
+}

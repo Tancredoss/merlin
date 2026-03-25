@@ -1,0 +1,16 @@
+[
+  {
+    "title": "Photonic Quantum-Accelerated Machine Learning",
+    "summary": "Second paper using the Boson-Sampling-based quantum reservoir architecture, with a focus on benchmarking and comparing the performance of the quantum reservoir to classical machine learning models on a variety of datasets.",
+    "image": "_static/ecosystem/Fig5_QAML.png",
+    "url": "https://arxiv.org/abs/2512.08318",
+    "tags": ["External link", "QORC", "Community", "Rambach et al. 2025"]
+  },
+  {
+    "title": "Experimental multi-center validation of a radiomics-based photonic quantum precision medicine architecture for lesion-level prediction of anti-PD-1 response in non-small cell lung cancer",
+    "summary": "Preprint study using MerLin to test the external validity of radiomics-based photonic quantum architectures using an evidence-based, statistically significant reduced feature space ",
+    "image": "_static/ecosystem/Radiomics.png",
+    "url": "https://www.medrxiv.org/content/10.64898/2026.03.09.26347939v1",
+    "tags": ["External link", "medRxiv", "Community", "Olgiati et al. 2026"]
+  }
+]

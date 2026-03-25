@@ -7,29 +7,6 @@ Reproduced Papers
 MerLin provides reproducible implementations of published quantum machine learning papers.
 Each card links to a dedicated reproduction page with paper metadata, implementation details, code access, and results.
 
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Reproduced Papers
-
-   reproductions/fock_state_expressivity
-   reproductions/amplitude_limitations
-   reproductions/nearest_centroids
-   reproductions/quantum_reservoir_computing
-   reproductions/quantum_adversarial_ml
-   reproductions/quantum_transfer_learning
-   reproductions/qllm_finetuning
-   reproductions/photonic_QGAN
-   reproductions/photonic_qcnn
-   reproductions/photonic_kernel
-   reproductions/QCNN_data_classification
-   reproductions/qssl
-   reproductions/photonic_memristor
-   reproductions/hqnn-myth
-   reproductions/data_reuploading
-   reproductions/distributed_nn
-   reproductions/template
-
 Available Reproductions
 -----------------------
 
@@ -37,6 +14,13 @@ The reproductions are organized by topic. Each card opens the corresponding pape
 
 Kernel Methods
 ~~~~~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   reproductions/photonic_kernel
+   reproductions/nearest_centroids
 
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/reproduced_papers_kernel_methods.json
@@ -46,6 +30,15 @@ Kernel Methods
 For a Better Understanding of Photonic QML Theory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   reproductions/fock_state_expressivity
+   reproductions/hqnn-myth
+   reproductions/data_reuploading
+   reproductions/amplitude_limitations
+
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/reproduced_papers_variational_methods.json
    :columns: 3
@@ -53,6 +46,14 @@ For a Better Understanding of Photonic QML Theory
 
 Computer Vision
 ~~~~~~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   reproductions/quantum_reservoir_computing
+   reproductions/photonic_qcnn
+   reproductions/QCNN_data_classification
 
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/reproduced_papers_computer_vision.json
@@ -71,6 +72,16 @@ Sequential Tasks
 Advanced Training Paradigms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   reproductions/qllm_finetuning
+   reproductions/qssl
+   reproductions/quantum_adversarial_ml
+   reproductions/photonic_QGAN
+   reproductions/quantum_transfer_learning
+
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/reproduced_papers_advanced_training.json
    :columns: 3
@@ -79,6 +90,12 @@ Advanced Training Paradigms
 Distributed Training
 ~~~~~~~~~~~~~~~~~~~~
 
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   reproductions/distributed_nn
+
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/reproduced_papers_distributed_training.json
    :columns: 2
@@ -86,6 +103,12 @@ Distributed Training
 
 Future-proofing
 ~~~~~~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   reproductions/photonic_memristor
 
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/reproduced_papers_future_proofing.json
@@ -129,6 +152,12 @@ We welcome contributions of additional paper reproductions.
    └── utils/              # additional commandline utilities for visualization, launch of multiple trainings, etc...
 
 **Template Summary Page**: :doc:`this document <reproductions/template>`
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   reproductions/template
 
 Recognition
 -----------

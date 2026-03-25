@@ -12,8 +12,8 @@ By integrating photonic circuit simulation with PyTorch and scikit-learn, MerLin
 **Explore MerLin**
 
 .. merlin-gallery::
-   :data: _data/galleries/welcome_intro_cards_3.json
-   :columns: 3
+   :data: _data/galleries/welcome_intro_cards_4.json
+   :columns: 4
 
 What you can do with MerLin
 ---------------------------
@@ -41,12 +41,13 @@ constraints.
    Welcome <self>
    Quickstart <quickstart/index>
    user_guide/index
-   quantum_expert_area/index
    examples/index
    reproduced_papers/index
-   contribution
+   quantum_expert_area/index
    api_reference/index
    performance/index
+   contribution
+   research_ecosystem
    QML_library/index
 
 Reproducing State-of-the-art QML Papers
@@ -90,7 +91,7 @@ Choose your path based on your background and goals:
   baselines. See :doc:`performance/index` for benchmarking and hardware constraints.
 
 **Curious Explorers**
-  Browse :doc:`notebooks/index` for practical tutorials, or dive into
+  Browse :doc:`examples/index` for practical tutorials, or dive into
   :doc:`user_guide/index` for comprehensive guidance on workflows and patterns.
 
 Installation
@@ -194,7 +195,7 @@ Next Steps
 
 - **Get started**: :doc:`quickstart/index`
 - **Understand MerLin**: :doc:`user_guide/index`
-- **Explore examples**: :doc:`examples/index
+- **Explore examples**: :doc:`examples/index`
 - **Reproduce papers**: :doc:`reproduced_papers/index`
 - **Contribute**: :doc:`contribution`
 - **API reference**: :doc:`api_reference/index`

@@ -255,5 +255,3 @@ Citation
       year={2022},
       publisher={IOP Publishing}
     }
-
-----

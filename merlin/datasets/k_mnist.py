@@ -71,6 +71,13 @@ K_MNIST_METADATA = {
 
 
 def get_data_train():
+    """Load the Kuzushiji-MNIST training split.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
+        Training images, labels, and dataset metadata.
+    """
     return get_data_generic(
         subset="train",
         url_images="https://codh.rois.ac.jp/kmnist/dataset/kmnist/train-images-idx3-ubyte.gz",
@@ -80,6 +87,13 @@ def get_data_train():
 
 
 def get_data_test():
+    """Load the Kuzushiji-MNIST test split.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, DatasetMetadata]
+        Test images, labels, and dataset metadata.
+    """
     return get_data_generic(
         subset="test",
         url_images="https://codh.rois.ac.jp/kmnist/dataset/kmnist/t10k-images-idx3-ubyte.gz",

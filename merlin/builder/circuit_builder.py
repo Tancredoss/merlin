@@ -42,23 +42,41 @@ ANGLE_ENCODING_MODE_ERROR = "You cannot encore more features than mode with Buil
 
 
 class ModuleGroup:
-    """Helper class for grouping modules."""
+    """Helper class for a group of circuit modes.
+
+    Parameters
+    ----------
+    modes : list[int]
+        Modes spanned by the grouped module.
+    """
 
     def __init__(self, modes: list[int]):
-        """Store the list of modes spanned by the grouped module."""
+        """Store the list of modes spanned by the grouped module.
+
+        Parameters
+        ----------
+        modes : list[int]
+            Modes spanned by the grouped module.
+        """
         self.modes = modes
 
 
 class CircuitBuilder:
-    """
-    Builder for quantum circuits using a declarative API.
+    """Builder for quantum circuits using a declarative API.
+
+    Parameters
+    ----------
+    n_modes : int
+        Number of photonic modes available in the circuit.
     """
 
     def __init__(self, n_modes: int):
-        """Initialise bookkeeping structures for a circuit with ``n_modes`` modes.
+        """Initialize bookkeeping structures for a circuit with ``n_modes`` modes.
 
-        Args:
-            n_modes: Number of photonic modes available in the circuit.
+        Parameters
+        ----------
+        n_modes : int
+            Number of photonic modes available in the circuit.
         """
         self.n_modes = n_modes
         self.circuit = Circuit(n_modes)
@@ -163,18 +181,31 @@ class CircuitBuilder:
     ) -> "CircuitBuilder":
         """Add one or multiple rotations across the provided modes.
 
-        Args:
-            modes: Single mode, list of modes, module group or ``None`` (all modes).
-            axis: Axis of rotation for each inserted phase shifter.
-            trainable: Promote the rotations to trainable parameters (legacy flag).
-            as_input: Mark the rotations as input-driven parameters (legacy flag).
-            angle: Optional fixed value for the rotations (alias of ``value``).
-            value: Optional fixed value for the rotations (alias of ``angle``).
-            name: Optional stem used for generated parameter names.
-            role: Explicit :class:`ParameterRole` taking precedence over other flags.
+        Parameters
+        ----------
+        modes : int | list[int] | ModuleGroup | None
+            Single mode, list of modes, module group, or ``None`` to target
+            all modes.
+        axis : str
+            Axis of rotation for each inserted phase shifter.
+        trainable : bool
+            Promote the rotations to trainable parameters.
+        as_input : bool
+            Mark the rotations as input-driven parameters.
+        angle : float | None
+            Optional fixed value for the rotations. Alias of ``value``.
+        value : float | None
+            Optional fixed value for the rotations. Alias of ``angle``.
+        name : str | None
+            Optional stem used for generated parameter names.
+        role : str | ParameterRole | None
+            Explicit :class:`~merlin.core.components.ParameterRole` taking
+            precedence over other flags.
 
-        Returns:
-            CircuitBuilder: ``self`` for fluent chaining.
+        Returns
+        -------
+        CircuitBuilder
+            ``self`` for fluent chaining.
         """
         if isinstance(modes, ModuleGroup):
             target_modes = list(modes.modes)
@@ -265,18 +296,25 @@ class CircuitBuilder:
     ) -> "CircuitBuilder":
         """Convenience method for angle-based input encoding.
 
-        Args:
-            modes: Optional list of circuit modes to target. Defaults to all modes.
-            name: Prefix used for generated input parameters. Defaults to ``"px"``.
-            scale: Global scaling factor applied before angle mapping.
-            subset_combinations: When ``True``, generate higher-order feature
-                combinations (up to ``max_order``) matching the historical
-                subset encoding utility.
-            max_order: Optional cap on the size of feature combinations when
-                ``subset_combinations`` is enabled. ``None`` uses all orders.
+        Parameters
+        ----------
+        modes : list[int] | None
+            Optional list of circuit modes to target. Defaults to all modes.
+        name : str | None
+            Prefix used for generated input parameters. Defaults to ``"px"``.
+        scale : float
+            Global scaling factor applied before angle mapping.
+        subset_combinations : bool
+            When ``True``, generate higher-order feature combinations up to
+            ``max_order``.
+        max_order : int | None
+            Optional cap on the size of feature combinations when
+            ``subset_combinations`` is enabled. ``None`` uses all orders.
 
-        Returns:
-            CircuitBuilder: ``self`` for fluent chaining.
+        Returns
+        -------
+        CircuitBuilder
+            ``self`` for fluent chaining.
         """
         if name is None:
             name = "px"
@@ -380,21 +418,33 @@ class CircuitBuilder:
     ) -> "CircuitBuilder":
         """Add an entangling layer spanning a range of modes.
 
-        Args:
-            modes: Optional list describing the span. ``None`` targets all modes;
-                one element targets ``modes[0]`` through the final mode; two elements
-                target the inclusive range ``[modes[0], modes[1]]``.
-            trainable: Whether internal phase shifters should be trainable.
-            model: ``\"mzi\"`` or ``\"bell\"`` to select the internal interferometer template.
-            name: Optional prefix used for generated parameter names.
-            trainable_inner: Override for the internal (between-beam splitter) phase shifters.
-            trainable_outer: Override for the output phase shifters at the exit of the interferometer.
+        Parameters
+        ----------
+        modes : list[int] | None
+            Optional list describing the span. ``None`` targets all modes; one
+            element targets ``modes[0]`` through the final mode; two elements
+            target the inclusive range ``[modes[0], modes[1]]``.
+        trainable : bool
+            Whether internal phase shifters should be trainable.
+        model : str
+            ``"mzi"`` or ``\"bell\"`` to select the internal interferometer
+            template.
+        name : str | None
+            Optional prefix used for generated parameter names.
+        trainable_inner : bool | None
+            Override for the internal phase shifters.
+        trainable_outer : bool | None
+            Override for the output phase shifters.
 
-        Raises:
-            ValueError: If the provided modes are invalid or span fewer than two modes.
+        Returns
+        -------
+        CircuitBuilder
+            ``self`` for fluent chaining.
 
-        Returns:
-            CircuitBuilder: ``self`` for fluent chaining.
+        Raises
+        ------
+        ValueError
+            If the provided modes are invalid or span fewer than two modes.
         """
         if modes is None:
             start = 0
@@ -464,20 +514,33 @@ class CircuitBuilder:
     ) -> "CircuitBuilder":
         """Add one or more superposition (beam splitter) components.
 
-        Args:
-            targets: Tuple or list of tuples describing explicit mode pairs. When
-                omitted, nearest neighbours over ``modes`` (or all modes) are used.
-            depth: Number of sequential passes to apply (``>=1``).
-            theta: Baseline mixing angle for fixed beam splitters.
-            phi: Baseline relative phase for fixed beam splitters.
-            trainable: Convenience flag to mark both ``theta`` and ``phi`` trainable.
-            trainable_theta: Whether the mixing angle should be trainable.
-            trainable_phi: Whether the relative phase should be trainable.
-            modes: Optional mode list/module group used when ``targets`` is omitted.
-            name: Optional stem used for generated parameter names.
+        Parameters
+        ----------
+        targets : tuple[int, int] | list[tuple[int, int]] | None
+            Explicit mode pairs. When omitted, nearest neighbours over
+            ``modes`` or all modes are used.
+        depth : int
+            Number of sequential passes to apply.
+        theta : float
+            Baseline mixing angle for fixed beam splitters.
+        phi : float
+            Baseline relative phase for fixed beam splitters.
+        trainable : bool | None
+            Convenience flag to mark both ``theta`` and ``phi`` trainable.
+        trainable_theta : bool | None
+            Whether the mixing angle should be trainable.
+        trainable_phi : bool | None
+            Whether the relative phase should be trainable.
+        modes : list[int] | ModuleGroup | None
+            Optional mode list or module group used when ``targets`` is
+            omitted.
+        name : str | None
+            Optional stem used for generated parameter names.
 
-        Returns:
-            CircuitBuilder: ``self`` for fluent chaining.
+        Returns
+        -------
+        CircuitBuilder
+            ``self`` for fluent chaining.
         """
         if depth < 1:
             raise ValueError("depth must be at least 1")
@@ -601,22 +664,32 @@ class CircuitBuilder:
     def build(self) -> Circuit:
         """Build and return the circuit.
 
-        Returns:
-            Circuit: Circuit instance populated with components.
+        Returns
+        -------
+        merlin.core.circuit.Circuit
+            Circuit instance populated with components.
         """
         return self.circuit
 
     def to_pcvl_circuit(self, pcvl_module=None):
         """Convert the constructed circuit into a Perceval circuit.
 
-        Args:
-            pcvl_module: Optional Perceval module. If ``None``, attempts to import ``perceval``.
+        Parameters
+        ----------
+        pcvl_module : Any
+            Optional Perceval module. If ``None``, attempts to import
+            ``perceval``.
 
-        Returns:
-            A ``pcvl.Circuit`` instance mirroring the components tracked by this builder.
+        Returns
+        -------
+        Any
+            A ``pcvl.Circuit`` instance mirroring the components tracked by
+            this builder.
 
-        Raises:
-            ImportError: If ``perceval`` is not installed and no module is provided.
+        Raises
+        ------
+        ImportError
+            If ``perceval`` is not installed and no module is provided.
         """
         if pcvl_module is None:
             try:
@@ -780,11 +853,15 @@ class CircuitBuilder:
     def from_circuit(cls, circuit: Circuit) -> "CircuitBuilder":
         """Create a builder from an existing circuit.
 
-        Args:
-            circuit: Circuit object whose components should seed the builder.
+        Parameters
+        ----------
+        circuit : merlin.core.circuit.Circuit
+            Circuit object whose components should seed the builder.
 
-        Returns:
-            CircuitBuilder: A new builder instance wrapping the provided circuit.
+        Returns
+        -------
+        CircuitBuilder
+            A new builder instance wrapping the provided circuit.
         """
         builder = cls(circuit.n_modes)
         builder.circuit = circuit
@@ -794,8 +871,10 @@ class CircuitBuilder:
     def trainable_parameter_prefixes(self) -> list[str]:
         """Expose the unique set of trainable prefixes in insertion order.
 
-        Returns:
-            List[str]: Trainable parameter stems discovered so far.
+        Returns
+        -------
+        list[str]
+            Trainable parameter stems discovered so far.
         """
         return list(self._trainable_prefixes)
 
@@ -803,8 +882,10 @@ class CircuitBuilder:
     def input_parameter_prefixes(self) -> list[str]:
         """Expose the order-preserving set of input prefixes.
 
-        Returns:
-            List[str]: Input parameter stems emitted during encoding.
+        Returns
+        -------
+        list[str]
+            Input parameter stems emitted during encoding.
         """
         return list(self._input_prefixes)
 
@@ -812,8 +893,10 @@ class CircuitBuilder:
     def angle_encoding_specs(self) -> dict[str, dict[str, Any]]:
         """Return metadata describing configured angle encodings.
 
-        Returns:
-            Dict[str, Dict[str, Any]]: Mapping from encoding prefix to combination metadata.
+        Returns
+        -------
+        dict[str, dict[str, Any]]
+            Mapping from encoding prefix to combination metadata.
         """
         return {
             prefix: {

@@ -2,15 +2,20 @@ merlin.algorithms.layer module
 ==============================
 
 .. automodule:: merlin.algorithms.layer
+   :no-members:
+
+.. currentmodule:: merlin.algorithms.layer
+
+.. autoclass:: QuantumLayer
    :members:
    :undoc-members:
    :show-inheritance:
 
 .. note::
 
-   Quantum layers built from a :class:`perceval.Experiment` now apply the experiment's per-mode detector configuration before returning classical outputs. When no detectors are specified, ideal photon-number resolving detectors are used by default.
+   Quantum layers built from a :class:`pcvl.Experiment` now apply the experiment's per-mode detector configuration before returning classical outputs. When no detectors are specified, ideal photon-number resolving detectors are used by default.
 
-   If the experiment carries a :class:`perceval.NoiseModel` (via ``experiment.noise``), MerLin inserts a :class:`~merlin.measurement.photon_loss.PhotonLossTransform` ahead of any detector transform. The resulting ``output_keys`` and ``output_size`` therefore include every survival/loss configuration implied by the model, and amplitude read-out is disabled whenever custom detectors or photon loss are present.
+   If the experiment carries a :class:`pcvl.NoiseModel` (via ``experiment.noise``), MerLin inserts a :class:`~merlin.measurement.photon_loss.PhotonLossTransform` ahead of any detector transform. The resulting ``output_keys`` and ``output_size`` therefore include every survival/loss configuration implied by the model, and amplitude read-out is disabled whenever custom detectors or photon loss are present.
 
 Example: Quickstart QuantumLayer
 --------------------------------
@@ -152,15 +157,15 @@ Fock state (a precise configuration of ``n_photons`` over ``m`` modes) or a supe
 computation space (for example Bell pairs or GHZ states). :class:`~merlin.algorithms.layer.QuantumLayer` accepts the
 following representations:
 
-* :class:`perceval.BasicState` – a single configuration such as ``pcvl.BasicState([1, 0, 1, 0])``;
-* :class:`perceval.StateVector` – an arbitrary superposition of basic states with complex amplitudes;
+* `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ – a single configuration such as ``pcvl.BasicState([1, 0, 1, 0])``;
+* :class:`~exqalibur.StateVector` – an arbitrary superposition of basic states with complex amplitudes;
 * Python lists/tuples, e.g. ``[1, 0, 1, 0]``. These are accepted as convenience inputs and are immediately converted
-    to a Perceval :class:`perceval.BasicState`.
+    to a Perceval `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_.
 
 .. note::
 
      For Fock/occupation inputs, :class:`~merlin.algorithms.layer.QuantumLayer` stores ``.input_state`` as a Perceval
-     :class:`perceval.BasicState`. If you need the raw occupation vector, use ``list(layer.input_state)``.
+     `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_. If you need the raw occupation vector, use ``list(layer.input_state)``.
 
 When ``input_state`` is passed, the layer always injects that photonic state. In more elaborate pipelines you may want
 to cascade circuits and let the output amplitudes of the previous layer become the input state of the next. Merlin
@@ -247,19 +252,19 @@ it is set to False. See the following output matrix to see what to expect as the
 | MODE_EXPECTATIONS     | torch.Tensor         | torch.Tensor             |
 +-----------------------+----------------------+--------------------------+
 
-Most of the typed objects can give the ``torch.Tensor`` as an output with the ``.tensor`` parameter. Only the 
+Most of the typed objects can give the :class:`torch.Tensor` as an output with the ``.tensor`` parameter. Only the 
 PartialMeasurement object is a little different. See its according documentation.
 
 These object could be quite useful to access metadata like the number of photons, modes and measurement_strategy behind the output tensors. For example, a better access to specific
-states is available with ``StateVector`` and ``ProbabilityDistribution`` by indexing the desired state. The objects are interoperable with Perceval, enabling seamless interaction between the two libraries.
+states is available with :class:`~merlin.core.state_vector.StateVector` and :class:`~merlin.core.probability_distribution.ProbabilityDistribution` by indexing the desired state. The objects are interoperable with Perceval, enabling seamless interaction between the two libraries.
 
 For more information on the typed output capabilities, follow the following links:
 
-- ``StateVector``: :doc:`StateVector </api_reference/api/merlin.core.state_vector>`
-- ``ProbabilityDistribution``: :doc:`ProbabilityDistribution </api_reference/api/merlin.core.probability_distribution>`
-- ``PartialMeasurement``: :doc:`PartialMeasurement </api_reference/api/merlin.core.partial_measurement>`
+- :class:`~merlin.core.state_vector.StateVector`: :doc:`StateVector </api_reference/api/merlin.core.state_vector>`
+- :class:`~merlin.core.probability_distribution.ProbabilityDistribution`: :doc:`ProbabilityDistribution </api_reference/api/merlin.core.probability_distribution>`
+- :class:`~merlin.core.partial_measurement.PartialMeasurement`: :doc:`PartialMeasurement </api_reference/api/merlin.core.partial_measurement>`
 
-The snippet below prepares a basic quantum layer and returns a ``ProbabilityDistribution`` object:
+The snippet below prepares a basic quantum layer and returns a :class:`~merlin.core.probability_distribution.ProbabilityDistribution` object:
 
 .. code-block:: python
 

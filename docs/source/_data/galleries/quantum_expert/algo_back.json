@@ -1,0 +1,16 @@
+[
+  {
+    "title": "Kernels",
+    "summary": "Overview of the implementation of MerLin's photonic kernel stack.",
+    "image": "_static/img/kernel_trick.png",
+    "doc": "quantum_expert_area/kernels.rst",
+    "tags": ["Kernels", "Unitary Construction", "SLOS", "Architecture Overview"]
+  },
+  {
+    "title": "Partial Measurement",
+    "summary": "Measurement strategy that measures only a subset of modes and keeps the remaining modes as quantum state vectors.",
+    "image": "_static/img/partial_measurement.png",
+    "doc": "quantum_expert_area/partial_measurement.rst",
+    "tags": ["Partial Measurement", "MeasurementStrategy"]
+  }
+]

@@ -89,15 +89,23 @@ def to_torch_dtype(
     """
     Convert common dtype representations (strings, numpy dtypes, torch dtypes) into torch dtypes.
 
-    Args:
-        dtype_like: Input representation to convert.
-        default: Fallback dtype if the representation is unknown. Defaults to torch.float32.
+    Parameters
+    ----------
+    dtype_like : object
+        Input representation to convert.
+    default : torch.dtype | None
+        Fallback dtype if the representation is unknown. Defaults to
+        ``torch.float32`` when ``dtype_like`` is ``None``.
 
-    Returns:
-        torch.dtype corresponding to the requested representation.
+    Returns
+    -------
+    torch.dtype
+        Torch dtype corresponding to the requested representation.
 
-    Raises:
-        TypeError: If the value cannot be mapped and no default is provided.
+    Raises
+    ------
+    TypeError
+        If the value cannot be mapped and no default is provided.
     """
     if dtype_like is None:
         if default is not None:
@@ -128,14 +136,20 @@ def complex_dtype_for(dtype_like: object) -> torch.dtype:
     """
     Return the matching complex dtype for the provided float or complex dtype.
 
-    Args:
-        dtype_like: Representation of a torch dtype (string, numpy dtype, torch dtype, ...).
+    Parameters
+    ----------
+    dtype_like : object
+        Representation of a torch dtype (string, numpy dtype, torch dtype, ...).
 
-    Returns:
-        torch complex dtype corresponding to the provided representation.
+    Returns
+    -------
+    torch.dtype
+        Torch complex dtype corresponding to the provided representation.
 
-    Raises:
-        TypeError: If the dtype cannot be mapped to a supported float/complex pair.
+    Raises
+    ------
+    TypeError
+        If the dtype cannot be mapped to a supported float/complex pair.
     """
     dtype = _normalize_torch_dtype(dtype_like)
 
@@ -154,14 +168,20 @@ def float_dtype_for(dtype_like: object) -> torch.dtype:
     """
     Return the matching float dtype for the provided float or complex dtype.
 
-    Args:
-        dtype_like: Representation of a torch dtype (string, numpy dtype, torch dtype, ...).
+    Parameters
+    ----------
+    dtype_like : object
+        Representation of a torch dtype.
 
-    Returns:
-        torch float dtype corresponding to the provided representation.
+    Returns
+    -------
+    torch.dtype
+        Torch float dtype corresponding to the provided representation (string, numpy dtype, torch dtype, ...).
 
-    Raises:
-        TypeError: If the dtype cannot be mapped to a supported float/complex pair.
+    Raises
+    ------
+    TypeError
+        If the dtype cannot be mapped to a supported float/complex pair.
     """
     dtype = _normalize_torch_dtype(dtype_like)
 
@@ -180,14 +200,20 @@ def resolve_float_complex(dtype: torch.dtype) -> tuple[torch.dtype, torch.dtype]
     """
     Given a torch dtype representing either the float or complex side, return the matching pair.
 
-    Args:
-        dtype: torch float or complex dtype.
+    Parameters
+    ----------
+    dtype : torch.dtype
+        Torch float or complex dtype.
 
-    Returns:
-        Tuple (float_dtype, complex_dtype) ensuring the pair is internally consistent.
+    Returns
+    -------
+    tuple[torch.dtype, torch.dtype]
+        Matching ``(float_dtype, complex_dtype)`` pair.
 
-    Raises:
-        TypeError: If the dtype is not one of the supported float/complex types.
+    Raises
+    ------
+    TypeError
+        If the dtype is not one of the supported float-complex types.
     """
     for float_dtype, complex_dtype in _FLOAT_COMPLEX_PAIRS:
         if dtype in (float_dtype, complex_dtype):

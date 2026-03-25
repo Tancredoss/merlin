@@ -5,18 +5,57 @@
 ==========
 User Guide
 ==========
+Here are a few pages to guide you through your MerLin usage.
+
+Master the QuantumLayer
+----------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/master_quantum_layer.json
+   :columns: 2
+
+Master the output types and sizes
+-----------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/master_output.json
+   :columns: 3
+
+Mixing gates and interferometers
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/mixing_gates.json
+   :columns: 2
+
+Send your code to simulators or QPUs
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/send_code_qpu.json
+   :columns: 2
+
+Specific algorithms
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/specific_algorithms.json
+   :columns: 2
+
+Migration guide
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/migration.json
+   :columns: 2
+   :contour-color: #f2994a
+
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Table of Contents
+   :hidden:
+   :maxdepth: 1
 
-   layer
-   measurement_strategy
    angle_amplitude_encoding
    computation_space
-   grouping
-   quantum_bridge
-   kernels
    feed_forward
-   remote_execution
+   grouping
+   kernels
+   layer
+   measurement_strategy
    migration_guide
+   quantum_bridge
+   remote_execution

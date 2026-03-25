@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Run Nearest-Centroid Reproduction",
+    "summary": "Code reproduction for nearest-centroid quantum classification.",
+    "image": "_static/reproduced_papers/Centroids.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/nearest_centroids_merlin",
+    "tags": ["External Link", "Nearest Centroid", "Repository"]
+  }
+]

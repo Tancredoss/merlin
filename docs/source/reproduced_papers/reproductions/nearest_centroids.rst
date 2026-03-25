@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
+===========================================================================
 Nearest Centroid Classification on a Trapped Ion Quantum Computer
-====================================================
+===========================================================================
 
 .. admonition:: Paper Information
    :class: note
@@ -18,6 +18,14 @@ Nearest Centroid Classification on a Trapped Ion Quantum Computer
    **Reproduction Status**: Complete
 
    **Reproducer**: Benjamin Stott (benjamin.stott@quandela.com)
+
+Project Repository
+==================
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/nearest_centroids_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
 
 Abstract
 ========
@@ -268,5 +276,3 @@ Citation
      journal={arXiv preprint arXiv:2012.04145},
      year={2020}
    }
-
-----

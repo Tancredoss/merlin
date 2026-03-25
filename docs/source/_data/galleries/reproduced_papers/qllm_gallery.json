@@ -2,7 +2,7 @@
   {
     "title": "Fine-tune your LLM with MerLin",
     "summary": "Complete code reproduction for the QLLM fine tuning",
-    "image": "_static/reproduced_papers/qllm/tSNE-embeddings.png",
+    "image": "_static/reproduced_papers/qllm/qllm_setup.png",
     "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/qLLM",
     "tags": ["External Link", "LLM", "Fine-tuning", "Torchquantum"]
   }

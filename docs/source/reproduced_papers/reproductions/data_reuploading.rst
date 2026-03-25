@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
+==================================================================================
 Experimental data re-uploading with provable enhanced learning capabilities
-====================================================
+==================================================================================
 
 .. admonition:: Paper Information
    :class: note
@@ -19,23 +19,31 @@ Experimental data re-uploading with provable enhanced learning capabilities
 
    **Reproducer**: Hugo Izadi (hugoizadi@gmail.com) and Philippe Schoeb (philippe.schoeb@quandela.com)
 
+Project Repository
+==================================================================================
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/data_reuploading_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
-========
+==================================================================================
 
 The reference paper's main contribution is to present a well performing and resource-efficient data re-uploading scheme on a photonic quantum processor. It showcases the model's performance on four datasets of increasing complexity. It also provides an analytical proof that the proposed model in a universal classifier.  
 
 Significance
-============
+==================================================================================
 
 This research is significant since it proposes a resource-efficient model that could reduce ernegy consumption for classifying tasks. In addition, energy efficiency is becoming an increasingly important argument for using quantum circuits in machine learning.
 
 MerLin Implementation
-=====================
+==================================================================================
 
 MerLin's QuantumLayer is used in our reproduction to define the optimizable photonic circuit that comprises almost all the proposed model.
 
 Key Contributions Reproduced
-============================
+==================================================================================
 
 **Effect of increasing number of re-uploading layers on the circular dataset**
   * Three re-uploading layers are necessary to fully capture the expressivity of the circular dataset
@@ -46,7 +54,7 @@ Key Contributions Reproduced
   * Slower improvement of accuracy when increasing number of layers on the circular dataset
 
 Implementation Details
-======================
+==================================================================================
 
 The trainable photonic circuit used to encode data is defined with MerLin: 
 
@@ -64,7 +72,7 @@ The trainable photonic circuit used to encode data is defined with MerLin:
    )
 
 Extensions and Future Work
-==========================
+==================================================================================
 
 The MerLin implementation extends beyond the original paper:
 
@@ -85,7 +93,7 @@ The MerLin implementation extends beyond the original paper:
   * Deploy on quantum hardware
 
 Code Access and Documentation
-=============================
+==================================================================================
 
 **GitHub Repository**: `merlin/reproductions/data_reuploading <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/data_reuploading>`_
 
@@ -97,7 +105,7 @@ The complete implementation includes:
 * A notebook to explore with the proposed architecture in different settings
 
 Citation
-========
+==================================================================================
 
 .. code-block:: bibtex
 
@@ -110,5 +118,3 @@ Citation
       primaryClass={quant-ph},
       url={https://arxiv.org/abs/2507.05120}, 
    }
-
-----

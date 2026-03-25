@@ -2,15 +2,19 @@ merlin.builder package
 ======================
 
 .. automodule:: merlin.builder
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   :no-members:
 
-Submodules
-----------
+Modules
+-------
+
+.. list-table::
+   :widths: 35 65
+   :header-rows: 0
+
+   * - :doc:`merlin.builder.circuit_builder`
+     - Circuit construction primitives centered on :class:`~merlin.builder.circuit_builder.CircuitBuilder` and grouped module assembly.
 
 .. toctree::
-   :maxdepth: 4
+   :hidden:
 
-   merlin.builder.ansatz
    merlin.builder.circuit_builder

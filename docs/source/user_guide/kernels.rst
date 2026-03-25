@@ -1,6 +1,6 @@
-=====================
+=============================
 Photonic Kernel Methods
-=====================
+=============================
 
 Introduction
 ------------
@@ -32,7 +32,7 @@ Given a photonic feature map that embeds a classical datapoint :math:`x \in \mat
 - When :math:`x_1 = x_2`, the kernel returns 1 (perfect similarity)
 
 
-In MerLin, :class:`~merlin.algorithms.kernels.FidelityKernel` evaluates this kernel efficiently with the SLOS simulator, optionally including photon-loss and detector models from a :class:`perceval.Experiment`.
+In MerLin, :class:`~merlin.algorithms.kernels.FidelityKernel` evaluates this kernel efficiently with the SLOS simulator, optionally including photon-loss and detector models from a :class:`pcvl.Experiment`.
 
 Core building blocks
 --------------------
@@ -40,13 +40,13 @@ Core building blocks
 MerLin exposes three cooperating components:
 
 - :class:`~merlin.algorithms.kernels.FeatureMap`
-	Encodes classical inputs into a photonic circuit and produces the corresponding unitary matrix. You can pass a pre‑built :class:`perceval.Circuit`, a declarative :class:`~merlin.builder.circuit_builder.CircuitBuilder`, or a full :class:`perceval.Experiment`.
+  Encodes classical inputs into a photonic circuit and produces the corresponding unitary matrix. You can pass a pre-built :class:`pcvl.Circuit`, a declarative :class:`~merlin.builder.circuit_builder.CircuitBuilder`, or a full :class:`pcvl.Experiment`.
 
 - :class:`~merlin.algorithms.kernels.FidelityKernel`
-	Given a feature map and an input Fock state, computes Gram matrices (train/test) by simulating transition probabilities through SLOS. Supports optional sampling, photon loss and detector transforms.
+  Given a feature map and an input Fock state, computes Gram matrices (train/test) by simulating transition probabilities through SLOS. Supports optional sampling, photon loss and detector transforms.
 
 - :class:`~merlin.algorithms.kernels.KernelCircuitBuilder`
-	A convenience helper to create a :class:`FeatureMap` and then a :class:`FidelityKernel` with minimal boilerplate.
+  A convenience helper to create a :class:`~merlin.algorithms.kernels.FeatureMap` and then a :class:`~merlin.algorithms.kernels.FidelityKernel` with minimal boilerplate.
 
 Quick Start Decision Guide
 --------------------------
@@ -61,7 +61,7 @@ Quick Start Decision Guide
     → Create a ``FeatureMap`` from your circuit, then wrap in ``FidelityKernel``
 
 **"I need to model realistic hardware effects"**
-    → Create a ``perceval.Experiment`` with ``NoiseModel`` and detectors
+    → Create a :class:`pcvl.Experiment` with :class:`pcvl.NoiseModel` and detectors
 
 **"I want to compare classical vs quantum performance"**
     → Compute both kernel matrices and use with scikit-learn ``SVC(kernel="precomputed")``
@@ -69,10 +69,10 @@ Quick Start Decision Guide
 How feature maps encode data
 ----------------------------
 
-The :class:`FeatureMap` converts a datapoint into the exact list of circuit parameters required by the underlying circuit/experiment. The encoding pipeline follows this preference order:
+The :class:`~merlin.algorithms.kernels.FeatureMap` converts a datapoint into the exact list of circuit parameters required by the underlying circuit/experiment. The encoding pipeline follows this preference order:
 
 1. Builder‑provided metadata (from :class:`~merlin.builder.circuit_builder.CircuitBuilder.add_angle_encoding`) that lists feature combinations and per‑index scales;
-2. A user‑provided callable encoder, if supplied to :class:`FeatureMap`;
+2. A user‑provided callable encoder, if supplied to :class:`~merlin.algorithms.kernels.FeatureMap`;
 3. A deterministic subset‑sum expansion that generates :math:`1`‑to‑:math:`d` order sums of the input until the expected parameter count is reached.
 
 The resulting vector is then sent to the Torch converter (:class:`~merlin.pcvl_pytorch.locirc_to_tensor.CircuitConverter`) to obtain the complex unitary matrix :math:`U(x)`.
@@ -80,7 +80,7 @@ The resulting vector is then sent to the Torch converter (:class:`~merlin.pcvl_p
 Detectors, photon loss and experiments
 --------------------------------------
 
-If the feature map exposes a :class:`perceval.Experiment`, the kernel composes a photon‑loss transform derived from the experiment's :class:`perceval.NoiseModel` and then applies detector transforms (threshold or PNR) before reading probabilities. This means kernel values naturally reflect survival probabilities and detector post‑processing.
+If the feature map exposes a :class:`pcvl.Experiment`, the kernel composes a photon‑loss transform derived from the experiment's :class:`pcvl.NoiseModel` and then applies detector transforms (threshold or PNR) before reading probabilities. This means kernel values naturally reflect survival probabilities and detector post‑processing.
 
 If no experiment is provided, the kernel constructs one from the circuit (unitary, no detectors, no noise).
 
@@ -92,7 +92,7 @@ Below is a summary of key constructor arguments and their effects. See the API r
 Below is a summary of key constructor arguments and their effects. See the API reference for full signatures.
 
 FeatureMap Parameters
-~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
@@ -140,7 +140,7 @@ FeatureMap Parameters
      - Computation device
 
 FidelityKernel Parameters
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
@@ -190,7 +190,7 @@ FidelityKernel Parameters
 Implementation highlights
 -------------------------
 
-Internally, :class:`FidelityKernel` builds the pairwise circuits :math:`U^{\dagger}(x_2) U(x_1)` in a vectorised way and asks the SLOS graph to compute detection probabilities for the chosen input state. If photon loss and/or detectors are defined, the raw probabilities are transformed accordingly before the scalar kernel is read.
+Internally, :class:`~merlin.algorithms.kernels.FidelityKernel` builds the pairwise circuits :math:`U^{\dagger}(x_2) U(x_1)` in a vectorised way and asks the SLOS graph to compute detection probabilities for the chosen input state. If photon loss and/or detectors are defined, the raw probabilities are transformed accordingly before the scalar kernel is read.
 
 When constructing a training Gram matrix (``x2 is None``), only the upper triangle is simulated and mirrored to the lower triangle, then the diagonal is set to 1. With ``force_psd=True``, the matrix is symmetrised and projected to PSD by zeroing negative eigenvalues in an eigendecomposition.
 
@@ -202,91 +202,93 @@ Minimal example (factory)
 
 .. code-block:: python
 
-	import torch
-  from merlin import ComputationSpace
-	from merlin.algorithms.kernels import FidelityKernel
+   import torch
+   from merlin import ComputationSpace
+   from merlin.algorithms.kernels import FidelityKernel
 
-	# Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
-	kernel = FidelityKernel.simple(
-		input_size=2,
-		n_modes=4,               # Here the number of modes is optional, if n_modes is not given, n_modes=input_size+1
-		computation_space=ComputationSpace.FOCK,       # allow bunched outcomes if needed
-		dtype=torch.float32,
-		device=torch.device("cpu"),
-	)
+   # Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
+   kernel = FidelityKernel.simple(
+       input_size=2,
+       n_modes=4,  # Optional; defaults to input_size + 1
+       computation_space=ComputationSpace.FOCK,  # Allow bunched outcomes if needed
+       dtype=torch.float32,
+       device=torch.device("cpu"),
+   )
 
-	X_train = torch.rand(10, 2)
-	X_test = torch.rand(5, 2)
-	K_train = kernel(X_train)          # (10, 10)
-	K_test = kernel(X_test, X_train)   # (5, 10)
+   X_train = torch.rand(10, 2)
+   X_test = torch.rand(5, 2)
+   K_train = kernel(X_train)  # (10, 10)
+   K_test = kernel(X_test, X_train)  # (5, 10)
 
 Custom experiment with detectors and loss
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-	import torch
-    import perceval as pcvl
-    from merlin.algorithms.kernels import FeatureMap, FidelityKernel
+   import torch
+   import perceval as pcvl
+   from merlin import ComputationSpace
+   from merlin.algorithms.kernels import FeatureMap, FidelityKernel
 
-    # Circuit and experiment
-    circuit = pcvl.Circuit(6)
-    experiment = pcvl.Experiment(circuit)
-    experiment.noise = pcvl.NoiseModel(brightness=0.9, transmittance=0.85)
+   # Circuit and experiment
+   circuit = pcvl.Circuit(6)
+   experiment = pcvl.Experiment(circuit)
+   experiment.noise = pcvl.NoiseModel(brightness=0.9, transmittance=0.85)
 
-    # Feature map from the experiment
-    fmap = FeatureMap(
-        input_size=3,
-        input_parameters = ["px"],
-        experiment=experiment,
-    )
+   # Feature map from the experiment
+   fmap = FeatureMap(
+       input_size=3,
+       input_parameters=["px"],
+       experiment=experiment,
+   )
 
-    # Fidelity kernel using a spaced input pattern
-    kernel = FidelityKernel(
-        feature_map=fmap,
-        input_state=[1, 0, 1, 0, 1, 0],
-        shots=0,
-       computation_space=ComputationSpace.FOCK, 
-    )
+   # Fidelity kernel using a spaced input pattern
+   kernel = FidelityKernel(
+       feature_map=fmap,
+       input_state=[1, 0, 1, 0, 1, 0],
+       shots=0,
+       computation_space=ComputationSpace.FOCK,
+   )
 
-    X = torch.rand(8, 3)
-    K = kernel(X)  # (8, 8)
+   X = torch.rand(8, 3)
+   K = kernel(X)  # (8, 8)
 
 Declarative builder + kernel
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-	import torch
-	from merlin.algorithms.kernels import KernelCircuitBuilder
+   import torch
+   from merlin.algorithms.kernels import KernelCircuitBuilder
 
-	builder = (
-		KernelCircuitBuilder()
-		.input_size(4)
-		.n_modes(6)
-		.angle_encoding(scale=torch.pi)
-		.trainable(enabled=True, prefix="phi")
-	)
-	kernel = builder.build_fidelity_kernel(input_state=[1,1,0,0,0,0], shots=0)
+   builder = (
+       KernelCircuitBuilder()
+       .input_size(4)
+       .n_modes(6)
+       .angle_encoding(scale=torch.pi)
+       .trainable(enabled=True, prefix="phi")
+   )
+   kernel = builder.build_fidelity_kernel(input_state=[1, 1, 0, 0, 0, 0], shots=0)
 
-	X = torch.rand(32, 4)
-	K = kernel(X)
+   X = torch.rand(32, 4)
+   K = kernel(X)
 
 .. note::
 
   ``input_state=[...]`` is accepted for convenience and is converted to a Perceval
-  :class:`perceval.BasicState` internally.
+  `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ internally.
 
 Using with scikit‑learn (precomputed kernel)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-	from sklearn.svm import SVC
-	K_train = kernel(X_train)
-	K_test = kernel(X_test, X_train)
-	clf = SVC(kernel="precomputed").fit(K_train, y_train)
-	y_pred = clf.predict(K_test)
+   from sklearn.svm import SVC
+
+   K_train = kernel(X_train)
+   K_test = kernel(X_test, X_train)
+   clf = SVC(kernel="precomputed").fit(K_train, y_train)
+   y_pred = clf.predict(K_test)
 
 Comparing quantum vs classical kernels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -341,9 +343,9 @@ API reference
 
 See :mod:`merlin.algorithms.kernels` for complete class and method signatures and additional usage notes.
 
-Bibliography
-------------
+References
+----------
 
-[1]: Experimental quantum-enhanced kernel-based machine learning on a photonic processor, Z. Yin et al. (Nature photonics, 2025): https://www.nature.com/articles/s41566-025-01682-5
-[2]: Quantum machine learning in feature Hilbert spaces, Schuld. M and Killoran. A: https://arxiv.org/abs/1803.07128
-[3]: Supervised learning with quantum-enhanced feature spaces, V. Havlíček et al. (Nature, 2019): Vojtěch Havlíček
+.. [1] Z. Yin et al., "Experimental quantum-enhanced kernel-based machine learning on a photonic processor," Nature Photonics (2025). https://www.nature.com/articles/s41566-025-01682-5
+.. [2] M. Schuld and N. Killoran, "Quantum machine learning in feature Hilbert spaces." https://arxiv.org/abs/1803.07128
+.. [3] V. Havlicek et al., "Supervised learning with quantum-enhanced feature spaces," Nature (2019). https://www.nature.com/articles/s41586-019-0980-2

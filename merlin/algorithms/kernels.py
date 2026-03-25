@@ -46,21 +46,34 @@ from .module import MerlinModule
 
 
 class FeatureMap:
-    """
-    Quantum Feature Map
+    """Quantum feature map.
 
-    FeatureMap embeds a datapoint within a quantum circuit and
-    computes the associated unitary for quantum kernel methods.
+    FeatureMap embeds a datapoint within a quantum circuit and computes the
+    associated unitary for quantum kernel methods.
 
-    Args:
-        circuit: Pre-compiled :class:`pcvl.Circuit` to encode features.
-        input_size: Dimension of incoming classical data (required).
-        builder: Optional :class:`CircuitBuilder` to compile into a circuit.
-        experiment: Optional :class:`pcvl.Experiment` providing both the circuit and detector configuration.
-                   Exactly one of ``circuit``, ``builder``, or ``experiment`` must be supplied.
-        input_parameters: Parameter prefix(es) that host the classical data.
-        dtype: Torch dtype used when constructing the unitary.
-        device: Torch device on which unitaries are evaluated.
+    Parameters
+    ----------
+    circuit : pcvl.Circuit | None
+        Pre-compiled Perceval circuit used to encode features.
+    input_size : int | None
+        Dimension of incoming classical data. Required.
+    builder : CircuitBuilder | None
+        Optional builder used to compile a circuit declaratively.
+    experiment : pcvl.Experiment | None
+        Optional experiment providing both the circuit and detector
+        configuration. Exactly one of ``circuit``, ``builder``, or
+        ``experiment`` must be supplied.
+    input_parameters : str | list[str] | None
+        Parameter prefix(es) that host the classical data.
+    trainable_parameters : list[str] | None
+        Optional trainable parameter prefixes.
+    dtype : str | torch.dtype
+        Torch dtype used when constructing the unitary.
+    device : torch.device | None
+        Torch device on which unitaries are evaluated.
+    encoder : Callable[[torch.Tensor], torch.Tensor] | None
+        Optional custom encoder used when the raw input shape does not match the
+        circuit parameter layout.
     """
 
     def __init__(
@@ -164,16 +177,19 @@ class FeatureMap:
         return len(self._circuit_graph.spec_mappings.get(self.input_parameters, []))
 
     def _subset_sum_expand(self, x: Tensor, k: int) -> Tensor:
-        """
-        Deterministic series-style expansion: non-empty subset sums of x in
-        increasing subset-size order, truncated/padded to length k.
+        """Expand an input vector into deterministic subset sums.
 
-        Args:
-            x: Input feature tensor expected to be one-dimensional.
-            k: Desired number of encoded features to return.
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input feature tensor expected to be one-dimensional.
+        k : int
+            Desired number of encoded features to return.
 
-        Returns:
-            Tensor: Encoded tensor of length ``k`` on the configured device/dtype.
+        Returns
+        -------
+        torch.Tensor
+            Encoded tensor of length ``k`` on the configured device and dtype.
         """
         x = x.to(dtype=self.dtype, device=self.device).reshape(-1)
         d = x.shape[0]
@@ -204,11 +220,15 @@ class FeatureMap:
         2. A user-supplied encoder callable.
         3. The deterministic subset-sum expansion used by legacy feature maps.
 
-        Args:
-            x: Input feature tensor to be embedded.
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input feature tensor to be embedded.
 
-        Returns:
-            Tensor: Encoded tensor matching the circuit's expected parameter length.
+        Returns
+        -------
+        torch.Tensor
+            Encoded tensor matching the circuit's expected parameter length.
         """
         x = x.to(dtype=self.dtype, device=self.device).reshape(-1)
         px_len = self._px_len()
@@ -251,12 +271,17 @@ class FeatureMap:
     def _encode_with_specs(self, x: Tensor, spec: dict[str, object]) -> Tensor:
         """Encode input vector using builder-provided angle encoding metadata.
 
-        Args:
-            x: Flattened input feature tensor.
-            spec: Metadata describing combinations and scales produced by the builder.
+        Parameters
+        ----------
+        x : torch.Tensor
+            Flattened input feature tensor.
+        spec : dict[str, object]
+            Metadata describing combinations and scales produced by the builder.
 
-        Returns:
-            Tensor: Encoded tensor obeying the combination rules.
+        Returns
+        -------
+        torch.Tensor
+            Encoded tensor obeying the combination rules.
         """
         combos = spec.get("combinations", [])
         scales = spec.get("scales", {})
@@ -296,16 +321,22 @@ class FeatureMap:
         return torch.stack(encoded_vals, dim=0)
 
     def compute_unitary(
-        self, x: Tensor | np.ndarray | float, *training_parameters: Tensor
-    ) -> Tensor:
-        """Generate the circuit unitary after encoding ``x`` and applying trainables.
+        self, x: torch.Tensor | np.ndarray | float, *training_parameters: torch.Tensor
+    ) -> torch.Tensor:
+        """Generate the circuit unitary after encoding `x` and applying trainables.
 
-        Args:
-            x: Single datapoint to embed; accepts scalars, numpy arrays, or tensors.
-            *training_parameters: Optional overriding trainable tensors.
+        Parameters
+        ----------
+        x : torch.Tensor | numpy.ndarray | float
+            Single datapoint to embed; accepts scalars, NumPy arrays, or
+            tensors.
+        training_parameters : torch.Tensor
+            Optional overriding trainable tensors.
 
-        Returns:
-            Tensor: Complex unitary matrix representing the prepared circuit.
+        Returns
+        -------
+        torch.Tensor
+            Complex unitary matrix representing the prepared circuit.
         """
         # Normalize input to tensor on correct device/dtype
         if isinstance(x, torch.Tensor):
@@ -334,14 +365,18 @@ class FeatureMap:
             )
         return self._circuit_graph.to_tensor(x_encoded, *params_to_use)
 
-    def is_datapoint(self, x: Tensor | np.ndarray | float | int) -> bool:
+    def is_datapoint(self, x: torch.Tensor | np.ndarray | float | int) -> bool:
         """Determine if ``x`` describes one sample or a batch.
 
-        Args:
-            x: Candidate input data.
+        Parameters
+        ----------
+        x : torch.Tensor | numpy.ndarray | float | int
+            Candidate input data.
 
-        Returns:
-            bool: ``True`` when ``x`` corresponds to a single datapoint.
+        Returns
+        -------
+        bool
+            ``True`` when ``x`` corresponds to a single datapoint.
         """
         if isinstance(x, (float, int)):
             if self.input_size == 1:
@@ -391,19 +426,26 @@ class FeatureMap:
         angle_encoding_scale: float = 1.0,
         n_modes: int = None,
     ) -> "FeatureMap":
-        """
-        Simple factory method to create a FeatureMap with minimal configuration.
+        """Simple factory method to create a FeatureMap with minimal configuration.
 
-        Args:
-            input_size: Classical feature dimension. Maximum is 19.
-            n_photons: Optional photon count (defaults to ``input_size``).
-            dtype: Target dtype for internal tensors.
-            device: Optional torch device handle.
-            angle_encoding_scale: Global scaling applied to angle encoding features.
-            n_modes: Number of photonic modes used by the helper circuit. If it is not defined: n_modes=input_size+1. Maximum is 20.
+        Parameters
+        ----------
+        input_size : int
+            Classical feature dimension. Maximum is 19.
+        dtype : str | torch.dtype
+            Target dtype for internal tensors.
+        device : torch.device | None
+            Optional torch device handle.
+        angle_encoding_scale : float
+            Global scaling applied to angle encoding features. Default is ``1.0``.
+        n_modes : int | None
+            Number of photonic modes used by the helper circuit. If omitted,
+            ``n_modes = input_size + 1``. Maximum is 20.
 
-        Returns:
-            FeatureMap: Configured feature-map instance.
+        Returns
+        -------
+        FeatureMap
+            Configured feature-map instance.
         """
         if n_modes is None:
             n_modes = input_size + 1
@@ -452,8 +494,7 @@ class FeatureMap:
 
 
 class KernelCircuitBuilder:
-    """
-    Builder class for creating quantum kernel circuits with photonic backends.
+    """Builder for creating photonic quantum kernel circuits.
 
     This class provides a fluent interface for building quantum kernel circuits
     with various configurations, inspired by the core.layer architecture.
@@ -516,11 +557,17 @@ class KernelCircuitBuilder:
         return self
 
     def build_feature_map(self) -> FeatureMap:
-        """
-        Build and return a FeatureMap instance.
+        """Build and return a :class:`FeatureMap` instance.
 
-        :return: Configured FeatureMap
-        :raises ValueError: If required parameters are missing
+        Returns
+        -------
+        FeatureMap
+            Configured feature map.
+
+        Raises
+        ------
+        ValueError
+            If required parameters are missing.
         """
         if self._input_size is None:
             raise ValueError("Input size must be specified")
@@ -571,15 +618,28 @@ class KernelCircuitBuilder:
         computation_space: ComputationSpace | str | None = None,
         force_psd: bool = True,
     ) -> "FidelityKernel":
-        """
-        Build and return a FidelityKernel instance.
+        """Build and return a :class:`~merlin.algorithms.kernels.FidelityKernel` instance.
 
-        :param input_state: Input Fock state. If None, automatically generated
-        :param shots: Number of sampling shots
-        :param sampling_method: Sampling method for shots
-        :param computation_space: Logical computation subspace; one of {"fock", "unbunched", "dual_rail"}.
-        :param force_psd: Whether to project to positive semi-definite
-        :return: Configured FidelityKernel
+        Parameters
+        ----------
+        input_state : list[int] | None
+            Input Fock state. If ``None``, it is generated automatically.
+        shots : int
+            Number of sampling shots. Default is ``0``.
+        sampling_method : str
+            Sampling method for pseudo-sampling. Default is
+            ``"multinomial"``.
+        computation_space : ComputationSpace | str | None
+            Logical computation subspace; one of ``{"fock", "unbunched",
+            "dual_rail"}``.
+        force_psd : bool
+            Whether to project to the nearest positive semi-definite matrix.
+            Default is ``True``.
+
+        Returns
+        -------
+        FidelityKernel
+            Configured fidelity kernel.
         """
         feature_map = self.build_feature_map()
 
@@ -608,50 +668,63 @@ class FidelityKernel(MerlinModule):
     For a given input Fock state, :math:`|s \rangle` and feature map,
     :math:`U`, the fidelity quantum kernel estimates the following inner
     product using SLOS:
+
     .. math::
         |\langle s | U^{\dagger}(x_2) U(x_1) | s \rangle|^{2}
 
     Transition probabilities are computed in parallel for each pair of
     datapoints in the input datasets.
 
-    :param feature_map: Feature map object that encodes a given
-        datapoint within its circuit
-    :param input_state: Input state into circuit.
-    :param shots: Number of circuit shots. If `None`, the exact
-        transition probabilities are returned. Default: `None`.
-    :param sampling_method: Probability distributions are post-
-        processed with some pseudo-sampling method: 'multinomial',
-        'binomial' or 'gaussian'.
-    :param computation_space: Logical computation subspace; one of
+    Parameters
+    ----------
+    feature_map : FeatureMap
+        Feature map object that encodes a given datapoint within its circuit.
+    input_state : list[int]
+        Input state into the circuit.
+    shots : int | None
+        Number of circuit shots. If ``None``, the exact transition
+        probabilities are returned. Default: ``None``.
+    sampling_method : str
+        Probability distributions are post-processed with a pseudo-sampling
+        method: ``"multinomial"``, ``"binomial"``, or ``"gaussian"``.
+        Default is ``"multinomial"``.
+    computation_space : ComputationSpace | str | None
+        Logical computation subspace; one of
         ``{"fock", "unbunched", "dual_rail"}``. Default: ``FOCK``.
-    :param force_psd: Projects training kernel matrix to closest
-        positive semi-definite. Default: `True`.
-    :param device: Device on which to perform SLOS
-    :param dtype: Datatype with which to perform SLOS
+    force_psd : bool
+        Projects the training kernel matrix to the closest positive
+        semi-definite matrix. Default is ``True``.
+    device : torch.device | None
+        Device on which to perform SLOS.
+    dtype : str | torch.dtype | None
+        Datatype with which to perform SLOS.
 
     Examples
     --------
-    For a given training and test datasets, one can construct the
-    training and test kernel matrices in the following structure:
-    .. code-block:: python
-        >>> circuit = Circuit(2) // PS(P("X0") // BS() // PS(P("X1") // BS()
-        >>> feature_map = FeatureMap(circuit, ["X"])
-        >>>
-        >>> quantum_kernel = FidelityKernel(
-        >>>     feature_map,
-        >>>     input_state=[0, 4],
-        >>> )
-        >>> # Construct the training & test kernel matrices
-        >>> K_train = quantum_kernel(X_train)
-        >>> K_test = quantum_kernel(X_test, X_train)
+    For a given training and test datasets, one can construct the training and
+    test kernel matrices with the following structure:
 
-    Use with scikit-learn for kernel-based machine learning:.
     .. code-block:: python
-        >>> from sklearn import SVC
-        >>> # For a support vector classification problem
-        >>> svc = SVC(kernel='precomputed')
-        >>> svc.fit(K_train, y_train)
-        >>> y_pred = svc.predict(K_test)
+
+        circuit = Circuit(2) // PS(P("X0")) // BS() // PS(P("X1")) // BS()
+        feature_map = FeatureMap(circuit, ["X"])
+
+        quantum_kernel = FidelityKernel(
+            feature_map,
+            input_state=[0, 4],
+        )
+        K_train = quantum_kernel(X_train)
+        K_test = quantum_kernel(X_test, X_train)
+
+    Use with scikit-learn for kernel-based machine learning:
+
+    .. code-block:: python
+
+        from sklearn.svm import SVC
+
+        svc = SVC(kernel="precomputed")
+        svc.fit(K_train, y_train)
+        y_pred = svc.predict(K_test)
     """
 
     @sanitize_parameters
@@ -824,13 +897,26 @@ class FidelityKernel(MerlinModule):
 
     def forward(
         self,
-        x1: float | np.ndarray | Tensor,
-        x2: float | np.ndarray | Tensor | None = None,
+        x1: float | np.ndarray | torch.Tensor,
+        x2: float | np.ndarray | torch.Tensor | None = None,
     ):
-        """
-        Calculate the quantum kernel for input data `x1` and `x2.` If
-        `x1` and `x2` are datapoints, a scalar value is returned. For
+        """Calculate the quantum kernel for input data ``x1`` and ``x2``.
+
+        If ``x1`` and ``x2`` are datapoints, a scalar value is returned. For
         input datasets the kernel matrix is computed.
+
+        Parameters
+        ----------
+        x1 : float | numpy.ndarray | torch.Tensor
+            First input datapoint or dataset.
+        x2 : float | numpy.ndarray | torch.Tensor | None
+            Second input datapoint or dataset. If omitted, the training kernel
+            matrix for ``x1`` is computed.
+
+        Returns
+        -------
+        torch.Tensor
+            Scalar kernel value for datapoints, or a kernel matrix for datasets.
         """
         # Convert inputs to tensors and ensure they are on the correct device
         if not isinstance(x1, torch.Tensor):
@@ -1036,8 +1122,35 @@ class FidelityKernel(MerlinModule):
         angle_encoding_scale: float = 1.0,
         n_modes: int = None,
     ) -> "FidelityKernel":
-        """
-        Simple factory method to create a FidelityKernel with minimal configuration.
+        """Create a simple fidelity kernel with minimal configuration.
+
+        Parameters
+        ----------
+        input_size : int
+            Classical feature dimension.
+        shots : int
+            Number of pseudo-sampling shots. Default is ``0``.
+        sampling_method : str
+            Sampling method used when ``shots`` is positive. Default is
+            ``"multinomial"``.
+        computation_space : ComputationSpace | str | None
+            Logical computation subspace.
+        force_psd : bool
+            Whether to project the training kernel matrix to the nearest
+            positive semi-definite matrix. Default is ``True``.
+        dtype : str | torch.dtype
+            Target dtype for internal tensors. Default is ``torch.float32``.
+        device : torch.device | None
+            Device on which to execute computations.
+        angle_encoding_scale : float
+            Global scaling applied to angle encoding features. Default is ``1.0``.
+        n_modes : int | None
+            Number of photonic modes used by the helper construction.
+
+        Returns
+        -------
+        FidelityKernel
+            Configured fidelity kernel.
         """
         feature_map = FeatureMap.simple(
             input_size=input_size,

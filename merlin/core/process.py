@@ -38,7 +38,31 @@ from .computation_space import ComputationSpace
 
 
 class ComputationProcess(AbstractComputationProcess):
-    """Handles quantum circuit computation and state evolution."""
+    """Handle quantum circuit computation and state evolution.
+
+    Parameters
+    ----------
+    circuit : pcvl.Circuit
+        Circuit used to build the unitary and simulation graphs.
+    input_state : list[int] | torch.Tensor
+        Input Fock state or superposition tensor.
+    trainable_parameters : list[str]
+        Prefixes of trainable circuit parameters.
+    input_parameters : list[str]
+        Prefixes of input-driven circuit parameters.
+    n_photons : int | None
+        Number of photons represented by the process.
+    dtype : torch.dtype
+        Real dtype used for internal tensor conversions.
+    device : torch.device | None
+        Device on which computation graphs are materialized.
+    computation_space : ComputationSpace | None
+        Computation space used for basis enumeration.
+    no_bunching : bool | None
+        Deprecated legacy parameter.
+    output_map_func : Any
+        Optional output mapping function.
+    """
 
     def __init__(
         self,
@@ -53,6 +77,31 @@ class ComputationProcess(AbstractComputationProcess):
         no_bunching: bool | None = None,
         output_map_func=None,
     ):
+        """Initialize a computation process.
+
+        Parameters
+        ----------
+        circuit : pcvl.Circuit
+            Circuit used to build the unitary and simulation graphs.
+        input_state : list[int] | torch.Tensor
+            Input Fock state or superposition tensor.
+        trainable_parameters : list[str]
+            Prefixes of trainable circuit parameters.
+        input_parameters : list[str]
+            Prefixes of input-driven circuit parameters.
+        n_photons : int | None
+            Number of photons represented by the process.
+        dtype : torch.dtype
+            Real dtype used for internal tensor conversions.
+        device : torch.device | None
+            Device on which computation graphs are materialized.
+        computation_space : ComputationSpace | None
+            Computation space used for basis enumeration.
+        no_bunching : bool | None
+            Deprecated legacy parameter.
+        output_map_func : Any
+            Optional output mapping function.
+        """
         self.circuit = circuit
         self.input_state = input_state
         self.n_photons = n_photons
@@ -109,7 +158,18 @@ class ComputationProcess(AbstractComputationProcess):
         )
 
     def compute(self, parameters: list[torch.Tensor]) -> torch.Tensor:
-        """Compute quantum output distribution."""
+        """Compute output amplitudes for the configured input state.
+
+        Parameters
+        ----------
+        parameters : list[torch.Tensor]
+            Circuit parameters passed to the converter.
+
+        Returns
+        -------
+        torch.Tensor
+            Output amplitudes produced by the simulation graph.
+        """
         # Generate unitary matrix from parameters
 
         unitary = self.converter.to_tensor(*parameters)
@@ -224,39 +284,39 @@ class ComputationProcess(AbstractComputationProcess):
         normalises the input state (if it is not already normalised), filters
         out components with zero amplitude, and then queries the simulation
         graph for batches of Fock states. Each batch feeds
-        :meth:`SLOSComputeGraph.compute_batch`, producing a tensor that contains
+        :meth:`~merlin.pcvl_pytorch.slos_torchscript.SLOSComputeGraph.compute_batch`, producing a tensor that contains
         the amplitudes of all reachable output states for the selected input
         components. The partial results are accumulated into a preallocated
         tensor and finally weighted by the complex coefficients of
         ``self.input_state`` to produce the global output amplitudes.
 
-        Args:
-            parameters (list[torch.Tensor]): Differentiable parameters that
-                encode the photonic circuit. They are forwarded to
-                ``self.converter`` to build the unitary matrix used during the
-                simulation.
-            simultaneous_processes (int): Maximum number of non-zero input
-                components that are propagated in a single call to
-                ``compute_batch``. Tuning this value allows trading memory
-                consumption for wall-clock time on GPU.
+        Parameters
+        ----------
+        parameters : list[torch.Tensor]
+            Differentiable parameters that encode the photonic circuit.
+        simultaneous_processes : int
+            Maximum number of non-zero input components propagated in a single
+            call to ``compute_batch``.
 
-        Returns:
-            torch.Tensor: The superposed output amplitudes with shape
-            ``[batch_size, num_output_states]`` where ``batch_size`` corresponds
-            to the number of independent input batches and ``num_output_states``
-            is the size of ``self.simulation_graph.mapped_keys``.
+        Returns
+        -------
+        torch.Tensor
+            Superposed output amplitudes with shape
+            ``[batch_size, num_output_states]``.
 
-        Raises:
-            TypeError: If ``self.input_state`` is not a ``torch.Tensor``. The
-            simulation graph expects tensor inputs, therefore other sequence
-            types (NumPy arrays, lists, etc.) cannot be used here.
+        Raises
+        ------
+        TypeError
+            If ``self.input_state`` is not a ``torch.Tensor``.
 
-        Notes:
-            * ``self.input_state`` is normalised in place to avoid an extra
-              allocation.
-            * Zero-amplitude components are skipped to minimise the number of
+        Notes
+        -----
+            - ``self.input_state`` is normalized in place to avoid an extra
+              allocation.They are forwarded to ``self.converter`` to build the unitary matrix used during the
+              simulation.
+            - Zero-amplitude components are skipped to minimise the number of
               calls to ``compute_batch``.
-            * The method is agnostic to the device: tensors remain on the device
+            - The method is agnostic to the device: tensors remain on the device
               they already occupy, so callers should ensure ``parameters`` and
               ``self.input_state`` live on the same device.
         """
@@ -329,7 +389,18 @@ class ComputationProcess(AbstractComputationProcess):
         return final_amplitudes
 
     def compute_with_keys(self, parameters: list[torch.Tensor]):
-        """Compute quantum output distribution and return both keys and probabilities."""
+        """Compute output amplitudes and return them with basis keys.
+
+        Parameters
+        ----------
+        parameters : list[torch.Tensor]
+            Circuit parameters passed to the converter.
+
+        Returns
+        -------
+        tuple[Any, torch.Tensor]
+            Simulation-graph keys and corresponding amplitudes.
+        """
         # Generate unitary matrix from parameters
         unitary = self.converter.to_tensor(*parameters)
 
@@ -508,7 +579,29 @@ class ComputationProcessFactory:
         computation_space: ComputationSpace | None = None,
         **kwargs,
     ) -> ComputationProcess:
-        """Create a computation process."""
+        """Create a computation process.
+
+        Parameters
+        ----------
+        circuit : pcvl.Circuit
+            Circuit used to build the process.
+        input_state : list[int] | torch.Tensor
+            Input Fock state or superposition tensor.
+        trainable_parameters : list[str]
+            Prefixes of trainable circuit parameters.
+        input_parameters : list[str]
+            Prefixes of input-driven circuit parameters.
+        computation_space : ComputationSpace | None
+            Computation space used for basis enumeration.
+        **kwargs
+            Additional keyword arguments forwarded to
+            :class:`ComputationProcess`.
+
+        Returns
+        -------
+        ComputationProcess
+            Created computation process.
+        """
         return ComputationProcess(
             circuit=circuit,
             input_state=input_state,

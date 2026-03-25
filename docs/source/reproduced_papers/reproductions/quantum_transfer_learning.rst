@@ -1,8 +1,8 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-====================================================
+===================================================================
 Transfer Learning in Hybrid Classical-Quantum Neural Networks
-====================================================
+===================================================================
 
 .. admonition:: Paper Information
    :class: note
@@ -163,5 +163,3 @@ Citation
                 Quantenwissenschaften},
      doi={10.22331/q-2020-10-09-340}
    }
-
-----

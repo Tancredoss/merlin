@@ -78,11 +78,12 @@ from .module import MerlinModule
 
 
 class QuantumLayer(MerlinModule):
-    """
-    Quantum Neural Network Layer with factory-based architecture.
+    """Quantum neural network layer with factory-based architecture.
 
-    This layer can be created either from a :class:`CircuitBuilder` instance, a pre-compiled :class:`pcvl.Circuit`,
-    or an :class:Experiment`.
+    This layer can be created either from a
+    :class:`~merlin.builder.circuit_builder.CircuitBuilder` instance, a
+    pre-compiled :class:`pcvl.Circuit`, or an
+    :class:`pcvl.Experiment`.
     """
 
     @sanitize_parameters
@@ -127,22 +128,22 @@ class QuantumLayer(MerlinModule):
 
         Parameters
         ----------
-        input_size : int | None, optional
+        input_size : int | None
             Size of the classical input vector when angle encoding is used
             (``amplitude_encoding=False``). If omitted, it is inferred from the
             circuit metadata (input parameter prefixes and/or encoding specs).
             Must be omitted when ``amplitude_encoding=True``.
-        builder : CircuitBuilder | None, optional
+        builder : CircuitBuilder | None
             High-level circuit builder that defines trainable structure, input
             encoders and their prefixes. Mutually exclusive with ``circuit`` and
             ``experiment``.
-        circuit : pcvl.Circuit | None, optional
+        circuit : pcvl.Circuit | None
             A fully defined Perceval circuit. Mutually exclusive with ``builder``
             and ``experiment``.
-        experiment : pcvl.Experiment | None, optional
+        experiment : pcvl.Experiment | None
             A Perceval experiment. Must be unitary and without post-selection or
             heralding. Mutually exclusive with ``builder`` and ``circuit``.
-        input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None, optional
+        input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
             Logical input state of the circuit. Accepted forms:
             - ``StateVector`` (preferred, canonical type),
             - ``pcvl.StateVector`` (converted via ``StateVector.from_perceval()``),
@@ -151,15 +152,15 @@ class QuantumLayer(MerlinModule):
             - ``torch.Tensor`` (DEPRECATED - will be removed in 0.4).
             If QuantumLayer is built from an experiment, the experiment's input state is used.
             If omitted, ``n_photons`` must be provided to derive a default state.
-        n_photons : int | None, optional
+        n_photons : int | None
             Number of photons used to infer a default input state and to size the
             computation space when amplitude encoding is enabled.
-        trainable_parameters : list[str] | None, optional
+        trainable_parameters : list[str] | None
             For custom circuits/experiments, the list of Perceval parameter
             prefixes to expose as trainable PyTorch parameters. When a
             ``builder`` is provided, these are taken from the builder and this
             argument must be omitted.
-        input_parameters : list[str] | None, optional
+        input_parameters : list[str] | None
             Perceval parameter prefixes used for classical (angle) encoding. For
             amplitude encoding, this must be empty/None.
         amplitude_encoding : bool, default: False
@@ -169,7 +170,7 @@ class QuantumLayer(MerlinModule):
             the first positional argument and propagates it through the quantum
             layer; ``input_size`` must not be set in this mode and
             ``n_photons`` must be provided.
-        computation_space : ComputationSpace | str | None, optional
+        computation_space : ComputationSpace | str | None
             Logical computation subspace to use: one of ``{"fock", "unbunched",
             "dual_rail"}``. If omitted, defaults to ``UNBUNCHED``. This argument
             is deprecated; move it into ``MeasurementStrategy.probs(...)``.
@@ -180,18 +181,16 @@ class QuantumLayer(MerlinModule):
             ``MeasurementStrategy.mode_expectations(...)``, and
             ``MeasurementStrategy.amplitudes()``, plus legacy enum aliases
             ``PROBABILITIES``, ``MODE_EXPECTATIONS`` and ``AMPLITUDES`` (deprecated).
-        return_object: bool, default: False
-            When True, a typed object related to the measurement_strategy will be returned by forward(). If
-            false, a torch.Tensor will be returned. Here are the objects to be returned
-            |   measurement_strategy   |  return_object=False   | return_object=True |
-            | :-------  | :--------  | :----------: |
-            | AMPLTITUDES | torch.Tensor |  StateVector  |
-            | PROBABILITIES  | torch.Tensor  |  ProbabilityDistribution  |
-            | PARTIAL_MEASUREMENT | PartialMeasurement   |  PartialMeasurement  |
-            | MODE_EXPECTATIONS  | torch.Tensor   |  torch.Tensor    |
-        device : torch.device | None, optional
+        return_object : bool, default: False
+            When True, return a typed object associated with the selected
+            measurement strategy instead of a raw tensor.
+            - ``MeasurementKind.AMPLITUDES`` returns a ``StateVector``
+            - ``MeasurementKind.PROBABILITIES`` returns a ``ProbabilityDistribution``
+            - ``MeasurementKind.PARTIAL`` returns a ``PartialMeasurement``.
+            - ``MeasurementKind.MODE_EXPECTATIONS`` returns a ``torch.Tensor``.
+        device : torch.device | None
             Target device for internal tensors (e.g., ``torch.device("cuda")``).
-        dtype : torch.dtype | None, optional
+        dtype : torch.dtype | None
             Precision for internal tensors (e.g., ``torch.float32``). The matching
             complex dtype is chosen automatically.
 
@@ -684,6 +683,14 @@ class QuantumLayer(MerlinModule):
         return amplitude
 
     def set_input_state(self, input_state):
+        """Set the layer input state for subsequent evaluations.
+
+        Parameters
+        ----------
+        input_state : pcvl.BasicState | tuple | list | torch.Tensor | merlin.core.state_vector.StateVector
+            Input state to store on the layer and underlying computation
+            process.
+        """
         if isinstance(input_state, pcvl.BasicState):
             self.input_state = input_state
             self.computation_process.input_state = list(input_state)
@@ -748,23 +755,23 @@ class QuantumLayer(MerlinModule):
 
         - ``torch.Tensor`` (float): angle encoding (compatible with ``nn.Sequential``)
         - ``torch.Tensor`` (complex): amplitude encoding
-        - ``StateVector``: amplitude encoding (preferred for quantum state injection)
+        - :class:`~merlin.core.state_vector.StateVector`: amplitude encoding (preferred for quantum state injection)
 
         Parameters
         ----------
-        *input_parameters : torch.Tensor | StateVector
+        input_parameters : torch.Tensor | merlin.core.state_vector.StateVector
             Input data. For angle encoding, pass float tensors. For amplitude
-            encoding, pass a single ``StateVector`` or complex tensor.
-        shots : int | None, optional
+            encoding, pass a single :class:`~merlin.core.state_vector.StateVector` or complex tensor.
+        shots : int | None
             Number of samples; if 0 or None, return exact amplitudes/probabilities.
-        sampling_method : str | None, optional
+        sampling_method : str | None
             Sampling method, e.g. "multinomial".
-        simultaneous_processes : int | None, optional
+        simultaneous_processes : int | None
             Batch size hint for parallel computation.
 
         Returns
         -------
-        torch.Tensor | PartialMeasurement | StateVector | ProbabilityDistribution
+        torch.Tensor | PartialMeasurement | merlin.core.state_vector.StateVector | ProbabilityDistribution
             Output after measurement mapping.
             Depending on the return_object argument and measurement strategy defined in the input, the output
             type will be different. Check the constructor for more details.
@@ -1058,6 +1065,20 @@ class QuantumLayer(MerlinModule):
         return None
 
     def to(self, *args, **kwargs):
+        """Move the layer and auxiliary transforms to a new device or dtype.
+
+        Parameters
+        ----------
+        *args
+            Positional arguments forwarded to :meth:`torch.nn.Module.to`.
+        **kwargs
+            Keyword arguments forwarded to :meth:`torch.nn.Module.to`.
+
+        Returns
+        -------
+        QuantumLayer
+            The updated layer instance.
+        """
         super().to(*args, **kwargs)
         # Manually move any additional tensors
         device = kwargs.get("device", None)
@@ -1100,10 +1121,12 @@ class QuantumLayer(MerlinModule):
 
     @property
     def output_size(self) -> int:
+        """int: Number of values produced after measurement mapping."""
         return self._output_size
 
     @property
     def has_custom_detectors(self) -> bool:
+        """bool: Whether the wrapped experiment defines non-default detectors."""
         return self._has_custom_detectors
 
     def _initialize_photon_loss_transform(self) -> None:
@@ -1190,8 +1213,13 @@ class QuantumLayer(MerlinModule):
                 self._current_params[name] = param.detach().cpu().numpy()
 
     def export_config(self) -> dict:
-        """
-        Export a standalone configuration for remote execution.
+        """Export a standalone configuration for remote execution.
+
+        Returns
+        -------
+        dict
+            Serializable layer configuration containing the resolved circuit,
+            parameters, and input metadata.
         """
         # TODO: to be revisited - not all options seems to be exported
         self._update_current_params()
@@ -1258,20 +1286,31 @@ class QuantumLayer(MerlinModule):
     ):
         """Create a ready-to-train layer with a (input_size+1)-mode, ceil((input_size+1)/2)-photon architecture.
 
-        The circuit is assembled via :class:`CircuitBuilder` with the following layout:
+        The circuit is assembled via
+        :class:`~merlin.builder.circuit_builder.CircuitBuilder` with the
+        following layout:
 
         1. A fully trainable entangling layer acting on all modes;
         2. A full input encoding layer spanning all encoded features;
         3. A fully trainable entangling layer acting on all modes.
 
-        Args:
-            input_size: Size of the classical input vector. Must be 19 or lower.
-            output_size: Optional classical output width.
-            device: Optional target device for tensors.
-            dtype: Optional tensor dtype.
-            computation_space: Logical computation subspace; one of {"fock", "unbunched", "dual_rail"}.
+        Parameters
+        ----------
+        input_size : int
+            Size of the classical input vector. Must be 19 or lower.
+        output_size : int | None
+            Optional classical output width.
+        device : torch.device | None
+            Optional target device for tensors.
+        dtype : torch.dtype | None
+            Optional tensor dtype.
+        computation_space : ComputationSpace | str
+            Logical computation subspace; one of ``{"fock", "unbunched",
+            "dual_rail"}``.
 
-        Returns:
+        Returns
+        -------
+        torch.nn.Module
             QuantumLayer configured with the described architecture.
         """
         n_modes = input_size + 1

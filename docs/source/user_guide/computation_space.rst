@@ -22,7 +22,7 @@ Why computation space matters
   photons.
 * **Hybrid interoperability** – Matching a photonic computation space with a qubit-based
   model (for example from PennyLane) allows seamless hybrid training through
-  :class:`~merlin.bridge.QuantumBridge`.
+  :class:`~merlin.bridge.quantum_bridge.QuantumBridge`.
 
 Core computation spaces
 -----------------------
@@ -42,10 +42,9 @@ Merlin exposes three common working regimes; each is a subspace of the full Fock
      - High-fidelity simulations and comparisons with analytic solutions.
      - PNR detectors
    * - Unbunched
-     - Restricts to configurations with at most one photon per mode.
+     - Restricts to configurations with at most one photon per mode. It is the **default computation space** since the current photonic detectors can not count the number of photons.
      - Circuits read with threshold detectors or when loss resilience is required.
      - Threshold detectors
-     - It is the **default computation space** since the current photonic detectors can not count the number of photons.
    * - Dual-rail
      - Special case of the unbunched space: one photon shared across every pair of modes.
      - Logical qubit encodings, qubit ↔ photonic interfacing.
@@ -58,26 +57,29 @@ The :class:`~merlin.algorithms.layer.QuantumLayer` configures its computation sp
 construction time. 
 
 The ``measurement_strategy`` can define the computation space with its ``computation_space`` argument.
-We can choose from 
-  - ``merlin.ComputationSpace.UNBUNCHED``, do not allow multiple photons per modes. It is the default value when no MeasurementStrategy is given.
-  - ``merlin.ComputationSpace.FOCK``, allow multiple photons per modes (i.e. explore the full Fock space).
-  - ``merlin.ComputationSpace.DUAL_RAIL``, use a dual rail encoding (two modes per photon).
+We can choose from:
+
+- ``merlin.ComputationSpace.UNBUNCHED``, do not allow multiple photons per modes. It is the default value when no MeasurementStrategy is given.
+- ``merlin.ComputationSpace.FOCK``, allow multiple photons per modes (i.e. explore the full Fock space).
+- ``merlin.ComputationSpace.DUAL_RAIL``, use a dual rail encoding (two modes per photon).
 
 Those computation spaces can also be assigned with the ``computation_space`` argument in the constructor but, it
-is prefered to exploit the ``measurement_strategy`` since ``computation_space`` will be deprecated in the future.
+is preferred to exploit the ``measurement_strategy`` since ``computation_space`` will be deprecated in the future.
 
 It will be the only way to control the computation space as the ``no_bunching`` flag is deprecated.
+
 .. warning:: *Deprecated since version 0.3:*
    The use of the ``no_bunching`` flag  is deprecated and is removed since version 0.3.0.
    Use the ``computation_space`` flag inside ``measurement_strategy`` instead. See :doc:`/user_guide/migration_guide`.
 
-Another parameter is also relevent.
+Another parameter is also relevant.
+
 ``index_photons``
-    Optional per-photon constraints on allowed modes.  This lets you carve out logical
-    subspaces such as dual-rail groupings without rebuilding the circuit.
+  Optional per-photon constraints on allowed modes. This lets you carve out logical
+  subspaces such as dual-rail groupings without rebuilding the circuit.
 
 Internally the :class:`~merlin.core.process.ComputationProcessFactory` uses these 
-to build the correct :mod:`perceval` simulation graph.  The same options propagate
+to build the correct `Perceval <https://perceval.quandela.net/docs/v1.1/>`_ simulation graph.  The same options propagate
 through factory-created ansätze and algorithm builders.
 
 Working with QLOQ encodings
@@ -127,7 +129,7 @@ Example setup
 Bridging qubit logic and photonics
 ----------------------------------
 
-The :class:`~merlin.bridge.QuantumBridge` is the companion to computation spaces.  It
+The :class:`~merlin.bridge.quantum_bridge.QuantumBridge` is the companion to computation spaces.  It
 turns a qubit statevector ``ψ ∈ ℂ^{2^n}`` into the appropriate photonic superposition by
 grouping qubits according to ``qubit_groups``.  Its ``computation_space`` argument (``fock``,
 ``unbunched``, or ``dual_rail``) determines both the size of the emitted tensor and the

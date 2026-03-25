@@ -1,5 +1,7 @@
 :github_url: https://github.com/merlinquantum/merlin
 
+.. _qcnn_data_classification_readme: https://github.com/merlinquantum/reproduced_papers/tree/main/papers/QCNN_data_classification/README.md
+
 ======================================================================
 Quantum Convolutional Neural Network for Classical Data Classification
 ======================================================================
@@ -139,7 +141,7 @@ Implementation Details
 
 The reproduction is designed to be straightforward to run from the command line.
 For full setup instructions, run commands, and implementation details, see:
-`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/QCNN_data_classification/README.md>`_.
+`QCNN_data_classification README <qcnn_data_classification_readme_>`_.
 
 Experimental Results
 ====================
@@ -156,7 +158,7 @@ The figure below summarizes overall validation accuracy across the tested quantu
    :width: 80%
 
 For full plots and detailed discussion, see the
-`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/QCNN_data_classification/README.md>`_.
+`QCNN_data_classification README <qcnn_data_classification_readme_>`_.
 
 Angle-encoding benchmark (3 kernels, kernel size 3, stride 2)
 -------------------------------------------------------------
@@ -202,7 +204,7 @@ Training curves
 ===============
 
 All training-curve results are available in the
-`QCNN_data_classification README <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/QCNN_data_classification/README.md>`_.
+`QCNN_data_classification README <qcnn_data_classification_readme_>`_.
 
 Performance Analysis
 ====================
@@ -233,5 +235,3 @@ Citation
      publisher={Springer},
      doi={10.1007/s42484-021-00061-x}
    }
-
-----

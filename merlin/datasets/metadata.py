@@ -27,11 +27,30 @@ from typing import Any
 
 @dataclass
 class Normalization:
+    """Dataset-level normalization metadata.
+
+    Parameters
+    ----------
+    method : str
+        Name of the normalization method.
+    range : tuple
+        Target value range after normalization.
+    per_feature : bool
+        Whether normalization is applied independently per feature.
+    """
+
     method: str
     range: tuple
     per_feature: bool = True
 
     def to_text(self) -> str:
+        """Render normalization metadata as human-readable text.
+
+        Returns
+        -------
+        str
+            Human-readable summary of the normalization settings.
+        """
         text = f"- Method: {self.method}\n"
         text += f"- Target range: {self.range[0]} to {self.range[1]}\n"
         text += f"- Applied per feature: {self.per_feature}"
@@ -40,11 +59,30 @@ class Normalization:
 
 @dataclass
 class FeatureNormalization:
+    """Feature-level normalization metadata.
+
+    Parameters
+    ----------
+    original_unit : str | None
+        Original measurement unit before normalization.
+    scale_factor : float | None
+        Scaling factor applied during normalization.
+    offset : float | None
+        Offset applied during normalization.
+    """
+
     original_unit: str | None = None
     scale_factor: float | None = None
     offset: float | None = None
 
     def to_text(self) -> str:
+        """Render feature normalization metadata as text.
+
+        Returns
+        -------
+        str
+            Human-readable normalization summary.
+        """
         parts = []
         if self.original_unit:
             parts.append(f"original unit: {self.original_unit}")
@@ -57,6 +95,26 @@ class FeatureNormalization:
 
 @dataclass
 class Feature:
+    """Description of a dataset feature.
+
+    Parameters
+    ----------
+    name : str
+        Feature name.
+    description : str
+        Human-readable feature description.
+    type : str
+        Feature dtype or semantic type.
+    value_range : tuple | None
+        Expected value range.
+    unit : str | None
+        Measurement unit.
+    stats : dict[str, float] | None
+        Optional feature statistics.
+    normalization : FeatureNormalization | None
+        Optional feature-level normalization metadata.
+    """
+
     name: str
     description: str
     type: str
@@ -66,6 +124,13 @@ class Feature:
     normalization: FeatureNormalization | None = None
 
     def to_text(self) -> str:
+        """Render feature metadata as human-readable text.
+
+        Returns
+        -------
+        str
+            Human-readable feature description.
+        """
         text = f"- {self.name} ({self.type}): {self.description}"
         if self.unit:
             text += f" [measured in {self.unit}]"
@@ -96,6 +161,44 @@ class Feature:
 
 @dataclass
 class DatasetMetadata:
+    """Structured metadata describing a dataset.
+
+    Parameters
+    ----------
+    name : str
+        Dataset name.
+    description : str
+        Dataset description.
+    features : list[Feature]
+        Descriptions of dataset features.
+    num_instances : int
+        Number of instances in the dataset or subset.
+    subset : str
+        Dataset split name.
+    num_features : int | None
+        Number of input features.
+    normalization : Normalization | None
+        Dataset-level normalization metadata.
+    task_type : list[str] | None
+        Supported task types.
+    num_classes : int | None
+        Number of target classes, when relevant.
+    characteristics : list[str]
+        High-level dataset characteristics.
+    homepage : str | None
+        Dataset homepage.
+    license : str | None
+        Dataset license.
+    citation : str | None
+        Citation text.
+    creators : list[str]
+        Dataset creators.
+    year : int | None
+        Creation or publication year.
+    feature_relationships : str | None
+        Optional description of relationships between features.
+    """
+
     name: str
     description: str
     features: list[Feature]
@@ -115,6 +218,18 @@ class DatasetMetadata:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DatasetMetadata":
+        """Build dataset metadata from a dictionary payload.
+
+        Parameters
+        ----------
+        data : dict[str, Any]
+            Raw metadata dictionary.
+
+        Returns
+        -------
+        DatasetMetadata
+            Structured dataset metadata instance.
+        """
         # Extract features from various formats
         features = []
         if "features" in data:
@@ -203,7 +318,13 @@ class DatasetMetadata:
         )
 
     def __str__(self) -> str:
-        """Generate a human-readable text representation of the dataset metadata"""
+        """Generate a human-readable text representation.
+
+        Returns
+        -------
+        str
+            Human-readable dataset metadata summary.
+        """
         text = [
             f"Dataset: {self.name}",
         ]
@@ -252,7 +373,13 @@ class DatasetMetadata:
         return "\n".join(text)
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert the metadata to a dictionary format"""
+        """Convert the metadata to a dictionary.
+
+        Returns
+        -------
+        dict[str, Any]
+            Dictionary representation of the dataset metadata.
+        """
         return {
             "name": self.name,
             "subset": self.subset,

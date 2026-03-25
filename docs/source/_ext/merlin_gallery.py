@@ -64,7 +64,9 @@ class MerlinGalleryDirective(Directive):
         env = self.state.document.settings.env
         raw_data_path = self.options.get("data")
         if not raw_data_path:
-            raise self.error("The ':data:' option is required for '.. merlin-gallery::'.")
+            raise self.error(
+                "The ':data:' option is required for '.. merlin-gallery::'."
+            )
 
         data_path = self._resolve_data_path(raw_data_path)
         if not data_path.exists():
@@ -80,7 +82,9 @@ class MerlinGalleryDirective(Directive):
             raise self.error(f"Invalid JSON in '{data_path}': {exc}") from exc
 
         if not isinstance(raw_cards, list):
-            raise self.error(f"Gallery JSON '{data_path}' must be a list of card objects.")
+            raise self.error(
+                f"Gallery JSON '{data_path}' must be a list of card objects."
+            )
 
         cards: list[dict[str, Any]] = []
         for idx, raw_card in enumerate(raw_cards, start=1):
@@ -136,9 +140,7 @@ class MerlinGalleryDirective(Directive):
         data_path: Path,
     ) -> dict[str, Any] | None:
         env = self.state.document.settings.env
-        prefix = (
-            f"merlin-gallery: skipped card #{index} in '{data_path.name}' because"
-        )
+        prefix = f"merlin-gallery: skipped card #{index} in '{data_path.name}' because"
 
         if not isinstance(raw_card, dict):
             logger.warning(
@@ -231,10 +233,14 @@ class MerlinGalleryDirective(Directive):
         return card
 
 
-def _resolve_link(translator: Any, from_docname: str, card: dict[str, Any]) -> tuple[str, bool]:
+def _resolve_link(
+    translator: Any, from_docname: str, card: dict[str, Any]
+) -> tuple[str, bool]:
     if card["kind"] == "doc":
         try:
-            return translator.builder.get_relative_uri(from_docname, card["docname"]), False
+            return translator.builder.get_relative_uri(
+                from_docname, card["docname"]
+            ), False
         except NoUri:
             return "#", False
     return card["url"], True
@@ -306,12 +312,16 @@ def depart_merlin_gallery_node_html(translator: Any, node: MerlinGalleryNode) ->
     del translator, node
 
 
-def visit_merlin_gallery_node_unsupported(translator: Any, node: MerlinGalleryNode) -> None:
+def visit_merlin_gallery_node_unsupported(
+    translator: Any, node: MerlinGalleryNode
+) -> None:
     del translator, node
     raise nodes.SkipNode
 
 
-def depart_merlin_gallery_node_unsupported(translator: Any, node: MerlinGalleryNode) -> None:
+def depart_merlin_gallery_node_unsupported(
+    translator: Any, node: MerlinGalleryNode
+) -> None:
     del translator, node
 
 
@@ -320,10 +330,22 @@ def setup(app: Any) -> dict[str, Any]:
     app.add_node(
         MerlinGalleryNode,
         html=(visit_merlin_gallery_node_html, depart_merlin_gallery_node_html),
-        latex=(visit_merlin_gallery_node_unsupported, depart_merlin_gallery_node_unsupported),
-        text=(visit_merlin_gallery_node_unsupported, depart_merlin_gallery_node_unsupported),
-        man=(visit_merlin_gallery_node_unsupported, depart_merlin_gallery_node_unsupported),
-        texinfo=(visit_merlin_gallery_node_unsupported, depart_merlin_gallery_node_unsupported),
+        latex=(
+            visit_merlin_gallery_node_unsupported,
+            depart_merlin_gallery_node_unsupported,
+        ),
+        text=(
+            visit_merlin_gallery_node_unsupported,
+            depart_merlin_gallery_node_unsupported,
+        ),
+        man=(
+            visit_merlin_gallery_node_unsupported,
+            depart_merlin_gallery_node_unsupported,
+        ),
+        texinfo=(
+            visit_merlin_gallery_node_unsupported,
+            depart_merlin_gallery_node_unsupported,
+        ),
     )
     return {
         "version": "0.1",
