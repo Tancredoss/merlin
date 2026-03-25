@@ -9,7 +9,7 @@
   {
     "title": "Image Classification",
     "summary": "Overview of MerLin approaches for computer vision tasks.",
-    "image": "_static/img/MerLin_black.png",
+    "image": "_static/img/merlin_black.png",
     "doc": "examples/index",
     "tags": ["Computer vision","DATASET", "Coming soon!"]
   },
@@ -37,7 +37,7 @@
   {
     "title": "Time-series Prediction",
     "summary": "Overview of sequential models (QORC, QRNN, QLSTM).",
-    "image": "_static/img/MerLin_black.png",
+    "image": "_static/img/merlin_black.png",
     "doc": "examples/index",
     "tags": ["QORC","QRNN","QLSTM","DATASET", "Coming soon!"]
   },
