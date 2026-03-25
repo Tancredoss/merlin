@@ -23,7 +23,7 @@
   {
     "title": "Hardware-Aware Model Design",
     "summary": "Listing some practical guidelines for designing circuits compatible with hardware.",
-    "image": "_static/img/MerLin_black.png",
+    "image": "_static/img/merlin_black.png",
     "doc": "examples/index",
     "tags": ["Tutorial","Quandela Cloud", "DATASET", "Coming soon!"]
   }

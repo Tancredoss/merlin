@@ -9,14 +9,14 @@
   {
     "title": "Memory and Time",
     "summary": "Benchmarking the memory and time needed for MerLin modules.",
-    "image": "_static/img/MerLin_black.png",
+    "image": "_static/img/merlin_black.png",
     "doc": "examples/index",
     "tags": ["Benchmark","DATASET","Coming soon!"]
   },
   {
     "title": "Hardware vs Simulation",
     "summary": "MerLin's performance compared on simulation and on hardware.",
-    "image": "_static/img/MerLin_black.png",
+    "image": "_static/img/merlin_black.png",
     "doc": "examples/index",
     "tags": ["Benchmark","DATASET","Coming soon!"]
   }
