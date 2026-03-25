@@ -73,12 +73,10 @@ def _build_float_complex_pairs() -> tuple[tuple[torch.dtype, torch.dtype], ...]:
     if hasattr(torch, "complex32"):
         pairs.append((torch.float16, torch.complex32))
 
-    pairs.extend(
-        [
-            (torch.float32, torch.complex64),
-            (torch.float64, torch.complex128),
-        ]
-    )
+    pairs.extend([
+        (torch.float32, torch.complex64),
+        (torch.float64, torch.complex128),
+    ])
     return tuple(pairs)
 
 

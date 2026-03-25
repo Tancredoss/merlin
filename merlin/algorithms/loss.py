@@ -25,7 +25,6 @@ Specialized loss functions for QML
 """
 
 import torch
-from torch import Tensor
 from torch.nn.modules.loss import _Loss
 
 

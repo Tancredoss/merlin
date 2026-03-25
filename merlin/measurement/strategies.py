@@ -398,14 +398,12 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash(
-            (
-                self.type,
-                self.measured_modes,
-                self.computation_space,
-                self.grouping,
-            )
-        )
+        return hash((
+            self.type,
+            self.measured_modes,
+            self.computation_space,
+            self.grouping,
+        ))
 
     def validate_modes(self, n_modes: int) -> None:
         """Validate mode indices and warn when the selection covers all modes."""

@@ -151,9 +151,9 @@ class PartialMeasurement:
             [self._as_batch(branch.probability) for branch in self.branches], dim=1
         )
         if self.grouping is None:
-            assert (
-                self.probability_tensor_shape == probas.shape
-            ), "Inconsistent probability tensor shape."
+            assert self.probability_tensor_shape == probas.shape, (
+                "Inconsistent probability tensor shape."
+            )
             return probas
         grouping = self.grouping
         output_size = self._grouping_output_size()
@@ -164,9 +164,9 @@ class PartialMeasurement:
         ), "Inconsistent probability tensor shape before grouping"
         # Verify shape of grouped probas
         grouped_probas = grouping(probas)
-        assert grouped_probas.shape == (
-            self.probability_tensor_shape
-        ), "Inconsistent grouped probability tensor shape after grouping"
+        assert grouped_probas.shape == (self.probability_tensor_shape), (
+            "Inconsistent grouped probability tensor shape after grouping"
+        )
         assert self.probability_tensor_shape == (
             probas.shape[0],
             output_size,
