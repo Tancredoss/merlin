@@ -44,3 +44,10 @@ Contribution Workflow
 5. Open a pull request with a concise summary, rationale, and validation results.
 
 Contribution quality matters more than size. Small, precise pull requests are encouraged.
+
+Engage with the Quandela Community
+==================================
+
+You can also engage with the broader Quandela ecosystem by joining the community forum:
+`community.quandela.com <https://community.quandela.com>`_.
+Sharing ideas, asking questions, and discussing contributions there helps the whole photonic QML community grow.
