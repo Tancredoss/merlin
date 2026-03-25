@@ -10,7 +10,7 @@
     "title": "Comparing simulation and hardware reservoirs on Ascella QPU",
     "summary": "A comparison of the performance of an optical reservoir on a simulated quantum layer and on Ascella QPU.",
     "image": "_static/ecosystem/Fig5_QAML.png",
-    "doc": "examples/index.rst",
+    "doc": "notebooks/QORC-demo-MNIST.ipynb",
     "tags": ["Reservoir","Quandela Cloud", "MNIST", "Ascella", "Benchmark"]
   },
   {
