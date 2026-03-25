@@ -219,7 +219,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
 
         self.layers = {}
         self.input_segments = {}
-        self._output_keys = None
+        self._output_keys: list[tuple[int, ...]] | None = None
 
         if layers is None:
             self.define_layers(circuit_type)
@@ -275,7 +275,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
                         possible_tuples.append(t)
         return possible_tuples
 
-    def define_layers(self, circuit_type) -> str | None:
+    def define_layers(self, circuit_type) -> None:
         """Define and instantiate all quantum layers for each measurement outcome path.
 
         Each tuple (representing a branch of the feedforward tree) is mapped to
@@ -378,11 +378,11 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         remaining_amplitudes: torch.Tensor,
         keys: list[tuple[int, ...]],
         accumulated_prob: torch.Tensor | float,
-        intermediary: dict,
-        outputs: dict,
+        intermediary: dict[tuple[int, ...], torch.Tensor],
+        outputs: dict[tuple[int, ...], torch.Tensor],
         depth: int = 0,
         x: torch.Tensor | None = None,
-    ):
+    ) -> None:
         """Recursive feedforward traversal of the quantum circuit tree.
 
         At each step:
@@ -414,7 +414,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
             fock_probs = remaining_amplitudes.abs().pow(2)
             for i, key in enumerate(keys):
                 if key not in outputs:
-                    outputs[key] = torch.zeros_like(accumulated_prob)
+                    outputs[key] = torch.zeros_like(fock_probs[:, i])
                 outputs[key] += accumulated_prob * fock_probs[:, i]
             return
 
@@ -562,7 +562,8 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         """
         if x.shape[-1] != self.input_size:
             raise ValueError(f"The input should be of size {self.input_size}")
-        intermediary, outputs = {}, {}
+        intermediary: dict[tuple[int, ...], torch.Tensor] = {}
+        outputs: dict[tuple[int, ...], torch.Tensor] = {}
 
         # Run the first quantum layer (root of the tree)
         input_size = min(self.input_size, self.m)
@@ -574,7 +575,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         self.iterate_feedforward(
             (), amplitudes, keys, 1.0, intermediary, outputs, 0, x=x
         )
-        self._output_keys = outputs.keys()
+        self._output_keys = list(outputs.keys())
         return torch.stack(list(outputs.values()), dim=1)
 
     def get_output_size(self):
