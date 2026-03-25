@@ -57,13 +57,14 @@ The :class:`~merlin.algorithms.layer.QuantumLayer` configures its computation sp
 construction time. 
 
 The ``measurement_strategy`` can define the computation space with its ``computation_space`` argument.
-We can choose from 
+We can choose from:
+
 - ``merlin.ComputationSpace.UNBUNCHED``, do not allow multiple photons per modes. It is the default value when no MeasurementStrategy is given.
 - ``merlin.ComputationSpace.FOCK``, allow multiple photons per modes (i.e. explore the full Fock space).
 - ``merlin.ComputationSpace.DUAL_RAIL``, use a dual rail encoding (two modes per photon).
 
 Those computation spaces can also be assigned with the ``computation_space`` argument in the constructor but, it
-is prefered to exploit the ``measurement_strategy`` since ``computation_space`` will be deprecated in the future.
+is preferred to exploit the ``measurement_strategy`` since ``computation_space`` will be deprecated in the future.
 
 It will be the only way to control the computation space as the ``no_bunching`` flag is deprecated.
 
@@ -71,7 +72,7 @@ It will be the only way to control the computation space as the ``no_bunching`` 
    The use of the ``no_bunching`` flag  is deprecated and is removed since version 0.3.0.
    Use the ``computation_space`` flag inside ``measurement_strategy`` instead. See :doc:`/user_guide/migration_guide`.
 
-Another parameter is also relevent.
+Another parameter is also relevant.
 
 ``index_photons``
   Optional per-photon constraints on allowed modes. This lets you carve out logical

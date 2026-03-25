@@ -56,7 +56,7 @@ learning experts without any prior knowledge in quantum machine learning.
 CircuitBuilder
 ~~~~~~~~~~~~~~
 
-Use MerLin’s :class:`~merlin.builder.circuit_builder.CircuitBuilder` utilities to describe a circuit at a higher level. The builder maintains a record of the trainable parameters and the parameters used as layer inputs. A prefix-based naming scheme separates trainable parameters from those used as layer inputs. This is an ideal tool for quantum machine learning experts who do not have any experience with Perceval.". More information in the CircuitBuilder API reference: :class:`~merlin.builder.circuit_builder.CircuitBuilder`
+Use MerLin’s :class:`~merlin.builder.circuit_builder.CircuitBuilder` utilities to describe a circuit at a higher level. The builder maintains a record of the trainable parameters and the parameters used as layer inputs. A prefix-based naming scheme separates trainable parameters from those used as layer inputs. This is an ideal tool for quantum machine learning experts who do not have any experience with Perceval. More information in the CircuitBuilder API reference: :class:`~merlin.builder.circuit_builder.CircuitBuilder`
 
 .. code-block:: python
 

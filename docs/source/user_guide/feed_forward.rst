@@ -121,4 +121,4 @@ Further Reading
 ---------------
 - :doc:`/quantum_expert_area/internal_design`
 - For circuit specific optimizations: :doc:`/quantum_expert_area/building_intuition`
-- Output mapping startegies: :doc:`/user_guide/grouping`
+- Output mapping strategies: :doc:`/user_guide/grouping`

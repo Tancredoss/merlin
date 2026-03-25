@@ -28,7 +28,7 @@ Mixing gates and interferometers
 Send your code to simulators or QPUs
 ----------------------------------------
 .. merlin-gallery::
-   :data: _data/galleries/user_guide/send_code_QPU.json
+   :data: _data/galleries/user_guide/send_code_qpu.json
    :columns: 2
 
 Specific algorithms
