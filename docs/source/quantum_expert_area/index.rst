@@ -8,7 +8,14 @@ Quantum Expert Area
 
 
 Physical and Mathematical background
-===================
+====================================
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   architectures
+   SLOS
 
 .. merlin-gallery::
    :data: _data/galleries/quantum_expert/phy_mat_back.json
@@ -16,14 +23,26 @@ Physical and Mathematical background
 
 
 Algorithm Design
-===================
+================
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   internal_design
 
 .. merlin-gallery::
    :data: _data/galleries/quantum_expert/algo_design.json
    :columns: 2
 
 Experiment support
-===================
+==================
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   experiment_support
 
 .. merlin-gallery::
    :data: _data/galleries/quantum_expert/exp_support.json
@@ -31,30 +50,37 @@ Experiment support
 
 
 More on the QuantumBridge
-===================
+=========================
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   quantum_bridge
 
 .. merlin-gallery::
    :data: _data/galleries/quantum_expert/quantum_bridge.json
    :columns: 2
 
 Stronger Background on Algorithms
-===================
+=================================
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   kernels
+   partial_measurement
 
 .. merlin-gallery::
    :data: _data/galleries/quantum_expert/algo_back.json
    :columns: 2
 
 Quantum Expert Area Pages
-===========================
+=========================
 
 .. toctree::
+   :hidden:
    :maxdepth: 1
 
-   architectures
    building_intuition
-   experiment_support
-   internal_design
-   kernels
-   partial_measurement
-   quantum_bridge
-   SLOS

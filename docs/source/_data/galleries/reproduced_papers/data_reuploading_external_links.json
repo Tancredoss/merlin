@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Run Data Re-uploading Reproduction",
+    "summary": "Code reproduction for experimental photonic data re-uploading.",
+    "image": "_static/reproduced_papers/DataReuploading.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/data_reuploading",
+    "tags": ["External Link", "Data Re-uploading", "Repository"]
+  }
+]

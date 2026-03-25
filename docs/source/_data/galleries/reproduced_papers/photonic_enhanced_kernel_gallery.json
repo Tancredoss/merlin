@@ -2,7 +2,7 @@
   {
     "title": "Quantum kernels on Quandela processors",
     "summary": "Experimental quantum-enhanced kernels on a photonic processor with MerLin",
-    "image": "_static/reproduced_papers/photonic_enhanced_kernels/results-for-readme/accuracy_vs_geometric_difference/n=2/plot.png",
+    "image": "_static/reproduced_papers/photonic_enhanced_kernels/results-for-readme/accuracy_vs_input_state/plot.png",
     "url": "https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels",
     "tags": ["External Link", "Kernels", "Binary classification"]
   }

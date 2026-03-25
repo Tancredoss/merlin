@@ -2,7 +2,7 @@
   {
     "title": "Fock State-Enhanced Expressivity",
     "summary": "Expressivity study of photonic variational models with increasing photon counts.",
-    "image": "_static/reproduced_papers/GanEtAl.png",
+    "image": "_static/img/Circ_simple.png",
     "doc": "reproduced_papers/reproductions/fock_state_expressivity",
     "tags": ["Gan et al.", "2022", "Complete"]
   },

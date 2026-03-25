@@ -19,6 +19,14 @@ Fock State-enhanced Expressivity of Quantum Machine Learning Models
 
    **Reproducer**: Philippe Schoeb (philippe.schoeb@quandela.com)
 
+Project Repository
+========================================================================
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/fock_state_expressivity_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
 ========================================================================
 

@@ -19,6 +19,14 @@ Experimental data re-uploading with provable enhanced learning capabilities
 
    **Reproducer**: Hugo Izadi (hugoizadi@gmail.com) and Philippe Schoeb (philippe.schoeb@quandela.com)
 
+Project Repository
+==================================================================================
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/data_reuploading_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
 ==================================================================================
 

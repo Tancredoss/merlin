@@ -7,6 +7,12 @@ Examples
 Latest Release
 ---------------
 
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../notebooks/release_0,3_highlights
+
 .. merlin-gallery::
    :data: _data/galleries/examples/new_release.json
    :columns: 2
@@ -14,6 +20,17 @@ Latest Release
 
 Getting Started
 ---------------
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../notebooks/classifying_circles_from_installation
+   ../notebooks/FirstQuantumLayers
+   ../notebooks/FromSimpleToBuilder
+   ../notebooks/binary_classification
+   ../reproduced_papers/reproductions/hqnn-myth
+
 .. merlin-gallery::
    :data: _data/galleries/examples/getting_started.json
    :columns: 4
@@ -21,6 +38,16 @@ Getting Started
 
 Core Concepts
 -------------
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../user_guide/angle_amplitude_encoding
+   ../user_guide/measurement_strategy
+   ../user_guide/computation_space
+   ../notebooks/HelloWorldMerLinCloud
+
 .. merlin-gallery::
    :data: _data/galleries/examples/core_concepts.json
    :columns: 4
@@ -28,6 +55,18 @@ Core Concepts
 
 Model Families
 --------------
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../notebooks/Kernels
+   ../notebooks/QORC-basics
+   ../notebooks/iris_classification
+   ../notebooks/reproduced_papers/GanEtAl_VQC_classification
+   ../notebooks/reproduced_papers/photonic_QCNN
+   ../reproduced_papers/reproductions/photonic_QGAN
+
 .. merlin-gallery::
    :data: _data/galleries/examples/model_families.json
    :columns: 4
@@ -35,31 +74,37 @@ Model Families
 
 Application examples
 --------------------
-.. merlin-gallery::
-   :data: _data/galleries/examples/applications.json
-   :columns: 4
-   :contour-color: #5648ED
 
 .. toctree::
    :hidden:
    :maxdepth: 1
 
    ../notebooks/binary_classification
+   ../reproduced_papers/reproductions/qssl
+   ../reproduced_papers/reproductions/quantum_transfer_learning
    ../notebooks/QORC-timeseries
+   ../reproduced_papers/reproductions/quantum_adversarial_ml
+
+.. merlin-gallery::
+   :data: _data/galleries/examples/applications.json
+   :columns: 4
+   :contour-color: #5648ED
 
 Hardware Examples
 -----------------
-.. merlin-gallery::
-   :data: _data/galleries/examples/hardware_examples.json
-   :columns: 3
-   :contour-color: #5648ED
 
 .. toctree::
    :hidden:
    :maxdepth: 1
 
+   ../user_guide/remote_execution
+   ../notebooks/HelloWorldMerLinCloud
    ../notebooks/QORC-demo-MNIST
-   ../notebooks/HelloWorldMerLinCloud.ipynb
+
+.. merlin-gallery::
+   :data: _data/galleries/examples/hardware_examples.json
+   :columns: 3
+   :contour-color: #5648ED
 
 Research and Paper reproductions
 ----------------------------------
@@ -73,6 +118,15 @@ QML research at Quandela
 
 Highlights of the reproduced papers
 
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../reproduced_papers/reproductions/fock_state_expressivity
+   ../reproduced_papers/reproductions/quantum_reservoir_computing
+   ../reproduced_papers/reproductions/qssl
+   ../reproduced_papers/reproduced_papers
+
 .. merlin-gallery::
     :data: _data/galleries/examples/reproduced_highlights.json
     :columns: 4
@@ -80,6 +134,13 @@ Highlights of the reproduced papers
 
 Benchmarks and Evaluations
 -----------------------------------
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../reproduced_papers/reproductions/hqnn-myth
+
 .. merlin-gallery::
    :data: _data/galleries/examples/benchmarks.json
    :columns: 3
@@ -87,6 +148,15 @@ Benchmarks and Evaluations
 
 Browse through our notebooks
 ------------------------------
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../notebooks/reproduced_papers/GanEtAl_VQC_fourier_series
+   ../notebooks/reproduced_papers/GanEtAl_q_gaussian_kernel
+   ../notebooks/reproduced_papers/GanEtAl_q_random_kitchen_sinks
+
 .. merlin-gallery::
    :data: _data/galleries/examples/other_notebooks_1.json
    :columns: 3

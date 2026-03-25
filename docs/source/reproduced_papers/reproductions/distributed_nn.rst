@@ -19,6 +19,14 @@ Distributed Quantum Neural Networks on Distributed Photonic Quantum Computing
 
    **Reproducer**: Louis-Félix Vigneux (louis-felix.vigneux@quandela.com)
 
+Project Repository
+====================================================================================
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/distributed_nn_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
 ====================================================================================
 

@@ -19,6 +19,14 @@ Quantum Optical Reservoir Computing Powered by Boson Sampling
 
    **Reproducer**: Jean Senellart (jean.senellart@quandela.com)
 
+Project Repository
+==================
+
+.. merlin-gallery::
+   :data: _data/galleries/reproduced_papers/quantum_reservoir_computing_external_links.json
+   :columns: 2
+   :contour-color: #5648ED
+
 Abstract
 ========
 
