@@ -1,7 +1,11 @@
 # MerLin - Photonic Quantum Machine Learning Framework
 
 ![Tests](https://img.shields.io/github/actions/workflow/status/merlinquantum/merlin/ci.yml?branch=main&style=flat-square&logo=github&label=tests)
-![Coverage](https://img.shields.io/github/actions/workflow/status/merlinquantum/merlin/coverage.yml?branch=main&style=flat-square&logo=github&label=coverage)
+[![Coverage](https://img.shields.io/github/actions/workflow/status/merlinquantum/merlin/coverage.yml?branch=main&event=pull_request&style=flat-square&logo=github&label=coverage)](https://github.com/merlinquantum/merlin/actions/workflows/coverage.yml)
+[![PyPI](https://img.shields.io/pypi/v/merlinquantum?style=flat-square&logo=pypi&label=PyPI)](https://pypi.org/project/merlinquantum/)
+[![Docs](https://img.shields.io/badge/docs-merlinquantum.ai-0A7BBB?style=flat-square&logo=readthedocs)](https://merlinquantum.ai)
+[![License](https://img.shields.io/github/license/merlinquantum/merlin?style=flat-square&label=license)](https://github.com/merlinquantum/merlin/blob/main/LICENSE)
+[![arXiv](https://img.shields.io/badge/arXiv-2602.11092-B31B1B?style=flat-square)](https://arxiv.org/abs/2602.11092)
 
 MerLin brings quantum computing capabilities to AI practitioners through easy-to-use PyTorch integrations. Named after the legendary wizard, MerLin adds quantum wizardry to your AI toolkit with no quantum expertise required.
 
@@ -11,9 +15,9 @@ MerLin brings quantum computing capabilities to AI practitioners through easy-to
 
 **Key Goals:**
 
-- **Paper Reproduction**: Simple tools to reproduce published quantum ML papers and benchmark algorithms - see our [reproduced papers](https://merlinquantum.ai/reproduced_papers/reproduced_papers.html) list.
+- **Paper Reproduction**: Simple tools to reproduce published quantum ML papers and benchmark algorithms - see our [reproduced papers](https://merlinquantum.ai/reproduced_papers/index.html) list.
 - **Quantum Architecture Bridge**: Access to latest and next-gen quantum photonic architectures as a bridge between AI and quantum worlds - see our [quantum architectures](https://merlinquantum.ai/quantum_expert_area/architectures.html).
-- **GPU-Optimized Performance**: Fast simulation scaling up to 500+ mode chips with 10-20 photons near the simulability threshold - see [performance benchmarks](https://merlinquantum.ai/performance/performance.html).
+- **GPU-Optimized Performance**: Fast simulation scaling up to 500+ mode chips with 10-20 photons near the simulability threshold - see [performance benchmarks](https://merlinquantum.ai/performance/index.html).
 
 Together, these provide researchers with comprehensive tools for exploring and developing new quantum-classical hybrid algorithms.
 
@@ -110,8 +114,8 @@ import torch
 # Create a simple quantum layer
 quantum_layer = ML.QuantumLayer.simple(
     input_size=3,
+    output_size=2,
 )
-
 # Use it like any PyTorch layer
 x = torch.rand(10, 3)
 output = quantum_layer(x)
@@ -122,18 +126,31 @@ Under the hood, this simple interface wraps complex photonic quantum operations 
 
 ## Learn More
 
-- **Examples**: Check the ``examples/`` directory for tutorials
-- **Notebooks**: Explore ``docs/source/notebooks/`` for interactive examples
+- **Examples**: Check our [examples page](https://merlinquantum.ai/examples/index.html) for tutorials and application examples
+- **Notebooks**: Explore ``docs/source/notebooks/`` for interactive examples (also on our [examples page](https://merlinquantum.ai/examples/index.html)!)
+
+## Cite MerLin
+
+If you use MerLin in your research, please cite:
+
+```bibtex
+@article{notton2026merlin,
+  title={MerLin: A Discovery Engine for Photonic and Hybrid Quantum Machine Learning},
+  author={Notton, Cassandre and Stott, Benjamin and Schoeb, Philippe and Walsh, Anthony and Leboucher, Gr{\'e}goire and Espitalier, Vincent and Apostolou, Vassilis and Vigneux, Louis-F{\'e}lix and Salavrakos, Alexia and Senellart, Jean},
+  journal={arXiv preprint arXiv:2602.11092},
+  year={2026}
+}
+```
 
 ## Roadmap
 
-- **v0.1**: Initial release with core features
-- In development:
-
-  - More circuit types and ansatz configurations
-  - Improved documentation and examples
-  - Integration with Quandela's photonic hardware
-  - additional machine learning models
+- **Latest release (`0.3.2`)**: See the [release notes](https://github.com/merlinquantum/merlin/releases) for the full changelog.
+- **MerLin 0.4 (in progress)**:
+  - Built-in modules to make common algorithms easier to use
+  - Differentiation support on the `MerlinProcessor`
+  - Easier encoding-space specification
+  - Photon indistinguishability support
+  - Better sparsity handling in SLOS
 
 ## Contributing
 
@@ -160,10 +177,11 @@ MIT License - see [LICENSE](https://github.com/merlinquantum/merlin/blob/main/LI
 MerLin uses automated test coverage tracking to maintain code quality:
 
 **Coverage Reports:**
-- 🎯 **Target Coverage:** 80% (warning threshold)
-- 📊 **Reports Generated:** On every PR and commit
-- 🚫 **Non-blocking:** Coverage checks don't prevent merges
-- 📈 **Diff Coverage:** Shows coverage for changed files only
+- 🎯 **Target Coverage:** 80% (informational only)
+- 🔁 **Workflow Trigger:** Runs automatically on each pull request targeting `main`
+- 💬 **PR Feedback:** Posts a coverage summary on pull requests opened from this repository
+- 📦 **Artifacts:** Uploads an HTML coverage report for inspection
+- 🚫 **No Hard Coverage Gate:** Coverage is reported, but the 80% target does not block merges
 
 **Running Coverage Locally:**
 ```bash
