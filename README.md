@@ -144,7 +144,7 @@ If you use MerLin in your research, please cite:
 
 ## Roadmap
 
-- **Latest release (`0.3.1` - "Perception")**: Added `StateVector` and `ProbabilityDistribution`, partial measurement, a stronger `QuantumLayer.simple` API, updates to `MeasurementStrategy`, broader cloud/session support in `MerlinProcessor`, and quantum bug fixes. See the [release notes](https://github.com/merlinquantum/merlin/releases).
+- **Latest release (`0.3.2`)**: See the [release notes](https://github.com/merlinquantum/merlin/releases) for the full changelog.
 - **MerLin 0.4 (in progress)**:
   - Built-in modules to make common algorithms easier to use
   - Differentiation support on the `MerlinProcessor`
