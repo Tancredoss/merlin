@@ -113,7 +113,7 @@ import torch
 
 # Create a simple quantum layer
 quantum_layer = ML.QuantumLayer.simple(
-    input_size=2,
+    input_size=3,
     output_size=2,
 )
 # Use it like any PyTorch layer
@@ -127,7 +127,7 @@ Under the hood, this simple interface wraps complex photonic quantum operations 
 ## Learn More
 
 - **Examples**: Check our [examples page](https://merlinquantum.ai/examples/index.html) for tutorials and application examples
-- **Notebooks**: Explore ``docs/source/notebooks/`` for interactive examples (also on our [examples page](https://merlinquantum.ai/examples/index.html) !)
+- **Notebooks**: Explore ``docs/source/notebooks/`` for interactive examples (also on our [examples page](https://merlinquantum.ai/examples/index.html)!)
 
 ## Cite MerLin
 
