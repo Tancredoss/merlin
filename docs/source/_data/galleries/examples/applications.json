@@ -47,5 +47,12 @@
     "image": "_static/reproduced_papers/AdversarialML.png",
     "doc": "reproduced_papers/reproductions/quantum_adversarial_ml.rst",
     "tags": ["Adversarial","DATASET", "Coming soon!"]
+  },
+  {
+    "title": "CA CIB Project: Bankruptcy Prediction",
+    "summary": "Using a hybrid model with real-world financial data to predict bankruptcy.",
+    "image": "_static/examples/CACIB_Project_Bankruptcy_Prediction.png",
+    "doc": "notebooks/CACIB_Project_Bankruptcy_Prediction_Tutorial",
+    "tags": ["AdaBoost","Hybrid model", "Bankruptcy Prediction"]
   }
 ]
