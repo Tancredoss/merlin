@@ -201,7 +201,7 @@ class QCNNClassifier(torch.nn.Module):
             serializable_stages.append(stage_cfg)
 
         return {
-            "input_shape": list(self.input_shape),
+            "input_shape": self.input_shape,
             "num_classes": self.num_classes,
             "_resolved_stages": serializable_stages,
         }
@@ -216,15 +216,18 @@ class QCNNClassifier(torch.nn.Module):
 
         Returns logits with shape (batch_size, num_classes).
         """
-        assert len(x.shape) == 4, (
-            "Model input is expected to have the shape: [batch_size, 1, input_size[0], input_size[1]]"
-        )
-        assert x.shape[1] == 1, (
-            "Model input must only have 1 channel at its second dimension."
-        )
-        assert x.shape[2] == x.shape[3] == self.input_shape[0], (
-            "Third and fourth input dimension must fit with the specified input_shape."
-        )
+        if not len(x.shape) == 4:
+            raise ValueError(
+                "Model input is expected to have the shape: [batch_size, 1, input_size[0], input_size[1]]"
+            )
+        if not x.shape[1] == 1:
+            raise ValueError(
+                "Model input must only have 1 channel at its second dimension."
+            )
+        if not x.shape[2] == x.shape[3] == self.input_shape[0]:
+            raise ValueError(
+                "Third and fourth input dimension must fit with the specified input_shape."
+            )
 
         # Encode x using amplitude encoding
 

@@ -220,7 +220,7 @@ def test_qcnn_export_config():
     qcnn_classifier = QCNNClassifier((4, 4), 3, stages=stages)
 
     expected_config = {
-        "input_shape": [4, 4],
+        "input_shape": (4, 4),
         "num_classes": 3,
         "_resolved_stages": [
             {"type": "QConv", "kernel_size": 4, "stride": 1},
@@ -228,3 +228,31 @@ def test_qcnn_export_config():
         ],
     }
     assert qcnn_classifier.export_config() == expected_config
+
+    # Round trip test
+    config = qcnn_classifier.export_config()
+
+    # Utils to deserialize the config into actual Stages
+    STAGE_REGISTRY = {
+        "QConv": QCNNClassifier.QConv,
+        "QPool": QCNNClassifier.QPool,
+        "QDense": QCNNClassifier.QDense,
+    }
+
+    def build_stage(stage_config: dict):
+        stage_type = stage_config["type"]
+        cls = STAGE_REGISTRY[stage_type]
+
+        # remove "type" key and pass the rest as kwargs
+        kwargs = {k: v for k, v in stage_config.items() if k != "type"}
+        return cls(**kwargs)
+
+    config_stages = [build_stage(s) for s in config["_resolved_stages"]]
+    # Build new QCNNClassifier from the config
+    new_qcnn_classifier = QCNNClassifier(
+        config["input_shape"], config["num_classes"], config_stages
+    )
+
+    assert new_qcnn_classifier.input_shape == qcnn_classifier.input_shape
+    assert new_qcnn_classifier.num_classes == qcnn_classifier.num_classes
+    assert new_qcnn_classifier.resolved_stages == qcnn_classifier.resolved_stages
