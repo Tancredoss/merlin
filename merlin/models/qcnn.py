@@ -7,7 +7,9 @@ import perceval as pcvl
 import torch
 
 from ..algorithms import QuantumLayer
+from ..core.state_vector import StateVector
 from ..measurement import MeasurementStrategy
+from ..utils.grouping import LexGrouping
 
 
 class QCNNClassifier(torch.nn.Module):
@@ -15,7 +17,8 @@ class QCNNClassifier(torch.nn.Module):
 
     def __init__(
         self, input_shape: tuple, num_classes: int, stages: list[_Stage] | None = None
-    ) -> None:
+    ):
+        super().__init__()
         self.input_shape = input_shape
         self.num_classes = num_classes
         self.stages = stages
@@ -50,7 +53,7 @@ class QCNNClassifier(torch.nn.Module):
             raise TypeError("stages must be None or have the list type.")
 
         self._resolved_stages = self.resolve_stages()
-        self.build_photonic_circuit()
+        self.qcnn = self.build_qcnn_model()
 
     @property
     def resolved_stages(self) -> list[_Stage]:
@@ -233,31 +236,30 @@ class QCNNClassifier(torch.nn.Module):
             "_resolved_stages": serializable_stages,
         }
 
-    def build_photonic_circuit(self):
-        return
-
     def build_qcnn_model(self):
         empty_circuit = pcvl.Circuit(sum(self.input_shape))
-        QuantumLayer(
-            circuit=empty_circuit,
-            n_photons=2,
-            measurement_strategy=MeasurementStrategy.amplitudes(),
-        )
         current_shape = self.input_shape
         qcnn_layers = []
+        layer_names = []
+        num_qconv = 0
+        num_qpool = 0
 
         # Keep the last stage (QDense) for after
         for stage in self.resolved_stages[:-1]:
             if isinstance(stage, QCNNClassifier.QConv):
+                num_qconv += 1
                 conv_circuit = self.build_conv_circuit(current_shape, stage)
                 conv_layer = QuantumLayer(
                     circuit=conv_circuit,
                     n_photons=2,
+                    trainable_parameters=["px"],
                     measurement_strategy=MeasurementStrategy.amplitudes(),
                 )
                 qcnn_layers.append(conv_layer)
+                layer_names.append(f"QConv_{num_qconv}")
 
             elif isinstance(stage, QCNNClassifier.QPool):
+                num_qpool += 1
                 measured_modes, reinsert_modes, new_shape = self.resolve_pooling_modes(
                     current_shape, stage
                 )
@@ -268,6 +270,9 @@ class QCNNClassifier(torch.nn.Module):
                     measurement_strategy=MeasurementStrategy.partial(measured_modes),
                 )
                 qcnn_layers.append(pool_layer)
+                layer_names.append(f"QPool_{num_qpool}")
+                # Pooling post-process
+                # TODO
                 # Change shape of circuit after pooling
                 current_shape = new_shape
 
@@ -276,14 +281,23 @@ class QCNNClassifier(torch.nn.Module):
 
         # Apply QDense (mandatory last stage)
         dense_circuit = self.build_dense_circuit(current_shape)
-        QuantumLayer(
+        dense_layer = QuantumLayer(
             circuit=dense_circuit,
             n_photons=2,
+            trainable_parameters=["px"],
             measurement_strategy=MeasurementStrategy.mode_expectations(),  # TO VERIFY
         )
 
-        # Finalize complete qcnn model
-        # return model
+        # Readout layer
+        readout = LexGrouping(sum(current_shape), self.num_classes)
+
+        qcnn_model = torch.nn.Sequential()
+        for name, layer in zip(layer_names, qcnn_layers, strict=False):
+            qcnn_model.add_module(name, layer)
+        qcnn_model.add_module("QDense_1", dense_layer)
+        qcnn_model.add_module("Readout", readout)
+
+        return qcnn_model
 
     def build_conv_circuit(self, shape, stage):
         """
@@ -297,13 +311,13 @@ class QCNNClassifier(torch.nn.Module):
         i = 0
         while i < shape[0] and (i + stage.kernel_size <= shape[0]):
             circuit = self.build_single_conv(i, stage.kernel_size, circuit)
-            i = i + stage.stride
+            i += stage.stride
 
         # Second register
         i = shape[0]
         while (i < shape[0] * 2) and (i + stage.kernel_size <= shape[0] * 2):
             circuit = self.build_single_conv(i, stage.kernel_size, circuit)
-            i = i + stage.stride
+            i += stage.stride
 
         return circuit
 
@@ -315,10 +329,10 @@ class QCNNClassifier(torch.nn.Module):
         """
         # Slide the BS down on the circuit
         for j in range(i, i + kernel_size - 1):
-            circuit.add(j, pcvl.BS(theta=pcvl.P(f"px_bs_down_{j}")))
+            circuit.add(j, pcvl.BS(theta=pcvl.P(f"px_bs_down_{i}_{j}")))
         # Slide the BS up on the circuit
         for k in range(j - 1, i - 1, -1):
-            circuit.add(k, pcvl.BS(theta=pcvl.P(f"px_bs_up_{k}")))
+            circuit.add(k, pcvl.BS(theta=pcvl.P(f"px_bs_up_{i}_{k}")))
         return circuit
 
     def resolve_pooling_modes(self, shape, stage):
@@ -335,6 +349,7 @@ class QCNNClassifier(torch.nn.Module):
         while i < shape[0] and (i + stage.kernel_size <= shape[0]):
             measured_modes.append(i)
             reinsert_modes.append(i + 1)
+            i += stage.kernel_size
         num_mesured_modes_0 = len(measured_modes)
         new_shape_0 = shape[0] - num_mesured_modes_0
 
@@ -343,6 +358,7 @@ class QCNNClassifier(torch.nn.Module):
         while (i < shape[0] * 2) and (i + stage.kernel_size <= shape[0] * 2):
             measured_modes.append(i)
             reinsert_modes.append(i + 1)
+            i += stage.kernel_size
         new_shape_1 = shape[1] - len(measured_modes) + num_mesured_modes_0
 
         assert new_shape_0 == new_shape_1, (
@@ -352,8 +368,34 @@ class QCNNClassifier(torch.nn.Module):
         return measured_modes, reinsert_modes, (new_shape_0, new_shape_1)
 
     def build_dense_circuit(self, shape):
-        return
-        # return circuit
+        """
+        BS based circuit based on the circuit presented in Monbroussou et al.
+        """
+        circuit = pcvl.Circuit(sum(shape))
+
+        # Slide the BS down the circuit
+        i = 0
+        while i < sum(shape) - 1:
+            circuit.add(i, pcvl.BS(theta=pcvl.P(f"px_dense_bs_down_{i}")))
+            # Add BS above if there is space
+            j = i - 2
+            while j > -1:
+                circuit.add(j, pcvl.BS(theta=pcvl.P(f"px_dense_bs_down_{i}_{j}")))
+                j -= 2
+            i += 1
+
+        # Slide the BS up the circuit
+        i = sum(shape) - 3
+        while i > -1:
+            circuit.add(i, pcvl.BS(theta=pcvl.P(f"px_dense_bs_up_{i}")))
+            # Add BS above if there is space
+            j = i - 2
+            while j > -1:
+                circuit.add(j, pcvl.BS(theta=pcvl.P(f"px_dense_bs_up_{i}_{j}")))
+                j -= 2
+            i -= 1
+
+        return circuit
 
     def forward(self, x):
         """
@@ -374,11 +416,46 @@ class QCNNClassifier(torch.nn.Module):
             raise ValueError(
                 "Third and fourth input dimension must fit with the specified input_shape."
             )
+        batch_size = x.shape[0]
 
         # Encode x using amplitude encoding
+        x = self.amplitude_encode(x)
 
-        # Compute circuit output
+        for name, layer in self.qcnn.named_children():
+            x = layer(x)
+            if name[:5] == "QPool":
+                x = self.postprocess_pooling(x)
 
-        # Get logits
-        logits = torch.ones(x.shape[0], self.num_classes)
-        return logits
+        assert len(x) == 2, "Forward output must have 2 dimensions"
+        assert x.shape[0] == batch_size
+        assert x.shape[1] == self.num_classes
+        return x
+
+    def amplitude_encode(self, x):
+        """
+        x has shape [batch_size, 1, input_size[0], input_size[1]].
+        """
+        x.shape[0]
+        norms = torch.linalg.vector_norm(x, dim=(2, 3), keepdim=True)
+        if torch.any(norms == 0):
+            raise ValueError(
+                "At least one image is zero and cannot be amplitude-encoded."
+            )
+        x / norms
+
+        for i in range(self.input_shape[0]):
+            for j in range(self.input_shape[1]):
+                basic_state = [0] * self.input_shape[0] + [0] * self.input_shape[1]
+                basic_state[i] = 1
+                basic_state[self.input_shape[0] + j] = 1
+                basic_state_vector = StateVector.from_basic_state(basic_state)
+                # TODO
+                # basic_state_vector.unsqueeze(0)
+                print(basic_state_vector.shape)
+                x[:, :, i, j]
+                raise AssertionError()
+
+        return x
+
+    def postprocess_pooling(self, x):
+        return x
