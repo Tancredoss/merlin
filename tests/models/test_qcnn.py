@@ -91,6 +91,7 @@ def test_qcnn_basic_api():
 def test_qcnn_stage_api():
     accepted_kernel_size = 2
     zero_kernel_size = 0
+    one_kernel_size = 1
     negative_kernel_size = -2
     float_kernel_size = float(2)
 
@@ -126,10 +127,13 @@ def test_qcnn_stage_api():
     assert qpool.type.value == "QPool"
     assert qpool.kernel_size == accepted_kernel_size
 
-    with pytest.raises(ValueError, match="kernel_size must be superior to 0"):
+    with pytest.raises(ValueError, match="kernel_size must be superior to 1"):
         QCNNClassifier.QPool(zero_kernel_size)
 
-    with pytest.raises(ValueError, match="kernel_size must be superior to 0"):
+    with pytest.raises(ValueError, match="kernel_size must be superior to 1"):
+        QCNNClassifier.QPool(one_kernel_size)
+
+    with pytest.raises(ValueError, match="kernel_size must be superior to 1"):
         QCNNClassifier.QPool(negative_kernel_size)
 
     with pytest.raises(TypeError, match="kernel_size must have int type"):
@@ -163,7 +167,7 @@ def test_qcnn_stage_api():
         QCNNClassifier(
             accepted_input_shape,
             accepted_num_classes,
-            [QCNNClassifier.QDense(), QCNNClassifier.QConv(2, 1)],
+            [QCNNClassifier.QDense(), QCNNClassifier.QDense()],
         )
 
     with pytest.raises(ValueError, match="last stage has to be QDense"):
@@ -173,14 +177,12 @@ def test_qcnn_stage_api():
             [QCNNClassifier.QConv(2, 1), QCNNClassifier.QPool(2)],
         )
 
-    with pytest.raises(
-        ValueError, match="must be divisible by the convolution kernel size"
-    ):
-        QCNNClassifier(
-            accepted_input_shape,
-            accepted_num_classes,
-            [QCNNClassifier.QConv(3, 1), QCNNClassifier.QDense()],
-        )
+    # Accepted
+    QCNNClassifier(
+        accepted_input_shape,
+        accepted_num_classes,
+        [QCNNClassifier.QConv(3, 1), QCNNClassifier.QDense()],
+    )
 
     with pytest.raises(
         ValueError, match="must be divisible by the pooling kernel size"
@@ -194,9 +196,66 @@ def test_qcnn_stage_api():
     with pytest.raises(TypeError, match="stages must be None or have the list type"):
         QCNNClassifier(accepted_input_shape, accepted_num_classes, ())
 
+    # kernel_size > input_shape[0]
+    with pytest.raises(
+        ValueError, match="must be superior or equal to the convolution kernel size"
+    ):
+        QCNNClassifier(
+            accepted_input_shape,
+            accepted_num_classes,
+            [QCNNClassifier.QConv(5, 1), QCNNClassifier.QDense()],
+        )
+
+    # Accepted
+    QCNNClassifier(
+        accepted_input_shape,
+        accepted_num_classes,
+        [QCNNClassifier.QConv(4, 1), QCNNClassifier.QDense()],
+    )
+
+    # stride > kernel_size
+    with pytest.raises(
+        ValueError, match="must be superior or equal to convolution stride"
+    ):
+        QCNNClassifier(
+            accepted_input_shape,
+            accepted_num_classes,
+            [QCNNClassifier.QConv(2, 3), QCNNClassifier.QDense()],
+        )
+
     # QCNNClassifier._resolved_stages is read only
     with pytest.raises(AttributeError):
         qcnn_classifier.resolved_stages = []
+
+    # Try to access stages class through import without QCNNClassifier
+    # Have to ignore ruff here or else it replaces unused imports with `pass` statements
+    with pytest.raises(ImportError):
+        from merlin import QConv  # noqa: F401
+
+    with pytest.raises(ImportError):
+        from merlin.models import QPool  # noqa: F401
+
+    with pytest.raises(ImportError):
+        from merlin.models.qcnn import QDense  # noqa: F401
+
+    # Try to access private classes through import without QCNNClassifier
+    with pytest.raises(ImportError):
+        from merlin.models.qcnn import _QCNNStageTypes  # noqa: F401
+
+    with pytest.raises(ImportError):
+        from merlin.models.qcnn import _Stage  # noqa: F401
+
+    # Cannot instanciate QCNNClassifier with _Stage objects directly
+    qconv_type = QCNNClassifier._QCNNStageTypes.QConv
+    qconv_stage = QCNNClassifier._Stage(qconv_type)
+
+    qdense_type = QCNNClassifier._QCNNStageTypes.QDense
+    qdense_stage = QCNNClassifier._Stage(qdense_type)
+
+    stages = [qconv_stage, qdense_stage]
+
+    with pytest.raises(ValueError, match="Invalid stage type"):
+        QCNNClassifier((4, 4), 2, stages)
 
 
 def test_qcnn_summary():

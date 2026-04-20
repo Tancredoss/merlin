@@ -1,19 +1,13 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 
+import perceval as pcvl
 import torch
 
-
-class _QCNNStageTypes(Enum):
-    QConv = "QConv"
-    QPool = "QPool"
-    QDense = "QDense"
-
-
-@dataclass
-class _Stage:
-    def __init__(self, type: _QCNNStageTypes):
-        self.type = type
+from ..algorithms import QuantumLayer
+from ..measurement import MeasurementStrategy
 
 
 class QCNNClassifier(torch.nn.Module):
@@ -62,9 +56,19 @@ class QCNNClassifier(torch.nn.Module):
     def resolved_stages(self) -> list[_Stage]:
         return self._resolved_stages
 
+    class _QCNNStageTypes(Enum):
+        QConv = "QConv"
+        QPool = "QPool"
+        QDense = "QDense"
+
+    @dataclass
+    class _Stage:
+        def __init__(self, type: QCNNClassifier._QCNNStageTypes):
+            self.type = type
+
     class QConv(_Stage):
         def __init__(self, kernel_size: int, stride: int):
-            self.type = _QCNNStageTypes.QConv
+            self.type = QCNNClassifier._QCNNStageTypes.QConv
             self.kernel_size = kernel_size
             self.stride = stride
 
@@ -89,12 +93,12 @@ class QCNNClassifier(torch.nn.Module):
 
     class QPool(_Stage):
         def __init__(self, kernel_size: int):
-            self.type = _QCNNStageTypes.QPool
+            self.type = QCNNClassifier._QCNNStageTypes.QPool
             self.kernel_size = kernel_size
 
             # Verification of input
-            if kernel_size <= 0:
-                raise ValueError("kernel_size must be superior to 0.")
+            if kernel_size <= 1:
+                raise ValueError("kernel_size must be superior to 1.")
             if type(kernel_size) is not int:
                 raise TypeError("kernel_size must have int type.")
 
@@ -105,7 +109,7 @@ class QCNNClassifier(torch.nn.Module):
 
     class QDense(_Stage):
         def __init__(self):
-            self.type = _QCNNStageTypes.QDense
+            self.type = QCNNClassifier._QCNNStageTypes.QDense
 
         def __eq__(self, other):
             if not isinstance(other, type(self)):
@@ -120,11 +124,12 @@ class QCNNClassifier(torch.nn.Module):
 
         If stages were specified -> verify that the structure respects the following constraints:
         1. QDense must only be the last stage specified (i.e. only one QDense that is mandatory as the last stage)
-        2. QConv and QPool kernel sizes must divide the dimension of the registers
+        2. QConv kernel_size is inferior or equal to the register dimension and superior or equal to the stride
+        3. QPool kernel size must divide the dimension of the registers
         """
-        resolved_stages: list[_Stage] = []
         # Check if stages is None or empty
         if self.stages is None or not self.stages:
+            resolved_stages: list[QCNNClassifier._Stage] = []
             # Default stages
             resolved_stages.append(QCNNClassifier.QConv(2, 2))
             resolved_stages.append(QCNNClassifier.QPool(2))
@@ -132,14 +137,19 @@ class QCNNClassifier(torch.nn.Module):
             return resolved_stages
 
         # If stages were specified
-        resolved_stages: list[_Stage] = self.stages
+        resolved_stages: list[QCNNClassifier._Stage] = self.stages
         # Check that only last stage is QDense
         for i, stage in enumerate(self.stages):
-            if stage.type == _QCNNStageTypes.QDense and i != (len(self.stages) - 1):
+            if stage.type == QCNNClassifier._QCNNStageTypes.QDense and i != (
+                len(self.stages) - 1
+            ):
                 raise ValueError(
                     "Invalid stage specification: only last stage can be QDense"
                 )
-            if i == (len(self.stages) - 1) and stage.type != _QCNNStageTypes.QDense:
+            if (
+                i == (len(self.stages) - 1)
+                and stage.type != QCNNClassifier._QCNNStageTypes.QDense
+            ):
                 raise ValueError(
                     "Invalid stage specification: last stage has to be QDense"
                 )
@@ -148,11 +158,20 @@ class QCNNClassifier(torch.nn.Module):
         dim = self.input_shape[0]
         for stage in self.stages:
             if isinstance(stage, QCNNClassifier.QConv):
-                appropriate_conv = dim % stage.kernel_size == 0
+                # Appropriate conv if kernel_size <= dim of register
+                appropriate_conv = dim >= stage.kernel_size
                 if not appropriate_conv:
                     raise ValueError(
-                        f"Invalid stage specification: current spatial dimension ({dim}) must be divisible by the convolution kernel size ({stage.kernel_size})."
+                        f"Invalid stage specification: current spatial dimension ({dim}) must be superior or equal to the convolution kernel size ({stage.kernel_size})."
                     )
+                # Appropriate conv if kernel_size >= stride; else some modes are not covered
+                appropriate_conv = stage.kernel_size >= stage.stride
+                if not appropriate_conv:
+                    raise ValueError(
+                        f"Invalid stage specification: current convolution kernel size ({stage.kernel_size}) must be superior or equal to convolution stride ({stage.stride})."
+                    )
+                # Give freedom over the stride to the user. If the convolution window exceeds current dimension, it is not added to the circuit
+                # TOVERIFY
             elif isinstance(stage, QCNNClassifier.QPool):
                 appropriate_pooling = dim % stage.kernel_size == 0
                 if not appropriate_pooling:
@@ -161,6 +180,14 @@ class QCNNClassifier(torch.nn.Module):
                     )
                 # Adjust current dimension after the pooling
                 dim = dim - (dim / stage.kernel_size)
+
+            elif isinstance(stage, QCNNClassifier.QDense):
+                continue
+
+            else:
+                raise ValueError(
+                    f"Invalid stage type; must be QConv, QPool or QDense but got: {type(stage)}"
+                )
 
         return resolved_stages
 
@@ -208,6 +235,125 @@ class QCNNClassifier(torch.nn.Module):
 
     def build_photonic_circuit(self):
         return
+
+    def build_qcnn_model(self):
+        empty_circuit = pcvl.Circuit(sum(self.input_shape))
+        QuantumLayer(
+            circuit=empty_circuit,
+            n_photons=2,
+            measurement_strategy=MeasurementStrategy.amplitudes(),
+        )
+        current_shape = self.input_shape
+        qcnn_layers = []
+
+        # Keep the last stage (QDense) for after
+        for stage in self.resolved_stages[:-1]:
+            if isinstance(stage, QCNNClassifier.QConv):
+                conv_circuit = self.build_conv_circuit(current_shape, stage)
+                conv_layer = QuantumLayer(
+                    circuit=conv_circuit,
+                    n_photons=2,
+                    measurement_strategy=MeasurementStrategy.amplitudes(),
+                )
+                qcnn_layers.append(conv_layer)
+
+            elif isinstance(stage, QCNNClassifier.QPool):
+                measured_modes, reinsert_modes, new_shape = self.resolve_pooling_modes(
+                    current_shape, stage
+                )
+                empty_circuit = pcvl.Circuit(sum(current_shape))
+                pool_layer = QuantumLayer(
+                    circuit=empty_circuit,
+                    n_photons=2,
+                    measurement_strategy=MeasurementStrategy.partial(measured_modes),
+                )
+                qcnn_layers.append(pool_layer)
+                # Change shape of circuit after pooling
+                current_shape = new_shape
+
+            else:
+                raise TypeError(f"Unknown stage type encountered: {type(stage)}")
+
+        # Apply QDense (mandatory last stage)
+        dense_circuit = self.build_dense_circuit(current_shape)
+        QuantumLayer(
+            circuit=dense_circuit,
+            n_photons=2,
+            measurement_strategy=MeasurementStrategy.mode_expectations(),  # TO VERIFY
+        )
+
+        # Finalize complete qcnn model
+        # return model
+
+    def build_conv_circuit(self, shape, stage):
+        """
+        Build the complete circuit containing convolutions
+
+        The two registers must remain separate (i.e. no convolution between the two).
+        """
+        circuit = pcvl.Circuit(sum(shape))
+
+        # First register
+        i = 0
+        while i < shape[0] and (i + stage.kernel_size <= shape[0]):
+            circuit = self.build_single_conv(i, stage.kernel_size, circuit)
+            i = i + stage.stride
+
+        # Second register
+        i = shape[0]
+        while (i < shape[0] * 2) and (i + stage.kernel_size <= shape[0] * 2):
+            circuit = self.build_single_conv(i, stage.kernel_size, circuit)
+            i = i + stage.stride
+
+        return circuit
+
+    def build_single_conv(self, i, kernel_size, circuit):
+        """
+        Build a single convolutional window.
+
+        A single convolution is made up of several beam splitters (BS) that allow photon passage from any mode to any mode within the convolution kernel_size.
+        """
+        # Slide the BS down on the circuit
+        for j in range(i, i + kernel_size - 1):
+            circuit.add(j, pcvl.BS(theta=pcvl.P(f"px_bs_down_{j}")))
+        # Slide the BS up on the circuit
+        for k in range(j - 1, i - 1, -1):
+            circuit.add(k, pcvl.BS(theta=pcvl.P(f"px_bs_up_{k}")))
+        return circuit
+
+    def resolve_pooling_modes(self, shape, stage):
+        """
+        Get measured_modes, reinsert_modes and new_shape for the QPool layer.
+
+        By default, reinsert_mode is always measured_mode + 1.
+        """
+        measured_modes = []
+        reinsert_modes = []
+
+        # First register
+        i = 0
+        while i < shape[0] and (i + stage.kernel_size <= shape[0]):
+            measured_modes.append(i)
+            reinsert_modes.append(i + 1)
+        num_mesured_modes_0 = len(measured_modes)
+        new_shape_0 = shape[0] - num_mesured_modes_0
+
+        # Second register
+        i = shape[0]
+        while (i < shape[0] * 2) and (i + stage.kernel_size <= shape[0] * 2):
+            measured_modes.append(i)
+            reinsert_modes.append(i + 1)
+        new_shape_1 = shape[1] - len(measured_modes) + num_mesured_modes_0
+
+        assert new_shape_0 == new_shape_1, (
+            f"New shape after QPool must have the same shape[0] and shape[1] but got new_shape[0]: {new_shape_0} and new_shape[1]: {new_shape_1}"
+        )
+
+        return measured_modes, reinsert_modes, (new_shape_0, new_shape_1)
+
+    def build_dense_circuit(self, shape):
+        return
+        # return circuit
 
     def forward(self, x):
         """
