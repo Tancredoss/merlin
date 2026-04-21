@@ -339,7 +339,7 @@ class QCNNClassifier(torch.nn.Module):
         """
         Get measured_modes, reinsert_modes and new_shape for the QPool layer.
 
-        By default, reinsert_mode is always measured_mode + 1.
+        reinsert_mode is always measured_mode + 1.
         """
         measured_modes = []
         reinsert_modes = []
@@ -435,27 +435,40 @@ class QCNNClassifier(torch.nn.Module):
         """
         x has shape [batch_size, 1, input_size[0], input_size[1]].
         """
-        x.shape[0]
-        norms = torch.linalg.vector_norm(x, dim=(2, 3), keepdim=True)
-        if torch.any(norms == 0):
-            raise ValueError(
-                "At least one image is zero and cannot be amplitude-encoded."
-            )
-        x / norms
+        batch_size = x.shape[0]
+
+        # Prepare amplitude encoded tensor `state_tensor`
+        empty_tensor = torch.tensor([])
+        state_vector = StateVector(empty_tensor, sum(self.input_shape), 2)
+        basis_size = state_vector.basis_size
+        state_tensor = torch.zeros((batch_size, basis_size), dtype=torch.complex64)
 
         for i in range(self.input_shape[0]):
             for j in range(self.input_shape[1]):
+                # Build basic state
                 basic_state = [0] * self.input_shape[0] + [0] * self.input_shape[1]
                 basic_state[i] = 1
                 basic_state[self.input_shape[0] + j] = 1
                 basic_state_vector = StateVector.from_basic_state(basic_state)
-                # TODO
-                # basic_state_vector.unsqueeze(0)
-                print(basic_state_vector.shape)
-                x[:, :, i, j]
-                raise AssertionError()
+                repeated_basic_state_tensor = (
+                    basic_state_vector.tensor.to_dense()
+                    .unsqueeze(0)
+                    .repeat(batch_size, 1)
+                )
+                # Scale by pixel value
+                pixel_scaling = x[:, :, i, j]
+                pixel_state_tensor = pixel_scaling * repeated_basic_state_tensor
+                # Add this pixel scaled state vector to the amplitude encoded tensor
+                state_tensor += pixel_state_tensor
 
-        return x
+        # Convert from tensor to StateVector
+        final_state_vector = StateVector.from_tensor(
+            state_tensor, n_modes=sum(self.input_shape), n_photons=2
+        )
+        # Normalization
+        final_state_vector_norm = final_state_vector.clone().normalize()
+
+        return final_state_vector_norm
 
     def postprocess_pooling(self, x):
         return x

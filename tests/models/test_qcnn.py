@@ -23,7 +23,9 @@
 """Tests for the QCNNClassifier model class"""
 
 import pytest
+import torch
 
+from merlin.core import StateVector
 from merlin.models import QCNNClassifier
 
 
@@ -315,3 +317,126 @@ def test_qcnn_export_config():
     assert new_qcnn_classifier.input_shape == qcnn_classifier.input_shape
     assert new_qcnn_classifier.num_classes == qcnn_classifier.num_classes
     assert new_qcnn_classifier.resolved_stages == qcnn_classifier.resolved_stages
+
+
+def test_qcnn_amplitude_encoding():
+    input_shape = (4, 4)
+    num_classes = 2
+    qcnn = QCNNClassifier(input_shape, num_classes)
+
+    # Build input to amplitude encode
+    x_tensor_0 = torch.tensor([
+        [1, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+    ]).unsqueeze(0)
+    x_tensor_1 = torch.tensor([
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 1],
+    ]).unsqueeze(0)
+    x_tensor_2 = torch.tensor([
+        [1, 1, 1, 1],
+        [1, 1, 1, 1],
+        [1, 1, 1, 1],
+        [1, 1, 1, 1],
+    ]).unsqueeze(0)
+    x_tensor_3 = torch.rand((4, 4)).unsqueeze(0)
+
+    x_tensor = torch.cat([x_tensor_0, x_tensor_1, x_tensor_2, x_tensor_3], dim=0)
+    x_tensor = x_tensor.unsqueeze(1)
+
+    assert x_tensor.shape == (4, 1, 4, 4)
+
+    amplitude_encoded_state_vector = qcnn.amplitude_encode(x_tensor)
+
+    assert isinstance(amplitude_encoded_state_vector, StateVector)
+    basis_size = StateVector(
+        torch.tensor([]), n_modes=sum(input_shape), n_photons=2
+    ).basis_size
+    assert amplitude_encoded_state_vector.shape == (4, basis_size)
+    assert amplitude_encoded_state_vector.is_normalized
+
+    # Verify that the obtained state vector is the one expected
+    first_state_tensor = amplitude_encoded_state_vector.tensor[0]
+    first_expected_state = [
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+    ]  # By definition of the amplitude encoding used (2 registers)
+    first_expected_tensor = StateVector.from_basic_state(first_expected_state).tensor
+    assert torch.allclose(
+        first_state_tensor.to_dense(),
+        first_expected_tensor.to_dense(),
+        atol=1e-6,
+        rtol=1e-6,
+    )
+
+    # Verify that the obtained state vector is the one expected
+    second_state_tensor = amplitude_encoded_state_vector.tensor[1]
+    second_expected_state = [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+    ]  # By definition of the amplitude encoding used (2 registers)
+    second_expected_tensor = StateVector.from_basic_state(second_expected_state).tensor
+    assert torch.allclose(
+        second_state_tensor.to_dense(),
+        second_expected_tensor.to_dense(),
+        atol=1e-6,
+        rtol=1e-6,
+    )
+
+    # Verify that the obtained state vector is a uniform combination of all allowed basic states
+    third_state_tensor = amplitude_encoded_state_vector.tensor[2]
+    all_basic_states_indices = []
+    for i in range(4):
+        for j in range(4):
+            state = [0] * 8
+            state[i] = 1
+            state[4 + j] = 1
+            basic_state_index = amplitude_encoded_state_vector.index(state)
+            all_basic_states_indices.append(basic_state_index)
+
+    print(f"All basic state indices: {all_basic_states_indices}")
+    allowed_amplitudes = []
+    forbidden_amplitudes = []
+    for index, amplitude in enumerate(third_state_tensor):
+        if index in all_basic_states_indices:
+            allowed_amplitudes.append(amplitude)
+        else:
+            forbidden_amplitudes.append(amplitude)
+
+    allowed = torch.tensor(allowed_amplitudes).to_dense()
+    forbidden = torch.tensor(forbidden_amplitudes).to_dense()
+
+    assert torch.allclose(
+        allowed[0].unsqueeze(0).repeat(len(allowed)), allowed, atol=1e-6, rtol=1e-6
+    )
+    assert torch.allclose(torch.zeros_like(forbidden), forbidden, atol=1e-6, rtol=1e-6)
+
+    # Verify that forbidden basic states are not returned
+    fourth_state_tensor = amplitude_encoded_state_vector.tensor[3]
+    for index, amplitude in enumerate(fourth_state_tensor):
+        # Use the same basic state indices
+        if index in all_basic_states_indices:
+            allowed_amplitudes.append(amplitude)
+        else:
+            forbidden_amplitudes.append(amplitude)
+
+    allowed = torch.tensor(allowed_amplitudes).to_dense()
+    forbidden = torch.tensor(forbidden_amplitudes).to_dense()
+
+    assert torch.allclose(torch.zeros_like(forbidden), forbidden, atol=1e-6, rtol=1e-6)
