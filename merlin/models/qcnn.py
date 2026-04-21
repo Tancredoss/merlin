@@ -7,7 +7,8 @@ import perceval as pcvl
 import torch
 
 from ..algorithms import QuantumLayer
-from ..core.state_vector import StateVector
+from ..core import ComputationSpace, StateVector
+from ..core.partial_measurement import PartialMeasurement
 from ..measurement import MeasurementStrategy
 from ..utils.grouping import LexGrouping
 
@@ -253,7 +254,9 @@ class QCNNClassifier(torch.nn.Module):
                     circuit=conv_circuit,
                     n_photons=2,
                     trainable_parameters=["px"],
-                    measurement_strategy=MeasurementStrategy.amplitudes(),
+                    measurement_strategy=MeasurementStrategy.amplitudes(
+                        computation_space=ComputationSpace.FOCK
+                    ),
                 )
                 qcnn_layers.append(conv_layer)
                 layer_names.append(f"QConv_{num_qconv}")
@@ -267,7 +270,9 @@ class QCNNClassifier(torch.nn.Module):
                 pool_layer = QuantumLayer(
                     circuit=empty_circuit,
                     n_photons=2,
-                    measurement_strategy=MeasurementStrategy.partial(measured_modes),
+                    measurement_strategy=MeasurementStrategy.partial(
+                        measured_modes, computation_space=ComputationSpace.FOCK
+                    ),
                 )
                 qcnn_layers.append(pool_layer)
                 layer_names.append(f"QPool_{num_qpool}")
@@ -285,7 +290,9 @@ class QCNNClassifier(torch.nn.Module):
             circuit=dense_circuit,
             n_photons=2,
             trainable_parameters=["px"],
-            measurement_strategy=MeasurementStrategy.mode_expectations(),  # TO VERIFY
+            measurement_strategy=MeasurementStrategy.mode_expectations(
+                computation_space=ComputationSpace.FOCK
+            ),
         )
 
         # Readout layer
@@ -399,7 +406,7 @@ class QCNNClassifier(torch.nn.Module):
 
     def forward(self, x):
         """
-        Expects input x of shape [batch_size, 1, input_size[0], input_size[1]].
+        Expects input x, Tensor, of shape (batch_size, 1, input_size[0], input_size[1]).
         The second dimension represents channels: current implementation only supports one channel.
 
         Returns logits with shape (batch_size, num_classes).
@@ -421,19 +428,42 @@ class QCNNClassifier(torch.nn.Module):
         # Encode x using amplitude encoding
         x = self.amplitude_encode(x)
 
-        for name, layer in self.qcnn.named_children():
+        for layer_index, (name, layer) in enumerate(self.qcnn.named_children()):
             x = layer(x)
             if name[:5] == "QPool":
-                x = self.postprocess_pooling(x)
+                x = self.postprocess_pooling(x, layer_index + 1)
+                break
 
-        assert len(x) == 2, "Forward output must have 2 dimensions"
-        assert x.shape[0] == batch_size
-        assert x.shape[1] == self.num_classes
+        logits = x
+        assert isinstance(logits, torch.Tensor)
+        assert logits.shape == (batch_size, self.num_classes)
+        return logits
+
+    def recursive_forward(self, x, layer_index):
+        """
+        Recursive version of the forward method. Used to compute forward across the mixed states after pooling.
+
+        Expects input x of type merlin.StateVector, already amplitude encoded and of shape (batch_size, basis_size).
+
+        Returns logits with shape (batch_size, num_classes).
+        """
+        for new_layer_index, (name, layer) in enumerate(
+            list(self.qcnn.named_children())[layer_index:], start=layer_index
+        ):
+            x = layer(x)
+            if name.startswith("QPool"):
+                x = self.postprocess_pooling(x, new_layer_index + 1)
+                break
+
         return x
 
-    def amplitude_encode(self, x):
+    def amplitude_encode(self, x: torch.Tensor):
         """
-        x has shape [batch_size, 1, input_size[0], input_size[1]].
+        Expects input x, Tensor, of shape (batch_size, 1, input_size[0], input_size[1]).
+
+        Returns StateVector object: amplitude encoded data with shape (batch_size, basis_size).
+
+        basis_size depends on the number of modes (sum(self.input_shape)) and photons (2).
         """
         batch_size = x.shape[0]
 
@@ -470,5 +500,169 @@ class QCNNClassifier(torch.nn.Module):
 
         return final_state_vector_norm
 
-    def postprocess_pooling(self, x):
-        return x
+    def postprocess_pooling(self, x: PartialMeasurement, layer_index: int):
+        """
+        Expects input x of type merlin.PartialMeasurement, from which mixed states are created and sent through the remaining of the QCNN to then obtain the output logits.
+
+        Returns tensor of shape (batch_size, num_classes)
+        """
+        batch_size = x.branches[0].probability.shape[0]
+        branches = x.branches
+        measured_modes = x.measured_modes
+        x_combine = torch.zeros(
+            batch_size,
+            self.num_classes,
+            dtype=torch.float64,
+            device=x.branches[0].amplitudes.device,
+        )
+        for branch in branches:
+            outcome = branch.outcome
+            probabilities = branch.probability
+            state_vector = branch.amplitudes
+
+            possible = self.verify_outcome(list(outcome), probabilities)
+            if possible:
+                # Reinsert measured photons
+                insertions = 0
+                for index, outcome_elem in enumerate(outcome):
+                    # Maximum of two insertions since there are two photons
+                    if insertions == 2:
+                        break
+                    if outcome_elem > 0:
+                        measured_mode = measured_modes[index]
+                        reinsert_mode = measured_mode - index
+                        # Reinsertion
+                        state_vector = self.reinsert_photon(
+                            state_vector.clone(), reinsert_mode
+                        )
+                        insertions += 1
+
+                assert state_vector.n_photons == 2
+                # Continue QCNN pipeline on that specific state_vector among the mixed states
+                # recursive_forward is called iteratively. We might optimize to run in parallel.
+                x_result = self.recursive_forward(state_vector, layer_index)
+
+                assert x_result.shape == (batch_size, self.num_classes)
+                assert probabilities.shape == (batch_size,)
+                # Combine results from all mixed state computations
+                x_combine = x_combine + probabilities.unsqueeze(1) * x_result
+
+        return x_combine
+
+    def verify_outcome(self, outcome, probabilities):
+        """
+        Verification method: verifies that possible outcomes are allowed in the QCNN setting
+
+        Returns boolean that indicate whether or not the outcome is possible
+        """
+        possible_outcome = True
+        assert len(outcome) % 2 == 0
+        half_index = int(len(outcome) / 2)
+        first_register_outcome = outcome[:half_index]
+        second_register_outcome = outcome[half_index:]
+
+        photon_measured = False
+        for outcome_elem in first_register_outcome:
+            # Forbidden to measure more than 1 photon in QCNN setting
+            if outcome_elem > 1:
+                possible_outcome = False
+                assert torch.allclose(
+                    probabilities, torch.zeros_like(probabilities), atol=1e-6
+                ), (
+                    f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
+                )
+                break
+            # Forbidden to measure more than 1 photon per register in QCNN setting
+            if outcome_elem == 1:
+                if photon_measured:
+                    possible_outcome = False
+                    assert torch.allclose(
+                        probabilities, torch.zeros_like(probabilities), atol=1e-6
+                    ), (
+                        f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
+                    )
+                else:
+                    photon_measured = True
+                continue
+            # Forbidden to have measurement result different from 0 or 1 in QCNN setting
+            if outcome_elem != 0:
+                possible_outcome = False
+                assert torch.allclose(
+                    probabilities, torch.zeros_like(probabilities), atol=1e-6
+                ), (
+                    f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
+                )
+                break
+
+        photon_measured = False
+        for outcome_elem in second_register_outcome:
+            # Forbidden to measure more than 1 photon in QCNN setting
+            if outcome_elem > 1:
+                possible_outcome = False
+                assert torch.allclose(
+                    probabilities, torch.zeros_like(probabilities), atol=1e-6
+                ), (
+                    f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
+                )
+                break
+            # Forbidden to measure more than 1 photon per register in QCNN setting
+            if outcome_elem == 1:
+                if photon_measured:
+                    possible_outcome = False
+                    assert torch.allclose(
+                        probabilities, torch.zeros_like(probabilities), atol=1e-6
+                    ), (
+                        f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
+                    )
+                else:
+                    photon_measured = True
+                continue
+            # Forbidden to have measurement result different from 0 or 1 in QCNN setting
+            if outcome_elem != 0:
+                possible_outcome = False
+                assert torch.allclose(
+                    probabilities, torch.zeros_like(probabilities), atol=1e-6
+                ), (
+                    f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
+                )
+                break
+
+        return possible_outcome
+
+    def reinsert_photon(self, state_vector: StateVector, reinsert_mode: int):
+        """
+        Inserts one photon at mode `reinsert_mode` and returns new state vector.
+
+        Torch computation graph is kept.
+        """
+        state_tensor = state_vector.tensor
+        batch_size = state_tensor.shape[0]
+        states = list(state_vector.basis.iter_states())
+
+        new_dummy_state_vector = StateVector(
+            torch.tensor([0]),
+            n_modes=state_vector.n_modes,
+            n_photons=state_vector.n_photons + 1,
+        )
+        new_state_basis_size = new_dummy_state_vector.basis_size
+        new_state_tensor = torch.zeros(
+            batch_size,
+            new_state_basis_size,
+            dtype=state_tensor.dtype,
+            device=state_tensor.device,
+        )
+
+        # Setup mapping from old state indices (no photon at mode reinsert_mode) to new state index (photon reinserted)
+        for i, state in enumerate(states):
+            # i is the fock_to_index(state) returned index on state_vector
+            if state[reinsert_mode] == 0:
+                new_state = state[:reinsert_mode] + (1,) + state[reinsert_mode + 1 :]
+                new_state_index = new_dummy_state_vector.basis.fock_to_index(new_state)
+                new_state_tensor[:, new_state_index] = state_tensor[:, i]
+
+        new_state_vector = StateVector(
+            new_state_tensor,
+            n_modes=state_vector.n_modes,
+            n_photons=state_vector.n_photons + 1,
+        )
+        return new_state_vector
