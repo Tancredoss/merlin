@@ -60,7 +60,7 @@ class _ReservoirLayerProxy:
     ``reservoir.layer.noise_model = ...``.
     """
 
-    def __init__(self, parent: "ReservoirClassifier") -> None:
+    def __init__(self, parent: ReservoirClassifier) -> None:
         object.__setattr__(self, "_parent", parent)
 
     def __getattr__(self, name: str):
@@ -173,7 +173,7 @@ class ReservoirClassifier(MerlinModule):
 
     @staticmethod
     def _validate_reduction(reduction: Any | None) -> Any | None:
-        # the reduction technique needs to be a scikit-learn style decomposition estimator 
+        # the reduction technique needs to be a scikit-learn style decomposition estimator
         # exposing fit() and transform() methods, or None for no reduction
         if reduction is None:
             return None
@@ -188,7 +188,7 @@ class ReservoirClassifier(MerlinModule):
         return reduction
 
     def _infer_quantum_input_features(self) -> int:
-        # From the reduction technique given, we infer the reduction dimension which corresponds to the number of modes in the quantum reservoir. 
+        # From the reduction technique given, we infer the reduction dimension which corresponds to the number of modes in the quantum reservoir.
         # If no reduction is given, we use all input features as modes.
         if self._reduction_template is None:
             return self.in_features
@@ -242,8 +242,8 @@ class ReservoirClassifier(MerlinModule):
         measurement_strategy: Any,
         noise_model: Any | None = None,
     ) -> QuantumLayer:
-        
-        ### CIRCUIT DESIGN ###
+
+        # CIRCUIT DESIGN ###
         # The reservoir is made of a:
         # - Haar-random interferometer,
         # - an encoding stage of input-dependent phase shifts,
@@ -257,7 +257,7 @@ class ReservoirClassifier(MerlinModule):
 
         circuit = interferometer_left // encoder // interferometer_right
 
-        ### INPUT STATE DESIGN ###
+        # INPUT STATE DESIGN ###
         # The input state is designed to have n_photons distributed one mode out of two from the first mode.
         # For instance, for n_photons=3, the input state is |1,0,1,0,1,...> .
         if self.n_photons > input_size:
@@ -299,7 +299,7 @@ class ReservoirClassifier(MerlinModule):
                 experiment=experiment,
                 **layer_kwargs,
             )
-        # The layer is frozen, so we disable gradients and set it to eval mode. 
+        # The layer is frozen, so we disable gradients and set it to eval mode.
         # This also ensures that any internal buffers are properly registered.
         for parameter in layer.parameters():
             parameter.requires_grad_(False)
@@ -355,7 +355,7 @@ class ReservoirClassifier(MerlinModule):
             return
 
         self.quantum_input_features = n_modes
-        setattr(self._reduction_template, "n_components", n_modes)
+        self._reduction_template.n_components = n_modes
         self._unitary_matrix = self._draw_unitary(n_modes, self.seed)
         self._rebuild_quantum_layer()
 
@@ -468,7 +468,7 @@ class ReservoirClassifier(MerlinModule):
         # to detect the common "same training set reused" case.
         stride = max(1, len(X) // 1000)
         sample = np.ascontiguousarray(X[::stride][:1000])
-        payload = f"{X.shape}:{X.dtype}".encode("utf-8") + sample.tobytes()
+        payload = f"{X.shape}:{X.dtype}".encode() + sample.tobytes()
         return hashlib.md5(payload, usedforsecurity=False).hexdigest()
 
     def fit_reservoir(
