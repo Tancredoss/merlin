@@ -150,25 +150,27 @@ class PartialMeasurement:
         probas = torch.stack(
             [self._as_batch(branch.probability) for branch in self.branches], dim=1
         )
+        expected_shape = self.probability_tensor_shape
         if self.grouping is None:
-            assert self.probability_tensor_shape == probas.shape, (
+            assert expected_shape == tuple(probas.shape), (
                 "Inconsistent probability tensor shape."
             )
             return probas
         grouping = self.grouping
         output_size = self._grouping_output_size()
+        batch_size = probas.shape[0]
         # Verify shape of probas
-        assert probas.shape == (
-            self.probability_tensor_shape[0],
+        assert tuple(probas.shape) == (
+            batch_size,
             len(self.branches),
         ), "Inconsistent probability tensor shape before grouping"
         # Verify shape of grouped probas
         grouped_probas = grouping(probas)
-        assert grouped_probas.shape == (self.probability_tensor_shape), (
+        assert tuple(grouped_probas.shape) == expected_shape, (
             "Inconsistent grouped probability tensor shape after grouping"
         )
-        assert self.probability_tensor_shape == (
-            probas.shape[0],
+        assert expected_shape == (
+            batch_size,
             output_size,
         ), "Inconsistent grouped probability tensor shape after grouping"
         return grouped_probas
