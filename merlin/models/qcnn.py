@@ -439,7 +439,7 @@ class QCNNClassifier(torch.nn.Module):
         assert logits.shape == (batch_size, self.num_classes)
         return logits
 
-    def recursive_forward(self, x, layer_index):
+    def recursive_forward(self, x: StateVector, layer_index: int):
         """
         Recursive version of the forward method. Used to compute forward across the mixed states after pooling.
 
@@ -447,15 +447,18 @@ class QCNNClassifier(torch.nn.Module):
 
         Returns logits with shape (batch_size, num_classes).
         """
+        x_current = x
         for new_layer_index, (name, layer) in enumerate(
             list(self.qcnn.named_children())[layer_index:], start=layer_index
         ):
-            x = layer(x)
+            x_current = layer(x_current)
             if name.startswith("QPool"):
-                x = self.postprocess_pooling(x, new_layer_index + 1)
+                assert isinstance(x_current, PartialMeasurement)
+                x_current = self.postprocess_pooling(x_current, new_layer_index + 1)
+                assert isinstance(x_current, torch.Tensor)
                 break
 
-        return x
+        return x_current
 
     def amplitude_encode(self, x: torch.Tensor):
         """
@@ -520,6 +523,13 @@ class QCNNClassifier(torch.nn.Module):
             probabilities = branch.probability
             state_vector = branch.amplitudes
 
+            # Skip branches with zero-amplitude states and ignore zero-amplitude
+            # batch rows to prevent NaNs in downstream normalization.
+            amplitude_norm_sq = state_vector.tensor.abs().pow(2).sum(dim=-1)
+            active_rows = amplitude_norm_sq > 0
+            if not torch.any(active_rows):
+                continue
+
             possible = self.verify_outcome(list(outcome), probabilities)
             if possible:
                 # Reinsert measured photons
@@ -540,20 +550,42 @@ class QCNNClassifier(torch.nn.Module):
                 assert state_vector.n_photons == 2
                 # Continue QCNN pipeline on that specific state_vector among the mixed states
                 # recursive_forward is called iteratively. We might optimize to run in parallel.
-                x_result = self.recursive_forward(state_vector, layer_index)
+                if bool(torch.all(active_rows)):
+                    x_result = self.recursive_forward(state_vector, layer_index)
+                else:
+                    active_state_vector = StateVector(
+                        tensor=state_vector.tensor[active_rows],
+                        n_modes=state_vector.n_modes,
+                        n_photons=state_vector.n_photons,
+                        _normalized=state_vector.is_normalized,
+                    )
+                    active_result = self.recursive_forward(
+                        active_state_vector, layer_index
+                    )
+                    x_result = torch.zeros(
+                        batch_size,
+                        self.num_classes,
+                        dtype=active_result.dtype,
+                        device=active_result.device,
+                    )
+                    x_result[active_rows] = active_result
 
+                assert isinstance(x_result, torch.Tensor)
                 assert x_result.shape == (batch_size, self.num_classes)
                 assert probabilities.shape == (batch_size,)
                 # Combine results from all mixed state computations
-                x_combine = x_combine + probabilities.unsqueeze(1) * x_result
+                probabilities_weight = probabilities.unsqueeze(1)
+                weighted = probabilities_weight * x_result
+                x_combine = x_combine + weighted
 
+        assert isinstance(x_combine, torch.Tensor)
         return x_combine
 
     def verify_outcome(self, outcome, probabilities):
         """
-        Verification method: verifies that possible outcomes are allowed in the QCNN setting
+        Verification method: verifies that possible outcomes are allowed in the QCNN setting. For forbidden outcomes, this method asserts that the correspinding probabilities are all 0.
 
-        Returns boolean that indicate whether or not the outcome is possible
+        Returns boolean that indicate whether or not the outcome is possible.
         """
         possible_outcome = True
         assert len(outcome) % 2 == 0

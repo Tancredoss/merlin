@@ -410,7 +410,6 @@ def test_qcnn_amplitude_encoding():
             basic_state_index = amplitude_encoded_state_vector.index(state)
             all_basic_states_indices.append(basic_state_index)
 
-    print(f"All basic state indices: {all_basic_states_indices}")
     allowed_amplitudes = []
     forbidden_amplitudes = []
     for index, amplitude in enumerate(third_state_tensor):
@@ -440,3 +439,74 @@ def test_qcnn_amplitude_encoding():
     forbidden = torch.tensor(forbidden_amplitudes).to_dense()
 
     assert torch.allclose(torch.zeros_like(forbidden), forbidden, atol=1e-6, rtol=1e-6)
+
+
+def test_full_default_qcnn():
+    input_shape = (4, 4)
+    num_classes = 2
+    qcnn = QCNNClassifier(input_shape, num_classes)
+
+    initial_param_values = {}
+    for name, param in qcnn.named_parameters():
+        print(f"Param {name}")
+        before = param.detach().clone()
+        initial_param_values[name] = before
+
+    # Generate data and labels
+    x_tensor_0 = torch.tensor([
+        [1, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+    ]).unsqueeze(0)
+    x_tensor_1 = torch.tensor([
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 1],
+    ]).unsqueeze(0)
+    x_tensor_2 = torch.tensor([
+        [1, 1, 1, 1],
+        [1, 1, 1, 1],
+        [1, 1, 1, 1],
+        [1, 1, 1, 1],
+    ]).unsqueeze(0)
+    x_tensor_3 = torch.rand((4, 4)).unsqueeze(0)
+
+    x_tensor = torch.cat([x_tensor_0, x_tensor_1, x_tensor_2, x_tensor_3], dim=0)
+    x_tensor = x_tensor.unsqueeze(1)
+
+    y_0 = torch.tensor([1, 0], dtype=torch.float).unsqueeze(0)
+    y_1 = torch.tensor([1, 0], dtype=torch.float).unsqueeze(0)
+    y_2 = torch.tensor([0, 1], dtype=torch.float).unsqueeze(0)
+    y_3 = torch.tensor([0, 1], dtype=torch.float).unsqueeze(0)
+
+    y_tensor = torch.cat([y_0, y_1, y_2, y_3], dim=0)
+
+    assert x_tensor.shape == (4, 1, 4, 4)
+    assert y_tensor.shape == (4, 2)
+
+    optimizer = torch.optim.Adam(qcnn.parameters(), lr=1e-1)
+
+    qcnn.train()
+    optimizer.zero_grad()
+    logits = qcnn(x_tensor)
+
+    loss_function = torch.nn.CrossEntropyLoss()
+    loss = loss_function(logits, y_tensor)
+    loss.backward()
+
+    # Check that gradients exist and are defined
+    for name, param in qcnn.named_parameters():
+        assert param.grad is not None, f"{name} has no gradient"
+        assert torch.isfinite(param.grad).all(), f"{name} gradient has NaN/Inf"
+        assert torch.any(param.grad.abs() > 1e-8), f"{name} gradient is zero"
+
+    optimizer.step()
+
+    # Check that parameter values have changed after optimizer step
+    for name, param in qcnn.named_parameters():
+        print(f"Param {name}")
+        before = initial_param_values[name]
+        after = param.detach().clone()
+        assert not torch.allclose(before, after, atol=1e-4, rtol=1e-4)
