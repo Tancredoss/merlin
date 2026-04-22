@@ -62,6 +62,7 @@ Model Families
 
    ../notebooks/Kernels
    ../notebooks/QORC-basics
+   ../notebooks/ReservoirClassifier
    ../notebooks/iris_classification
    ../notebooks/reproduced_papers/GanEtAl_VQC_classification
    ../notebooks/reproduced_papers/photonic_QCNN
