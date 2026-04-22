@@ -43,7 +43,7 @@ from ..core.partial_measurement import PartialMeasurement
 from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
 from ..core.state import StatePattern, generate_state
-from ..core.state_vector import StateVector
+from ..core.state_vector import StateVector, embed_tensor_in_fock_basis
 from ..measurement import OutputMapper
 from ..measurement.autodiff import AutoDiffProcess
 from ..measurement.detectors import DetectorTransform
@@ -390,7 +390,9 @@ class QuantumLayer(MerlinModule):
             resolved_n_photons = (
                 n_photons  # n_photons must be provided for tensor input
             )
-            process_input_state = self.input_state
+            process_input_state = self._embed_amplitude_tensor(
+                self._validate_amplitude_input(self.input_state)
+            )
         elif isinstance(self.input_state, pcvl.BasicState):
             resolved_n_photons = (
                 n_photons if n_photons is not None else sum(self.input_state)
@@ -421,7 +423,9 @@ class QuantumLayer(MerlinModule):
                 sv_tensor = sv_tensor.to(self.device)
             if sv_tensor.dtype != self.complex_dtype:
                 sv_tensor = sv_tensor.to(self.complex_dtype)
-            self.computation_process.input_state = sv_tensor
+            self.computation_process.input_state = self._embed_amplitude_tensor(
+                sv_tensor
+            )
 
         # Setup PhotonLossTransform & DetectorTransform
         self.n_photons = self.computation_process.n_photons
@@ -654,14 +658,6 @@ class QuantumLayer(MerlinModule):
                 "Amplitude-encoded inputs must be 1D (single state) or 2D (batch of states) tensors"
             )
 
-        expected_dim = len(self.output_keys)
-        feature_dim = amplitude.shape[-1]
-        if feature_dim != expected_dim:
-            raise ValueError(
-                f"Amplitude input expects {expected_dim} components, received {feature_dim}."
-            )
-            # TODO: suggest/implement zero-padding or sparsity tensor format
-
         if amplitude.dtype not in (
             torch.float32,
             torch.float64,
@@ -681,6 +677,21 @@ class QuantumLayer(MerlinModule):
             amplitude = amplitude.to(self.dtype)
 
         return amplitude
+
+    def _embed_amplitude_tensor(self, amplitude: torch.Tensor) -> torch.Tensor:
+        try:
+            return embed_tensor_in_fock_basis(
+                amplitude,
+                n_modes=self.circuit.m,
+                n_photons=self.n_photons,
+                computation_space=self.computation_space,
+            )
+        except ValueError as exc:
+            expected_dim = len(self.output_keys)
+            feature_dim = amplitude.shape[-1]
+            raise ValueError(
+                f"Amplitude input expects {expected_dim} components, received {feature_dim}."
+            ) from exc
 
     def set_input_state(self, input_state):
         """Set the layer input state for subsequent evaluations.
@@ -703,6 +714,24 @@ class QuantumLayer(MerlinModule):
             basic = pcvl.BasicState(tuple(input_state))
             self.input_state = basic
             self.computation_process.input_state = list(basic)
+            return
+
+        if isinstance(input_state, StateVector):
+            tensor_state = input_state.to_dense()
+            if tensor_state.device != self.device:
+                tensor_state = tensor_state.to(self.device)
+            if tensor_state.dtype != self.complex_dtype:
+                tensor_state = tensor_state.to(self.complex_dtype)
+            embedded = self._embed_amplitude_tensor(tensor_state)
+            self.input_state = input_state
+            self.computation_process.input_state = embedded
+            return
+
+        if isinstance(input_state, torch.Tensor):
+            validated = self._validate_amplitude_input(input_state)
+            embedded = self._embed_amplitude_tensor(validated)
+            self.input_state = input_state
+            self.computation_process.input_state = embedded
             return
 
         self.input_state = input_state
@@ -817,15 +846,10 @@ class QuantumLayer(MerlinModule):
                     "Use either tensor inputs (angle encoding) or StateVector (amplitude encoding)."
                 )
             sv = input_parameters[0]
-            # Convert to dense for computation pipeline (sparse not supported downstream).
-            # StateVector's sparse representation is still valuable for memory-efficient
-            # construction and manipulation; we only densify at computation time.
             amplitude_tensor = sv.to_dense()
-            if amplitude_tensor.device != self.device:
-                amplitude_tensor = amplitude_tensor.to(self.device)
-            if amplitude_tensor.dtype != self.complex_dtype:
-                amplitude_tensor = amplitude_tensor.to(self.complex_dtype)
-            amplitude_input = self._validate_amplitude_input(amplitude_tensor)
+            amplitude_input = self._embed_amplitude_tensor(
+                self._validate_amplitude_input(amplitude_tensor)
+            )
             original_input_state = getattr(
                 self.computation_process, "input_state", None
             )
@@ -838,7 +862,9 @@ class QuantumLayer(MerlinModule):
             and isinstance(input_parameters[0], torch.Tensor)
             and input_parameters[0].is_complex()
         ):
-            amplitude_input = self._validate_amplitude_input(input_parameters[0])
+            amplitude_input = self._embed_amplitude_tensor(
+                self._validate_amplitude_input(input_parameters[0])
+            )
             original_input_state = getattr(
                 self.computation_process, "input_state", None
             )
@@ -1019,7 +1045,9 @@ class QuantumLayer(MerlinModule):
             raise ValueError(
                 "QuantumLayer configured with amplitude_encoding=True expects an amplitude tensor input."
             )
-        amplitude_input = self._validate_amplitude_input(inputs[0])
+        amplitude_input = self._embed_amplitude_tensor(
+            self._validate_amplitude_input(inputs[0])
+        )
         original_input_state = getattr(self.computation_process, "input_state", None)
         return amplitude_input, inputs[1:], original_input_state
 
@@ -1037,7 +1065,8 @@ class QuantumLayer(MerlinModule):
             yield
         finally:
             if original_input_state is not None:
-                self.set_input_state(original_input_state)
+                self.input_state = original_input_state
+                self.computation_process.input_state = original_input_state
 
     def _prepare_classical_parameters(
         self, inputs: list[torch.Tensor]
