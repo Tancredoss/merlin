@@ -23,6 +23,7 @@ import torch
 
 from merlin import ComputationSpace
 from merlin.algorithms.layer import QuantumLayer
+from merlin.core.state_vector import StateVector
 from merlin.measurement.strategies import MeasurementStrategy
 
 
@@ -596,6 +597,61 @@ def test_amplitude_encoding_superposition_matches_basis_sum():
 
     with pytest.raises(ValueError, match="Amplitude input expects"):
         layer(torch.ones(layer.input_size + 1, dtype=torch.complex64))
+
+
+def test_fock_amplitude_encoding_accepts_compact_unbunched_tensor():
+    m, n = 4, 2
+    layer = QuantumLayer(
+        circuit=pcvl.Circuit(m),
+        n_photons=n,
+        measurement_strategy=MeasurementStrategy.amplitudes(
+            computation_space=ComputationSpace.FOCK
+        ),
+    )
+
+    logical = torch.zeros(math.comb(m, n), dtype=torch.complex64)
+    logical[0] = 1.0 + 0.0j
+
+    embedded, _, _ = layer._prepare_amplitude_input([logical])
+    out = layer(logical)
+
+    assert out.shape[-1] == len(layer.output_keys)
+    assert embedded.shape[-1] == math.comb(m + n - 1, n)
+
+
+def test_fock_amplitude_encoding_accepts_compact_unbunched_statevector():
+    m, n = 4, 2
+    layer = QuantumLayer(
+        circuit=pcvl.Circuit(m),
+        n_photons=n,
+        measurement_strategy=MeasurementStrategy.amplitudes(
+            computation_space=ComputationSpace.FOCK
+        ),
+    )
+
+    logical = torch.zeros(math.comb(m, n), dtype=torch.complex64)
+    logical[0] = 1.0 + 0.0j
+    sv = StateVector(logical, n_modes=m, n_photons=n)
+
+    out = layer(sv)
+
+    assert out.shape[-1] == len(layer.output_keys)
+
+
+def test_fock_amplitude_encoding_rejects_non_coercible_compact_shape():
+    m, n = 4, 2
+    layer = QuantumLayer(
+        circuit=pcvl.Circuit(m),
+        n_photons=n,
+        measurement_strategy=MeasurementStrategy.amplitudes(
+            computation_space=ComputationSpace.FOCK
+        ),
+    )
+
+    invalid = torch.zeros(math.comb(m, n) + 1, dtype=torch.complex64)
+
+    with pytest.raises(ValueError, match="Amplitude input expects"):
+        layer(invalid)
 
 
 @pytest.mark.parametrize(
