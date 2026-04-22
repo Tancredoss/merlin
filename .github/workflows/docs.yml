@@ -1,0 +1,41 @@
+name: Docs Validation
+
+on:
+  push:
+    branches:
+      - main
+      - release/*
+    paths:
+      - "docs/**"
+  pull_request:
+    branches:
+      - main
+      - release/*
+    paths:
+      - "docs/**"
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install documentation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[docs]"
+
+      - name: Build documentation
+        working-directory: docs
+        run: SPHINXOPTS="-D nbsphinx_execute=never" make html
+
+      - name: Clean generated documentation
+        if: always()
+        working-directory: docs
+        run: make clean
