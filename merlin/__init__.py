@@ -27,6 +27,9 @@ A comprehensive framework for integrating photonic quantum circuits
 into PyTorch neural networks with automatic differentiation support.
 """
 
+# Public model namespace
+from . import models
+
 # Core API - Most users will only need these
 from .algorithms.feed_forward import FeedForwardBlock
 from .algorithms.feed_forward_legacy import (
@@ -41,6 +44,7 @@ from .algorithms.layer import QuantumLayer
 from .algorithms.loss import NKernelAlignment
 from .bridge.quantum_bridge import QuantumBridge
 from .builder.circuit_builder import CircuitBuilder
+from .models import ReservoirClassifier
 
 # Essential enums
 # Advanced components (for power users)
@@ -73,6 +77,8 @@ __all__ = [
     # Core classes (most common usage)
     "QuantumLayer",
     "QuantumBridge",
+    "ReservoirClassifier",
+    "models",
     # Configuration enums
     "ComputationSpace",
     "MeasurementStrategy",
