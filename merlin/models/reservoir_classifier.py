@@ -107,10 +107,10 @@ class ReservoirClassifier(MerlinModule):
         out_features: int,
         n_photons: int,
         reduction: Any | None = None,
+        n_modes: int | None = None,
         concatenate: bool = True,
         cache: bool = True,
         seed: int | None = None,
-        measurement_strategy: Any | None = None,
         noise_model: Any | None = None,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
@@ -137,29 +137,32 @@ class ReservoirClassifier(MerlinModule):
         self.device = resolved_device or torch.device("cpu")
         self.dtype = resolved_dtype
         # The reduction needs to be validated and stored before inferring
-        # the quantum input width.
+        # the logical encoded feature width.
         self._reduction_template = self._validate_reduction(reduction)
         self.reduction = (
             clone(self._reduction_template)
             if self._reduction_template is not None
             else None
         )
-        self.quantum_input_features = self._infer_quantum_input_features()
+        self.encoded_input_features = self._infer_encoded_input_features()
+        self.quantum_input_features = self._resolve_initial_n_modes(n_modes)
         self._warn_for_configuration()
 
         self._unitary_matrix = self._draw_unitary(
             self.quantum_input_features,
             self.seed,
         )
-        self._measurement_strategy = measurement_strategy or MeasurementStrategy.probs()
+        self._measurement_strategy = MeasurementStrategy.probs()
         self._noise_model = noise_model
         self._quantum_layer = self._build_layer(
             unitary_matrix=self._unitary_matrix,
-            input_size=self.quantum_input_features,
+            encoded_input_size=self.encoded_input_features,
+            n_modes=self.quantum_input_features,
             measurement_strategy=self._measurement_strategy,
             noise_model=self._noise_model,
         )
         self.layer = _ReservoirLayerProxy(self)
+        self.readout: nn.LazyLinear | nn.Linear
         self.readout = nn.LazyLinear(out_features, dtype=self.dtype)
         self.readout.to(device=self.device, dtype=self.dtype)
 
@@ -187,9 +190,10 @@ class ReservoirClassifier(MerlinModule):
             )
         return reduction
 
-    def _infer_quantum_input_features(self) -> int:
-        # From the reduction technique given, we infer the reduction dimension which corresponds to the number of modes in the quantum reservoir.
-        # If no reduction is given, we use all input features as modes.
+    def _infer_encoded_input_features(self) -> int:
+        # From the reduction technique given, infer how many classical features
+        # reach the reservoir encoder. If no reduction is given, we encode the
+        # raw input directly.
         if self._reduction_template is None:
             return self.in_features
 
@@ -200,12 +204,26 @@ class ReservoirClassifier(MerlinModule):
             )
         return int(n_components)
 
+    def _resolve_initial_n_modes(self, n_modes: int | None) -> int:
+        # The photonic circuit width can be larger than the number of encoded
+        # classical features, but it cannot be smaller.
+        resolved = self.encoded_input_features if n_modes is None else int(n_modes)
+        if resolved <= 0:
+            raise ValueError("n_modes must be a positive integer.")
+        if resolved < self.encoded_input_features:
+            raise ValueError(
+                "n_modes cannot be smaller than the number of encoded input features "
+                f"({self.encoded_input_features})."
+            )
+        return resolved
+
     def _warn_for_configuration(self) -> None:
-        # if no reduction is given, there is a warning saying that the number of modes = the in_features but it can be expensive after 19 modes
-        if self._reduction_template is None and self.in_features > 19:
+        # If no reduction is given and the resulting circuit width is large, the
+        # direct reservoir simulation can become expensive.
+        if self._reduction_template is None and self.quantum_input_features > 19:
             warnings.warn(
                 "ReservoirClassifier without reduction uses "
-                f"{self.in_features} modes, which can become very expensive.",
+                f"{self.quantum_input_features} modes, which can become very expensive.",
                 UserWarning,
                 stacklevel=3,
             )
@@ -238,11 +256,11 @@ class ReservoirClassifier(MerlinModule):
         self,
         *,
         unitary_matrix: np.ndarray,
-        input_size: int,
+        encoded_input_size: int,
+        n_modes: int,
         measurement_strategy: Any,
         noise_model: Any | None = None,
     ) -> QuantumLayer:
-
         # CIRCUIT DESIGN ###
         # The reservoir is made of a:
         # - Haar-random interferometer,
@@ -251,8 +269,8 @@ class ReservoirClassifier(MerlinModule):
         matrix = pcvl.Matrix(unitary_matrix)
         interferometer_left = pcvl.Unitary(matrix)
         interferometer_right = pcvl.Unitary(matrix.copy())
-        encoder = pcvl.Circuit(input_size)
-        for idx in range(input_size):
+        encoder = pcvl.Circuit(n_modes)
+        for idx in range(encoded_input_size):
             encoder.add(idx, pcvl.PS(pcvl.P(f"px{idx + 1}")))
 
         circuit = interferometer_left // encoder // interferometer_right
@@ -260,17 +278,17 @@ class ReservoirClassifier(MerlinModule):
         # INPUT STATE DESIGN ###
         # The input state is designed to have n_photons distributed one mode out of two from the first mode.
         # For instance, for n_photons=3, the input state is |1,0,1,0,1,...> .
-        if self.n_photons > input_size:
+        if self.n_photons > n_modes:
             raise ValueError(
-                f"n_photons={self.n_photons} cannot exceed n_modes={input_size} for the default reservoir input state."
+                f"n_photons={self.n_photons} cannot exceed n_modes={n_modes} for the default reservoir input state."
             )
-        input_state = [0] * input_size
-        step = (input_size - 1) / (self.n_photons - 1) if self.n_photons > 1 else 0
+        input_state = [0] * n_modes
+        step = (n_modes - 1) / (self.n_photons - 1) if self.n_photons > 1 else 0
         for photon_idx in range(self.n_photons):
             input_state[int(round(photon_idx * step))] = 1
 
         layer_kwargs = {
-            "input_size": input_size,
+            "input_size": encoded_input_size,
             "trainable_parameters": [],
             "input_parameters": ["px"],
             "input_state": input_state,
@@ -328,7 +346,8 @@ class ReservoirClassifier(MerlinModule):
     def _rebuild_quantum_layer(self) -> None:
         self._quantum_layer = self._build_layer(
             unitary_matrix=self._unitary_matrix,
-            input_size=self.quantum_input_features,
+            encoded_input_size=self.encoded_input_features,
+            n_modes=self.quantum_input_features,
             measurement_strategy=self._measurement_strategy,
             noise_model=self._noise_model,
         )
@@ -346,16 +365,13 @@ class ReservoirClassifier(MerlinModule):
         n_modes = int(n_modes)
         if n_modes <= 0:
             raise ValueError("n_modes must be a positive integer.")
-        if self._reduction_template is None:
-            if n_modes != self.in_features:
-                raise ValueError(
-                    "Changing layer.n_modes requires a reduction estimator. "
-                    "Without reduction, n_modes is fixed to in_features."
-                )
-            return
+        if n_modes < self.encoded_input_features:
+            raise ValueError(
+                "n_modes cannot be smaller than the number of encoded input features "
+                f"({self.encoded_input_features})."
+            )
 
         self.quantum_input_features = n_modes
-        self._reduction_template.n_components = n_modes
         self._unitary_matrix = self._draw_unitary(n_modes, self.seed)
         self._rebuild_quantum_layer()
 
@@ -407,6 +423,8 @@ class ReservoirClassifier(MerlinModule):
         return (data - mean) / (std + epsilon)
 
     def _transform_reduction(self, X: np.ndarray) -> np.ndarray:
+        # Possible not to have any reduction applied, in which case we just return the input as-is.
+        # Otherwise, we apply the fitted reduction to the input data and return the reduced features.
         if self.reduction is None:
             return X
         return np.asarray(self.reduction.transform(X), dtype=np.float32)
@@ -647,6 +665,7 @@ class ReservoirClassifier(MerlinModule):
                 "out_features": self.out_features,
                 "n_photons": self.n_photons,
                 "reduction": self._reduction_template,
+                "n_modes": self.quantum_input_features,
                 "concatenate": self.concatenate,
                 "cache": self.cache,
                 "seed": self.seed,
@@ -679,26 +698,37 @@ class ReservoirClassifier(MerlinModule):
         map_location: str | torch.device | None = None,
         device: str | torch.device | None = None,
     ) -> ReservoirClassifier:
-        load_kwargs = {"map_location": map_location}
         try:
-            payload = torch.load(Path(path), weights_only=False, **load_kwargs)
+            if map_location is None:
+                payload = torch.load(Path(path), weights_only=False)
+            else:
+                payload = torch.load(
+                    Path(path),
+                    map_location=map_location,
+                    weights_only=False,
+                )
         except TypeError:
-            payload = torch.load(Path(path), **load_kwargs)
+            if map_location is None:
+                payload = torch.load(Path(path))
+            else:
+                payload = torch.load(Path(path), map_location=map_location)
 
         config = dict(payload["config"])
+        saved_measurement_strategy = config.pop("measurement_strategy", None)
+        saved_noise_model = config.pop("noise_model", None)
         if device is not None:
             config["device"] = torch.device(device)
         model = cls(**config)
         model._unitary_matrix = np.asarray(
             payload["unitary_matrix"], dtype=np.complex128
         )
-        model._measurement_strategy = config.get(
-            "measurement_strategy", model._measurement_strategy
-        )
-        model._noise_model = config.get("noise_model")
+        if saved_measurement_strategy is not None:
+            model._measurement_strategy = saved_measurement_strategy
+        model._noise_model = saved_noise_model
         model._quantum_layer = model._build_layer(
             unitary_matrix=model._unitary_matrix,
-            input_size=model.quantum_input_features,
+            encoded_input_size=model.encoded_input_features,
+            n_modes=model.quantum_input_features,
             measurement_strategy=model._measurement_strategy,
             noise_model=model._noise_model,
         )

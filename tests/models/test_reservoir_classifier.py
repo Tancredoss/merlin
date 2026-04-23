@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import inspect
+
 import numpy as np
 import perceval as pcvl
 import pytest
 import torch
 from sklearn.datasets import make_blobs
-from sklearn.decomposition import FastICA, PCA
+from sklearn.decomposition import PCA, FastICA
 from sklearn.preprocessing import StandardScaler
 
 import merlin
@@ -40,6 +42,12 @@ class DummyProcessor:
 def test_public_import_surface():
     assert merlin.models.ReservoirClassifier is ReservoirClassifier
     assert merlin.ReservoirClassifier is ReservoirClassifier
+
+
+def test_constructor_hides_measurement_strategy_from_public_api():
+    signature = inspect.signature(ReservoirClassifier)
+
+    assert "measurement_strategy" not in signature.parameters
 
 
 def test_accepts_fastica_reduction():
@@ -252,6 +260,49 @@ def test_save_load_roundtrip(tmp_path):
     assert restored._is_fitted is True
 
 
+def test_save_load_preserves_custom_mode_count(tmp_path):
+    X, _ = _toy_data()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=2,
+        reduction=None,
+    )
+    model.layer.n_modes = 6
+
+    path = tmp_path / "reservoir_modes.pt"
+    model.save(path)
+    restored = ReservoirClassifier.load(path)
+
+    assert restored.layer.n_modes == 6
+    assert restored.layer.input_size == 4
+    assert restored.quantum_input_features == 6
+    assert restored.encoded_input_features == 4
+
+
+def test_save_load_preserves_measurement_strategy_override(tmp_path):
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=2,
+        reduction=None,
+    )
+    strategy = merlin.MeasurementStrategy.probs(
+        computation_space=merlin.ComputationSpace.FOCK,
+    )
+    model.layer.measurement_strategy = strategy
+
+    path = tmp_path / "reservoir_strategy.pt"
+    model.save(path)
+    restored = ReservoirClassifier.load(path)
+
+    assert (
+        restored.layer.measurement_strategy.computation_space
+        == merlin.ComputationSpace.FOCK
+    )
+    assert restored.layer.output_size == 10
+
+
 def test_same_seed_same_predictions():
     X, _ = _toy_data()
     model_a = ReservoirClassifier(
@@ -323,7 +374,7 @@ def test_grouped_measurement_strategy_updates_lazylinear_input_width():
     assert model.predict(X).shape == (len(X), 2)
 
 
-def test_layer_n_modes_rebuilds_layer_and_updates_reduction():
+def test_layer_n_modes_rebuilds_layer_without_mutating_reduction():
     X, _ = make_blobs(
         n_samples=20,
         n_features=6,
@@ -339,17 +390,18 @@ def test_layer_n_modes_rebuilds_layer_and_updates_reduction():
     )
     model.fit_reservoir(X)
 
-    model.layer.n_modes = 3
+    model.layer.n_modes = 5
 
-    assert model.quantum_input_features == 3
-    assert model.layer.n_modes == 3
-    assert model.layer.input_size == 3
-    assert model._reduction_template.n_components == 3
+    assert model.quantum_input_features == 5
+    assert model.layer.n_modes == 5
+    assert model.layer.input_size == 4
+    assert model.encoded_input_features == 4
+    assert model._reduction_template.n_components == 4
     assert model._is_fitted is False
     assert model._fit_quantum_cache is None
 
 
-def test_layer_n_modes_without_reduction_is_fixed():
+def test_layer_n_modes_without_reduction_can_grow_modes():
     model = ReservoirClassifier(
         in_features=4,
         out_features=2,
@@ -357,7 +409,23 @@ def test_layer_n_modes_without_reduction_is_fixed():
         reduction=None,
     )
 
-    with pytest.raises(ValueError, match="requires a reduction estimator"):
+    model.layer.n_modes = 6
+
+    assert model.quantum_input_features == 6
+    assert model.layer.n_modes == 6
+    assert model.layer.input_size == 4
+    assert model.encoded_input_features == 4
+
+
+def test_layer_n_modes_cannot_shrink_below_encoded_feature_count():
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=2,
+        reduction=None,
+    )
+
+    with pytest.raises(ValueError, match="encoded input features"):
         model.layer.n_modes = 3
 
 
