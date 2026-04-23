@@ -21,6 +21,7 @@ import perceval as pcvl
 import pytest
 import torch
 
+import merlin.core.process as process_module
 from merlin import ComputationSpace
 from merlin.algorithms.layer import QuantumLayer
 from merlin.measurement.strategies import MeasurementStrategy
@@ -222,9 +223,6 @@ def test_amplitude_encoding_gpu_roundtrip(
         assert param.grad.shape == param.shape
 
 
-@pytest.mark.skip(
-    reason="compute_superposition state is broken but not sure it is necessary - not called anywhere anyway"
-)
 def test_amplitude_encoding_matches_superposition(make_layer):
     layer = make_layer()
     num_states = len(layer.computation_process.simulation_graph.mapped_keys)
@@ -233,7 +231,9 @@ def test_amplitude_encoding_matches_superposition(make_layer):
     prepared_state = layer._validate_amplitude_input(raw_amplitude)
     layer.set_input_state(prepared_state)
     params = layer.prepare_parameters([])
-    expected = layer.computation_process.compute_superposition_state(params)
+    expected = layer.computation_process.compute_superposition_state(
+        params, simultaneous_processes=2
+    )
 
     amplitudes = layer(raw_amplitude)
 
@@ -252,9 +252,13 @@ def test_amplitude_encoding_batches_use_vectorised_kernel(make_layer):
         call_tracker["ebs"] += 1
         return original_ebs(parameters, simultaneous_processes=simultaneous_processes)
 
-    def tracked_super(self, parameters):
+    def tracked_super(self, parameters, simultaneous_processes=None, return_keys=False):
         call_tracker["super"] += 1
-        return original_super(parameters)
+        return original_super(
+            parameters,
+            simultaneous_processes=simultaneous_processes,
+            return_keys=return_keys,
+        )
 
     process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
     process.compute_superposition_state = MethodType(tracked_super, process)
@@ -266,6 +270,70 @@ def test_amplitude_encoding_batches_use_vectorised_kernel(make_layer):
 
     assert call_tracker["ebs"] == 1
     assert call_tracker["super"] == 0
+
+
+def test_amplitude_encoding_superposition_streams_chunked_batches(
+    make_layer, monkeypatch
+):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+    raw_amplitude = torch.arange(1, num_states + 1, dtype=torch.float64)
+
+    prepared_state = layer._validate_amplitude_input(raw_amplitude)
+    layer.set_input_state(prepared_state)
+    params = layer.prepare_parameters([])
+    expected = layer.computation_process.compute_superposition_state(
+        params, simultaneous_processes=2
+    )
+
+    layer.set_input_state(prepared_state)
+    original_compute_batch = process.simulation_graph.compute_batch
+    recorded_batches: list[int] = []
+
+    def tracked_compute_batch(unitary, batch_fock_states):
+        recorded_batches.append(len(batch_fock_states))
+        return original_compute_batch(unitary, batch_fock_states)
+
+    monkeypatch.setattr(
+        process.simulation_graph, "compute_batch", tracked_compute_batch
+    )
+
+    original_zeros = process_module.torch.zeros
+
+    def tracked_zeros(*args, **kwargs):
+        shape = args[0] if args else kwargs.get("size")
+        if tuple(shape) == (num_states, len(process.simulation_graph.mapped_keys)):
+            raise AssertionError("dense support matrix allocated")
+        return original_zeros(*args, **kwargs)
+
+    monkeypatch.setattr(process_module.torch, "zeros", tracked_zeros)
+
+    amplitudes = layer(raw_amplitude, simultaneous_processes=2)
+
+    assert recorded_batches == [2, 1]
+    assert torch.allclose(amplitudes, expected, rtol=1e-6, atol=1e-8)
+
+
+def test_amplitude_encoding_sparse_superposition_matches_dense(make_layer):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+
+    dense = torch.arange(1, num_states + 1, dtype=torch.float32).to(torch.complex64)
+    dense = dense / dense.norm(p=2)
+    indices = torch.arange(num_states, dtype=torch.long).unsqueeze(0)
+    sparse = torch.sparse_coo_tensor(
+        indices,
+        dense.clone(),
+        (num_states,),
+        dtype=torch.complex64,
+    ).coalesce()
+
+    dense_output = layer(dense, simultaneous_processes=2)
+    sparse_output = layer(sparse, simultaneous_processes=2)
+
+    assert torch.allclose(sparse_output, dense_output, rtol=1e-6, atol=1e-8)
 
 
 def test_amplitude_encoding_requires_first_argument(make_layer):
