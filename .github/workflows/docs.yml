@@ -6,13 +6,19 @@ on:
       - main
       - release/*
     paths:
+      - ".github/workflows/docs.yml"
       - "docs/**"
+      - "pyproject.toml"
+      - "requirements-docs.txt"
   pull_request:
     branches:
       - main
       - release/*
     paths:
+      - ".github/workflows/docs.yml"
       - "docs/**"
+      - "pyproject.toml"
+      - "requirements-docs.txt"
 
 jobs:
   build-docs:
@@ -38,7 +44,7 @@ jobs:
 
       - name: Build documentation
         working-directory: docs
-        run: SPHINXOPTS="-D nbsphinx_execute=never" make html
+        run: SPHINXOPTS="-W --keep-going -n -D nbsphinx_execute=never" make clean html
 
       - name: Clean generated documentation
         if: always()
