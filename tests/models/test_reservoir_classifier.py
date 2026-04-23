@@ -44,10 +44,12 @@ def test_public_import_surface():
     assert merlin.ReservoirClassifier is ReservoirClassifier
 
 
-def test_constructor_hides_measurement_strategy_from_public_api():
+def test_constructor_hides_layer_configuration_from_public_api():
     signature = inspect.signature(ReservoirClassifier)
 
     assert "measurement_strategy" not in signature.parameters
+    assert "n_modes" not in signature.parameters
+    assert "noise_model" not in signature.parameters
 
 
 def test_accepts_fastica_reduction():

@@ -107,11 +107,9 @@ class ReservoirClassifier(MerlinModule):
         out_features: int,
         n_photons: int,
         reduction: Any | None = None,
-        n_modes: int | None = None,
         concatenate: bool = True,
         cache: bool = True,
         seed: int | None = None,
-        noise_model: Any | None = None,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
     ) -> None:
@@ -145,7 +143,7 @@ class ReservoirClassifier(MerlinModule):
             else None
         )
         self.encoded_input_features = self._infer_encoded_input_features()
-        self.quantum_input_features = self._resolve_initial_n_modes(n_modes)
+        self.quantum_input_features = self.encoded_input_features
         self._warn_for_configuration()
 
         self._unitary_matrix = self._draw_unitary(
@@ -153,7 +151,7 @@ class ReservoirClassifier(MerlinModule):
             self.seed,
         )
         self._measurement_strategy = MeasurementStrategy.probs()
-        self._noise_model = noise_model
+        self._noise_model = None
         self._quantum_layer = self._build_layer(
             unitary_matrix=self._unitary_matrix,
             encoded_input_size=self.encoded_input_features,
@@ -203,19 +201,6 @@ class ReservoirClassifier(MerlinModule):
                 "reduction must expose a positive integer n_components at construction time."
             )
         return int(n_components)
-
-    def _resolve_initial_n_modes(self, n_modes: int | None) -> int:
-        # The photonic circuit width can be larger than the number of encoded
-        # classical features, but it cannot be smaller.
-        resolved = self.encoded_input_features if n_modes is None else int(n_modes)
-        if resolved <= 0:
-            raise ValueError("n_modes must be a positive integer.")
-        if resolved < self.encoded_input_features:
-            raise ValueError(
-                "n_modes cannot be smaller than the number of encoded input features "
-                f"({self.encoded_input_features})."
-            )
-        return resolved
 
     def _warn_for_configuration(self) -> None:
         # If no reduction is given and the resulting circuit width is large, the
@@ -665,13 +650,15 @@ class ReservoirClassifier(MerlinModule):
                 "out_features": self.out_features,
                 "n_photons": self.n_photons,
                 "reduction": self._reduction_template,
-                "n_modes": self.quantum_input_features,
                 "concatenate": self.concatenate,
                 "cache": self.cache,
                 "seed": self.seed,
+                "dtype": self.dtype,
+            },
+            "layer_state": {
+                "n_modes": self.quantum_input_features,
                 "measurement_strategy": self._measurement_strategy,
                 "noise_model": self._noise_model,
-                "dtype": self.dtype,
             },
             "unitary_matrix": self._unitary_matrix,
             "reduction_fitted": reduction_fitted,
@@ -714,14 +701,26 @@ class ReservoirClassifier(MerlinModule):
                 payload = torch.load(Path(path), map_location=map_location)
 
         config = dict(payload["config"])
-        saved_measurement_strategy = config.pop("measurement_strategy", None)
-        saved_noise_model = config.pop("noise_model", None)
+        layer_state = dict(payload.get("layer_state", {}))
+        # Backward compatibility for checkpoints saved before layer-only state
+        # was split out of the public constructor config.
+        saved_n_modes = layer_state.get("n_modes", config.pop("n_modes", None))
+        saved_measurement_strategy = layer_state.get(
+            "measurement_strategy",
+            config.pop("measurement_strategy", None),
+        )
+        saved_noise_model = layer_state.get(
+            "noise_model",
+            config.pop("noise_model", None),
+        )
         if device is not None:
             config["device"] = torch.device(device)
         model = cls(**config)
         model._unitary_matrix = np.asarray(
             payload["unitary_matrix"], dtype=np.complex128
         )
+        if saved_n_modes is not None:
+            model.quantum_input_features = int(saved_n_modes)
         if saved_measurement_strategy is not None:
             model._measurement_strategy = saved_measurement_strategy
         model._noise_model = saved_noise_model
