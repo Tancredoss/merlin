@@ -1000,7 +1000,17 @@ class QuantumLayer(MerlinModule):
                 return self.computation_process.compute_ebs_simultaneously(
                     params, simultaneous_processes=chunk
                 )
-            return self.computation_process.compute_superposition_state(params)
+            if simultaneous_processes is None:
+                return cast(
+                    torch.Tensor,
+                    self.computation_process.compute_superposition_state(params),
+                )
+            return cast(
+                torch.Tensor,
+                self.computation_process.compute_superposition_state(
+                    params, simultaneous_processes=simultaneous_processes
+                ),
+            )
         return self.computation_process.compute(params)
 
     def _renormalize_distribution_and_amplitudes(
