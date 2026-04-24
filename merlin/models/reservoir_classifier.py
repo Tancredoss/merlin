@@ -98,7 +98,14 @@ class _ReservoirLayerProxy:
 
 
 class ReservoirClassifier(MerlinModule):
-    """Frozen photonic reservoir with a trainable linear readout."""
+    """Frozen photonic reservoir with a trainable linear readout.
+
+    The quantum reservoir is initialized once from a Haar-random interferometer
+    and kept frozen afterwards. Training is therefore split in two stages:
+    :meth:`fit_reservoir` computes the fixed reservoir features and stores the
+    normalization statistics, while downstream optimization only updates the
+    classical readout returned by :meth:`parameters`.
+    """
 
     def __init__(
         self,
@@ -113,6 +120,50 @@ class ReservoirClassifier(MerlinModule):
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
     ) -> None:
+        """Initialize a frozen photonic reservoir classifier.
+
+        Parameters
+        ----------
+        in_features : int
+            Number of classical input features expected per sample before any
+            optional dimensionality reduction.
+        out_features : int
+            Number of output logits produced by the linear readout.
+        n_photons : int
+            Number of photons injected in the default reservoir input state.
+        reduction : object|None
+            Optional scikit-learn decomposition estimator used to compress the
+            input before encoding it in the reservoir. The estimator must expose
+            ``fit`` and ``transform`` and define ``n_components`` at
+            construction time.
+        concatenate : bool
+            If ``True``, concatenate the raw classical inputs to the normalized
+            reservoir features before the readout. If ``False``, the readout
+            only sees reservoir features.
+        cache : bool
+            If ``True``, cache the fitted training-set reservoir features so
+            repeated access to the same data avoids recomputing the frozen
+            quantum layer.
+        seed : int|None
+            Optional random seed used for the Haar-random unitary and the lazy
+            readout initialization.
+        device : torch.device|None
+            Torch device hosting the readout parameters and the reservoir
+            feature tensors.
+        dtype : torch.dtype|None
+            Floating-point dtype used for the readout parameters and the
+            reservoir feature tensors.
+
+        Raises
+        ------
+        ValueError
+            If ``in_features``, ``out_features``, or ``n_photons`` is not a
+            strictly positive integer, or if ``reduction.n_components`` is not
+            a strictly positive integer.
+        TypeError
+            If ``reduction`` is not ``None`` and does not behave like a
+            scikit-learn decomposition estimator.
+        """
         super().__init__()
 
         if in_features <= 0:
@@ -480,6 +531,30 @@ class ReservoirClassifier(MerlinModule):
         *,
         processor: Any | None = None,
     ) -> ReservoirClassifier:
+        """Fit the frozen reservoir preprocessing on an input feature matrix.
+
+        Parameters
+        ----------
+        X : numpy.ndarray|torch.Tensor|list[Any]
+            Two-dimensional feature matrix used to fit the optional reduction,
+            learn the min-max input scaling, compute the frozen reservoir
+            features, and store their standardization statistics.
+        processor : merlin.core.merlin_processor.MerlinProcessor|None
+            Optional processor used to evaluate the frozen quantum reservoir
+            through Merlin's local or remote execution path. If omitted, the
+            quantum layer is executed locally.
+
+        Returns
+        -------
+        ReservoirClassifier
+            The fitted classifier instance.
+
+        Raises
+        ------
+        RuntimeError
+            If ``X`` cannot be interpreted as a two-dimensional feature matrix
+            with ``in_features`` columns.
+        """
         # This method fits the reservoir to the input data X by performing the following steps:
         # 1. Coerce the input to a 2D numpy array and validate its
         X_np = self._coerce_input(X)
@@ -594,6 +669,31 @@ class ReservoirClassifier(MerlinModule):
         *,
         processor: Any | None = None,
     ) -> TensorDataset:
+        """Build a readout-ready dataset from raw inputs and classification targets.
+
+        Parameters
+        ----------
+        X : numpy.ndarray|torch.Tensor|list[Any]
+            Two-dimensional feature matrix to transform into readout features.
+        y : numpy.ndarray|torch.Tensor|list[Any]
+            One-dimensional classification targets aligned with ``X``.
+        processor : merlin.core.merlin_processor.MerlinProcessor|None
+            Optional processor used to evaluate the frozen quantum reservoir.
+            If omitted, the quantum layer is executed locally.
+
+        Returns
+        -------
+        torch.utils.data.TensorDataset
+            Dataset containing the transformed readout features on CPU and the
+            integer classification targets.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`fit_reservoir` was not called first, if ``X`` does not
+            have the expected shape, or if ``X`` and ``y`` do not contain the
+            same number of samples.
+        """
         features = self._make_feature_tensor(X, processor=processor).detach().cpu()
         targets = self._coerce_targets(y)
         if features.shape[0] != targets.shape[0]:
@@ -601,6 +701,20 @@ class ReservoirClassifier(MerlinModule):
         return TensorDataset(features, targets)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the trainable linear readout to precomputed feature vectors.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Batch of readout input features. This tensor must already contain
+            the reservoir features, with optional raw-feature concatenation
+            applied if needed.
+
+        Returns
+        -------
+        torch.Tensor
+            Output logits produced by the linear readout.
+        """
         # only the readout is concerned here as the quantum features are already computed.
         return self.readout(x.to(device=self.device, dtype=self.dtype))
 
@@ -610,6 +724,27 @@ class ReservoirClassifier(MerlinModule):
         *,
         processor: Any | None = None,
     ) -> torch.Tensor:
+        """Run the frozen reservoir and readout on a batch of raw inputs.
+
+        Parameters
+        ----------
+        X : numpy.ndarray|torch.Tensor|list[Any]
+            Two-dimensional feature matrix to encode through the reservoir.
+        processor : merlin.core.merlin_processor.MerlinProcessor|None
+            Optional processor used to evaluate the frozen quantum reservoir.
+            If omitted, the quantum layer is executed locally.
+
+        Returns
+        -------
+        torch.Tensor
+            Output logits on CPU for each input sample.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`fit_reservoir` was not called first or if ``X`` does not
+            have the expected shape.
+        """
         # The predict method:
         # 1. computes the quantum features for the input data X,
         # 2. concatenates them with the raw features if configured to do so,
@@ -622,6 +757,19 @@ class ReservoirClassifier(MerlinModule):
         return logits.detach().cpu()
 
     def parameters(self, recurse: bool = True):  # type: ignore[override]
+        """Yield the trainable parameters of the classifier.
+
+        Parameters
+        ----------
+        recurse : bool
+            Forwarded to :meth:`torch.nn.Module.parameters`.
+
+        Returns
+        -------
+        collections.abc.Iterator[torch.nn.Parameter]
+            Iterator over the readout parameters only. The reservoir parameters
+            are frozen and therefore excluded.
+        """
         yield from self.readout.parameters(recurse=recurse)
 
     def named_parameters(  # type: ignore[override]
@@ -630,6 +778,22 @@ class ReservoirClassifier(MerlinModule):
         recurse: bool = True,
         remove_duplicate: bool = True,
     ):
+        """Yield named trainable parameters of the classifier.
+
+        Parameters
+        ----------
+        prefix : str
+            Optional prefix prepended to the yielded parameter names.
+        recurse : bool
+            Forwarded to :meth:`torch.nn.Module.named_parameters`.
+        remove_duplicate : bool
+            Forwarded to :meth:`torch.nn.Module.named_parameters`.
+
+        Returns
+        -------
+        collections.abc.Iterator[tuple[str, torch.nn.Parameter]]
+            Iterator over the named readout parameters only.
+        """
         readout_prefix = f"{prefix}.readout" if prefix else "readout"
         yield from self.readout.named_parameters(
             prefix=readout_prefix,
@@ -638,6 +802,19 @@ class ReservoirClassifier(MerlinModule):
         )
 
     def save(self, path: str | Path) -> None:
+        """Serialize the classifier state to disk.
+
+        Parameters
+        ----------
+        path : str|pathlib.Path
+            Destination file used to store the configuration, frozen reservoir
+            state, preprocessing statistics, cache, and readout parameters.
+
+        Returns
+        -------
+        None
+            This method writes the checkpoint to disk in-place.
+        """
         reduction_fitted = (
             self.reduction if self._is_fitted else self._reduction_template
         )
@@ -685,6 +862,31 @@ class ReservoirClassifier(MerlinModule):
         map_location: str | torch.device | None = None,
         device: str | torch.device | None = None,
     ) -> ReservoirClassifier:
+        """Restore a serialized classifier from disk.
+
+        Parameters
+        ----------
+        path : str|pathlib.Path
+            Checkpoint file previously generated with :meth:`save`.
+        map_location : str|torch.device|None
+            Optional map-location argument forwarded to :func:`torch.load`.
+        device : str|torch.device|None
+            Optional device override applied to the restored classifier after
+            loading the checkpoint configuration.
+
+        Returns
+        -------
+        ReservoirClassifier
+            Restored classifier with the frozen reservoir state, preprocessing
+            statistics, and readout parameters loaded from ``path``.
+
+        Raises
+        ------
+        FileNotFoundError
+            If ``path`` does not exist.
+        RuntimeError
+            If the checkpoint cannot be deserialized by :func:`torch.load`.
+        """
         try:
             if map_location is None:
                 payload = torch.load(Path(path), weights_only=False)
