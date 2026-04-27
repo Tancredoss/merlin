@@ -25,7 +25,9 @@
 import pytest
 import torch
 
-from merlin.core import StateVector
+from merlin.algorithms import QuantumLayer
+from merlin.core import ComputationSpace, StateVector
+from merlin.measurement import MeasurementStrategy
 from merlin.models import QCNNClassifier
 
 
@@ -510,3 +512,83 @@ def test_full_default_qcnn():
         before = initial_param_values[name]
         after = param.detach().clone()
         assert not torch.allclose(before, after, atol=1e-4, rtol=1e-4)
+
+
+def test_qcnn_layers_public_sequential_api():
+    qcnn = QCNNClassifier((4, 4), 3)
+
+    assert isinstance(qcnn.layers, torch.nn.Sequential)
+    named_layers = dict(qcnn.layers.named_children())
+    assert list(named_layers) == ["QConv_1", "QPool_1", "QDense", "Readout"]
+
+    qconv = qcnn.layers[0]
+    qpool = qcnn.layers[1]
+    qdense = qcnn.layers[2]
+    readout = qcnn.layers[3]
+
+    assert named_layers["QConv_1"] is qconv
+    assert named_layers["QPool_1"] is qpool
+    assert named_layers["QDense"] is qdense
+    assert named_layers["Readout"] is readout
+
+    assert isinstance(qconv, QuantumLayer)
+    assert isinstance(qpool, QuantumLayer)
+    assert isinstance(qdense, QuantumLayer)
+    assert isinstance(readout, torch.nn.Linear)
+
+    assert qconv.circuit.m == 8
+    assert qpool.circuit.m == 8
+    assert qdense.circuit.m == 4
+
+    assert isinstance(qconv.output_size, int)
+    assert isinstance(qpool.output_size, int)
+    assert isinstance(qdense.output_size, int)
+    assert qconv.output_size > 0
+    assert qpool.output_size > 0
+    assert qdense.output_size > 0
+
+    assert isinstance(qconv.measurement_strategy, MeasurementStrategy)
+    assert qconv.measurement_strategy.type.value == "AMPLITUDES"
+    assert qconv.measurement_strategy.computation_space == ComputationSpace.FOCK
+    assert isinstance(qpool.measurement_strategy, MeasurementStrategy)
+    assert qpool.measurement_strategy.type.value == "PARTIAL"
+    assert qpool.measurement_strategy.measured_modes == (0, 2, 4, 6)
+    assert isinstance(qdense.measurement_strategy, MeasurementStrategy)
+    assert qdense.measurement_strategy.type.value == "PROBABILITIES"
+
+    assert readout.in_features == qdense.output_size
+    assert readout.out_features == qcnn.num_classes
+
+
+def test_qcnn_layers_custom_stage_names_and_dense_access():
+    stages = [
+        QCNNClassifier.QConv(2, 1),
+        QCNNClassifier.QConv(2, 2),
+        QCNNClassifier.QDense(),
+    ]
+    qcnn = QCNNClassifier((4, 4), 2, stages=stages)
+
+    named_layers = dict(qcnn.layers.named_children())
+    assert list(named_layers) == ["QConv_1", "QConv_2", "QDense", "Readout"]
+    assert qcnn.layers[0] is named_layers["QConv_1"]
+    assert qcnn.layers[1] is named_layers["QConv_2"]
+
+    first_conv = qcnn.layers[0]
+    second_conv = qcnn.layers[1]
+    dense = qcnn.layers[2]
+
+    assert isinstance(first_conv, QuantumLayer)
+    assert isinstance(second_conv, QuantumLayer)
+    assert isinstance(dense, QuantumLayer)
+
+    assert isinstance(first_conv.measurement_strategy, MeasurementStrategy)
+    assert first_conv.measurement_strategy.type.value == "AMPLITUDES"
+    assert isinstance(second_conv.measurement_strategy, MeasurementStrategy)
+    assert second_conv.measurement_strategy.type.value == "AMPLITUDES"
+    assert isinstance(dense.measurement_strategy, MeasurementStrategy)
+    assert dense.measurement_strategy.type.value == "PROBABILITIES"
+
+    assert first_conv.circuit.m == 8
+    assert second_conv.circuit.m == 8
+    assert dense.circuit.m == 8
+    assert qcnn.layers[3].in_features == dense.output_size

@@ -1,3 +1,5 @@
+"""Quantum convolutional neural network model definitions."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,15 +12,84 @@ from ..algorithms import QuantumLayer
 from ..core import ComputationSpace, StateVector
 from ..core.partial_measurement import PartialMeasurement
 from ..measurement import MeasurementStrategy
-from ..utils.grouping import LexGrouping
 
 
 class QCNNClassifier(torch.nn.Module):
-    """ """
+    """Quantum convolutional neural network classifier.
+
+    ``QCNNClassifier`` builds a trainable PyTorch model from a sequence of
+    quantum convolution and quantum pooling stages followed by a quantum dense and
+    a readout stage. The model is designed for square, single-channel image-like
+    tensors. Each input image is amplitude-encoded into a two-photon
+    :class:`~merlin.core.state_vector.StateVector`: one photon occupies a mode in
+    the first register, the other occupies a mode in the second register, and
+    each pixel value scales the basis state identified by its row and column.
+
+    The resulting state vector is propagated through a
+    :class:`torch.nn.Sequential` pipeline. ``QConv`` stages apply trainable
+    Perceval beam-splitter circuits independently to each register. ``QPool``
+    stages partially measure selected modes, reinsert measured photons in the
+    reduced register, continue the remaining QCNN pipeline on each valid
+    measurement branch, and combine branch logits weighted by their
+    probabilities. The final ``QDense`` stage applies a dense trainable photonic
+    circuit, maps output probabilities to a tensor, and feeds them to a
+    classical linear readout that returns class logits.
+
+    Parameters
+    ----------
+    input_shape : tuple
+        Spatial shape of the input image, written as ``(height, width)``. The
+        current implementation requires a positive square shape and supports
+        dimensions up to ``28``.
+    num_classes : int
+        Number of output classes produced by the final readout layer.
+    stages : list[QCNNClassifier._Stage] | None, default: None
+        Optional stage specification. If omitted or empty, the classifier uses
+        ``QConv(kernel_size=2, stride=2)``, ``QPool(kernel_size=2)``, then
+        ``QDense()``.
+
+    Attributes
+    ----------
+    input_shape : tuple
+        Validated input image shape.
+    num_classes : int
+        Number of output classes.
+    stages : list[QCNNClassifier._Stage] | None
+        User-provided stage specification.
+    layers : torch.nn.Sequential
+        Executable PyTorch module containing the named quantum stages and
+        readout. Individual layers can be inspected with integer indexing, for
+        example ``classifier.layers[0]``.
+
+    Raises
+    ------
+    TypeError
+        If ``input_shape`` is not a tuple of integers, if ``num_classes`` is not
+        an integer, or if ``stages`` is neither ``None`` nor a list.
+    ValueError
+        If ``input_shape`` is not positive and square, if it exceeds the
+        supported size, if ``num_classes`` is not positive, or if ``stages`` does
+        not satisfy the QCNN stage constraints.
+    """
 
     def __init__(
-        self, input_shape: tuple, num_classes: int, stages: list[_Stage] | None = None
+        self,
+        input_shape: tuple,
+        num_classes: int,
+        stages: list[QCNNClassifier._Stage] | None = None,
     ):
+        """Initialize and build the QCNN classifier.
+
+        Parameters
+        ----------
+        input_shape : tuple
+            Square image shape expected by :meth:`forward`.
+        num_classes : int
+            Number of output logits.
+        stages : list[QCNNClassifier._Stage] | None, default: None
+            Optional list made of :class:`QConv`, :class:`QPool`, and
+            :class:`QDense` stages.
+        """
         super().__init__()
         self.input_shape = input_shape
         self.num_classes = num_classes
@@ -54,23 +125,57 @@ class QCNNClassifier(torch.nn.Module):
             raise TypeError("stages must be None or have the list type.")
 
         self._resolved_stages = self.resolve_stages()
-        self.qcnn = self.build_qcnn_model()
+        self.layers = self.build_qcnn_model()
 
     @property
-    def resolved_stages(self) -> list[_Stage]:
+    def resolved_stages(self) -> list[QCNNClassifier._Stage]:
+        """Validated stage sequence used to build the model."""
         return self._resolved_stages
 
     class _QCNNStageTypes(Enum):
+        """Internal stage identifiers used in serialized configs."""
+
         QConv = "QConv"
         QPool = "QPool"
         QDense = "QDense"
 
     @dataclass
     class _Stage:
+        """Base container for a QCNN stage.
+
+        Parameters
+        ----------
+        type : QCNNClassifier._QCNNStageTypes
+            Internal identifier of the stage kind.
+        """
+
         def __init__(self, type: QCNNClassifier._QCNNStageTypes):
             self.type = type
 
     class QConv(_Stage):
+        """Quantum convolution stage specification.
+
+        A convolution stage applies the same construction rule to both quantum
+        registers. Each sliding window is represented by a trainable
+        beam-splitter mesh spanning ``kernel_size`` adjacent modes, and windows
+        advance by ``stride`` modes.
+
+        Parameters
+        ----------
+        kernel_size : int
+            Number of adjacent modes included in each quantum convolution
+            window.
+        stride : int
+            Distance between consecutive convolution windows.
+
+        Raises
+        ------
+        TypeError
+            If ``kernel_size`` or ``stride`` is not an integer.
+        ValueError
+            If ``kernel_size`` or ``stride`` is not positive.
+        """
+
         def __init__(self, kernel_size: int, stride: int):
             self.type = QCNNClassifier._QCNNStageTypes.QConv
             self.kernel_size = kernel_size
@@ -87,6 +192,7 @@ class QCNNClassifier(torch.nn.Module):
                 raise TypeError("stride must have int type.")
 
         def __eq__(self, other):
+            """Return whether two quantum convolution stages are identical."""
             if not isinstance(other, type(self)):
                 return NotImplemented
             return (
@@ -96,6 +202,25 @@ class QCNNClassifier(torch.nn.Module):
             )
 
     class QPool(_Stage):
+        """Quantum pooling stage specification.
+
+        A pooling stage partially measures one mode per pooling window in each
+        register. Valid measurement branches are propagated through the
+        remaining stages and recombined by their probabilities.
+
+        Parameters
+        ----------
+        kernel_size : int
+            Number of adjacent modes covered by each pooling window.
+
+        Raises
+        ------
+        TypeError
+            If ``kernel_size`` is not an integer.
+        ValueError
+            If ``kernel_size`` is less than or equal to ``1``.
+        """
+
         def __init__(self, kernel_size: int):
             self.type = QCNNClassifier._QCNNStageTypes.QPool
             self.kernel_size = kernel_size
@@ -107,29 +232,48 @@ class QCNNClassifier(torch.nn.Module):
                 raise TypeError("kernel_size must have int type.")
 
         def __eq__(self, other):
+            """Return whether two quantum pooling stages are identical."""
             if not isinstance(other, type(self)):
                 return NotImplemented
             return self.type == other.type and self.kernel_size == other.kernel_size
 
     class QDense(_Stage):
+        """Dense quantum readout stage specification.
+
+        The dense stage is mandatory and must appear as the final QCNN stage. It
+        applies a trainable beam-splitter circuit across all remaining modes
+        before the classical readout layer.
+        """
+
         def __init__(self):
+            """Initialize a dense quantum readout stage."""
             self.type = QCNNClassifier._QCNNStageTypes.QDense
 
         def __eq__(self, other):
+            """Return whether two dense quantum stages are identical."""
             if not isinstance(other, type(self)):
                 return NotImplemented
             return self.type == other.type
 
-    def resolve_stages(self) -> list[_Stage]:
-        """
-        Resolving of stages:
+    def resolve_stages(self) -> list[QCNNClassifier._Stage]:
+        """Validate the stage specification and return the executable sequence.
 
-        If no stage was specified -> return default stage structure
+        When no stage sequence is supplied, a default three-stage architecture is
+        created. Custom stage sequences must end with exactly one dense stage,
+        must use convolution kernels that fit the current register dimension,
+        and must use pooling kernels that evenly reduce the current register
+        dimension.
 
-        If stages were specified -> verify that the structure respects the following constraints:
-        1. QDense must only be the last stage specified (i.e. only one QDense that is mandatory as the last stage)
-        2. QConv kernel_size is inferior or equal to the register dimension and superior or equal to the stride
-        3. QPool kernel size must divide the dimension of the registers
+        Returns
+        -------
+        list[QCNNClassifier._Stage]
+            Validated stage sequence used to build the QCNN.
+
+        Raises
+        ------
+        ValueError
+            If the stage order or stage parameters are incompatible with the
+            current register dimensions, or if an unknown stage type is present.
         """
         # Check if stages is None or empty
         if self.stages is None or not self.stages:
@@ -196,7 +340,14 @@ class QCNNClassifier(torch.nn.Module):
         return resolved_stages
 
     def summary(self):
-        """Return a concise, human-readable description of the model architecture."""
+        """Return a concise, human-readable description of the architecture.
+
+        Returns
+        -------
+        str
+            String containing input shape, number of classes, and resolved stage
+            sequence.
+        """
         stage_parts = []
         for stage in self._resolved_stages:
             if isinstance(stage, QCNNClassifier.QConv):
@@ -218,8 +369,17 @@ class QCNNClassifier(torch.nn.Module):
         )
 
     def export_config(self):
-        """
-        Export a serializable architecture config (weights are intentionally excluded).
+        """Export a serializable architecture configuration.
+
+        Weights are intentionally excluded. The returned dictionary can be used
+        to reconstruct an equivalent ``QCNNClassifier`` architecture by
+        rebuilding the stage objects from their serialized ``type`` entries.
+
+        Returns
+        -------
+        dict
+            Serializable architecture metadata containing ``input_shape``,
+            ``num_classes``, and the resolved stage list.
         """
         serializable_stages = []
         for stage in self._resolved_stages:
@@ -238,6 +398,26 @@ class QCNNClassifier(torch.nn.Module):
         }
 
     def build_qcnn_model(self):
+        """Build the executable quantum-classical QCNN pipeline.
+
+        Each resolved stage is converted into a :class:`QuantumLayer`. Quantum
+        convolution layers return amplitudes so that later quantum stages can
+        continue operating on state vectors. Quantum pooling layers return
+        :class:`~merlin.core.partial_measurement.PartialMeasurement` objects for
+        branch processing. The final dense quantum layer returns probabilities
+        that are consumed by a classical :class:`torch.nn.Linear` readout.
+
+        Returns
+        -------
+        torch.nn.Sequential
+            Sequential module containing all quantum stages followed by the
+            linear readout.
+
+        Raises
+        ------
+        TypeError
+            If an unknown stage type is encountered while building the model.
+        """
         empty_circuit = pcvl.Circuit(sum(self.input_shape))
         current_shape = self.input_shape
         qcnn_layers = []
@@ -276,8 +456,6 @@ class QCNNClassifier(torch.nn.Module):
                 )
                 qcnn_layers.append(pool_layer)
                 layer_names.append(f"QPool_{num_qpool}")
-                # Pooling post-process
-                # TODO
                 # Change shape of circuit after pooling
                 current_shape = new_shape
 
@@ -290,27 +468,44 @@ class QCNNClassifier(torch.nn.Module):
             circuit=dense_circuit,
             n_photons=2,
             trainable_parameters=["px"],
-            measurement_strategy=MeasurementStrategy.mode_expectations(
+            # measurement_strategy=MeasurementStrategy.mode_expectations(
+            #    computation_space=ComputationSpace.FOCK
+            # ),
+            measurement_strategy=MeasurementStrategy.probs(
                 computation_space=ComputationSpace.FOCK
             ),
         )
 
         # Readout layer
-        readout = LexGrouping(sum(current_shape), self.num_classes)
+        # readout = LexGrouping(dense_layer.output_size, self.num_classes)
+        readout = torch.nn.Linear(dense_layer.output_size, self.num_classes)
 
         qcnn_model = torch.nn.Sequential()
         for name, layer in zip(layer_names, qcnn_layers, strict=False):
             qcnn_model.add_module(name, layer)
-        qcnn_model.add_module("QDense_1", dense_layer)
+        qcnn_model.add_module("QDense", dense_layer)
         qcnn_model.add_module("Readout", readout)
 
         return qcnn_model
 
     def build_conv_circuit(self, shape, stage):
-        """
-        Build the complete circuit containing convolutions
+        """Build a quantum convolution circuit for both registers.
 
-        The two registers must remain separate (i.e. no convolution between the two).
+        The two registers remain separate: no beam splitter is added between
+        modes belonging to different registers. Each register receives the same
+        sliding-window convolution pattern.
+
+        Parameters
+        ----------
+        shape : tuple[int, int]
+            Current dimensions of the two quantum registers.
+        stage : QCNNClassifier.QConv
+            Convolution stage specification.
+
+        Returns
+        -------
+        pcvl.Circuit
+            Perceval circuit implementing the convolution stage.
         """
         circuit = pcvl.Circuit(sum(shape))
 
@@ -329,10 +524,24 @@ class QCNNClassifier(torch.nn.Module):
         return circuit
 
     def build_single_conv(self, i, kernel_size, circuit):
-        """
-        Build a single convolutional window.
+        """Add one trainable convolution window to a circuit.
 
-        A single convolution is made up of several beam splitters (BS) that allow photon passage from any mode to any mode within the convolution kernel_size.
+        A single window is implemented as a down-and-up beam-splitter mesh so a
+        photon can mix across the modes covered by ``kernel_size``.
+
+        Parameters
+        ----------
+        i : int
+            First mode of the convolution window.
+        kernel_size : int
+            Number of modes covered by the window.
+        circuit : pcvl.Circuit
+            Circuit to mutate with the trainable beam splitters.
+
+        Returns
+        -------
+        pcvl.Circuit
+            Circuit with the added convolution window.
         """
         # Slide the BS down on the circuit
         for j in range(i, i + kernel_size - 1):
@@ -343,10 +552,29 @@ class QCNNClassifier(torch.nn.Module):
         return circuit
 
     def resolve_pooling_modes(self, shape, stage):
-        """
-        Get measured_modes, reinsert_modes and new_shape for the QPool layer.
+        """Resolve measured modes and output shape for a pooling stage.
 
-        reinsert_mode is always measured_mode + 1.
+        The first mode of every pooling window is measured. A photon detected in
+        that mode is reinserted into the following mode after the measurement
+        branch is reduced, which preserves the two-photon QCNN representation for
+        downstream layers.
+
+        Parameters
+        ----------
+        shape : tuple[int, int]
+            Current dimensions of the two quantum registers.
+        stage : QCNNClassifier.QPool
+            Pooling stage specification.
+
+        Returns
+        -------
+        tuple[list[int], list[int], tuple[int, int]]
+            Measured modes, reinsertion modes, and the reduced register shape.
+
+        Raises
+        ------
+        ValueError
+            If pooling would produce registers with different dimensions.
         """
         measured_modes = []
         reinsert_modes = []
@@ -368,15 +596,30 @@ class QCNNClassifier(torch.nn.Module):
             i += stage.kernel_size
         new_shape_1 = shape[1] - len(measured_modes) + num_mesured_modes_0
 
-        assert new_shape_0 == new_shape_1, (
-            f"New shape after QPool must have the same shape[0] and shape[1] but got new_shape[0]: {new_shape_0} and new_shape[1]: {new_shape_1}"
-        )
+        if new_shape_0 != new_shape_1:
+            raise ValueError(
+                "New shape after QPool must have the same shape[0] and shape[1] "
+                f"but got new_shape[0]: {new_shape_0} and new_shape[1]: {new_shape_1}"
+            )
 
         return measured_modes, reinsert_modes, (new_shape_0, new_shape_1)
 
     def build_dense_circuit(self, shape):
-        """
-        BS based circuit based on the circuit presented in Monbroussou et al.
+        """Build the dense quantum readout circuit.
+
+        The circuit is a trainable beam-splitter mesh spanning all remaining
+        modes, following the dense QCNN construction presented by Monbroussou et
+        al.
+
+        Parameters
+        ----------
+        shape : tuple[int, int]
+            Current dimensions of the two quantum registers.
+
+        Returns
+        -------
+        pcvl.Circuit
+            Perceval circuit used by the final quantum dense layer.
         """
         circuit = pcvl.Circuit(sum(shape))
 
@@ -405,11 +648,33 @@ class QCNNClassifier(torch.nn.Module):
         return circuit
 
     def forward(self, x):
-        """
-        Expects input x, Tensor, of shape (batch_size, 1, input_size[0], input_size[1]).
-        The second dimension represents channels: current implementation only supports one channel.
+        """Evaluate the classifier on a batch of images.
 
-        Returns logits with shape (batch_size, num_classes).
+        The input tensor is amplitude-encoded, propagated through the resolved
+        quantum stages, and finally mapped to class logits by the readout layer.
+        If a pooling stage is encountered, its measurement branches are handled
+        by :meth:`postprocess_pooling`, which continues the remaining stages on
+        each valid branch and returns the probability-weighted logits.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor with shape ``(batch_size, 1, input_shape[0],
+            input_shape[1])``. The second dimension is the channel dimension;
+            only one channel is currently supported.
+
+        Returns
+        -------
+        torch.Tensor
+            Logits with shape ``(batch_size, num_classes)``.
+
+        Raises
+        ------
+        TypeError
+            If the model pipeline does not return a tensor.
+        ValueError
+            If ``x`` does not have the expected rank, channel count, or spatial
+            dimensions, or if the output logits do not have the expected shape.
         """
         if not len(x.shape) == 4:
             raise ValueError(
@@ -428,45 +693,94 @@ class QCNNClassifier(torch.nn.Module):
         # Encode x using amplitude encoding
         x = self.amplitude_encode(x)
 
-        for layer_index, (name, layer) in enumerate(self.qcnn.named_children()):
+        for layer_index, (name, layer) in enumerate(self.layers.named_children()):
             x = layer(x)
             if name[:5] == "QPool":
                 x = self.postprocess_pooling(x, layer_index + 1)
                 break
 
         logits = x
-        assert isinstance(logits, torch.Tensor)
-        assert logits.shape == (batch_size, self.num_classes)
+        if not isinstance(logits, torch.Tensor):
+            raise TypeError(
+                "QCNNClassifier.forward expected the model pipeline to return "
+                f"a torch.Tensor, but got {type(logits)}."
+            )
+        if logits.shape != (batch_size, self.num_classes):
+            raise ValueError(
+                "QCNNClassifier.forward expected logits with shape "
+                f"({batch_size}, {self.num_classes}), but got {tuple(logits.shape)}."
+            )
         return logits
 
     def recursive_forward(self, x: StateVector, layer_index: int):
-        """
-        Recursive version of the forward method. Used to compute forward across the mixed states after pooling.
+        """Continue the QCNN pipeline from a specific layer index.
 
-        Expects input x of type merlin.StateVector, already amplitude encoded and of shape (batch_size, basis_size).
+        This helper is used after pooling, where each valid measurement branch
+        contains a separate state vector. The branch state is propagated through
+        the remaining layers, and nested pooling stages are post-processed in the
+        same way as in :meth:`forward`.
 
-        Returns logits with shape (batch_size, num_classes).
+        Parameters
+        ----------
+        x : merlin.core.state_vector.StateVector
+            Branch state vector with shape ``(batch_size, basis_size)``.
+        layer_index : int
+            Index of the next layer to execute in ``self.layers``.
+
+        Returns
+        -------
+        torch.Tensor | merlin.core.state_vector.StateVector | PartialMeasurement
+            Result produced by the remaining pipeline. In normal classifier use
+            this resolves to logits with shape ``(batch_size, num_classes)``.
+
+        Raises
+        ------
+        TypeError
+            If a pooling layer does not return a
+            :class:`~merlin.core.partial_measurement.PartialMeasurement`, or if
+            pooling post-processing does not return a tensor.
         """
         x_current = x
         for new_layer_index, (name, layer) in enumerate(
-            list(self.qcnn.named_children())[layer_index:], start=layer_index
+            list(self.layers.named_children())[layer_index:], start=layer_index
         ):
             x_current = layer(x_current)
             if name.startswith("QPool"):
-                assert isinstance(x_current, PartialMeasurement)
+                if not isinstance(x_current, PartialMeasurement):
+                    raise TypeError(
+                        "QCNN pooling layers must return a PartialMeasurement, "
+                        f"but layer {name!r} returned {type(x_current)}."
+                    )
                 x_current = self.postprocess_pooling(x_current, new_layer_index + 1)
-                assert isinstance(x_current, torch.Tensor)
+                if not isinstance(x_current, torch.Tensor):
+                    raise TypeError(
+                        "QCNN pooling post-processing must return a torch.Tensor, "
+                        f"but got {type(x_current)}."
+                    )
                 break
 
         return x_current
 
     def amplitude_encode(self, x: torch.Tensor):
-        """
-        Expects input x, Tensor, of shape (batch_size, 1, input_size[0], input_size[1]).
+        """Encode image pixels as amplitudes of a two-photon state vector.
 
-        Returns StateVector object: amplitude encoded data with shape (batch_size, basis_size).
+        Pixel ``x[:, :, i, j]`` scales the basis state with one photon in mode
+        ``i`` of the first register and one photon in mode
+        ``input_shape[0] + j`` of the second register. The resulting state vector
+        is normalized before being passed to the quantum layers.
 
-        basis_size depends on the number of modes (sum(self.input_shape)) and photons (2).
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor with shape ``(batch_size, 1, input_shape[0],
+            input_shape[1])``.
+
+        Returns
+        -------
+        merlin.core.state_vector.StateVector
+            Normalized amplitude-encoded batch with shape
+            ``(batch_size, basis_size)``. The basis size is determined by
+            ``sum(input_shape)`` modes and two photons.
         """
         batch_size = x.shape[0]
 
@@ -504,10 +818,34 @@ class QCNNClassifier(torch.nn.Module):
         return final_state_vector_norm
 
     def postprocess_pooling(self, x: PartialMeasurement, layer_index: int):
-        """
-        Expects input x of type merlin.PartialMeasurement, from which mixed states are created and sent through the remaining of the QCNN to then obtain the output logits.
+        """Process pooling measurement branches and combine their logits.
 
-        Returns tensor of shape (batch_size, num_classes)
+        Each valid measurement branch is checked against the two-register QCNN
+        constraints, measured photons are reinserted into the reduced state, and
+        the branch is propagated through the remaining layers. Branch outputs are
+        weighted by their measurement probabilities and summed.
+
+        Parameters
+        ----------
+        x : PartialMeasurement
+            Partial measurement returned by a quantum pooling layer.
+        layer_index : int
+            Index of the next layer to execute after the pooling layer.
+
+        Returns
+        -------
+        torch.Tensor
+            Probability-weighted logits with shape
+            ``(batch_size, num_classes)``.
+
+        Raises
+        ------
+        TypeError
+            If a remaining pipeline branch does not return a tensor.
+        ValueError
+            If a branch state has an unexpected photon count, if branch logits
+            or probabilities have incompatible shapes, or if a forbidden
+            measurement outcome has non-zero probability.
         """
         batch_size = x.branches[0].probability.shape[0]
         branches = x.branches
@@ -547,7 +885,11 @@ class QCNNClassifier(torch.nn.Module):
                         )
                         insertions += 1
 
-                assert state_vector.n_photons == 2
+                if state_vector.n_photons != 2:
+                    raise ValueError(
+                        "QCNN pooling post-processing expects branch states with "
+                        f"2 photons after reinsertion, but got {state_vector.n_photons}."
+                    )
                 # Continue QCNN pipeline on that specific state_vector among the mixed states
                 # recursive_forward is called iteratively. We might optimize to run in parallel.
                 if bool(torch.all(active_rows)):
@@ -570,25 +912,90 @@ class QCNNClassifier(torch.nn.Module):
                     )
                     x_result[active_rows] = active_result
 
-                assert isinstance(x_result, torch.Tensor)
-                assert x_result.shape == (batch_size, self.num_classes)
-                assert probabilities.shape == (batch_size,)
+                if not isinstance(x_result, torch.Tensor):
+                    raise TypeError(
+                        "QCNN pooling branch execution must return a torch.Tensor, "
+                        f"but got {type(x_result)}."
+                    )
+                if x_result.shape != (batch_size, self.num_classes):
+                    raise ValueError(
+                        "QCNN pooling branch logits must have shape "
+                        f"({batch_size}, {self.num_classes}), "
+                        f"but got {tuple(x_result.shape)}."
+                    )
+                if probabilities.shape != (batch_size,):
+                    raise ValueError(
+                        "QCNN pooling branch probabilities must have shape "
+                        f"({batch_size},), but got {tuple(probabilities.shape)}."
+                    )
                 # Combine results from all mixed state computations
                 probabilities_weight = probabilities.unsqueeze(1)
                 weighted = probabilities_weight * x_result
                 x_combine = x_combine + weighted
 
-        assert isinstance(x_combine, torch.Tensor)
+        if not isinstance(x_combine, torch.Tensor):
+            raise TypeError(
+                "QCNN pooling post-processing expected to combine branch outputs "
+                f"into a torch.Tensor, but got {type(x_combine)}."
+            )
         return x_combine
 
-    def verify_outcome(self, outcome, probabilities):
-        """
-        Verification method: verifies that possible outcomes are allowed in the QCNN setting. For forbidden outcomes, this method asserts that the correspinding probabilities are all 0.
+    def _raise_if_forbidden_outcome_has_probability(self, outcome, probabilities):
+        """Raise when a forbidden pooling outcome has non-zero probability.
 
-        Returns boolean that indicate whether or not the outcome is possible.
+        Parameters
+        ----------
+        outcome : Sequence[int]
+            Forbidden measured occupation pattern.
+        probabilities : torch.Tensor
+            Branch probabilities for every batch item.
+
+        Raises
+        ------
+        ValueError
+            If ``probabilities`` contains non-zero values.
+        """
+        if not torch.allclose(
+            probabilities, torch.zeros_like(probabilities), atol=1e-6
+        ):
+            raise ValueError(
+                "Forbidden QCNN pooling outcome has non-zero probability. "
+                f"Expected all probabilities to be 0, but got {probabilities} "
+                f"for outcome: {outcome}."
+            )
+
+    def verify_outcome(self, outcome, probabilities):
+        """Validate whether a pooling measurement outcome is physically usable.
+
+        A valid QCNN pooling outcome measures at most one photon per register and
+        only contains ``0`` or ``1`` occupation values. Forbidden outcomes are
+        expected to have zero probability and raise a ``ValueError`` if they do
+        not.
+
+        Parameters
+        ----------
+        outcome : Sequence[int]
+            Measured occupation pattern for the pooled modes.
+        probabilities : torch.Tensor
+            Branch probabilities for every batch item.
+
+        Returns
+        -------
+        bool
+            Whether the outcome can be propagated through the QCNN pipeline.
+
+        Raises
+        ------
+        ValueError
+            If ``outcome`` does not contain one measured pattern per register,
+            or if a forbidden outcome has non-zero probability.
         """
         possible_outcome = True
-        assert len(outcome) % 2 == 0
+        if len(outcome) % 2 != 0:
+            raise ValueError(
+                "QCNN pooling outcomes must contain one measured pattern per "
+                f"register, but got an odd-length outcome: {outcome}."
+            )
         half_index = int(len(outcome) / 2)
         first_register_outcome = outcome[:half_index]
         second_register_outcome = outcome[half_index:]
@@ -598,20 +1005,14 @@ class QCNNClassifier(torch.nn.Module):
             # Forbidden to measure more than 1 photon in QCNN setting
             if outcome_elem > 1:
                 possible_outcome = False
-                assert torch.allclose(
-                    probabilities, torch.zeros_like(probabilities), atol=1e-6
-                ), (
-                    f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
-                )
+                self._raise_if_forbidden_outcome_has_probability(outcome, probabilities)
                 break
             # Forbidden to measure more than 1 photon per register in QCNN setting
             if outcome_elem == 1:
                 if photon_measured:
                     possible_outcome = False
-                    assert torch.allclose(
-                        probabilities, torch.zeros_like(probabilities), atol=1e-6
-                    ), (
-                        f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
+                    self._raise_if_forbidden_outcome_has_probability(
+                        outcome, probabilities
                     )
                 else:
                     photon_measured = True
@@ -619,11 +1020,7 @@ class QCNNClassifier(torch.nn.Module):
             # Forbidden to have measurement result different from 0 or 1 in QCNN setting
             if outcome_elem != 0:
                 possible_outcome = False
-                assert torch.allclose(
-                    probabilities, torch.zeros_like(probabilities), atol=1e-6
-                ), (
-                    f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
-                )
+                self._raise_if_forbidden_outcome_has_probability(outcome, probabilities)
                 break
 
         photon_measured = False
@@ -631,20 +1028,14 @@ class QCNNClassifier(torch.nn.Module):
             # Forbidden to measure more than 1 photon in QCNN setting
             if outcome_elem > 1:
                 possible_outcome = False
-                assert torch.allclose(
-                    probabilities, torch.zeros_like(probabilities), atol=1e-6
-                ), (
-                    f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
-                )
+                self._raise_if_forbidden_outcome_has_probability(outcome, probabilities)
                 break
             # Forbidden to measure more than 1 photon per register in QCNN setting
             if outcome_elem == 1:
                 if photon_measured:
                     possible_outcome = False
-                    assert torch.allclose(
-                        probabilities, torch.zeros_like(probabilities), atol=1e-6
-                    ), (
-                        f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
+                    self._raise_if_forbidden_outcome_has_probability(
+                        outcome, probabilities
                     )
                 else:
                     photon_measured = True
@@ -652,20 +1043,32 @@ class QCNNClassifier(torch.nn.Module):
             # Forbidden to have measurement result different from 0 or 1 in QCNN setting
             if outcome_elem != 0:
                 possible_outcome = False
-                assert torch.allclose(
-                    probabilities, torch.zeros_like(probabilities), atol=1e-6
-                ), (
-                    f"Expected 0 probabilities but got: {probabilities}, for outcome: {outcome}"
-                )
+                self._raise_if_forbidden_outcome_has_probability(outcome, probabilities)
                 break
 
         return possible_outcome
 
     def reinsert_photon(self, state_vector: StateVector, reinsert_mode: int):
-        """
-        Inserts one photon at mode `reinsert_mode` and returns new state vector.
+        """Insert one photon into a state-vector basis.
 
-        Torch computation graph is kept.
+        The operation maps amplitudes from the current basis to the basis with
+        one additional photon while preserving the PyTorch computation graph.
+        Amplitudes whose source states already contain a photon in
+        ``reinsert_mode`` are skipped because inserting there would violate the
+        QCNN branch structure.
+
+        Parameters
+        ----------
+        state_vector : merlin.core.state_vector.StateVector
+            State vector before photon reinsertion.
+        reinsert_mode : int
+            Mode in which to reinsert the measured photon.
+
+        Returns
+        -------
+        merlin.core.state_vector.StateVector
+            New state vector with the same number of modes and one additional
+            photon.
         """
         state_tensor = state_vector.tensor
         batch_size = state_tensor.shape[0]
