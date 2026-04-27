@@ -31,6 +31,23 @@ from merlin.measurement import MeasurementStrategy
 from merlin.models import QCNNClassifier
 
 
+def _stages_from_config(config: dict) -> list[QCNNClassifier._Stage]:
+    stage_registry = {
+        "QConv": QCNNClassifier.QConv,
+        "QPool": QCNNClassifier.QPool,
+        "QDense": QCNNClassifier.QDense,
+    }
+
+    stages = []
+    for stage_config in config["_resolved_stages"]:
+        stage_type = stage_config["type"]
+        stage_cls = stage_registry[stage_type]
+        kwargs = {k: v for k, v in stage_config.items() if k != "type"}
+        stages.append(stage_cls(**kwargs))
+
+    return stages
+
+
 def test_qcnn_basic_api():
     accepted_input_shape = (4, 4)
     non_square_input_shape = (4, 8)
@@ -106,6 +123,7 @@ def test_qcnn_stage_api():
 
     # QConv and QPool initializations
     qconv = QCNNClassifier.QConv(accepted_kernel_size, accepted_stride)
+    assert str(qconv) == "QConv(kernel_size=2, stride=2)"
 
     with pytest.raises(ValueError, match="kernel_size must be superior to 0"):
         QCNNClassifier.QConv(zero_kernel_size, accepted_stride)
@@ -130,6 +148,10 @@ def test_qcnn_stage_api():
     qpool = QCNNClassifier.QPool(accepted_kernel_size)
     assert qpool.type.value == "QPool"
     assert qpool.kernel_size == accepted_kernel_size
+    assert str(qpool) == "QPool(kernel_size=2)"
+
+    qdense = QCNNClassifier.QDense()
+    assert str(qdense) == "QDense()"
 
     with pytest.raises(ValueError, match="kernel_size must be superior to 1"):
         QCNNClassifier.QPool(zero_kernel_size)
@@ -295,22 +317,7 @@ def test_qcnn_export_config():
     # Round trip test
     config = qcnn_classifier.export_config()
 
-    # Utils to deserialize the config into actual Stages
-    STAGE_REGISTRY = {
-        "QConv": QCNNClassifier.QConv,
-        "QPool": QCNNClassifier.QPool,
-        "QDense": QCNNClassifier.QDense,
-    }
-
-    def build_stage(stage_config: dict):
-        stage_type = stage_config["type"]
-        cls = STAGE_REGISTRY[stage_type]
-
-        # remove "type" key and pass the rest as kwargs
-        kwargs = {k: v for k, v in stage_config.items() if k != "type"}
-        return cls(**kwargs)
-
-    config_stages = [build_stage(s) for s in config["_resolved_stages"]]
+    config_stages = _stages_from_config(config)
     # Build new QCNNClassifier from the config
     new_qcnn_classifier = QCNNClassifier(
         config["input_shape"], config["num_classes"], config_stages
@@ -537,6 +544,10 @@ def test_qcnn_layers_public_sequential_api():
     assert isinstance(readout, torch.nn.Linear)
 
     assert qconv.circuit.m == 8
+    assert {param.name for param in qconv.circuit.get_parameters()} == {
+        "px_first_register",
+        "px_second_register",
+    }
     assert qpool.circuit.m == 8
     assert qdense.circuit.m == 4
 
@@ -592,3 +603,53 @@ def test_qcnn_layers_custom_stage_names_and_dense_access():
     assert second_conv.circuit.m == 8
     assert dense.circuit.m == 8
     assert qcnn.layers[3].in_features == dense.output_size
+
+
+def test_qcnn_state_dict_round_trip_with_export_config():
+    torch.manual_seed(1234)
+    stages = [
+        QCNNClassifier.QConv(2, 1),
+        QCNNClassifier.QPool(2),
+        QCNNClassifier.QDense(),
+    ]
+    qcnn = QCNNClassifier((4, 4), 3, stages=stages)
+
+    with torch.no_grad():
+        for index, parameter in enumerate(qcnn.parameters()):
+            parameter.fill_(0.1 * (index + 1))
+
+    config = qcnn.export_config()
+    state_dict = {
+        key: value.detach().clone() for key, value in qcnn.state_dict().items()
+    }
+
+    restored_qcnn = QCNNClassifier(
+        config["input_shape"],
+        config["num_classes"],
+        _stages_from_config(config),
+    )
+    load_result = restored_qcnn.load_state_dict(state_dict)
+
+    assert load_result.missing_keys == []
+    assert load_result.unexpected_keys == []
+    assert restored_qcnn.export_config() == config
+
+    assert qcnn.state_dict().keys() == restored_qcnn.state_dict().keys()
+    for name, expected_tensor in state_dict.items():
+        restored_tensor = restored_qcnn.state_dict()[name]
+        assert torch.allclose(restored_tensor, expected_tensor)
+
+    for (name, expected), (restored_name, actual) in zip(
+        qcnn.named_parameters(), restored_qcnn.named_parameters(), strict=True
+    ):
+        assert restored_name == name
+        assert torch.allclose(actual, expected)
+
+    x = torch.rand((2, 1, 4, 4))
+    qcnn.eval()
+    restored_qcnn.eval()
+    with torch.no_grad():
+        expected_logits = qcnn(x)
+        restored_logits = restored_qcnn(x)
+
+    assert torch.allclose(restored_logits, expected_logits, atol=1e-6, rtol=1e-6)

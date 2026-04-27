@@ -27,13 +27,15 @@ class QCNNClassifier(torch.nn.Module):
 
     The resulting state vector is propagated through a
     :class:`torch.nn.Sequential` pipeline. ``QConv`` stages apply trainable
-    Perceval beam-splitter circuits independently to each register. ``QPool``
-    stages partially measure selected modes, reinsert measured photons in the
-    reduced register, continue the remaining QCNN pipeline on each valid
-    measurement branch, and combine branch logits weighted by their
-    probabilities. The final ``QDense`` stage applies a dense trainable photonic
-    circuit, maps output probabilities to a tensor, and feeds them to a
-    classical linear readout that returns class logits.
+    Perceval beam-splitter circuits independently to each register. Within a
+    given register, all convolution windows share the same trainable parameter;
+    the two registers keep distinct trainable parameters. ``QPool`` stages
+    partially measure selected modes, reinsert measured photons in the reduced
+    register, continue the remaining QCNN pipeline on each valid measurement
+    branch, and combine branch logits weighted by their probabilities. The final
+    ``QDense`` stage applies a dense trainable photonic circuit, maps output
+    probabilities to a tensor, and feeds them to a classical linear readout that
+    returns class logits.
 
     Parameters
     ----------
@@ -158,7 +160,8 @@ class QCNNClassifier(torch.nn.Module):
         A convolution stage applies the same construction rule to both quantum
         registers. Each sliding window is represented by a trainable
         beam-splitter mesh spanning ``kernel_size`` adjacent modes, and windows
-        advance by ``stride`` modes.
+        advance by ``stride`` modes. The convolution windows within one register
+        share a single trainable beam-splitter parameter.
 
         Parameters
         ----------
@@ -201,6 +204,10 @@ class QCNNClassifier(torch.nn.Module):
                 and self.stride == other.stride
             )
 
+        def __str__(self) -> str:
+            """Return a concise string representation of the stage."""
+            return f"QConv(kernel_size={self.kernel_size}, stride={self.stride})"
+
     class QPool(_Stage):
         """Quantum pooling stage specification.
 
@@ -237,6 +244,10 @@ class QCNNClassifier(torch.nn.Module):
                 return NotImplemented
             return self.type == other.type and self.kernel_size == other.kernel_size
 
+        def __str__(self) -> str:
+            """Return a concise string representation of the stage."""
+            return f"QPool(kernel_size={self.kernel_size})"
+
     class QDense(_Stage):
         """Dense quantum readout stage specification.
 
@@ -254,6 +265,10 @@ class QCNNClassifier(torch.nn.Module):
             if not isinstance(other, type(self)):
                 return NotImplemented
             return self.type == other.type
+
+        def __str__(self) -> str:
+            """Return a concise string representation of the stage."""
+            return "QDense()"
 
     def resolve_stages(self) -> list[QCNNClassifier._Stage]:
         """Validate the stage specification and return the executable sequence.
@@ -468,16 +483,12 @@ class QCNNClassifier(torch.nn.Module):
             circuit=dense_circuit,
             n_photons=2,
             trainable_parameters=["px"],
-            # measurement_strategy=MeasurementStrategy.mode_expectations(
-            #    computation_space=ComputationSpace.FOCK
-            # ),
             measurement_strategy=MeasurementStrategy.probs(
                 computation_space=ComputationSpace.FOCK
             ),
         )
 
         # Readout layer
-        # readout = LexGrouping(dense_layer.output_size, self.num_classes)
         readout = torch.nn.Linear(dense_layer.output_size, self.num_classes)
 
         qcnn_model = torch.nn.Sequential()
@@ -493,7 +504,10 @@ class QCNNClassifier(torch.nn.Module):
 
         The two registers remain separate: no beam splitter is added between
         modes belonging to different registers. Each register receives the same
-        sliding-window convolution pattern.
+        sliding-window convolution pattern. All convolution windows in the first
+        register share ``px_first_register`` as their beam-splitter parameter,
+        and all convolution windows in the second register share
+        ``px_second_register``.
 
         Parameters
         ----------
@@ -510,24 +524,32 @@ class QCNNClassifier(torch.nn.Module):
         circuit = pcvl.Circuit(sum(shape))
 
         # First register
+        first_register_param = pcvl.P("px_first_register")
         i = 0
         while i < shape[0] and (i + stage.kernel_size <= shape[0]):
-            circuit = self.build_single_conv(i, stage.kernel_size, circuit)
+            circuit = self.build_single_conv(
+                i, stage.kernel_size, circuit, first_register_param
+            )
             i += stage.stride
 
         # Second register
+        second_register_param = pcvl.P("px_second_register")
         i = shape[0]
         while (i < shape[0] * 2) and (i + stage.kernel_size <= shape[0] * 2):
-            circuit = self.build_single_conv(i, stage.kernel_size, circuit)
+            circuit = self.build_single_conv(
+                i, stage.kernel_size, circuit, second_register_param
+            )
             i += stage.stride
 
         return circuit
 
-    def build_single_conv(self, i, kernel_size, circuit):
+    def build_single_conv(self, i, kernel_size, circuit, parameter):
         """Add one trainable convolution window to a circuit.
 
         A single window is implemented as a down-and-up beam-splitter mesh so a
-        photon can mix across the modes covered by ``kernel_size``.
+        photon can mix across the modes covered by ``kernel_size``. Every beam
+        splitter inserted by this window uses the supplied ``parameter`` so the
+        caller can share trainable parameters across several windows.
 
         Parameters
         ----------
@@ -537,6 +559,9 @@ class QCNNClassifier(torch.nn.Module):
             Number of modes covered by the window.
         circuit : pcvl.Circuit
             Circuit to mutate with the trainable beam splitters.
+        parameter : pcvl.P
+            Shared Perceval parameter used as the ``theta`` value for every beam
+            splitter in the convolution window.
 
         Returns
         -------
@@ -545,10 +570,10 @@ class QCNNClassifier(torch.nn.Module):
         """
         # Slide the BS down on the circuit
         for j in range(i, i + kernel_size - 1):
-            circuit.add(j, pcvl.BS(theta=pcvl.P(f"px_bs_down_{i}_{j}")))
+            circuit.add(j, pcvl.BS(theta=parameter))
         # Slide the BS up on the circuit
         for k in range(j - 1, i - 1, -1):
-            circuit.add(k, pcvl.BS(theta=pcvl.P(f"px_bs_up_{i}_{k}")))
+            circuit.add(k, pcvl.BS(theta=parameter))
         return circuit
 
     def resolve_pooling_modes(self, shape, stage):
