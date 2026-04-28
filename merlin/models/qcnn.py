@@ -823,7 +823,8 @@ class QCNNClassifier(torch.nn.Module):
                 basic_state[self.input_shape[0] + j] = 1
                 basic_state_vector = StateVector.from_basic_state(basic_state)
                 repeated_basic_state_tensor = (
-                    basic_state_vector.tensor.to_dense()
+                    basic_state_vector.tensor
+                    .to_dense()
                     .unsqueeze(0)
                     .repeat(batch_size, 1)
                 )
