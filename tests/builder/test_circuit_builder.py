@@ -643,3 +643,60 @@ def test_parameter_memristor_role_assignement():
             if i == 4
             else component.custom_name == f"mem{i+1}"
         )
+
+
+def test_memristive_own_type_of_parameter():
+    builder = CircuitBuilder(n_modes=4)
+
+    def exponential_decay(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        tau = 5.0
+        target = output[:, 2]
+        return state + (target - state) / tau
+
+    def sum_outputs(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state + output[:, 2]
+
+    builder.add_angle_encoding()
+    builder.add_rotations(trainable=True)
+    builder.add_rotations(trainable=False)
+    builder.add_superpositions
+
+    builder.add_memristive_ps(mode=0, update_rule=exponential_decay, initial_state=1)
+    builder.add_memristive_ps(mode=1, update_rule=sum_outputs, initial_state=1000)
+    builder.add_memristive_ps(mode=3, update_rule=sum_outputs, initial_state=2)
+    builder.add_memristive_ps(mode=2, update_rule=exponential_decay, initial_state=67)
+
+    builder.add_angle_encoding()
+    builder.add_rotations(trainable=True)
+    builder.add_rotations(trainable=False)
+    builder.add_superpositions
+
+    assert builder._memristor_prefixes == ["mem", "mem", "mem", "mem"]
+    assert builder._memristor_counter == 4
+    assert builder._memristor_counts["mem"] == 4
+    metadata = builder.memristor_specs
+
+    assert len(metadata.keys()) == 1
+    specs = metadata["mem"]
+    assert len(specs) == 4
+    assert specs[0] == {"update_rule": exponential_decay, "initial_state": 1}
+    assert specs[1] == {"update_rule": sum_outputs, "initial_state": 1000}
+    assert specs[2] == {"update_rule": sum_outputs, "initial_state": 2}
+    assert specs[3] == {"update_rule": exponential_decay, "initial_state": 67}
+    assert not "mem" in builder.input_parameter_prefixes
+    assert not "test" in builder.input_parameter_prefixes
+
+    custom_names = [f"mem{i+1}" for i in range(4)]
+    num_memristor = 0
+    num_other = 0
+    for component in builder.circuit.components:
+        if component.role is ParameterRole.MEMRISTOR:
+            component.custom_name in custom_names
+            assert isinstance(component, Rotation)
+            num_memristor += 1
+        else:
+            component.custom_name not in custom_names
+            num_other += 1
+
+    assert num_memristor == 4
+    assert num_other > 0
