@@ -88,6 +88,7 @@ class CircuitBuilder:
         self._entangling_layer_counter = 0
         self._superposition_counter = 0
         self._entangling_counter = 0
+        self._memristor_counter = 0
 
         self._trainable_prefixes: list[str] = []
         self._trainable_prefix_set: set[str] = set()
@@ -96,7 +97,10 @@ class CircuitBuilder:
         self._angle_encoding_specs: dict[str, list[tuple[int, ...]]] = {}
         self._angle_encoding_scales: dict[str, dict[int, float]] = {}
         self._angle_encoding_counts: dict[str, int] = {}
-
+        self._memristor_counts: dict[str, int] = {}
+        self.memristor_specs: dict[str, list[dict]] = {}
+        self._memristor_prefixes: list[str] = []
+        self._memristor_prefix_set: set[str] = set()
         self._trainable_name_counts: dict[str, int] = {}
         self._used_trainable_names: set[str] = set()
 
@@ -144,6 +148,17 @@ class CircuitBuilder:
         if prefix and prefix not in self._input_prefix_set:
             self._input_prefix_set.add(prefix)
             self._input_prefixes.append(prefix)
+
+    def _register_memristor_prefix(self, name: str | None):
+        """Track stems used for memristor parameters.
+
+        Args:
+            name: Input parameter name emitted while adding a memristive phase-shifter.
+        """
+        prefix = self._deduce_prefix(name)
+        if prefix and prefix not in self._input_prefix_set:
+            self._memristor_prefix_set.add(prefix)
+            self._memristor_prefixes.append(prefix)
 
     def _unique_trainable_name(self, base: str) -> str:
         """Return a unique trainable identifier derived from ``base``.
@@ -226,6 +241,7 @@ class CircuitBuilder:
                     "fixed": ParameterRole.FIXED,
                     "input": ParameterRole.INPUT,
                     "trainable": ParameterRole.TRAINABLE,
+                    "memristor": ParameterRole.MEMRISTOR,
                 }
                 resolved_role = role_map.get(role.lower(), ParameterRole.FIXED)
             else:
@@ -254,10 +270,14 @@ class CircuitBuilder:
                         f"{name}_{current_mode}" if len(target_modes) > 1 else name
                     )
                     custom_name = self._unique_trainable_name(base_name)
+                elif resolved_role == ParameterRole.MEMRISTOR:
+                    custom_name = f"{name}{self._memristor_counter + 1}"
+                    self._memristor_counter += 1
                 else:
                     custom_name = (
                         f"{name}_{current_mode}" if len(target_modes) > 1 else name
                     )
+
             elif resolved_role == ParameterRole.INPUT:
                 custom_name = f"px{self._input_counter + 1}"
                 self._input_counter += 1
@@ -265,6 +285,9 @@ class CircuitBuilder:
                 base_name = f"theta_{self._trainable_counter}_{current_mode}"
                 self._trainable_counter += 1
                 custom_name = self._unique_trainable_name(base_name)
+            elif resolved_role == ParameterRole.MEMRISTOR:
+                custom_name = f"mem{self._input_counter + 1}"
+                self._memristor_counter += 1
             else:
                 custom_name = None
 
@@ -281,6 +304,8 @@ class CircuitBuilder:
                 self._register_trainable_prefix(rotation.custom_name or name)
             elif resolved_role == ParameterRole.INPUT:
                 self._register_input_prefix(rotation.custom_name or name)
+            elif resolved_role == ParameterRole.MEMRISTOR:
+                self._register_memristor_prefix(rotation.custom_name or name)
 
         self._layer_counter += 1
         return self
@@ -405,6 +430,27 @@ class CircuitBuilder:
 
         factor = float(scale)
         return dict.fromkeys(feature_indices, factor)
+
+    def add_memristive_ps(
+        self,
+        mode: int,
+        update_rule: callable,
+        initial_state: float,
+        name: str | None = None,
+    ) -> "CircuitBuilder":
+
+        if name is None:
+            name = "mem"
+
+        # Assign contiguous logical feature indices so downstream encoders do not rely on physical modes
+        start_idx = self._memristor_counts.get(name, 0)
+        self._memristor_counts[name] = start_idx + 1
+
+        self.add_rotations(modes=mode, role=ParameterRole.MEMRISTOR, name=name)
+
+        spec_list = self.memristor_specs.setdefault(name, [])
+        spec_list.append({"update_rule": update_rule, "initial_state": initial_state})
+        return self
 
     def add_entangling_layer(
         self,
