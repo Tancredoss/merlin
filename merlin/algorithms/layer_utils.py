@@ -747,6 +747,21 @@ def apply_angle_encoding(
     return encoded.squeeze(0) if squeeze else encoded
 
 
+def compute_new_memristive_ps_angle(
+    memristive_metadata: dict, output: torch.Tensor
+) -> dict:
+    x = memristive_metadata["update_rule"](
+        state=memristive_metadata["memristive_state"], output=output
+    )
+    if not isinstance(x, torch.Tensor):
+        x = torch.Tensor([x])
+    memristive_metadata["memristive_history"] = torch.cat(
+        memristive_metadata["memristive_history"], x
+    )
+    memristive_metadata["memristive_state"] = x
+    return memristive_metadata
+
+
 def prepare_input_encoding(
     x: torch.Tensor,
     prefix: str | None = None,

@@ -578,13 +578,32 @@ def test_memristor_metadata():
 
     metadata = builder.memristor_specs
 
-    assert len(metadata.keys()) == 1
-    specs = metadata["mem"]
-    assert len(specs) == 4
-    assert specs[0] == {"update_rule": exponential_decay, "initial_state": 1}
-    assert specs[1] == {"update_rule": sum_outputs, "initial_state": 1000}
-    assert specs[2] == {"update_rule": sum_outputs, "initial_state": 2}
-    assert specs[3] == {"update_rule": exponential_decay, "initial_state": 67}
+    assert len(metadata) == 4
+
+    assert metadata[0] == {
+        "target_mode": 0,
+        "name": "mem1",
+        "update_rule": exponential_decay,
+        "initial_state": 1,
+    }
+    assert metadata[1] == {
+        "target_mode": 1,
+        "name": "mem2",
+        "update_rule": sum_outputs,
+        "initial_state": 1000,
+    }
+    assert metadata[2] == {
+        "target_mode": 3,
+        "name": "mem3",
+        "update_rule": sum_outputs,
+        "initial_state": 2,
+    }
+    assert metadata[3] == {
+        "target_mode": 2,
+        "name": "mem4",
+        "update_rule": exponential_decay,
+        "initial_state": 67,
+    }
 
     builder.add_memristive_ps(
         mode=2, update_rule=sum_outputs, initial_state=0.0, name="test"
@@ -592,15 +611,44 @@ def test_memristor_metadata():
     builder.add_memristive_ps(mode=2, update_rule=sum_outputs, initial_state=0.0)
     metadata = builder.memristor_specs
 
-    assert len(metadata.keys()) == 2
-    assert len(metadata["mem"]) == 5
-    assert metadata["mem"][0] == {"update_rule": exponential_decay, "initial_state": 1}
-    assert metadata["mem"][1] == {"update_rule": sum_outputs, "initial_state": 1000}
-    assert metadata["mem"][2] == {"update_rule": sum_outputs, "initial_state": 2}
-    assert metadata["mem"][3] == {"update_rule": exponential_decay, "initial_state": 67}
-    assert metadata["mem"][4] == {"update_rule": sum_outputs, "initial_state": 0.0}
-    assert len(metadata["test"]) == 1
-    assert metadata["test"][0] == {"update_rule": sum_outputs, "initial_state": 0.0}
+    assert len(metadata) == 6
+
+    assert metadata[0] == {
+        "target_mode": 0,
+        "name": "mem1",
+        "update_rule": exponential_decay,
+        "initial_state": 1,
+    }
+    assert metadata[1] == {
+        "target_mode": 1,
+        "name": "mem2",
+        "update_rule": sum_outputs,
+        "initial_state": 1000,
+    }
+    assert metadata[2] == {
+        "target_mode": 3,
+        "name": "mem3",
+        "update_rule": sum_outputs,
+        "initial_state": 2,
+    }
+    assert metadata[3] == {
+        "target_mode": 2,
+        "name": "mem4",
+        "update_rule": exponential_decay,
+        "initial_state": 67,
+    }
+    assert metadata[5] == {
+        "target_mode": 2,
+        "name": "mem6",
+        "update_rule": sum_outputs,
+        "initial_state": 0.0,
+    }
+    assert metadata[4] == {
+        "target_mode": 2,
+        "name": "test5",
+        "update_rule": sum_outputs,
+        "initial_state": 0.0,
+    }
 
 
 def test_parameter_memristor_role_assignement():
@@ -673,16 +721,35 @@ def test_memristive_own_type_of_parameter():
 
     assert builder._memristor_prefixes == ["mem", "mem", "mem", "mem"]
     assert builder._memristor_counter == 4
-    assert builder._memristor_counts["mem"] == 4
     metadata = builder.memristor_specs
 
-    assert len(metadata.keys()) == 1
-    specs = metadata["mem"]
-    assert len(specs) == 4
-    assert specs[0] == {"update_rule": exponential_decay, "initial_state": 1}
-    assert specs[1] == {"update_rule": sum_outputs, "initial_state": 1000}
-    assert specs[2] == {"update_rule": sum_outputs, "initial_state": 2}
-    assert specs[3] == {"update_rule": exponential_decay, "initial_state": 67}
+    assert len(metadata) == 4
+
+    assert metadata[0] == {
+        "target_mode": 0,
+        "name": "mem1",
+        "update_rule": exponential_decay,
+        "initial_state": 1,
+    }
+    assert metadata[1] == {
+        "target_mode": 1,
+        "name": "mem2",
+        "update_rule": sum_outputs,
+        "initial_state": 1000,
+    }
+    assert metadata[2] == {
+        "target_mode": 3,
+        "name": "mem3",
+        "update_rule": sum_outputs,
+        "initial_state": 2,
+    }
+    assert metadata[3] == {
+        "target_mode": 2,
+        "name": "mem4",
+        "update_rule": exponential_decay,
+        "initial_state": 67,
+    }
+
     assert not "mem" in builder.input_parameter_prefixes
     assert not "test" in builder.input_parameter_prefixes
 

@@ -97,8 +97,7 @@ class CircuitBuilder:
         self._angle_encoding_specs: dict[str, list[tuple[int, ...]]] = {}
         self._angle_encoding_scales: dict[str, dict[int, float]] = {}
         self._angle_encoding_counts: dict[str, int] = {}
-        self._memristor_counts: dict[str, int] = {}
-        self.memristor_specs: dict[str, list[dict]] = {}
+        self.memristor_specs: list[dict] = []
         self._memristor_prefixes: list[str] = []
         self._memristor_prefix_set: set[str] = set()
         self._trainable_name_counts: dict[str, int] = {}
@@ -443,13 +442,19 @@ class CircuitBuilder:
             name = "mem"
 
         # Assign contiguous logical feature indices so downstream encoders do not rely on physical modes
-        start_idx = self._memristor_counts.get(name, 0)
-        self._memristor_counts[name] = start_idx + 1
 
-        self.add_rotations(modes=mode, role=ParameterRole.MEMRISTOR, name=name)
+        self.add_rotations(
+            modes=mode, role=ParameterRole.MEMRISTOR, name=name, value=initial_state
+        )
 
-        spec_list = self.memristor_specs.setdefault(name, [])
-        spec_list.append({"update_rule": update_rule, "initial_state": initial_state})
+        self.memristor_specs.append(
+            {
+                "target_mode": mode,
+                "name": f"{name}{self._memristor_counter}",
+                "update_rule": update_rule,
+                "initial_state": initial_state,
+            }
+        )
         return self
 
     def add_entangling_layer(

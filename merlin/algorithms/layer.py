@@ -64,6 +64,7 @@ from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
     InitializationContext,
     apply_angle_encoding,
+    compute_new_memristive_ps_angle,
     feature_count_for_prefix,
     prepare_input_encoding,
     prepare_input_state,
@@ -245,6 +246,7 @@ class QuantumLayer(MerlinModule):
         circuit_source = validate_and_resolve_circuit_source(
             builder, circuit, experiment, trainable_parameters, input_parameters
         )
+
         # Phase 4: encoding validation (post-resolution)
         encoding_config = validate_encoding_mode(
             amplitude_encoding,
@@ -311,6 +313,17 @@ class QuantumLayer(MerlinModule):
         # - Infer/validate input_size against encoder metadata.
         # - Setup parameters, measurement strategy, and output sizing.
         self._init_from_custom_circuit(context)
+
+        # Phase 12: Extract memristive metadata
+        self._memristive_metadata = (
+            circuit_source.builder.memristor_specs
+            if circuit_source.source_type == "builder"
+            else []
+        )
+        self.memristive_history = [
+            [i["initial_state"]] for i in self._memristive_metadata
+        ]
+        self.memristive_state = [i["initial_state"] for i in self._memristive_metadata]
 
     def _finalize_from_context(self, context: InitializationContext) -> None:
         """Assign initialization context to instance attributes."""
@@ -873,6 +886,8 @@ class QuantumLayer(MerlinModule):
                     "To use a custom input state with angle encoding, set it via the constructor or set_input_state()."
                 )
 
+        # TODO Apply PS
+
         # Phase 2: Parameter assembly for circuit execution
         params, parameter_batch_dim = self._prepare_classical_parameters(tensor_inputs)
 
@@ -1426,3 +1441,16 @@ class QuantumLayer(MerlinModule):
         )
 
         return base_str + ")"
+
+    def reset(self, batch_size: int = 1) -> None:
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be al least 1, got {batch_size}")
+
+        if len(self.memristive_history) == 0:
+            return
+
+        if batch_size >= len(self.memristive_history[0]):
+            return
+        for i in range(len(self.memristive_history)):
+            self.memristive_history[i] = self.memristive_history[:batch_size]
+        return
