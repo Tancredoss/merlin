@@ -674,6 +674,16 @@ def test_parameter_memristor_role_assignement():
         assert isinstance(component, Rotation)
         assert component.role == ParameterRole.MEMRISTOR
         assert component.custom_name == f"mem{i+1}"
+        if i == 0:
+            assert component.value == 1
+        elif i == 1:
+            assert component.value == 1000
+        elif i == 2:
+            assert component.value == 2
+        elif i == 3:
+            assert component.value == 67
+        else:
+            assert False
 
     builder.add_memristive_ps(
         mode=2, update_rule=sum_outputs, initial_state=0.0, name="test"
@@ -691,6 +701,20 @@ def test_parameter_memristor_role_assignement():
             if i == 4
             else component.custom_name == f"mem{i+1}"
         )
+        if i == 0:
+            assert component.value == 1
+        elif i == 1:
+            assert component.value == 1000
+        elif i == 2:
+            assert component.value == 2
+        elif i == 3:
+            assert component.value == 67
+        elif i == 4:
+            assert component.value == 0.0
+        elif i == 5:
+            assert component.value == 0.0
+        else:
+            assert False
 
 
 def test_memristive_own_type_of_parameter():

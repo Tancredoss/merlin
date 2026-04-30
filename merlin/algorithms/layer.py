@@ -64,7 +64,7 @@ from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
     InitializationContext,
     apply_angle_encoding,
-    compute_new_memristive_ps_angle,
+    compute_new_memristive_ps_angles,
     feature_count_for_prefix,
     prepare_input_encoding,
     prepare_input_state,
@@ -321,9 +321,11 @@ class QuantumLayer(MerlinModule):
             else []
         )
         self.memristive_history = [
-            [i["initial_state"]] for i in self._memristive_metadata
+            [torch.Tensor(i["initial_state"])] for i in self._memristive_metadata
         ]
-        self.memristive_state = [i["initial_state"] for i in self._memristive_metadata]
+        self.memristive_state = [
+            torch.Tensor(i["initial_state"]) for i in self._memristive_metadata
+        ]
 
     def _finalize_from_context(self, context: InitializationContext) -> None:
         """Assign initialization context to instance attributes."""
@@ -886,10 +888,14 @@ class QuantumLayer(MerlinModule):
                     "To use a custom input state with angle encoding, set it via the constructor or set_input_state()."
                 )
 
-        # TODO Apply PS
-
         # Phase 2: Parameter assembly for circuit execution
         params, parameter_batch_dim = self._prepare_classical_parameters(tensor_inputs)
+
+        if len(self.memristive_state) > 0:
+            if not len(self.memristive_state[0]) == parameter_batch_dim:
+                raise RuntimeError(
+                    "The batch dimension of the input must match the memristive phase shifters expected batch dimension. To change this batch dimension, call the QuantumLayer.reset(batch_dim) method"
+                )
 
         # Phase 3: Compute amplitudes
         with self._temporary_input_state(amplitude_input, original_input_state):
@@ -907,6 +913,8 @@ class QuantumLayer(MerlinModule):
                 inferred_state=inferred_state,
                 parameter_batch_dim=parameter_batch_dim,
                 simultaneous_processes=simultaneous_processes,
+                memristive_current_state=self.memristive_state,
+                memristive_metadata=self._memristive_metadata,
             )
 
         # Phase 4: Configure sampling/autodiff
@@ -962,9 +970,9 @@ class QuantumLayer(MerlinModule):
             _resolve_measurement_kind(self.measurement_strategy)
             == MeasurementKind.PARTIAL
         ):
-            return results
+            output = results
 
-        if (
+        elif (
             self.return_object is True
             and _resolve_measurement_kind(self.measurement_strategy)
             != MeasurementKind.MODE_EXPECTATIONS
@@ -973,19 +981,31 @@ class QuantumLayer(MerlinModule):
                 _resolve_measurement_kind(self.measurement_strategy)
                 == MeasurementKind.PROBABILITIES
             ):
-                return ProbabilityDistribution(
+                output = ProbabilityDistribution(
                     self.measurement_mapping(results),
                     n_modes=len(self.input_state),
                     n_photons=self.n_photons,
                     computation_space=self.computation_space,
                 )
-            return StateVector(
-                self.measurement_mapping(results),
-                n_modes=len(self.input_state),
-                n_photons=self.n_photons,
-            )
+            else:
+                output = StateVector(
+                    self.measurement_mapping(results),
+                    n_modes=len(self.input_state),
+                    n_photons=self.n_photons,
+                )
+        else:
+            output = self.measurement_mapping(results)
 
-        return self.measurement_mapping(results)
+        # Phase 7: memristive update
+        if len(self.memristive_state) > 0:
+            self.memristive_state = compute_new_memristive_ps_angles(
+                memristive_metadata=self._memristive_metadata,
+                memristive_state=self.memristive_state,
+            )
+            for i in range(len(self.memristive_history)):
+                self.memristive_history[i].append(self.memristive_state[i])
+
+        return output
 
     def _compute_amplitudes(
         self,
@@ -994,8 +1014,11 @@ class QuantumLayer(MerlinModule):
         inferred_state: torch.Tensor | None,
         parameter_batch_dim: int,
         simultaneous_processes: int | None,
+        memristive_current_state: list[torch.Tensor],
+        memristive_metadata: list[dict],
     ) -> torch.Tensor:
         """Select the computation path based on the encoding mode and input state."""
+
         if self.amplitude_encoding:
             if inferred_state is None:
                 raise TypeError(
@@ -1452,5 +1475,8 @@ class QuantumLayer(MerlinModule):
         if batch_size >= len(self.memristive_history[0]):
             return
         for i in range(len(self.memristive_history)):
-            self.memristive_history[i] = self.memristive_history[:batch_size]
+            self.memristive_state[i] = torch.full(
+                (batch_size), self._memristive_metadata[i]["initial_state"]
+            )
+            self.memristive_history[i] = [self.memristive_state[i]]
         return
