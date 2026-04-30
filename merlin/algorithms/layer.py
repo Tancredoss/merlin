@@ -416,12 +416,9 @@ class QuantumLayer(MerlinModule):
 
         # If input_state was a StateVector, set the actual tensor now (after init to bypass validation)
         if statevector_input is not None:
-            sv_tensor = statevector_input.to_dense()
-            if sv_tensor.device != self.device:
-                sv_tensor = sv_tensor.to(self.device)
-            if sv_tensor.dtype != self.complex_dtype:
-                sv_tensor = sv_tensor.to(self.complex_dtype)
-            self.computation_process.input_state = sv_tensor
+            self.computation_process.input_state = self._statevector_tensor(
+                statevector_input
+            )
 
         # Setup PhotonLossTransform & DetectorTransform
         self.n_photons = self.computation_process.n_photons
@@ -705,8 +702,25 @@ class QuantumLayer(MerlinModule):
             self.computation_process.input_state = list(basic)
             return
 
+        if isinstance(input_state, StateVector):
+            self.input_state = input_state
+            self.computation_process.input_state = self._statevector_tensor(input_state)
+            return
+
         self.input_state = input_state
         self.computation_process.input_state = input_state
+
+    def _statevector_tensor(self, statevector: StateVector) -> torch.Tensor:
+        """Return the wrapped amplitude tensor without changing sparse layout."""
+        tensor = statevector.tensor
+        if self.device is not None and tensor.device != self.device:
+            tensor = tensor.to(self.device)
+        if tensor.dtype != self.complex_dtype:
+            if tensor.is_complex():
+                tensor = tensor.to(self.complex_dtype)
+            else:
+                tensor = tensor.to(self.dtype)
+        return tensor
 
     def prepare_parameters(
         self, input_parameters: list[torch.Tensor]
@@ -817,14 +831,7 @@ class QuantumLayer(MerlinModule):
                     "Use either tensor inputs (angle encoding) or StateVector (amplitude encoding)."
                 )
             sv = input_parameters[0]
-            # Convert to dense for computation pipeline (sparse not supported downstream).
-            # StateVector's sparse representation is still valuable for memory-efficient
-            # construction and manipulation; we only densify at computation time.
-            amplitude_tensor = sv.to_dense()
-            if amplitude_tensor.device != self.device:
-                amplitude_tensor = amplitude_tensor.to(self.device)
-            if amplitude_tensor.dtype != self.complex_dtype:
-                amplitude_tensor = amplitude_tensor.to(self.complex_dtype)
+            amplitude_tensor = self._statevector_tensor(sv)
             amplitude_input = self._validate_amplitude_input(amplitude_tensor)
             original_input_state = getattr(
                 self.computation_process, "input_state", None

@@ -25,6 +25,7 @@ Quantum computation processes and factories.
 """
 
 import math
+from dataclasses import dataclass
 from typing import Literal, overload
 
 import perceval as pcvl
@@ -37,6 +38,35 @@ from .base import AbstractComputationProcess
 from .computation_space import ComputationSpace
 
 _DEFAULT_SUPERPOSITION_CHUNK_SIZE = 32
+
+
+@dataclass(frozen=True)
+class _SuperpositionSupport:
+    """Compact internal representation of active superposition components."""
+
+    basis_indices: list[int]
+    coefficients: torch.Tensor
+    basis_size: int
+
+    @property
+    def batch_size(self) -> int:
+        return self.coefficients.shape[0]
+
+    @property
+    def device(self) -> torch.device:
+        return self.coefficients.device
+
+    @property
+    def is_sparse(self) -> bool:
+        return True
+
+    @property
+    def nnz(self) -> int:
+        return len(self.basis_indices)
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return (self.batch_size, self.basis_size)
 
 
 class ComputationProcess(AbstractComputationProcess):
@@ -210,7 +240,7 @@ class ComputationProcess(AbstractComputationProcess):
         simultaneous_processes: int | None = None,
         return_keys: bool = False,
     ) -> torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
-        prepared_state = self._prepare_superposition_tensor()
+        prepared_state = self._prepare_superposition_support()
         unitary = self.converter.to_tensor(*parameters)
         _keys_out, final_amplitudes = self._compute_chunked_superposition(
             prepared_state,
@@ -275,9 +305,7 @@ class ComputationProcess(AbstractComputationProcess):
               ``self.input_state`` live on the same device.
         """
 
-        # input state was validated by _prepare_superposition_tensor, ie: renormalized, typed, and converted from logical basis to fock basis (if shape did not match)
-        # we don't want anymore the logical basis but normalization and typing cannot hurt even if it is a small overhead
-        prepared_state = self._prepare_superposition_tensor()
+        prepared_state = self._prepare_superposition_support()
 
         unitary = self.converter.to_tensor(*parameters)
         keys_out, final_amplitudes = self._compute_chunked_superposition(
@@ -469,9 +497,14 @@ class ComputationProcess(AbstractComputationProcess):
         self.input_state = tensor
         return tensor
 
+    def _prepare_superposition_support(self) -> _SuperpositionSupport:
+        """Return active support for the stored superposition state."""
+        tensor = self._prepare_superposition_tensor()
+        return self._superposition_support_from_tensor(tensor)
+
     def _compute_chunked_superposition(
         self,
-        prepared_state: torch.Tensor,
+        prepared_state: _SuperpositionSupport,
         unitary: torch.Tensor,
         *,
         simultaneous_processes: int | None,
@@ -483,41 +516,40 @@ class ComputationProcess(AbstractComputationProcess):
             )
 
         keys_out = list(self.simulation_graph.mapped_keys)
-        active_indices = self._active_superposition_indices(prepared_state)
-        if not active_indices:
+        if not prepared_state.basis_indices:
             final = torch.zeros(
                 (
                     unitary.shape[0],
-                    prepared_state.shape[0],
+                    prepared_state.batch_size,
                     len(keys_out),
                 ),
                 dtype=unitary.dtype,
-                device=prepared_state.device,
+                device=unitary.device,
             )
             return keys_out, final
 
         input_states = [
             (index, self.simulation_graph.mapped_keys[index])
-            for index in active_indices
+            for index in prepared_state.basis_indices
         ]
         chunk_size = self._resolve_superposition_chunk_size(simultaneous_processes)
         final_amplitudes = torch.zeros(
             (
                 unitary.shape[0],
-                prepared_state.shape[0],
+                prepared_state.batch_size,
                 len(keys_out),
             ),
             dtype=unitary.dtype,
-            device=prepared_state.device,
+            device=unitary.device,
         )
 
         for start in range(0, len(input_states), chunk_size):
             batch = input_states[start : start + chunk_size]
-            batch_indices = [idx for idx, _ in batch]
             batch_fock_states = [state for _, state in batch]
-            coeffs = self._gather_superposition_coefficients(
-                prepared_state, batch_indices
-            ).to(unitary.dtype)
+            coeffs = prepared_state.coefficients[:, start : start + len(batch)].to(
+                device=unitary.device,
+                dtype=unitary.dtype,
+            )
             _, batch_amplitudes = self.simulation_graph.compute_batch(
                 unitary, batch_fock_states
             )
@@ -583,44 +615,70 @@ class ComputationProcess(AbstractComputationProcess):
         ).coalesce()
 
     @staticmethod
-    def _active_superposition_indices(tensor: torch.Tensor) -> list[int]:
-        """Return the active basis indices in a batched superposition tensor."""
+    def _superposition_support_from_tensor(
+        tensor: torch.Tensor,
+    ) -> _SuperpositionSupport:
+        """Extract active basis indices and compact coefficients."""
         if tensor.is_sparse:
-            cols = tensor.coalesce().indices()[-1].tolist()
-            return list(dict.fromkeys(int(col) for col in cols))
-
-        mask = (tensor.real.pow(2) + tensor.imag.pow(2) < 1e-13).all(dim=0)
-        return [idx for idx, active in enumerate((~mask).tolist()) if active]
+            return ComputationProcess._sparse_superposition_support(tensor)
+        return ComputationProcess._dense_superposition_support(tensor)
 
     @staticmethod
-    def _gather_superposition_coefficients(
-        tensor: torch.Tensor, basis_indices: list[int]
-    ) -> torch.Tensor:
-        """Extract selected basis coefficients as a small dense tensor."""
-        if not basis_indices:
-            return torch.zeros(
-                (tensor.shape[0], 0), dtype=tensor.dtype, device=tensor.device
-            )
-        if not tensor.is_sparse:
-            return tensor[:, basis_indices]
-
-        coalesced = tensor.coalesce()
-        lookup = {basis_idx: pos for pos, basis_idx in enumerate(basis_indices)}
-        gathered = torch.zeros(
-            (tensor.shape[0], len(basis_indices)),
-            dtype=coalesced.dtype,
-            device=coalesced.device,
+    def _dense_superposition_support(tensor: torch.Tensor) -> _SuperpositionSupport:
+        """Extract active support from a dense batched superposition tensor."""
+        magnitude_sq = tensor.real.pow(2) + tensor.imag.pow(2)
+        active_mask = (magnitude_sq >= 1e-13).any(dim=0)
+        active_indices_tensor = active_mask.nonzero(as_tuple=False).flatten()
+        if active_indices_tensor.numel() == 0:
+            coefficients = tensor.new_zeros((tensor.shape[0], 0))
+            basis_indices: list[int] = []
+        else:
+            coefficients = tensor[:, active_indices_tensor]
+            basis_indices = [int(idx) for idx in active_indices_tensor.tolist()]
+        return _SuperpositionSupport(
+            basis_indices=basis_indices,
+            coefficients=coefficients,
+            basis_size=tensor.shape[-1],
         )
+
+    @staticmethod
+    def _sparse_superposition_support(tensor: torch.Tensor) -> _SuperpositionSupport:
+        """Extract active support from a sparse COO batched superposition tensor."""
+        coalesced = tensor.coalesce()
         indices = coalesced.indices()
         values = coalesced.values()
-        for col in range(values.shape[0]):
-            basis_idx = int(indices[-1, col].item())
-            pos = lookup.get(basis_idx)
-            if pos is None:
-                continue
-            row = int(indices[0, col].item())
-            gathered[row, pos] = values[col]
-        return gathered
+        if values.numel() == 0:
+            coefficients = values.new_zeros((tensor.shape[0], 0))
+            return _SuperpositionSupport(
+                basis_indices=[],
+                coefficients=coefficients,
+                basis_size=tensor.shape[-1],
+            )
+
+        magnitude_sq = values.real.pow(2) + values.imag.pow(2)
+        active_values_mask = magnitude_sq >= 1e-13
+        if not bool(active_values_mask.any().item()):
+            coefficients = values.new_zeros((tensor.shape[0], 0))
+            return _SuperpositionSupport(
+                basis_indices=[],
+                coefficients=coefficients,
+                basis_size=tensor.shape[-1],
+            )
+
+        active_indices = indices[:, active_values_mask]
+        active_values = values[active_values_mask]
+        rows = active_indices[0]
+        cols = active_indices[-1]
+        basis_indices_tensor = torch.unique(cols, sorted=True)
+        positions = torch.searchsorted(basis_indices_tensor, cols)
+        coefficients = values.new_zeros((tensor.shape[0], basis_indices_tensor.numel()))
+        coefficients[rows, positions] = active_values
+        basis_indices = [int(idx) for idx in basis_indices_tensor.tolist()]
+        return _SuperpositionSupport(
+            basis_indices=basis_indices,
+            coefficients=coefficients,
+            basis_size=tensor.shape[-1],
+        )
 
 
 class ComputationProcessFactory:
