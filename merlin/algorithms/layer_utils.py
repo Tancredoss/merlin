@@ -754,9 +754,7 @@ def compute_new_memristive_ps_angles(
 ) -> list[torch.Tensor]:
     new_memristive_states = []
     for metadata, state in zip(memristive_metadata, memristive_state):
-        new_memristive_states.append(
-            metadata["update_rule"](state=state, output=output)
-        )
+        new_memristive_states.append(metadata["update_rule"](state, output))
     return new_memristive_states
 
 

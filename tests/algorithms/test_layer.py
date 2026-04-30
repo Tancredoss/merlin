@@ -302,10 +302,12 @@ class TestQuantumLayer:
 
         amplitude = torch.rand(len(layer.output_keys))
         remaining_input = torch.rand(2)
-        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input([
-            amplitude,
-            remaining_input,
-        ])
+        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input(
+            [
+                amplitude,
+                remaining_input,
+            ]
+        )
 
         assert saved_state is original_state
         assert remaining[0] is remaining_input
@@ -346,10 +348,12 @@ class TestQuantumLayer:
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
 
-        params, batch_dim = layer._prepare_classical_parameters([
-            torch.rand(2, 2),
-            torch.rand(2, 2),
-        ])
+        params, batch_dim = layer._prepare_classical_parameters(
+            [
+                torch.rand(2, 2),
+                torch.rand(2, 2),
+            ]
+        )
 
         assert batch_dim == 2
         assert len(params) >= 2
@@ -937,9 +941,9 @@ class TestQuantumLayer:
         assert model[1].out_features == 3
         # Check that it has trainable parameters (only in Linear layer)
         trainable_params_layer = [p for p in layer.parameters() if p.requires_grad]
-        assert len(trainable_params_layer) == 0, (
-            "Layer should have no trainable parameters"
-        )
+        assert (
+            len(trainable_params_layer) == 0
+        ), "Layer should have no trainable parameters"
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         assert len(trainable_params) > 0, "Model should have trainable parameters"
 
@@ -1349,6 +1353,30 @@ class TestQuantumLayer:
                     assert param.grad is not None
 
             assert has_trainable_params, "Model should have trainable parameters"
+
+    def test_memrsistive_update(self):
+        def update_rule(state: torch.Tensor, output: torch.Tensor):
+            return state + torch.vstack([output[0, 0]] * state.size(0))
+
+        circ = ML.CircuitBuilder(n_modes=3)
+        circ.add_entangling_layer()
+        circ.add_memristive_ps(mode=0, update_rule=update_rule, initial_state=0)
+        circ.add_entangling_layer()
+        circ.add_angle_encoding(modes=[0, 1])
+
+        ql = ML.QuantumLayer(
+            builder=circ,
+            n_photons=3,
+            measurement_strategy=ML.MeasurementStrategy.probs(
+                computation_space=ML.ComputationSpace.FOCK
+            ),
+        )
+
+        input = torch.Tensor([[0, 0]])
+
+        first_output = ql(input)
+        second_output = ql(input)
+        assert not torch.allclose(first_output, second_output)
 
 
 def test_simple_num_photons_modes_and_input_state():

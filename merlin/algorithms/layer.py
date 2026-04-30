@@ -305,16 +305,7 @@ class QuantumLayer(MerlinModule):
             return_object=return_object,
         )
 
-        # Phase 11: assign context to self + warnings
-        self._finalize_from_context(context)
-        # Phase 12: downstream setup
-        # Defaults/validation handled in this method:
-        # - Generate default input_state from n_photons when missing.
-        # - Infer/validate input_size against encoder metadata.
-        # - Setup parameters, measurement strategy, and output sizing.
-        self._init_from_custom_circuit(context)
-
-        # Phase 12: Extract memristive metadata
+        # Phase 11: Extract memristive metadata
         self._memristive_metadata = (
             circuit_source.builder.memristor_specs
             if circuit_source.source_type == "builder"
@@ -324,8 +315,17 @@ class QuantumLayer(MerlinModule):
             [torch.Tensor(i["initial_state"])] for i in self._memristive_metadata
         ]
         self.memristive_state = [
-            torch.Tensor(i["initial_state"]) for i in self._memristive_metadata
+            torch.Tensor([i["initial_state"]]) for i in self._memristive_metadata
         ]
+
+        # Phase 12: assign context to self + warnings
+        self._finalize_from_context(context)
+        # Phase 13: downstream setup
+        # Defaults/validation handled in this method:
+        # - Generate default input_state from n_photons when missing.
+        # - Infer/validate input_size against encoder metadata.
+        # - Setup parameters, measurement strategy, and output sizing.
+        self._init_from_custom_circuit(context)
 
     def _finalize_from_context(self, context: InitializationContext) -> None:
         """Assign initialization context to instance attributes."""
@@ -427,6 +427,7 @@ class QuantumLayer(MerlinModule):
             device=self.device,
             dtype=self.dtype,
             computation_space=self.computation_space,
+            memristive_metadata=self._memristive_metadata,
         )
 
         # If input_state was a StateVector, set the actual tensor now (after init to bypass validation)
@@ -892,9 +893,11 @@ class QuantumLayer(MerlinModule):
         params, parameter_batch_dim = self._prepare_classical_parameters(tensor_inputs)
 
         if len(self.memristive_state) > 0:
-            if not len(self.memristive_state[0]) == parameter_batch_dim:
+            batch_dim = max(parameter_batch_dim, 1)
+            if not self.memristive_state[0].size(0) == batch_dim:
                 raise RuntimeError(
-                    "The batch dimension of the input must match the memristive phase shifters expected batch dimension. To change this batch dimension, call the QuantumLayer.reset(batch_dim) method"
+                    "The batch dimension of the input must match the memristive phase shifters expected batch dimension. "
+                    "To change this batch dimension, call the QuantumLayer.reset(batch_dim) method"
                 )
 
         # Phase 3: Compute amplitudes
@@ -913,8 +916,6 @@ class QuantumLayer(MerlinModule):
                 inferred_state=inferred_state,
                 parameter_batch_dim=parameter_batch_dim,
                 simultaneous_processes=simultaneous_processes,
-                memristive_current_state=self.memristive_state,
-                memristive_metadata=self._memristive_metadata,
             )
 
         # Phase 4: Configure sampling/autodiff
@@ -1001,6 +1002,7 @@ class QuantumLayer(MerlinModule):
             self.memristive_state = compute_new_memristive_ps_angles(
                 memristive_metadata=self._memristive_metadata,
                 memristive_state=self.memristive_state,
+                output=output,
             )
             for i in range(len(self.memristive_history)):
                 self.memristive_history[i].append(self.memristive_state[i])
@@ -1014,8 +1016,6 @@ class QuantumLayer(MerlinModule):
         inferred_state: torch.Tensor | None,
         parameter_batch_dim: int,
         simultaneous_processes: int | None,
-        memristive_current_state: list[torch.Tensor],
-        memristive_metadata: list[dict],
     ) -> torch.Tensor:
         """Select the computation path based on the encoding mode and input state."""
 
@@ -1030,16 +1030,26 @@ class QuantumLayer(MerlinModule):
                 else (1 if inferred_state.dim() == 1 else inferred_state.shape[0])
             )
             return self.computation_process.compute_ebs_simultaneously(
-                params, simultaneous_processes=batch_size
+                params,
+                simultaneous_processes=batch_size,
+                memristive_current_state=self.memristive_state,
             )
         if isinstance(inferred_state, torch.Tensor):
             if parameter_batch_dim:
                 chunk = simultaneous_processes or inferred_state.shape[-1]
                 return self.computation_process.compute_ebs_simultaneously(
-                    params, simultaneous_processes=chunk
+                    params,
+                    simultaneous_processes=chunk,
+                    memristive_current_state=self.memristive_state,
                 )
-            return self.computation_process.compute_superposition_state(params)
-        return self.computation_process.compute(params)
+            return self.computation_process.compute_superposition_state(
+                params,
+                memristive_current_state=self.memristive_state,
+            )
+        return self.computation_process.compute(
+            params,
+            memristive_current_state=self.memristive_state,
+        )
 
     def _renormalize_distribution_and_amplitudes(
         self, amplitudes: torch.Tensor

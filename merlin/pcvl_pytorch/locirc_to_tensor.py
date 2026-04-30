@@ -135,6 +135,7 @@ class CircuitConverter:
         self,
         circuit: Circuit,
         input_specs: list[str] = None,
+        memristive_metadata: list[dict] = [],
         dtype: torch.dtype = torch.complex64,
         device: torch.device = torch.device("cpu"),
     ):
@@ -164,14 +165,18 @@ class CircuitConverter:
         # in pytorch module, there is no discovery of the device from parameters, so it is the user's responsibility to
         # set the device, with .to() before calling the generation function
         self.device = device
+        self.memristive_metadata = memristive_metadata
+        self.memristive_metadata_name_to_index = {
+            memristive_metadata[i]["name"]: i for i in range(len(memristive_metadata))
+        }
         self.input_params = None
         self.batch_size = 1
 
         self.set_dtype(dtype)
 
-        assert isinstance(circuit, Circuit), (
-            f"Expected a Perceval LO circuit, but got {type(circuit).__name__}"
-        )
+        assert isinstance(
+            circuit, Circuit
+        ), f"Expected a Perceval LO circuit, but got {type(circuit).__name__}"
         self.circuit = circuit
 
         # Create parameter mapping - it will map parameter names to their index in the input tensors
@@ -201,9 +206,13 @@ class CircuitConverter:
             # Check if all parameters are covered
             for param in param_names:
                 if param not in self.param_mapping:
-                    raise ValueError(
-                        f"Parameter '{param}' not covered by any input spec"
-                    )
+                    if not (
+                        (param in self.memristive_metadata_name_to_index.keys())
+                        and (len(self.memristive_metadata) > 0)
+                    ):
+                        raise ValueError(
+                            f"Parameter '{param}' not covered by any input spec"
+                        )
 
         self.list_rct = self._compile_circuit()
 
@@ -352,7 +361,10 @@ class CircuitConverter:
         return [item for item in list_rct if item[1] is not None]
 
     def to_tensor(
-        self, *input_params: torch.Tensor, batch_size: int | None = None
+        self,
+        *input_params: torch.Tensor,
+        batch_size: int | None = None,
+        memristive_current_state: list[torch.Tensor] = None,
     ) -> torch.Tensor:
         r"""Convert the parameterized circuit to a PyTorch unitary tensor.
 
@@ -392,6 +404,7 @@ class CircuitConverter:
             )
 
         self.torch_params = input_params
+        self.memristive_current_state = memristive_current_state
 
         if batch_size is None:
             if input_params and input_params[0].dim() > 1:
@@ -405,8 +418,7 @@ class CircuitConverter:
         self.batch_size = batch_size
 
         converted_tensor = (
-            torch
-            .eye(self.circuit.m, dtype=self.tensor_cdtype, device=self.device)
+            torch.eye(self.circuit.m, dtype=self.tensor_cdtype, device=self.device)
             .unsqueeze(0)
             .repeat(batch_size, 1, 1)
         )
@@ -444,8 +456,7 @@ class CircuitConverter:
             Batched unitary tensor of shape (batch_size, comp_size, comp_size)
         """
         return (
-            torch
-            .tensor(
+            torch.tensor(
                 comp.compute_unitary(), dtype=self.tensor_cdtype, device=self.device
             )
             .unsqueeze(0)
@@ -514,8 +525,7 @@ class CircuitConverter:
             )
 
         unitary_tensor = (
-            unitary_tensor
-            .unsqueeze(0)
+            unitary_tensor.unsqueeze(0)
             .repeat(self.batch_size, 1, 1)
             .to(cos_theta.device)
         )
@@ -536,8 +546,17 @@ class CircuitConverter:
             Batched 1x1 phase tensor of shape (batch_size, 1, 1)
         """
         if comp.param("phi").is_variable:
-            (tensor_id, idx_in_tensor) = self.param_mapping[comp.param("phi").name]
-            phase = self.torch_params[tensor_id][..., idx_in_tensor]
+            param_name = comp.param("phi").name
+            if (
+                param_name in self.memristive_metadata_name_to_index.keys()
+                and len(self.memristive_metadata) > 0
+            ):
+                index = self.memristive_metadata_name_to_index[param_name]
+                phase = self.memristive_current_state[index]
+            else:
+                (tensor_id, idx_in_tensor) = self.param_mapping[param_name]
+                phase = self.torch_params[tensor_id][..., idx_in_tensor]
+
         else:
             phase = torch.tensor(
                 comp.param("phi")._value, dtype=self.tensor_fdtype, device=self.device
