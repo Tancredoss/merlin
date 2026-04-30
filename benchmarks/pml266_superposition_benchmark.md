@@ -18,6 +18,29 @@ Raw JSON results:
 - `benchmarks/results/origin-main-pre-pml266.json`
 - `benchmarks/results/pml266-current-working-tree.json`
 
+Each JSON file is the complete output of one benchmark run. The baseline file
+contains results from `origin/main`; the current-working-tree file contains
+results from this PML-266 branch. They have the same structure:
+
+- Top-level metadata: `label`, `repo`, `commit`, `branch`, `is_dirty`,
+  Python/PyTorch/platform versions, and process id.
+- `cases`: one entry per benchmark case. Each case contains the basis size,
+  output size, timing samples (`times_s`), summary timings (`mean_s`, `min_s`,
+  `max_s`), process max RSS (`rss_max_kib`), and allocation recorder output.
+- `allocations.max_zero_allocation`: the largest `torch.zeros` allocation seen
+  inside `merlin.core.process` during the run.
+- `allocations.max_whole_support_allocation`: the old dense table allocation if
+  one occurred. This is present in the baseline JSON and `null` on the current
+  branch.
+- `output_values`: the full complex output vector for that case, stored as
+  `shape`, `real`, and `imag`. The comparison runner uses these values to check
+  that the optimized branch produces the same propagated amplitudes as the
+  baseline within tolerance.
+
+The summary table below is derived from those two JSON files: "Old" values come
+from `origin-main-pre-pml266.json`, and "New" values come from
+`pml266-current-working-tree.json`.
+
 ## Internal path being checked
 
 The intended user path is still ordinary dense amplitude tensors. Users do not
