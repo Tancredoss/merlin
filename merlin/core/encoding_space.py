@@ -177,7 +177,14 @@ class EncodingSpace:
         n_modes: int | None = None,
         n_photons: int | None = None,
     ) -> tuple[TupleInt, ...]:
-        """Return logical basis labels in stable embedding order."""
+        """Return logical basis labels in stable embedding order.
+
+        For a partitioned encoding, each tuple stores the local mode selected
+        by each photon partition. For ``EncodingSpace(modes_per_photon=[2, 2])``,
+        the output is::
+
+            ((0, 0), (0, 1), (1, 0), (1, 1))
+        """
 
         resolved_modes_per_photon = self.resolved_modes_per_photon(
             n_modes=n_modes, n_photons=n_photons
@@ -206,7 +213,13 @@ class EncodingSpace:
         n_modes: int | None = None,
         n_photons: int | None = None,
     ) -> tuple[TupleInt, ...]:
-        """Return mapped Fock states in the same order as ``logical_basis_states``."""
+        """Return mapped Fock states in the same order as ``logical_basis_states``.
+
+        For a ``[2, 2]`` partitioned encoding, the first photon occupies one of
+        modes ``0`` or ``1`` and the second occupies one of modes ``2`` or ``3``::
+
+            ((1, 0, 1, 0), (1, 0, 0, 1), (0, 1, 1, 0), (0, 1, 0, 1))
+        """
 
         return tuple(
             self.logical_to_fock_map(n_modes=n_modes, n_photons=n_photons).values()
@@ -218,7 +231,19 @@ class EncodingSpace:
         n_modes: int | None = None,
         n_photons: int | None = None,
     ) -> dict[TupleInt, TupleInt]:
-        """Return the logical-to-Fock mapping in stable order."""
+        """Return the logical-to-Fock mapping in stable order.
+
+        The keys are compact logical labels and the values are occupation-count
+        Fock states in Merlin's canonical mode layout. For
+        ``EncodingSpace(modes_per_photon=[3, 2])``, the mapping order is::
+
+            (0, 0) -> (1, 0, 0, 1, 0)
+            (0, 1) -> (1, 0, 0, 0, 1)
+            (1, 0) -> (0, 1, 0, 1, 0)
+            (1, 1) -> (0, 1, 0, 0, 1)
+            (2, 0) -> (0, 0, 1, 1, 0)
+            (2, 1) -> (0, 0, 1, 0, 1)
+        """
 
         logical_states = self.logical_basis_states(n_modes=n_modes, n_photons=n_photons)
         resolved_modes_per_photon = self.resolved_modes_per_photon(
@@ -252,7 +277,14 @@ class EncodingSpace:
         n_modes: int | None = None,
         n_photons: int | None = None,
     ) -> dict[TupleInt, int]:
-        """Return full-Fock indices for each logical basis label."""
+        """Return full-Fock indices for each logical basis label.
+
+        The returned indices refer to the full Fock basis for the resolved
+        ``n_modes`` and ``n_photons``. For
+        ``EncodingSpace(modes_per_photon=[2, 2])``, the output is::
+
+            {(0, 0): 2, (0, 1): 3, (1, 0): 5, (1, 1): 6}
+        """
 
         resolved_modes, resolved_photons = self._resolve_dimensions(
             n_modes=n_modes, n_photons=n_photons
