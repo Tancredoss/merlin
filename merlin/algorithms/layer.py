@@ -312,7 +312,7 @@ class QuantumLayer(MerlinModule):
             else []
         )
         self.memristive_history = [
-            [torch.Tensor(i["initial_state"])] for i in self._memristive_metadata
+            [torch.Tensor([i["initial_state"]])] for i in self._memristive_metadata
         ]
         self.memristive_state = [
             torch.Tensor([i["initial_state"]]) for i in self._memristive_metadata
@@ -896,8 +896,7 @@ class QuantumLayer(MerlinModule):
             batch_dim = max(parameter_batch_dim, 1)
             if not self.memristive_state[0].size(0) == batch_dim:
                 raise RuntimeError(
-                    "The batch dimension of the input must match the memristive phase shifters expected batch dimension. "
-                    "To change this batch dimension, call the QuantumLayer.reset(batch_dim) method"
+                    "batch size mismatch: call reset(batch_size=N) before starting a new batch"
                 )
 
         # Phase 3: Compute amplitudes
@@ -1486,7 +1485,7 @@ class QuantumLayer(MerlinModule):
             return
         for i in range(len(self.memristive_history)):
             self.memristive_state[i] = torch.full(
-                (batch_size), self._memristive_metadata[i]["initial_state"]
+                [batch_size], self._memristive_metadata[i]["initial_state"]
             )
             self.memristive_history[i] = [self.memristive_state[i]]
         return
