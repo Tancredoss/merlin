@@ -673,7 +673,7 @@ def test_parameter_memristor_role_assignement():
     for i, component in enumerate(builder.circuit.components):
         assert isinstance(component, Rotation)
         assert component.role == ParameterRole.MEMRISTOR
-        assert component.custom_name == f"mem{i+1}"
+        assert component.custom_name == f"mem{i + 1}"
         if i == 0:
             assert component.value == 1
         elif i == 1:
@@ -697,9 +697,9 @@ def test_parameter_memristor_role_assignement():
         assert isinstance(component, Rotation)
         assert component.role == ParameterRole.MEMRISTOR
         assert (
-            component.custom_name == f"test{i+1}"
+            component.custom_name == f"test{i + 1}"
             if i == 4
-            else component.custom_name == f"mem{i+1}"
+            else component.custom_name == f"mem{i + 1}"
         )
         if i == 0:
             assert component.value == 1
@@ -777,7 +777,7 @@ def test_memristive_own_type_of_parameter():
     assert not "mem" in builder.input_parameter_prefixes
     assert not "test" in builder.input_parameter_prefixes
 
-    custom_names = [f"mem{i+1}" for i in range(4)]
+    custom_names = [f"mem{i + 1}" for i in range(4)]
     num_memristor = 0
     num_other = 0
     for component in builder.circuit.components:

@@ -116,7 +116,7 @@ Switching to a Bell-style interferometer is as simple as:
    :align: center
 
 **add_add_memristive_ps**
------------------------
+--------------------------
 
 Adds a memristive phase-shifter.
 

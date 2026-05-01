@@ -27,7 +27,7 @@ Circuit builder for constructing quantum circuits declaratively.
 import math
 import numbers
 from itertools import combinations
-from typing import Any
+from typing import Any, Callable
 
 from ..core.circuit import Circuit
 from ..core.components import (
@@ -433,17 +433,17 @@ class CircuitBuilder:
     def add_memristive_ps(
         self,
         mode: int,
-        update_rule: callable,
+        update_rule: Callable,
         initial_state: float,
         name: str | None = None,
     ) -> "CircuitBuilder":
-        """Add a memristive phase shifter that will update in regards to the update rule after each forward pass
+        """Add a memristive phase shifter that will update in regards to the update rule after each forward pass.
 
         Parameters
         ----------
         mode : int
            Circuit mode to target
-        update_rule : callable
+        update_rule : ~collections.abc.Callable
            Update rule to change the angle of the phase shifter after each forward pass. The function must take two
            positional arguments: update_rule(state,output). The update rule must also handle batch inputs and return
            a tensor of size `[batch_size]`, just like the state parameter. The output will be the same as the forward.

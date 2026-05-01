@@ -753,7 +753,7 @@ def compute_new_memristive_ps_angles(
     output: torch.Tensor,
 ) -> list[torch.Tensor]:
     """
-    Computes the new memristive phase shifter angles per the batch's output
+    Computes the new memristive phase shifter angles per the batch's output.
 
     Parameters
     ----------

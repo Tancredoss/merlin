@@ -87,6 +87,12 @@ class QuantumLayer(MerlinModule):
     :class:`pcvl.Experiment`.
     """
 
+    #: Current state of each memristive phase-shifter.
+    memristive_state: list[torch.Tensor]
+
+    #: Full history of memristive phase-shifter states since the last :meth:`reset`, indexed by the memristive phase-shifters.
+    memristive_history: list[list[torch.Tensor]]
+
     @sanitize_parameters
     def __init__(
         self,
@@ -894,7 +900,6 @@ class QuantumLayer(MerlinModule):
         params, parameter_batch_dim = self._prepare_classical_parameters(tensor_inputs)
 
         if len(self.memristive_state) > 0:
-
             if self._memristive_smaller_last_batch:
                 raise RuntimeError(
                     "Already ran a smaller batch size: call reset(batch_size=N) before using the layer again"
@@ -1491,6 +1496,15 @@ class QuantumLayer(MerlinModule):
         return base_str + ")"
 
     def reset(self, batch_size: int = 1) -> None:
+        """Rests the memristors to their initial state while clearing the history. It also
+        defines the allowed batch size to be ran per forward pass for circuits with memristive phase shifters.
+
+        Parameters
+        ----------
+        batch_size : int
+            Size of the batches that will be used in forward.
+
+        """
         if batch_size < 1:
             raise ValueError(f"batch_size must be al least 1, got {batch_size}")
 

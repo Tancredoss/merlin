@@ -162,15 +162,21 @@ class TestOutputSuperposedState:
         original_ebs = process.compute_ebs_simultaneously
         original_super = process.compute_superposition_state
 
-        def tracked_ebs(self, parameters, simultaneous_processes=1):
+        def tracked_ebs(
+            self, parameters, simultaneous_processes=1, memristive_current_state=[]
+        ):
             call_tracker["ebs"] += 1
             return original_ebs(
-                parameters, simultaneous_processes=simultaneous_processes
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                memristive_current_state=memristive_current_state,
             )
 
-        def tracked_super(self, parameters):
+        def tracked_super(self, parameters, memristive_current_state=[]):
             call_tracker["super"] += 1
-            return original_super(parameters)
+            return original_super(
+                parameters, memristive_current_state=memristive_current_state
+            )
 
         process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
         process.compute_superposition_state = MethodType(tracked_super, process)
@@ -212,15 +218,21 @@ class TestOutputSuperposedState:
         original_ebs = process.compute_ebs_simultaneously
         original_super = process.compute_superposition_state
 
-        def tracked_ebs(self, parameters, simultaneous_processes=1):
+        def tracked_ebs(
+            self, parameters, simultaneous_processes=1, memristive_current_state=[]
+        ):
             call_tracker["ebs"] += 1
             return original_ebs(
-                parameters, simultaneous_processes=simultaneous_processes
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                memristive_current_state=memristive_current_state,
             )
 
-        def tracked_super(self, parameters):
+        def tracked_super(self, parameters, memristive_current_state=[]):
             call_tracker["super"] += 1
-            return original_super(parameters)
+            return original_super(
+                parameters, memristive_current_state=memristive_current_state
+            )
 
         process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
         process.compute_superposition_state = MethodType(tracked_super, process)
@@ -258,19 +270,29 @@ class TestOutputSuperposedState:
         original_ebs = process.compute_ebs_simultaneously
         original_super = process.compute_superposition_state
 
-        def tracked_ebs(self, parameters, simultaneous_processes=1):
+        def tracked_ebs(
+            self, parameters, simultaneous_processes=1, memristive_current_state=[]
+        ):
             call_tracker["ebs"] += 1
             call_tracker["simultaneous_processes"] = simultaneous_processes
             # Surface the tensor shape returned by the batching kernel for regression checks.
             result = original_ebs(
-                parameters, simultaneous_processes=simultaneous_processes
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                memristive_current_state=memristive_current_state,
             )
             call_tracker["result_shape"] = result.shape
             return result
 
-        def tracked_super(self, parameters, return_keys=False):
+        def tracked_super(
+            self, parameters, return_keys=False, memristive_current_state=[]
+        ):
             call_tracker["super"] += 1
-            return original_super(parameters, return_keys=return_keys)
+            return original_super(
+                parameters,
+                return_keys=return_keys,
+                memristive_current_state=memristive_current_state,
+            )
 
         process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
         process.compute_superposition_state = MethodType(tracked_super, process)
