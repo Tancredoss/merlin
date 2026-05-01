@@ -763,7 +763,7 @@ def compute_new_memristive_ps_angles(
         The memristive metadata of all memristive phase shifters
     memristive_state: list[torch.Tensor],
         The current state of the memristive phase shifters
-    output: torch.Tensor | PartialMeasurement | StateVector | ProbabilityDistribution,
+    output: torch.Tensor | PartialMeasurement | merlin.core.state_vector.StateVector | ProbabilityDistribution,
         The output of the quantum layers
 
     Returns
