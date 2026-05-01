@@ -623,7 +623,7 @@ class ComputationProcessFactory:
         trainable_parameters: list[str],
         input_parameters: list[str],
         computation_space: ComputationSpace | None = None,
-        memristive_metadata: list[dict] = [],
+        memristive_metadata: list[dict] | None = None,
         **kwargs,
     ) -> ComputationProcess:
         """Create a computation process.
@@ -655,6 +655,8 @@ class ComputationProcessFactory:
             trainable_parameters=trainable_parameters,
             input_parameters=input_parameters,
             computation_space=computation_space,
-            memristive_metadata=memristive_metadata,
+            memristive_metadata=(
+                [] if memristive_metadata is None else memristive_metadata
+            ),
             **kwargs,
         )
