@@ -772,7 +772,7 @@ def compute_new_memristive_ps_angles(
         The new states of all memristive phase shifters
     """
     new_memristive_states = []
-    for metadata, state in zip(memristive_metadata, memristive_state):
+    for metadata, state in zip(memristive_metadata, memristive_state, strict=False):
         new_memristive_states.append(metadata["update_rule"](state, output))
     return new_memristive_states
 
