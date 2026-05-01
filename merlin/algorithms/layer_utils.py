@@ -48,6 +48,8 @@ from ..builder.circuit_builder import CircuitBuilder
 from ..core.computation_space import ComputationSpace
 from ..core.state import StatePattern, generate_state
 from ..core.state_vector import StateVector
+from ..core.partial_measurement import PartialMeasurement
+from ..core.probability_distribution import ProbabilityDistribution
 from ..measurement.detectors import resolve_detectors
 from ..measurement.photon_loss import resolve_photon_loss
 from ..measurement.strategies import (
@@ -750,7 +752,7 @@ def apply_angle_encoding(
 def compute_new_memristive_ps_angles(
     memristive_metadata: list[dict],
     memristive_state: list[torch.Tensor],
-    output: torch.Tensor,
+    output: torch.Tensor | PartialMeasurement | StateVector | ProbabilityDistribution,
 ) -> list[torch.Tensor]:
     """
     Computes the new memristive phase shifter angles per the batch's output.
@@ -761,7 +763,7 @@ def compute_new_memristive_ps_angles(
         The memristive metadata of all memristive phase shifters
     memristive_state: list[torch.Tensor],
         The current state of the memristive phase shifters
-    output: torch.Tensor,
+    output: torch.Tensor | PartialMeasurement | StateVector | ProbabilityDistribution,
         The output of the quantum layers
 
     Returns
