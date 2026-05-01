@@ -46,6 +46,8 @@ merlin.algorithms.layer_utils module
 
 .. autofunction:: apply_angle_encoding
 
+.. autofunction:: compute_new_memristive_ps_angles
+
 .. autofunction:: prepare_input_encoding
 
 .. autofunction:: split_inputs_by_prefix

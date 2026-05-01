@@ -74,7 +74,7 @@ class ComputationProcess(AbstractComputationProcess):
         dtype: torch.dtype = torch.float32,
         device: torch.device | None = None,
         computation_space: ComputationSpace | None = None,
-        memristive_metadata: list[dict] | None = None,
+        memristive_metadata: list[dict] = [],
         no_bunching: bool | None = None,
         output_map_func=None,
     ):
@@ -166,7 +166,7 @@ class ComputationProcess(AbstractComputationProcess):
     def compute(
         self,
         parameters: list[torch.Tensor],
-        memristive_current_state: list[torch.Tensor] = None,
+        memristive_current_state: list[torch.Tensor] = [],
     ) -> torch.Tensor:
         """Compute output amplitudes for the configured input state.
 
@@ -174,6 +174,8 @@ class ComputationProcess(AbstractComputationProcess):
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
+        memristive_current_state : list[torch.Tensor]
+            The memristive phase shifters current states. Defaults to None
 
         Returns
         -------
@@ -202,7 +204,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: Literal[True],
-        memristive_current_state: list[torch.Tensor] = None,
+        memristive_current_state: list[torch.Tensor] = [],
     ) -> tuple[list[tuple[int, ...]], torch.Tensor]: ...
 
     @overload
@@ -211,7 +213,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: Literal[False] = False,
-        memristive_current_state: list[torch.Tensor] = None,
+        memristive_current_state: list[torch.Tensor] = [],
     ) -> torch.Tensor: ...
 
     def compute_superposition_state(
@@ -219,7 +221,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: bool = False,
-        memristive_current_state: list[torch.Tensor] = None,
+        memristive_current_state: list[torch.Tensor] = [],
     ) -> torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
         prepared_state = self._prepare_superposition_tensor()
         unitary = self.converter.to_tensor(
@@ -304,7 +306,7 @@ class ComputationProcess(AbstractComputationProcess):
         self,
         parameters: list[torch.Tensor],
         simultaneous_processes: int = 1,
-        memristive_current_state: list[torch.Tensor] = None,
+        memristive_current_state: list[torch.Tensor] = [],
     ) -> torch.Tensor:
         """
         Evaluate a single circuit parametrisation against all superposed input
@@ -328,6 +330,8 @@ class ComputationProcess(AbstractComputationProcess):
         simultaneous_processes : int
             Maximum number of non-zero input components propagated in a single
             call to ``compute_batch``.
+        memristive_current_state : list[torch.Tensor]
+            The memristive phase shifters current states. Defaults to None
 
         Returns
         -------

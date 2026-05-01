@@ -317,6 +317,7 @@ class QuantumLayer(MerlinModule):
         self.memristive_state = [
             torch.Tensor([i["initial_state"]]) for i in self._memristive_metadata
         ]
+        self._memristive_smaller_last_batch = False
 
         # Phase 12: assign context to self + warnings
         self._finalize_from_context(context)
@@ -893,11 +894,26 @@ class QuantumLayer(MerlinModule):
         params, parameter_batch_dim = self._prepare_classical_parameters(tensor_inputs)
 
         if len(self.memristive_state) > 0:
-            batch_dim = max(parameter_batch_dim, 1)
-            if not self.memristive_state[0].size(0) == batch_dim:
+
+            if self._memristive_smaller_last_batch:
                 raise RuntimeError(
-                    "batch size mismatch: call reset(batch_size=N) before starting a new batch"
+                    "Already ran a smaller batch size: call reset(batch_size=N) before using the layer again"
                 )
+
+            batch_dim = max(parameter_batch_dim, 1)
+
+            if not self.memristive_state[0].size(0) == batch_dim:
+                if (not self._memristive_smaller_last_batch) and (
+                    batch_dim < self.memristive_state[0].size(0)
+                ):
+                    self._memristive_smaller_last_batch = True
+                    self.memristive_state = [
+                        x[:batch_dim] for x in self.memristive_state
+                    ]
+                else:
+                    raise RuntimeError(
+                        "batch size mismatch: call reset(batch_size=N) before starting a new batch"
+                    )
 
         # Phase 3: Compute amplitudes
         with self._temporary_input_state(amplitude_input, original_input_state):
@@ -1478,11 +1494,11 @@ class QuantumLayer(MerlinModule):
         if batch_size < 1:
             raise ValueError(f"batch_size must be al least 1, got {batch_size}")
 
+        self._memristive_smaller_last_batch = False
+
         if len(self.memristive_history) == 0:
             return
 
-        if batch_size >= len(self.memristive_history[0]):
-            return
         for i in range(len(self.memristive_history)):
             self.memristive_state[i] = torch.full(
                 [batch_size], self._memristive_metadata[i]["initial_state"]

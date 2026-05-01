@@ -752,6 +752,23 @@ def compute_new_memristive_ps_angles(
     memristive_state: list[torch.Tensor],
     output: torch.Tensor,
 ) -> list[torch.Tensor]:
+    """
+    Computes the new memristive phase shifter angles per the batch's output
+
+    Parameters
+    ----------
+    memristive_metadata: list[dict]
+        The memristive metadata of all memristive phase shifters
+    memristive_state: list[torch.Tensor],
+        The current state of the memristive phase shifters
+    output: torch.Tensor,
+        The output of the quantum layers
+
+    Returns
+    -------
+    list[torch.Tensor]
+        The new states of all memristive phase shifters
+    """
     new_memristive_states = []
     for metadata, state in zip(memristive_metadata, memristive_state):
         new_memristive_states.append(metadata["update_rule"](state, output))

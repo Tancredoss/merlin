@@ -364,7 +364,7 @@ class CircuitConverter:
         self,
         *input_params: torch.Tensor,
         batch_size: int | None = None,
-        memristive_current_state: list[torch.Tensor] = None,
+        memristive_current_state: list[torch.Tensor] = [],
     ) -> torch.Tensor:
         r"""Convert the parameterized circuit to a PyTorch unitary tensor.
 
@@ -377,6 +377,8 @@ class CircuitConverter:
         batch_size : int | None
             Explicit batch size. If ``None``, it is inferred from the input
             tensors.
+        memristive_current_state : list[torch.Tensor]
+            The memristive phase shifters current states. Defaults to None
 
         Returns
         -------
@@ -547,12 +549,13 @@ class CircuitConverter:
         """
         if comp.param("phi").is_variable:
             param_name = comp.param("phi").name
-            if (
-                param_name in self.memristive_metadata_name_to_index.keys()
-                and len(self.memristive_metadata) > 0
-            ):
-                index = self.memristive_metadata_name_to_index[param_name]
-                phase = self.memristive_current_state[index]
+            if len(self.memristive_metadata) > 0:
+                if param_name in self.memristive_metadata_name_to_index.keys():
+                    index = self.memristive_metadata_name_to_index[param_name]
+                    phase = self.memristive_current_state[index]
+                else:
+                    (tensor_id, idx_in_tensor) = self.param_mapping[param_name]
+                    phase = self.torch_params[tensor_id][..., idx_in_tensor]
             else:
                 (tensor_id, idx_in_tensor) = self.param_mapping[param_name]
                 phase = self.torch_params[tensor_id][..., idx_in_tensor]
