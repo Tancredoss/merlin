@@ -135,7 +135,7 @@ class CircuitConverter:
         self,
         circuit: Circuit,
         input_specs: list[str] = None,
-        memristive_metadata: list[dict] | None = None,
+        memristive_metadata: list[dict] = [],
         dtype: torch.dtype = torch.complex64,
         device: torch.device = torch.device("cpu"),
     ):
@@ -165,9 +165,7 @@ class CircuitConverter:
         # in pytorch module, there is no discovery of the device from parameters, so it is the user's responsibility to
         # set the device, with .to() before calling the generation function
         self.device = device
-        self.memristive_metadata = (
-            memristive_metadata if memristive_metadata is not None else []
-        )
+        self.memristive_metadata = memristive_metadata
         self.memristive_metadata_name_to_index = {
             memristive_metadata[i]["name"]: i for i in range(len(memristive_metadata))
         }
@@ -367,7 +365,7 @@ class CircuitConverter:
         self,
         *input_params: torch.Tensor,
         batch_size: int | None = None,
-        memristive_current_state: list[torch.Tensor] | None = None,
+        memristive_current_state: list[torch.Tensor] = [],
     ) -> torch.Tensor:
         r"""Convert the parameterized circuit to a PyTorch unitary tensor.
 
@@ -409,9 +407,7 @@ class CircuitConverter:
             )
 
         self.torch_params = input_params
-        self.memristive_current_state = (
-            memristive_current_state if memristive_current_state is not None else []
-        )
+        self.memristive_current_state = memristive_current_state
 
         if batch_size is None:
             if input_params and input_params[0].dim() > 1:
@@ -492,7 +488,7 @@ class CircuitConverter:
 
         for _index, param in enumerate(comp.get_parameters(all_params=True)):
             if param.is_variable:
-                tensor_id, idx_in_tensor = self.param_mapping[param.name]
+                (tensor_id, idx_in_tensor) = self.param_mapping[param.name]
                 param_values.append(self.torch_params[tensor_id][..., idx_in_tensor])
             else:
                 param_values.append(
@@ -562,10 +558,10 @@ class CircuitConverter:
                     index = self.memristive_metadata_name_to_index[param_name]
                     phase = self.memristive_current_state[index]
                 else:
-                    tensor_id, idx_in_tensor = self.param_mapping[param_name]
+                    (tensor_id, idx_in_tensor) = self.param_mapping[param_name]
                     phase = self.torch_params[tensor_id][..., idx_in_tensor]
             else:
-                tensor_id, idx_in_tensor = self.param_mapping[param_name]
+                (tensor_id, idx_in_tensor) = self.param_mapping[param_name]
                 phase = self.torch_params[tensor_id][..., idx_in_tensor]
 
         else:

@@ -26,9 +26,8 @@ Circuit builder for constructing quantum circuits declaratively.
 
 import math
 import numbers
-from collections.abc import Callable
 from itertools import combinations
-from typing import Any
+from typing import Any, Callable
 
 from ..core.circuit import Circuit
 from ..core.components import (
@@ -468,12 +467,14 @@ class CircuitBuilder:
             modes=mode, role=ParameterRole.MEMRISTOR, name=name, value=initial_state
         )
 
-        self.memristor_specs.append({
-            "target_mode": mode,
-            "name": f"{name}{self._memristor_counter}",
-            "update_rule": update_rule,
-            "initial_state": initial_state,
-        })
+        self.memristor_specs.append(
+            {
+                "target_mode": mode,
+                "name": f"{name}{self._memristor_counter}",
+                "update_rule": update_rule,
+                "initial_state": initial_state,
+            }
+        )
         return self
 
     def add_entangling_layer(
