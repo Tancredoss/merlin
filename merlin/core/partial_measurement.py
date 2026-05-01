@@ -157,11 +157,10 @@ class PartialMeasurement:
             )
             return probas
         grouping = self.grouping
-        output_size = self._grouping_output_size()
-        batch_size = probas.shape[0]
+        expected_batch_size = expected_shape[0]
         # Verify shape of probas
         assert tuple(probas.shape) == (
-            batch_size,
+            expected_batch_size,
             len(self.branches),
         ), "Inconsistent probability tensor shape before grouping"
         # Verify shape of grouped probas
@@ -169,10 +168,6 @@ class PartialMeasurement:
         assert tuple(grouped_probas.shape) == expected_shape, (
             "Inconsistent grouped probability tensor shape after grouping"
         )
-        assert expected_shape == (
-            batch_size,
-            output_size,
-        ), "Inconsistent grouped probability tensor shape after grouping"
         return grouped_probas
 
     @property

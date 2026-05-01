@@ -5,20 +5,10 @@ on:
     branches:
       - main
       - release/*
-    paths:
-      - ".github/workflows/docs.yml"
-      - "docs/**"
-      - "pyproject.toml"
-      - "requirements-docs.txt"
   pull_request:
     branches:
       - main
       - release/*
-    paths:
-      - ".github/workflows/docs.yml"
-      - "docs/**"
-      - "pyproject.toml"
-      - "requirements-docs.txt"
 
 jobs:
   build-docs:
