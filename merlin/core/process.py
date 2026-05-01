@@ -74,7 +74,7 @@ class ComputationProcess(AbstractComputationProcess):
         dtype: torch.dtype = torch.float32,
         device: torch.device | None = None,
         computation_space: ComputationSpace | None = None,
-        memristive_metadata: list[dict] = [],
+        memristive_metadata: list[dict] | None = None,
         no_bunching: bool | None = None,
         output_map_func=None,
     ):
@@ -110,7 +110,9 @@ class ComputationProcess(AbstractComputationProcess):
         self.input_parameters = input_parameters
         self.dtype = dtype
         self.device = device
-        self.memristive_metadata = memristive_metadata
+        self.memristive_metadata = (
+            [] if memristive_metadata is None else memristive_metadata
+        )
 
         if no_bunching is not None:
             raise_no_bunching_deprecated(stacklevel=2)
@@ -166,7 +168,7 @@ class ComputationProcess(AbstractComputationProcess):
     def compute(
         self,
         parameters: list[torch.Tensor],
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """Compute output amplitudes for the configured input state.
 
@@ -186,7 +188,9 @@ class ComputationProcess(AbstractComputationProcess):
 
         unitary = self.converter.to_tensor(
             *parameters,
-            memristive_current_state=memristive_current_state,
+            memristive_current_state=(
+                [] if memristive_current_state is None else memristive_current_state
+            ),
         )
         self.unitary = unitary
         # Compute output distribution using the input state
@@ -204,7 +208,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: Literal[True],
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> tuple[list[tuple[int, ...]], torch.Tensor]: ...
 
     @overload
@@ -213,7 +217,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: Literal[False] = False,
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor: ...
 
     def compute_superposition_state(
@@ -221,12 +225,14 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: bool = False,
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
         prepared_state = self._prepare_superposition_tensor()
         unitary = self.converter.to_tensor(
             *parameters,
-            memristive_current_state=memristive_current_state,
+            memristive_current_state=(
+                [] if memristive_current_state is None else memristive_current_state
+            ),
         )
         changed_unitary = True
 
@@ -306,7 +312,7 @@ class ComputationProcess(AbstractComputationProcess):
         self,
         parameters: list[torch.Tensor],
         simultaneous_processes: int = 1,
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """
         Evaluate a single circuit parametrisation against all superposed input
@@ -362,7 +368,9 @@ class ComputationProcess(AbstractComputationProcess):
 
         unitary = self.converter.to_tensor(
             *parameters,
-            memristive_current_state=memristive_current_state,
+            memristive_current_state=(
+                [] if memristive_current_state is None else memristive_current_state
+            ),
         )
         # Allow classical parameters to be batched: in that case the converter already returns a stack of unitaries.
         batched_parameters = unitary.dim() == 3
