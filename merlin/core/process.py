@@ -74,7 +74,7 @@ class ComputationProcess(AbstractComputationProcess):
         dtype: torch.dtype = torch.float32,
         device: torch.device | None = None,
         computation_space: ComputationSpace | None = None,
-        memristive_metadata: list[dict] = [],
+        memristive_metadata: list[dict] | None = None,
         no_bunching: bool | None = None,
         output_map_func=None,
     ):
@@ -110,7 +110,9 @@ class ComputationProcess(AbstractComputationProcess):
         self.input_parameters = input_parameters
         self.dtype = dtype
         self.device = device
-        self.memristive_metadata = memristive_metadata
+        self.memristive_metadata = (
+            memristive_metadata if memristive_metadata is not None else []
+        )
 
         if no_bunching is not None:
             raise_no_bunching_deprecated(stacklevel=2)
@@ -166,7 +168,7 @@ class ComputationProcess(AbstractComputationProcess):
     def compute(
         self,
         parameters: list[torch.Tensor],
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """Compute output amplitudes for the configured input state.
 
@@ -183,7 +185,8 @@ class ComputationProcess(AbstractComputationProcess):
             Output amplitudes produced by the simulation graph.
         """
         # Generate unitary matrix from parameters
-
+        if memristive_current_state is None:
+            memristive_current_state = []
         unitary = self.converter.to_tensor(
             *parameters,
             memristive_current_state=memristive_current_state,
@@ -204,7 +207,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: Literal[True],
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> tuple[list[tuple[int, ...]], torch.Tensor]: ...
 
     @overload
@@ -213,7 +216,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: Literal[False] = False,
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor: ...
 
     def compute_superposition_state(
@@ -221,9 +224,11 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: bool = False,
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
         prepared_state = self._prepare_superposition_tensor()
+        if memristive_current_state is None:
+            memristive_current_state = []
         unitary = self.converter.to_tensor(
             *parameters,
             memristive_current_state=memristive_current_state,
@@ -306,7 +311,7 @@ class ComputationProcess(AbstractComputationProcess):
         self,
         parameters: list[torch.Tensor],
         simultaneous_processes: int = 1,
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """
         Evaluate a single circuit parametrisation against all superposed input
@@ -360,6 +365,8 @@ class ComputationProcess(AbstractComputationProcess):
         # we don't want anymore the logical basis but normalization and typing cannot hurt even if it is a small overhead
         prepared_state = self._prepare_superposition_tensor()
 
+        if memristive_current_state is None:
+            memristive_current_state = []
         unitary = self.converter.to_tensor(
             *parameters,
             memristive_current_state=memristive_current_state,
@@ -615,7 +622,7 @@ class ComputationProcessFactory:
         trainable_parameters: list[str],
         input_parameters: list[str],
         computation_space: ComputationSpace | None = None,
-        memristive_metadata: list[dict] = [],
+        memristive_metadata: list[dict] | None = None,
         **kwargs,
     ) -> ComputationProcess:
         """Create a computation process.

@@ -163,7 +163,7 @@ class TestOutputSuperposedState:
         original_super = process.compute_superposition_state
 
         def tracked_ebs(
-            self, parameters, simultaneous_processes=1, memristive_current_state=[]
+            self, parameters, simultaneous_processes=1, memristive_current_state=None
         ):
             call_tracker["ebs"] += 1
             return original_ebs(
@@ -172,7 +172,7 @@ class TestOutputSuperposedState:
                 memristive_current_state=memristive_current_state,
             )
 
-        def tracked_super(self, parameters, memristive_current_state=[]):
+        def tracked_super(self, parameters, memristive_current_state=None):
             call_tracker["super"] += 1
             return original_super(
                 parameters, memristive_current_state=memristive_current_state
@@ -219,7 +219,7 @@ class TestOutputSuperposedState:
         original_super = process.compute_superposition_state
 
         def tracked_ebs(
-            self, parameters, simultaneous_processes=1, memristive_current_state=[]
+            self, parameters, simultaneous_processes=1, memristive_current_state=None
         ):
             call_tracker["ebs"] += 1
             return original_ebs(
@@ -228,7 +228,7 @@ class TestOutputSuperposedState:
                 memristive_current_state=memristive_current_state,
             )
 
-        def tracked_super(self, parameters, memristive_current_state=[]):
+        def tracked_super(self, parameters, memristive_current_state=None):
             call_tracker["super"] += 1
             return original_super(
                 parameters, memristive_current_state=memristive_current_state
@@ -271,7 +271,7 @@ class TestOutputSuperposedState:
         original_super = process.compute_superposition_state
 
         def tracked_ebs(
-            self, parameters, simultaneous_processes=1, memristive_current_state=[]
+            self, parameters, simultaneous_processes=1, memristive_current_state=None
         ):
             call_tracker["ebs"] += 1
             call_tracker["simultaneous_processes"] = simultaneous_processes
@@ -285,7 +285,7 @@ class TestOutputSuperposedState:
             return result
 
         def tracked_super(
-            self, parameters, return_keys=False, memristive_current_state=[]
+            self, parameters, return_keys=False, memristive_current_state=None
         ):
             call_tracker["super"] += 1
             return original_super(

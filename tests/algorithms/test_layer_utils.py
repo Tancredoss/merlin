@@ -281,5 +281,5 @@ def test_compute_new_memristive_ps_angles():
     )
     expected = [torch.Tensor([1.4, 2.2]), torch.Tensor([12.5, 1002.5])]
 
-    for x, y in zip(res, expected):
+    for x, y in zip(res, expected, strict=False):
         assert torch.allclose(x, y)
