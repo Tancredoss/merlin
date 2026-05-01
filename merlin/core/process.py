@@ -74,7 +74,7 @@ class ComputationProcess(AbstractComputationProcess):
         dtype: torch.dtype = torch.float32,
         device: torch.device | None = None,
         computation_space: ComputationSpace | None = None,
-        memristive_metadata: list[dict] = [],
+        memristive_metadata: list[dict] | None = None,
         no_bunching: bool | None = None,
         output_map_func=None,
     ):
@@ -98,6 +98,8 @@ class ComputationProcess(AbstractComputationProcess):
             Device on which computation graphs are materialized.
         computation_space : ComputationSpace | None
             Computation space used for basis enumeration.
+        memristive_metadata: list[dict] | None
+            The memristive phase shifter metadata. If None, it will be stored as an empty list.
         no_bunching : bool | None
             Deprecated legacy parameter.
         output_map_func : Any
@@ -110,7 +112,9 @@ class ComputationProcess(AbstractComputationProcess):
         self.input_parameters = input_parameters
         self.dtype = dtype
         self.device = device
-        self.memristive_metadata = memristive_metadata
+        self.memristive_metadata = (
+            [] if memristive_metadata is None else memristive_metadata
+        )
 
         if no_bunching is not None:
             raise_no_bunching_deprecated(stacklevel=2)
