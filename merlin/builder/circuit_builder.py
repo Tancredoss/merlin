@@ -28,7 +28,7 @@ import math
 import numbers
 from collections.abc import Callable
 from itertools import combinations
-from typing import Any
+from typing import Any, Callable
 
 from ..core.circuit import Circuit
 from ..core.components import (
