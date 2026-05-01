@@ -167,6 +167,7 @@ class PartialMeasurement:
         assert grouped_probas.shape == (self.probability_tensor_shape), (
             "Inconsistent grouped probability tensor shape after grouping"
         )
+        assert probas.shape is not None
         assert self.probability_tensor_shape == (
             probas.shape[0],
             output_size,
