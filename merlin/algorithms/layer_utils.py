@@ -46,10 +46,10 @@ import torch
 
 from ..builder.circuit_builder import CircuitBuilder
 from ..core.computation_space import ComputationSpace
-from ..core.state import StatePattern, generate_state
-from ..core.state_vector import StateVector
 from ..core.partial_measurement import PartialMeasurement
 from ..core.probability_distribution import ProbabilityDistribution
+from ..core.state import StatePattern, generate_state
+from ..core.state_vector import StateVector
 from ..measurement.detectors import resolve_detectors
 from ..measurement.photon_loss import resolve_photon_loss
 from ..measurement.strategies import (
