@@ -174,7 +174,7 @@ class CircuitConverter:
             memristive_metadata[i]["name"]: i
             for i in range(len(self.memristive_metadata))
         }
-        self.memristive_current_state = []
+        self.memristive_current_state: list[torch.Tensor] = []
         self.input_params = None
         self.batch_size = 1
 

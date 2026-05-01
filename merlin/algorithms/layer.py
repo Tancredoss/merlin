@@ -987,6 +987,9 @@ class QuantumLayer(MerlinModule):
             grouping=grouping,
         )
 
+        output: (
+            torch.Tensor | PartialMeasurement | ProbabilityDistribution | StateVector
+        )
         if (
             _resolve_measurement_kind(self.measurement_strategy)
             == MeasurementKind.PARTIAL
