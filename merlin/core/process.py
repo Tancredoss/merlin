@@ -627,7 +627,7 @@ class ComputationProcessFactory:
         trainable_parameters: list[str],
         input_parameters: list[str],
         computation_space: ComputationSpace | None = None,
-        memristive_metadata: list[dict] = [],
+        memristive_metadata: list[dict] | None = None,
         **kwargs,
     ) -> ComputationProcess:
         """Create a computation process.
@@ -644,6 +644,8 @@ class ComputationProcessFactory:
             Prefixes of input-driven circuit parameters.
         computation_space : ComputationSpace | None
             Computation space used for basis enumeration.
+        memristive_metadata: list[dict] | None
+            The memristive phase shifter metadata. If None, it will be stored as an empty list.
         **kwargs
             Additional keyword arguments forwarded to
             :class:`ComputationProcess`.
@@ -659,6 +661,8 @@ class ComputationProcessFactory:
             trainable_parameters=trainable_parameters,
             input_parameters=input_parameters,
             computation_space=computation_space,
-            memristive_metadata=memristive_metadata,
+            memristive_metadata=(
+                [] if memristive_metadata is None else memristive_metadata
+            ),
             **kwargs,
         )
