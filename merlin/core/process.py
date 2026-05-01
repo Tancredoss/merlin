@@ -178,7 +178,7 @@ class ComputationProcess(AbstractComputationProcess):
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
-        memristive_current_state : list[torch.Tensor] |None
+        memristive_current_state : list[torch.Tensor] | None
             The memristive phase shifters current states. Defaults to None
             and will be treated as an empty list.
 
@@ -211,7 +211,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: Literal[True],
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> tuple[list[tuple[int, ...]], torch.Tensor]: ...
 
     @overload
@@ -220,7 +220,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: Literal[False] = False,
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor: ...
 
     def compute_superposition_state(
@@ -228,12 +228,14 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         return_keys: bool = False,
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
         prepared_state = self._prepare_superposition_tensor()
         unitary = self.converter.to_tensor(
             *parameters,
-            memristive_current_state=memristive_current_state,
+            memristive_current_state=(
+                [] if memristive_current_state is None else memristive_current_state
+            ),
         )
         changed_unitary = True
 
@@ -313,7 +315,7 @@ class ComputationProcess(AbstractComputationProcess):
         self,
         parameters: list[torch.Tensor],
         simultaneous_processes: int = 1,
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """
         Evaluate a single circuit parametrisation against all superposed input
@@ -337,8 +339,9 @@ class ComputationProcess(AbstractComputationProcess):
         simultaneous_processes : int
             Maximum number of non-zero input components propagated in a single
             call to ``compute_batch``.
-        memristive_current_state : list[torch.Tensor]
+        memristive_current_state : list[torch.Tensor] | None
             The memristive phase shifters current states. Defaults to None
+            and will be treated as an empty list.
 
         Returns
         -------
@@ -369,7 +372,9 @@ class ComputationProcess(AbstractComputationProcess):
 
         unitary = self.converter.to_tensor(
             *parameters,
-            memristive_current_state=memristive_current_state,
+            memristive_current_state=(
+                [] if memristive_current_state is None else memristive_current_state
+            ),
         )
         # Allow classical parameters to be batched: in that case the converter already returns a stack of unitaries.
         batched_parameters = unitary.dim() == 3
