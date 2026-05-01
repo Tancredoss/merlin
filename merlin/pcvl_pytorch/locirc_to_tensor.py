@@ -180,9 +180,9 @@ class CircuitConverter:
 
         self.set_dtype(dtype)
 
-        assert isinstance(
-            circuit, Circuit
-        ), f"Expected a Perceval LO circuit, but got {type(circuit).__name__}"
+        assert isinstance(circuit, Circuit), (
+            f"Expected a Perceval LO circuit, but got {type(circuit).__name__}"
+        )
         self.circuit = circuit
 
         # Create parameter mapping - it will map parameter names to their index in the input tensors
@@ -429,7 +429,8 @@ class CircuitConverter:
         self.batch_size = batch_size
 
         converted_tensor = (
-            torch.eye(self.circuit.m, dtype=self.tensor_cdtype, device=self.device)
+            torch
+            .eye(self.circuit.m, dtype=self.tensor_cdtype, device=self.device)
             .unsqueeze(0)
             .repeat(batch_size, 1, 1)
         )
@@ -467,7 +468,8 @@ class CircuitConverter:
             Batched unitary tensor of shape (batch_size, comp_size, comp_size)
         """
         return (
-            torch.tensor(
+            torch
+            .tensor(
                 comp.compute_unitary(), dtype=self.tensor_cdtype, device=self.device
             )
             .unsqueeze(0)
@@ -536,7 +538,8 @@ class CircuitConverter:
             )
 
         unitary_tensor = (
-            unitary_tensor.unsqueeze(0)
+            unitary_tensor
+            .unsqueeze(0)
             .repeat(self.batch_size, 1, 1)
             .to(cos_theta.device)
         )
