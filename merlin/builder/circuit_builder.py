@@ -24,9 +24,9 @@
 Circuit builder for constructing quantum circuits declaratively.
 """
 
+from collections.abc import Callable
 import math
 import numbers
-from collections.abc import Callable
 from itertools import combinations
 from typing import Any, Callable
 
