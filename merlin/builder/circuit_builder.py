@@ -24,11 +24,11 @@
 Circuit builder for constructing quantum circuits declaratively.
 """
 
-from collections.abc import Callable
 import math
 import numbers
+from collections.abc import Callable
 from itertools import combinations
-from typing import Any, Callable
+from typing import Any
 
 from ..core.circuit import Circuit
 from ..core.components import (
