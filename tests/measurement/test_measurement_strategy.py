@@ -786,17 +786,23 @@ class _DummyComputationProcess:
         self.memristive_current_state = []
 
     def compute_ebs_simultaneously(
-        self, params, simultaneous_processes, memristive_current_state=[]
+        self, params, simultaneous_processes, memristive_current_state=None
     ):
+        if memristive_current_state is None:
+            memristive_current_state = []
         self.called = "ebs"
         self.last_simultaneous_processes = simultaneous_processes
         return torch.tensor([float(simultaneous_processes)])
 
-    def compute_superposition_state(self, params, memristive_current_state=[]):
+    def compute_superposition_state(self, params, memristive_current_state=None):
+        if memristive_current_state is None:
+            memristive_current_state = []
         self.called = "superposition"
         return torch.tensor([1.0])
 
-    def compute(self, params, memristive_current_state=[]):
+    def compute(self, params, memristive_current_state=None):
+        if memristive_current_state is None:
+            memristive_current_state = []
         self.called = "compute"
         return torch.tensor([2.0])
 
