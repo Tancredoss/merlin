@@ -170,7 +170,7 @@ class ComputationProcess(AbstractComputationProcess):
     def compute(
         self,
         parameters: list[torch.Tensor],
-        memristive_current_state: list[torch.Tensor] = [],
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """Compute output amplitudes for the configured input state.
 
@@ -178,8 +178,9 @@ class ComputationProcess(AbstractComputationProcess):
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
-        memristive_current_state : list[torch.Tensor]
+        memristive_current_state : list[torch.Tensor] |None
             The memristive phase shifters current states. Defaults to None
+            and will be treated as an empty list.
 
         Returns
         -------
@@ -190,7 +191,9 @@ class ComputationProcess(AbstractComputationProcess):
 
         unitary = self.converter.to_tensor(
             *parameters,
-            memristive_current_state=memristive_current_state,
+            memristive_current_state=(
+                [] if memristive_current_state is None else memristive_current_state
+            ),
         )
         self.unitary = unitary
         # Compute output distribution using the input state
