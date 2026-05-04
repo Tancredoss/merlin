@@ -65,6 +65,7 @@ from .layer_utils import (
     InitializationContext,
     apply_angle_encoding,
     feature_count_for_prefix,
+    normalize_noise_model,
     prepare_input_encoding,
     prepare_input_state,
     resolve_circuit,
@@ -115,6 +116,7 @@ class QuantumLayer(MerlinModule):
         computation_space: ComputationSpace | str | None = None,
         measurement_strategy: MeasurementStrategyLike | None = None,
         return_object: bool = False,
+        noise_model: pcvl.NoiseModel | None = None,
         # device and dtype
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
@@ -188,6 +190,9 @@ class QuantumLayer(MerlinModule):
             - ``MeasurementKind.PROBABILITIES`` returns a ``ProbabilityDistribution``
             - ``MeasurementKind.PARTIAL`` returns a ``PartialMeasurement``.
             - ``MeasurementKind.MODE_EXPECTATIONS`` returns a ``torch.Tensor``.
+        noise_model: pcvl.NoiseModel | None
+            The noise model used in the simulation. Default is None where no `noise` is
+            applied.
         device : torch.device | None
             Target device for internal tensors (e.g., ``torch.device("cuda")``).
         dtype : torch.dtype | None
@@ -245,6 +250,10 @@ class QuantumLayer(MerlinModule):
         circuit_source = validate_and_resolve_circuit_source(
             builder, circuit, experiment, trainable_parameters, input_parameters
         )
+        # Phase 3.5 normalization of the noise
+        self.noise_model = normalize_noise_model(noise_model, experiment.noise)
+        self.experiment.noise = self.noise_model
+
         # Phase 4: encoding validation (post-resolution)
         encoding_config = validate_encoding_mode(
             amplitude_encoding,

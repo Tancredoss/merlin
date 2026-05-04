@@ -149,6 +149,8 @@ class NoiseAndDetectorConfig:
         Whether the experiment defines non-default detectors.
     detector_warnings : list[str]
         Compatibility warnings emitted while resolving detector behavior.
+    noise_groups: NoiseGroups | None
+        The noise groups applied to the circuit to be ran.
     """
 
     photon_survival_probs: list[float]
@@ -156,6 +158,26 @@ class NoiseAndDetectorConfig:
     detectors: list[pcvl.Detector]
     has_custom_detectors: bool
     detector_warnings: list[str]
+    noise_groups: NoiseGroups | None
+
+
+@dataclass(frozen=True)
+class NoiseGroups:
+    """Stores the classified noise sources
+
+    Parameters
+    ----------
+    source : dict[str, float | bool | None]
+        Source noises e.g. {"indistinguishability": 0.9, "g2": 0.05, "g2_distinguishable": True}
+    circuit : dict[str, float | bool | None]
+        Circuit noises e.g. {"phase_error": 0.05, "phase_imprecision": 0.1}
+    post_measurement : dict[str, float | bool | None]
+        Post measurement noises e.g. {"brightness": 0.3, "transmittance": 0.9}
+    """
+
+    source: dict[str, float | bool | None]
+    circuit: dict[str, float | None]
+    post_measurement: dict[str, float | None]
 
 
 @dataclass(frozen=True)
@@ -206,6 +228,8 @@ class InitializationContext:
         Initialization warnings to surface to the caller.
     return_object : bool
         Whether the layer returns structured objects instead of tensors.
+    noise_groups: NoiseGroups | None
+        The noise groups applied to the circuit to be ran.
     """
 
     device: torch.device | None
@@ -229,6 +253,7 @@ class InitializationContext:
     measurement_strategy: MeasurementStrategyLike
     warnings: list[str]
     return_object: bool
+    noise_groups: NoiseGroups | None
 
 
 def validate_encoding_mode(
@@ -613,6 +638,7 @@ def resolve_circuit(
     )
 
 
+# TODO: call classify + validate + raise NotImplementedError
 def setup_noise_and_detectors(
     experiment: pcvl.Experiment,
     circuit: pcvl.Circuit,
@@ -671,12 +697,22 @@ def setup_noise_and_detectors(
             "Compute amplitudes without detectors and apply a Partial DetectorTransform manually if needed."
         )
 
+    noise_groups = classify_noise_model(experiment.noise)
+    validate_noisy_measurement_strategy(
+        "SLOS", output=measurement_strategy.value, noise_groups=noise_groups
+    )
+    if (noise_groups.circuit is not None) or (noise_groups.source is not None):
+        raise NotImplementedError(
+            "Only post measurement noise is implemented right now"
+        )
+
     return NoiseAndDetectorConfig(
         photon_survival_probs=photon_survival_probs,
         has_custom_noise=has_custom_noise,
         detectors=detectors,
         has_custom_detectors=has_custom_detectors,
         detector_warnings=detector_warnings,
+        noise_groups=noise_groups,
     )
 
 
@@ -885,3 +921,76 @@ def normalize_output_key(
     if isinstance(key, torch.Tensor):
         return tuple(int(v) for v in key.tolist())
     return tuple(int(v) for v in key)
+
+
+def classify_noise_model(noise_model: pcvl.NoiseModel) -> NoiseGroups:
+    # Source noise
+    source = {
+        "indistinguishability": noise_model.indistinguishability,
+        "g2_distinguishable": noise_model.g2_distinguishable,
+        "g2": noise_model.g2,
+    }
+    if all(value is None for value in source.values()):
+        source = None
+    # Circuit noise
+    circuit = {
+        "phase_imprecision": noise_model.phase_imprecision,
+        "phase_error": noise_model.phase_error,
+    }
+    if all(value is None for value in circuit.values()):
+        circuit = None
+    # Post-measurement noise
+    post_measurement = {
+        "transmittance": noise_model.transmittance,
+        "brightness": noise_model.brightness,
+    }
+    if all(value is None for value in post_measurement.values()):
+        post_measurement = None
+    return NoiseGroups(
+        source=source, circuit=circuit, post_measurement=post_measurement
+    )
+
+
+def validate_noisy_measurement_strategy(
+    strategy: str, output: str, noise_groups: NoiseGroups
+) -> None:
+    if (
+        (noise_groups.source is None)
+        and (noise_groups.circuit is None)
+        and (noise_groups.post_measurement is None)
+    ):
+        return
+    if (
+        noise_groups.source["g2_distinguishable"] is True
+        and noise_groups.source["indistinguishability"] == 1.0
+    ):
+        ValueError(
+            "The g2_distinguishable noise can not be True if photons are completely indistinguishable (indistinguishability=1.0)"
+        )
+    if not output == "probabilities":
+        ValueError(
+            "When doing a noisy simulation, the probabilities measurement strategy must be used."
+        )
+
+    if not strategy == "SLOS":
+        ValueError(
+            "When doing a noisy Simulation, the SLOS backend must be used as well as the probabilities measurement strategy."
+        )
+    return
+
+
+def normalize_noise_model(
+    layer_noise_model: pcvl.NoiseModel | None,
+    experiment_noise_model: pcvl.NoiseModel | None,
+) -> pcvl.NoiseModel | None:
+    if layer_noise_model is None:
+        return experiment_noise_model
+    else:
+        if experiment_noise_model is None:
+            return layer_noise_model
+        else:
+            if layer_noise_model == experiment_noise_model:
+                return layer_noise_model
+    raise ValueError(
+        "Conflicting noise models: specify via noise_model= or experiment.noise, not both"
+    )
