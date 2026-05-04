@@ -52,8 +52,6 @@ class QCNNClassifier(torch.nn.Module):
 
     Attributes
     ----------
-    input_shape : tuple
-        Validated input image shape.
     num_classes : int
         Number of output classes.
     stages : list[QCNNClassifier._Stage] | None
