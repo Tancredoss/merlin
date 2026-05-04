@@ -107,7 +107,7 @@ def test_noisy_layer_with_amplitudes_strategy_raises_value_error():
             input_size=5,
             experiment=exp,
             input_state=[1, 0, 0, 0, 0],
-            measurement_strategy=ml.MeasurementStrategy.amplitudes(),
+            measurement_strategy=ml.MeasurementStrategy.AMPLITUDES,
         )
 
 

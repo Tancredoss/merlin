@@ -1014,7 +1014,11 @@ def validate_noisy_measurement_strategy(
     """
     if noise_model is None and empty_detectors:
         return
-    if not output == "probabilities":
+    if output == "amplitudes":
+        raise ValueError(
+            "When doing a noisy simulation, the probabilities measurement strategy must be used."
+        )
+    if output == "mode_expectation" and noise_model is not None:
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )
@@ -1024,9 +1028,8 @@ def validate_noisy_measurement_strategy(
             "Only 'slos' is currently available."
         )
     if noise_model is not None:
-        if (
-            noise_model.g2_distinguishable is True
-            and noise_model.indistinguishability == 1.0
+        if (noise_model.g2_distinguishable is False) and (
+            noise_model.indistinguishability == 1.0
         ):
             raise ValueError(
                 "The g2_distinguishable noise can not be True if photons are completely indistinguishable (indistinguishability=1.0)"
