@@ -33,14 +33,21 @@ from ..utils.deprecations import raise_no_bunching_deprecated
 from .layer import QuantumLayer
 
 
-def create_circuit(M, input_size):
+def create_circuit(M: int, input_size: int) -> pcvl.Circuit:
     """Create a quantum photonic circuit with beam splitters and phase shifters.
 
-    Args:
-        M (int): Number of modes in the circuit.
+    Parameters
+    ----------
+    M : int
+        Number of modes in the circuit.
+    input_size : int
+        Number of input-controlled phase shifters to insert.
 
-    Returns:
-        pcvl.Circuit: A quantum photonic circuit with alternating beam splitter layers and phase shifters.
+    Returns
+    -------
+    pcvl.Circuit
+        A quantum photonic circuit with alternating beam splitter layers and
+        phase shifters.
     """
     # TO DO: Use the circuit builder to create this circuit
     circuit = pcvl.Circuit(M)
@@ -66,15 +73,22 @@ def create_circuit(M, input_size):
     return circuit
 
 
-def define_layer_no_input(n_modes, n_photons, circuit_type=None):
+def define_layer_no_input(
+    n_modes: int, n_photons: int, circuit_type=None
+) -> QuantumLayer:
     """Define a quantum layer for feed-forward processing.
 
-    Args:
-        n_modes (int): Number of optical modes.
-        n_photons (int): Number of photons in the layer.
+    Parameters
+    ----------
+    n_modes : int
+        Number of optical modes.
+    n_photons : int
+        Number of photons in the layer.
 
-    Returns:
-        QuantumLayer: A configured quantum layer with trainable parameters.
+    Returns
+    -------
+    QuantumLayer
+        A configured quantum layer with trainable parameters.
     """
 
     circuit = create_circuit(n_modes, 0)
@@ -91,15 +105,24 @@ def define_layer_no_input(n_modes, n_photons, circuit_type=None):
     return layer
 
 
-def define_layer_with_input(M, N, input_size, circuit_type=None):
+def define_layer_with_input(
+    M: int, N: int, input_size: int, circuit_type=None
+) -> QuantumLayer:
     """Define the first layers of the feed-forward block, those with an input size > 0.
 
-    Args:
-        M (int): Number of modes in the circuit.
-        N (int): Number of photons.
+    Parameters
+    ----------
+    M : int
+        Number of modes in the circuit.
+    N : int
+        Number of photons.
+    input_size : int
+        Number of classical inputs consumed by the layer.
 
-    Returns:
-        QuantumLayer: The first quantum layer with input parameters.
+    Returns
+    -------
+    QuantumLayer
+        The first quantum layer with input parameters.
     """
     # TO DO: The Quantum Layer could be defined with only three variables:
     # (number of modes, number of photons, input size)
@@ -133,43 +156,39 @@ class FeedForwardBlockLegacy(torch.nn.Module):
     The recursion continues until a specified depth, allowing the model to
     simulate complex conditional evolution of quantum systems.
 
-    Detector support:
-        The current feed-forward implementation expects amplitude access for
-        every intermediate layer (``MeasurementStrategy.AMPLITUDES``) and
-        therefore assumes ideal PNR detectors. Custom detector transforms or
-        Perceval experiments with threshold / hybrid detectors are not yet
-        supported inside this block.
+    Detector support: The current feed-forward implementation expects amplitude access for
+    every intermediate layer (``MeasurementStrategy.AMPLITUDES``) and
+    therefore assumes ideal PNR detectors. Custom detector transforms or
+    Perceval experiments with threshold / hybrid detectors are not yet
+    supported inside this block.
 
-    ---
-    Args:
-        input_size (int):
-            Number of classical input features (used for hybrid quantum-classical computation).
-
-        n (int):
-            Number of photons in the system.
-
-        m (int):
-            Total number of photonic modes.
-
-        depth (int, optional):
-            Maximum depth of feed-forward recursion.
-            Defaults to `m - 1` if not specified.
-
-        state_injection (bool, optional):
-            If True, allows re-injecting quantum states at intermediate steps
-            (useful for simulating sources or ancilla modes). Default = False.
-
-        conditional_modes (list[int], optional):
-            List of mode indices on which photon detection is performed.
-            Determines the branching structure. Defaults to `[0]`.
-
-        layers (list[QuantumLayer], optional):
-            Predefined list of quantum layers (if any). If not provided,
-            layers are automatically generated.
-
-        circuit_type (str, optional):
-            Type of quantum circuit architecture used to build each layer.
-            Acts as a “template selector” for circuit structure generation.
+    Parameters
+    ----------
+    input_size : int
+        Number of classical input features used for hybrid quantum-classical
+        computation.
+    n : int
+        Number of photons in the system.
+    m : int
+        Total number of photonic modes.
+    depth : int | None
+        Maximum depth of feed-forward recursion. Defaults to ``m - 1`` if not
+        specified.
+    state_injection : bool
+        If ``True``, allows re-injecting quantum states at intermediate steps,
+        which is useful for simulating sources or ancilla modes. Defaults to
+        ``False``.
+    conditional_modes : list[int] | None
+        List of mode indices on which photon detection is performed. This
+        determines the branching structure. Defaults to ``[0]``.
+    layers : list | None
+        Predefined list of quantum layers. If not provided, layers are
+        generated automatically.
+    circuit_type : str | None
+        Type of quantum circuit architecture used to build each layer. Acts as
+        a template selector for circuit structure generation.
+    device : torch.device | str | None
+        Target device for the module and all generated layers.
     """
 
     # TO DO: add a "circuit_type" attribute to select quantum circuit template
@@ -200,7 +219,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
 
         self.layers = {}
         self.input_segments = {}
-        self._output_keys = None
+        self._output_keys: list[tuple[int, ...]] | None = None
 
         if layers is None:
             self.define_layers(circuit_type)
@@ -226,18 +245,18 @@ class FeedForwardBlockLegacy(torch.nn.Module):
     #  Tuple and Layer Definition Utilities
     # =======================================================================
 
-    def generate_possible_tuples(self):
-        """
-        Generate all possible conditional outcome tuples.
+    def generate_possible_tuples(self) -> list[tuple[int, ...]]:
+        """Generate all possible conditional outcome tuples.
 
         Each tuple represents one possible sequence of photon detection results
         across all conditional modes up to a given depth. For example, with
-        `n_cond = 2` and `depth = 3`, tuples correspond to binary sequences of
-        length `depth * n_cond`.
+        ``n_cond = 2`` and ``depth = 3``, tuples correspond to binary sequences
+        of length ``depth * n_cond``.
 
-        Returns:
-            list[tuple[int]]:
-                List of tuples containing binary measurement outcomes (0/1).
+        Returns
+        -------
+        list[tuple[int, ...]]
+            List of tuples containing binary measurement outcomes (0/1).
         """
         possible_tuples = []
         for depth in range(self.depth + 1):
@@ -256,19 +275,22 @@ class FeedForwardBlockLegacy(torch.nn.Module):
                         possible_tuples.append(t)
         return possible_tuples
 
-    def define_layers(self, circuit_type):
-        """
-        Define and instantiate all quantum layers for each measurement outcome path.
+    def define_layers(self, circuit_type) -> None:
+        """Define and instantiate all quantum layers for each measurement outcome path.
 
         Each tuple (representing a branch of the feedforward tree) is mapped to
-        a `QuantumLayer` object. Depending on whether the state injection mode
+        a ``QuantumLayer`` object. Depending on whether the state injection mode
         is active, the number of modes/photons and the input size differ.
 
-        Args:
-            circuit_type (str): Template name or circuit architecture type.
+        Parameters
+        ----------
+        circuit_type : str | None
+            Template name or circuit architecture type.
 
-        Raises:
-            AssertionError: If total input size does not match after allocation.
+        Raises
+        ------
+        AssertionError
+            If total input size does not match after allocation.
         """
         input_size = self.input_size
         tuples = self.generate_possible_tuples()
@@ -315,11 +337,17 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         assert input_size == 0, f"Remaining unallocated input size: {input_size}"
 
     def to(self, device):
-        """
-        Moves the FeedForwardBlock and all its QuantumLayers to the specified device.
+        """Move the block and all QuantumLayers to the specified device.
 
-        Args:
-            device (str or torch.device): Target device ('cpu', 'cuda', 'mps', etc.)
+        Parameters
+        ----------
+        device : str | torch.device
+            Target device (``"cpu"``, ``"cuda"``, ``"mps"``, etc.).
+
+        Returns
+        -------
+        FeedForwardBlockLegacy
+            ``self`` on the requested device.
         """
         device = torch.device(device)
         self.device = device
@@ -346,39 +374,47 @@ class FeedForwardBlockLegacy(torch.nn.Module):
 
     def iterate_feedforward(
         self,
-        current_tuple,
-        remaining_amplitudes,
-        keys,
-        accumulated_prob,
-        intermediary,
-        outputs,
-        depth=0,
-        x=None,
-    ):
-        """
-        Recursive feedforward traversal of the quantum circuit tree.
+        current_tuple: tuple[int, ...],
+        remaining_amplitudes: torch.Tensor,
+        keys: list[tuple[int, ...]],
+        accumulated_prob: torch.Tensor | float,
+        intermediary: dict[tuple[int, ...], torch.Tensor],
+        outputs: dict[tuple[int, ...], torch.Tensor],
+        depth: int = 0,
+        x: torch.Tensor | None = None,
+    ) -> None:
+        """Recursive feedforward traversal of the quantum circuit tree.
 
         At each step:
             1. Evaluate photon detection outcomes (0/1) on conditional modes.
             2. For each possible combination, compute probabilities.
             3. Apply the corresponding quantum layer and recurse deeper.
 
-        Args:
-            current_tuple (tuple[int]): Current measurement sequence path.
-            remaining_amplitudes (torch.Tensor): Quantum amplitudes of current state.
-            keys (list[tuple[int]]): Fock basis keys for amplitudes.
-            accumulated_prob (torch.Tensor or float): Product of probabilities so far.
-            intermediary (dict): Stores intermediate probabilities.
-            outputs (dict): Stores final output probabilities for all branches.
-            depth (int): Current recursion depth.
-            x (torch.Tensor, optional): Classical input features.
+        Parameters
+        ----------
+        current_tuple : tuple[int, ...]
+            Current measurement sequence path.
+        remaining_amplitudes : torch.Tensor
+            Quantum amplitudes of current state.
+        keys : list[tuple[int, ...]]
+            Fock basis keys for amplitudes.
+        accumulated_prob : torch.Tensor | float
+            Product of probabilities so far.
+        intermediary : dict
+            Stores intermediate probabilities.
+        outputs : dict
+            Stores final output probabilities for all branches.
+        depth : int
+            Current recursion depth. Default is 0.
+        x : torch.Tensor | None
+            Classical input features.
         """
         # Base case: end of tree reached
         if depth >= self.depth:
             fock_probs = remaining_amplitudes.abs().pow(2)
             for i, key in enumerate(keys):
                 if key not in outputs:
-                    outputs[key] = torch.zeros_like(accumulated_prob)
+                    outputs[key] = torch.zeros_like(fock_probs[:, i])
                 outputs[key] += accumulated_prob * fock_probs[:, i]
             return
 
@@ -439,16 +475,22 @@ class FeedForwardBlockLegacy(torch.nn.Module):
     #  Index Management Utilities
     # =======================================================================
 
-    def _indices_by_values(self, keys, modes):
-        """
-        Compute index masks for all joint outcomes across conditional modes.
+    def _indices_by_values(
+        self, keys: list[tuple[int, ...]] | torch.Tensor, modes: list[int]
+    ):
+        """Compute index masks for all joint outcomes across conditional modes.
 
-        Args:
-            keys (torch.Tensor): Tensor of Fock states (basis keys).
-            modes (list[int]): Conditional mode indices.
+        Parameters
+        ----------
+        keys : list[tuple[int, ...]] | torch.Tensor
+            torch.Tensor or list of Fock states (basis keys).
+        modes : list[int]
+            Conditional mode indices.
 
-        Returns:
-            dict[tuple[int], torch.Tensor]: Mapping from outcome tuple → indices.
+        Returns
+        -------
+        dict[tuple[int, ...], torch.Tensor]
+            Mapping from outcome tuple to matching basis indices.
         """
         t = torch.tensor(keys)
         combos = list(product([0, 1], repeat=len(modes)))
@@ -460,18 +502,30 @@ class FeedForwardBlockLegacy(torch.nn.Module):
             out[combo] = torch.nonzero(mask, as_tuple=True)[0]
         return out
 
-    def _match_indices_multi(self, data, data_out, modes, values):
-        """
-        Match indices between two Fock bases differing by removed conditional modes.
+    def _match_indices_multi(
+        self,
+        data: list[tuple[int, ...]],
+        data_out: list[tuple[int, ...]],
+        modes: list[int],
+        values: tuple[int, ...],
+    ) -> torch.Tensor:
+        """Match indices between two Fock bases differing by removed conditional modes.
 
-        Args:
-            data (list[tuple[int]]): Original Fock basis.
-            data_out (list[tuple[int]]): Reduced Fock basis (after measurement).
-            modes (list[int]): Indices of removed modes.
-            values (tuple[int]): Measured values (0/1) for removed modes.
+        Parameters
+        ----------
+        data : list[tuple[int, ...]]
+            Original Fock basis.
+        data_out : list[tuple[int, ...]]
+            Reduced Fock basis (after measurement).
+        modes : list[int]
+            Indices of removed modes.
+        values : tuple[int, ...]
+            Measured values (0/1) for removed modes.
 
-        Returns:
-            torch.Tensor: Tensor of matching indices.
+        Returns
+        -------
+        torch.Tensor
+            Tensor of matching indices.
         """
         out_map = {tuple(row): i for i, row in enumerate(data_out)}
         idx = []
@@ -487,20 +541,29 @@ class FeedForwardBlockLegacy(torch.nn.Module):
     #  Forward Pass & Layer Management
     # =======================================================================
 
-    def forward(self, x):
-        """
-        Perform the full quantum-classical feedforward computation.
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Perform the full quantum-classical feedforward computation.
 
-        Args:
-            x (torch.Tensor): Classical input tensor of shape (batch_size, input_size).
+        Parameters
+        ----------
+        x : torch.Tensor
+            Classical input tensor of shape ``(batch_size, input_size)``.
 
-        Returns:
-            torch.Tensor: Final output tensor containing probabilities for each
-                          terminal measurement configuration.
+        Returns
+        -------
+        torch.Tensor
+            Final output tensor containing probabilities for each terminal
+            measurement configuration.
+
+        Raises
+        ------
+        ValueError
+            If the trailing input dimension does not match ``self.input_size``.
         """
         if x.shape[-1] != self.input_size:
             raise ValueError(f"The input should be of size {self.input_size}")
-        intermediary, outputs = {}, {}
+        intermediary: dict[tuple[int, ...], torch.Tensor] = {}
+        outputs: dict[tuple[int, ...], torch.Tensor] = {}
 
         # Run the first quantum layer (root of the tree)
         input_size = min(self.input_size, self.m)
@@ -512,7 +575,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         self.iterate_feedforward(
             (), amplitudes, keys, 1.0, intermediary, outputs, 0, x=x
         )
-        self._output_keys = outputs.keys()
+        self._output_keys = list(outputs.keys())
         return torch.stack(list(outputs.values()), dim=1)
 
     def get_output_size(self):
@@ -526,12 +589,19 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         return len(tuples_k)
 
     def define_ff_layer(self, k: int, layers: list):
-        """
-        Replace quantum layers at a specific depth `k`.
+        """Replace quantum layers at a specific depth ``k``.
 
-        Args:
-            k (int): Feed-forward layer depth index.
-            layers (list[QuantumLayer]): List of replacement layers.
+        Parameters
+        ----------
+        k : int
+            Feed-forward layer depth index.
+        layers : list[QuantumLayer]
+            List of replacement layers.
+
+        Raises
+        ------
+        AssertionError
+            If ``layers`` does not have the expected length.
         """
         len_layers = self.size_ff_layer(k)
         assert len(layers) == len_layers, f"layers should be of length {len_layers}"
@@ -557,10 +627,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         return list(self._output_keys)
 
     def _recompute_segments(self):
-        """
-        Recalculate the `input_segments` mapping between the classical input
-        vector and each quantum layer, after any structural modification.
-        """
+        """Recalculate the ``input_segments`` mapping after structural changes."""
         start = 0
         total_input_size = 0
         self.input_segments = {}
@@ -597,19 +664,19 @@ class PoolingFeedForwardLegacy(torch.nn.Module):
         Number of photons used in the quantum simulation.
     n_output_modes : int
         Number of output modes after pooling.
-    pooling_modes : list of list of int, optional
+    pooling_modes : list[list[int]] | None
         Specifies how input modes are grouped (pooled) into output modes.
         Each sublist contains the indices of input modes to pool together
         for one output mode. If None, an even pooling scheme is automatically generated.
-    no_bunching : bool | None, optional (deprecated)
+    no_bunching : bool | None
         Deprecated and now removed; use computation_space in MeasurementStrategy instead.
 
     Attributes
     ----------
     match_indices : torch.Tensor
-        Tensor containing the indices mapping input states to output states.
+        torch.Tensor containing the indices mapping input states to output states.
     exclude_indices : torch.Tensor
-        Tensor containing indices of input states that have no valid mapping
+        torch.Tensor containing indices of input states that have no valid mapping
         to an output state.
     keys_out : list
         List of output Fock state keys (from Perceval simulation graph).
@@ -729,29 +796,28 @@ class PoolingFeedForwardLegacy(torch.nn.Module):
     def match_tuples(
         self, keys_in: list, keys_out: list, pooling_modes: list[list[int]]
     ):
-        """
-        Matches input and output Fock state tuples based on pooling configuration.
+        """Match input and output Fock state tuples based on pooling configuration.
 
-        For each input Fock state (`key_in`), the corresponding pooled output
-        state (`key_out`) is computed by summing the photon counts over each
+        For each input Fock state (``key_in``), the corresponding pooled output
+        state (``key_out``) is computed by summing the photon counts over each
         pooling group. Input states that do not correspond to a valid output
         state are marked for exclusion.
 
         Parameters
         ----------
-        keys_in : list
+        keys_in : list[tuple[int, ...]]
             List of Fock state tuples representing input configurations.
-        keys_out : list
+        keys_out : list[tuple[int, ...]]
             List of Fock state tuples representing output configurations.
-        pooling_modes : list of list of int
+        pooling_modes : list[list[int]]
             Grouping of input modes into output modes.
 
         Returns
         -------
         tuple[list[int], list[int]]
-            A pair `(indices, exclude_indices)` where:
-            - `indices` are the matched indices from input to output keys.
-            - `exclude_indices` are input indices with no valid match.
+            A pair ``(indices, exclude_indices)`` where ``indices`` are the
+            matched indices from input to output keys, and
+            ``exclude_indices`` are input indices with no valid match.
         """
         indices = []
         exclude_indices = []

@@ -13,7 +13,7 @@ concepts you will reuse in every project:
 - **Computation spaces** controlling how the simulator truncates Fock states. See :doc:`../user_guide/computation_space`.
 
 Once the foundations are in place, we show how to reuse the same circuit through a
-:class:`perceval.Experiment` for detector-aware execution.
+:class:`pcvl.Experiment` for detector-aware execution.
 
 
 Set up the dataset
@@ -83,7 +83,7 @@ Shared training utilities
 CircuitBuilder walkthrough
 ==========================
 
-:class:`CircuitBuilder` is the recommended way to author circuits for training. We
+:class:`~merlin.builder.circuit_builder.CircuitBuilder` is the recommended way to author circuits for training. We
 stack entangling layers, angle encoding, and additional rotations before handing the
 result to :class:`~merlin.algorithms.layer.QuantumLayer`.
 
@@ -226,7 +226,7 @@ Override the default when you need explicit control:
 Detector-aware execution with Experiments
 =========================================
 
-Wrapping the circuit in a :class:`perceval.Experiment` lets you attach detectors and
+Wrapping the circuit in a :class:`pcvl.Experiment` lets you attach detectors and
 noise models without re-authoring the layer. The experiment becomes the single source
 of truth for measurement semantics.
 

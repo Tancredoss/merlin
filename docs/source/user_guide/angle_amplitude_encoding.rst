@@ -5,15 +5,15 @@ Angle Encoding and Amplitude Encoding
 =====================================
 
 This guide shows how to use **angle encoding** and **amplitude encoding** with
-Merlin's :class:`~merlin.algorithms.QuantumLayer`. You'll find when to use each,
-how to build circuits with :class:`~merlin.builder.CircuitBuilder` or native
+Merlin's :class:`~merlin.algorithms.layer.QuantumLayer`. You'll find when to use each,
+how to build circuits with :class:`~merlin.builder.circuit_builder.CircuitBuilder` or native
 Perceval, and complete, runnable snippets.
 
 Prerequisites
 -------------
 
 - Python, PyTorch, and Merlin installed.
-- Basic familiarity with Merlin's :class:`~merlin.algorithms.QuantumLayer`.
+- Basic familiarity with Merlin's :class:`~merlin.algorithms.layer.QuantumLayer`.
 - Optional: Perceval for custom circuits and experiments.
 
 Conceptual overview
@@ -40,7 +40,7 @@ hybrid neural networks where your inputs are real-valued tensors.
 With CircuitBuilder
 ^^^^^^^^^^^^^^^^^^^
 
-:class:`~merlin.builder.CircuitBuilder` provides a declarative way to add an
+:class:`~merlin.builder.circuit_builder.CircuitBuilder` provides a declarative way to add an
 angle-encoding stage into your photonic circuit.
 
 1) Build a circuit with angle encoding:
@@ -89,9 +89,9 @@ angle-encoding stage into your photonic circuit.
 Parameter names and prefixes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The :py:meth:`~merlin.builder.CircuitBuilder.add_angle_encoding` call registers
+The :py:meth:`~merlin.builder.circuit_builder.CircuitBuilder.add_angle_encoding` call registers
 parameters prefixed by ``name`` (e.g., ``"input"``). Internally,
-:class:`~merlin.algorithms.QuantumLayer` will consume your real-valued input
+:class:`~merlin.algorithms.layer.QuantumLayer` will consume your real-valued input
 tensor and map each feature to the corresponding prefixed angle(s).
 
 Tips and constraints
@@ -102,8 +102,8 @@ Tips and constraints
 - **Scaling and combinations**: You can use ``scale=...`` to rescale inputs
   before turning them into angles. If you create multiple encoding stages with
   different names (prefixes), the layer can split the input tensor across them.
-- **Kernels**: For quantum kernels, consider :class:`~merlin.kernels.FeatureMap`
-  and :class:`~merlin.kernels.FidelityKernel` if you need a reusable feature
+- **Kernels**: For quantum kernels, consider :class:`~merlin.algorithms.kernels.FeatureMap`
+  and :class:`~merlin.algorithms.kernels.FidelityKernel` if you need a reusable feature
   map object.
 
 Angle encoding using QuantumLayer.simple
@@ -210,7 +210,7 @@ from the **type** of the first argument to ``forward()``:
        | and propagates it through the circuit.
    * - 2
      - Complex ``torch.Tensor``
-     - | A single complex-dtype tensor is treated identically to a :class:`StateVector`'s
+     - | A single complex-dtype tensor is treated identically to a :class:`~merlin.core.state_vector.StateVector`'s
        | underlying tensor. Useful when you manage tensors directly without 
        | wrapping them.
    * - 3
@@ -296,7 +296,7 @@ internally — and validates that the last dimension matches the Fock basis size
 
 .. tip::
 
-   :meth:`~StateVector.from_tensor` handles real-to-complex promotion for you.
+   :meth:`~merlin.core.state_vector.StateVector.from_tensor` handles real-to-complex promotion for you.
    The layer lazily normalizes amplitudes before computation, but explicitly
    normalizing upstream (e.g. via ``nn.functional.normalize``) can improve
    numerical stability during training.
@@ -305,7 +305,7 @@ internally — and validates that the last dimension matches the Fock basis size
 Using a complex tensor directly
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-If you prefer to manage raw tensors without the :class:`StateVector` wrapper,
+If you prefer to manage raw tensors without the :class:`~merlin.core.state_vector.StateVector`: wrapper,
 passing a **complex** ``torch.Tensor`` to ``forward()`` also triggers amplitude
 encoding:
 
@@ -320,8 +320,8 @@ encoding:
 Standardising other inputs as StateVector
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The constructors :meth:`~StateVector.from_basic_state`,
-:meth:`~StateVector.from_perceval`, and the ``+`` operator are **not** forms
+The constructors :meth:`~merlin.core.state_vector.StateVector.from_basic_state`,
+:meth:`~merlin.core.state_vector.StateVector.from_perceval`, and the ``+`` operator are **not** forms
 of amplitude encoding — they do not map classical data into amplitudes.
 Their purpose is to give every quantum-state input a single, uniform type
 (:class:`~merlin.core.state_vector.StateVector`) so the layer's dispatch
@@ -361,7 +361,7 @@ logic does not need special cases for lists, ``pcvl.BasicState``, or
     sv = StateVector.from_perceval(pcvl_sv)
     output = layer(sv)
 
-In every case the layer processes the :class:`StateVector` through the same
+In every case the layer processes the :class:`~merlin.core.state_vector.StateVector` through the same
 code path — the only difference is where the amplitudes came from.
 
 
@@ -374,7 +374,7 @@ Restrictions
   **cannot be mixed** in the same call.
 - **Batched (2-D)** :class:`~merlin.core.state_vector.StateVector` inputs are
   supported. Pass a 2-D tensor of shape ``(batch_size, d)`` to
-  :meth:`~StateVector.from_tensor` and the layer processes the whole batch in a
+  :meth:`~merlin.core.state_vector.StateVector.from_tensor` and the layer processes the whole batch in a
   single ``forward()`` call.
 - With ``MeasurementStrategy.amplitudes()`` the layer **bypasses** detectors
   and noise; ``shots`` must be unset or zero.
@@ -424,7 +424,7 @@ And with a probability strategy, a
 Chaining quantum layers
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Because :class:`~merlin.algorithms.QuantumLayer` can both consume and produce
+Because :class:`~merlin.algorithms.layer.QuantumLayer` can both consume and produce
 :class:`~merlin.core.state_vector.StateVector` objects, you can chain layers
 so that the output amplitudes of one feed into the next:
 
@@ -511,8 +511,8 @@ Troubleshooting
   :class:`~merlin.core.state_vector.StateVector` or complex tensor to
   ``forward()`` instead of using the constructor flag.
 - **Batched amplitude encoding**: Pass a 2-D tensor to
-  :meth:`StateVector.from_tensor` and call ``forward()`` with the resulting
-  :class:`StateVector`. The layer normalizes each sample independently and
+  :meth:`~merlin.core.state_vector.StateVector.from_tensor` and call ``forward()`` with the resulting
+  :class:`~merlin.core.state_vector.StateVector`. The layer normalizes each sample independently and
   returns a ``(batch_size, output_size)`` tensor.
 
 Complete Examples
@@ -650,7 +650,7 @@ classification", 2022. https://arxiv.org/abs/2108.00661
 
 .. seealso::
 
-   - :ref:`quickstart-basic-concepts` — overview of ``StateVector`` and
+   - :doc:`Basic Concepts </quickstart/basic_concepts>` — overview of ``StateVector`` and
      ``ProbabilityDistribution``
-   - :ref:`api-state-vector` — full API reference for ``StateVector`` including
+   - :doc:`StateVector API </api_reference/api/merlin.core.state_vector>` — full API reference for ``StateVector`` including
      ``from_tensor``

@@ -43,9 +43,12 @@ class LexGrouping(nn.Module):
         """
         Initialize the converter from input tensor to a lexical grouping of its elements.
 
-        Args:
-            input_size: Size of the input tensor
-            output_size: Desired size of the output tensor
+        Parameters
+        ----------
+        input_size : int
+            Size of the input tensor.
+        output_size : int
+            Desired size of the output tensor.
         """
         super().__init__()
         self.input_size = input_size
@@ -55,11 +58,22 @@ class LexGrouping(nn.Module):
         """
         Map the input tensor to the desired output_size utilizing lexical grouping.
 
-        Args:
-            x: Input tensor of shape (n_batch, input_size) or (input_size,)
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape ``(batch_size, input_size)`` or
+            ``(input_size,)``.
 
-        Returns:
-            Grouped tensor of shape (batch_size, output_size) or (output_size,)
+        Returns
+        -------
+        torch.Tensor
+            Grouped tensor of shape ``(batch_size, output_size)`` or
+            ``(output_size,)``.
+
+        Raises
+        ------
+        ValueError
+            If the last dimension of ``x`` does not match ``input_size``.
         """
         if x.shape[-1] != self.input_size:
             raise ValueError(
@@ -96,9 +110,12 @@ class ModGrouping(nn.Module):
         """
         Initialize the converter from input tensor to a modulo grouping of its elements.
 
-        Args:
-            input_size: Size of the input tensor
-            output_size: Desired size of the output tensor
+        Parameters
+        ----------
+        input_size : int
+            Size of the input tensor.
+        output_size : int
+            Desired size of the output tensor.
         """
         super().__init__()
         self.input_size = input_size
@@ -108,11 +125,22 @@ class ModGrouping(nn.Module):
         """
         Map the input tensor to the desired output_size utilizing modulo grouping.
 
-        Args:
-            x: Input tensor of shape (n_batch, input_size) or (input_size,)
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape ``(batch_size, input_size)`` or
+            ``(input_size,)``.
 
-        Returns:
-            Grouped tensor of shape (batch_size, output_size) or (output_size,)
+        Returns
+        -------
+        torch.Tensor
+            Grouped tensor of shape ``(batch_size, output_size)`` or
+            ``(output_size,)``.
+
+        Raises
+        ------
+        ValueError
+            If the last dimension of ``x`` does not match ``input_size``.
         """
         if x.shape[-1] != self.input_size:
             raise ValueError(

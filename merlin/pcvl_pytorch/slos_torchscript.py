@@ -319,10 +319,10 @@ def layer_compute_backward(
 
 class SLOSComputeGraph:
     """
-    A class that builds and stores the computation graph for SLOS algorithm.
+    Build and store a reusable computation graph for the SLOS algorithm.
 
-    This separates the graph construction (which depends only on input state, computation_space,
-    and output_map_func) from the actual computation using the unitary matrix.
+    This separates graph construction, which depends only on the input
+    configuration, from repeated evaluations with different unitary matrices.
     """
 
     def __init__(
@@ -339,18 +339,31 @@ class SLOSComputeGraph:
         """
         Initialize the SLOS computation graph.
 
-        Args:
-            m (int): Number of modes in the circuit
-            n_photons (int): Number of photons in the input state given to the model during the forward pass
-            output_map_func (callable, optional): Function that maps output states
-            computation_space (ComputationSpace): Enumeration domain.
-            keep_keys (bool): If True, output state keys are returned
-            device: Optional device to place tensors on (CPU, CUDA, etc.)
-            dtype: Data type precision for floating point calculations (default: torch.float)
-                  Use torch.float16 for half precision, torch.float for single precision,
-                  or torch.float64 for double precision
-            index_photons: List of tuples (first_integer, second_integer). The first_integer is the
-                  lowest index layer a photon can take and the second_integer is the highest index
+        Parameters
+        ----------
+        m : int
+            Number of modes in the circuit.
+        n_photons : int
+            Number of photons in the input state given to the model during the
+            forward pass.
+        output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None
+            Function applied to output states before aggregation.
+        computation_space : ComputationSpace
+            Computation subspace used to build the graph. Default is
+            ``ComputationSpace.UNBUNCHED``.
+        keep_keys : bool
+            If ``True``, return output state keys alongside computed tensors.
+            Default is ``True``.
+        device : torch.device | str | None
+            Optional device to place tensors on (CPU, CUDA, etc.).
+        dtype : torch.dtype
+            Data type precision for floating point calculations. Default is
+            ``torch.float``.
+            Use torch.float16 for half precision, torch.float for single precision,
+            or torch.float64 for double precision
+        index_photons : list[tuple[int, ...]] | None
+            Bounds for each photon placement. Each tuple stores the minimum and
+            maximum mode index allowed for one photon.
 
         """
         self.m = m
@@ -558,20 +571,32 @@ class SLOSComputeGraph:
 
     def compute(
         self, unitary: torch.Tensor, input_state: list[int]
-    ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
+    ) -> tuple[list[tuple[int, ...]] | None, torch.Tensor]:
         """
-        Compute the amplitudes using the pre-built graph.
+        Compute amplitudes with the pre-built graph.
 
-        Args:
-            unitary (torch.Tensor): Single unitary matrix [m x m] or batch of unitaries [b x m x m].\
-                The unitary should be provided in the complex dtype corresponding to the graph's dtype.\
-                For example, for torch.float32, use torch.cfloat; for torch.float64, use torch.cdouble.
-            input_state (list[int]): Input_state of length self.m with self.n_photons in the input state
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Single unitary matrix with shape ``(m, m)`` or batch of unitaries
+            with shape ``(batch_size, m, m)``. The dtype must match the complex
+            dtype associated with the graph ``dtype``. For example, for torch.float32,
+            use torch.cfloat; for torch.float64, use torch.cdouble.
+        input_state : list[int]
+            Input occupation list of length ``m`` containing ``n_photons``
+            photons.
 
-        Returns:
-            Tuple[List[Tuple[int, ...]], torch.Tensor]:
-                - List of tuples representing output Fock state configurations
-                - Amplitudes distribution tensor
+        Returns
+        -------
+        tuple[list[tuple[int, ...]] | None, torch.Tensor]
+            - List of tuples representing output Fock state configurations
+            - Amplitudes distribution tensor
+
+        Raises
+        ------
+        ValueError
+            If the input state, unitary shape, or unitary dtype is invalid for
+            the current graph configuration.
         """
         if len(unitary.shape) == 2:
             unitary = unitary.unsqueeze(0)  # Add batch dimension [1 x m x m]
@@ -653,20 +678,31 @@ class SLOSComputeGraph:
 
     def compute_batch(
         self, unitary: torch.Tensor, input_states: list[list[int]]
-    ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
+    ) -> tuple[list[tuple[int, ...]] | None, torch.Tensor]:
         """
         Compute the probability distribution using the pre-built graph.
 
-        Args:
-            unitary (torch.Tensor): Single unitary matrix [m x m] or batch of unitaries [b x m x m].\
-                The unitary should be provided in the complex dtype corresponding to the graph's dtype.\
-                For example, for torch.float32, use torch.cfloat; for torch.float64, use torch.cdouble.
-            input_state (list[int]): Input_state of length self.m with self.n_photons in the input state
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Single unitary matrix with shape ``(m, m)`` or batch of unitaries
+            with shape ``(batch_size, m, m)``. The dtype must match the complex
+            dtype associated with the graph ``dtype``. For example, for torch.float32,
+            use torch.cfloat; for torch.float64, use torch.cdouble.
+        input_states : list[list[int]]
+            Collection of input occupation lists evaluated in parallel.
 
-        Returns:
-            Tuple[List[Tuple[int, ...]], torch.Tensor]:
-                - List of tuples representing output Fock state configurations
-                - Probability distribution tensor
+        Returns
+        -------
+        tuple[list[tuple[int, ...]] | None, torch.Tensor]
+            - List of tuples representing output Fock state configurations
+            - Probability distribution tensor
+
+        Raises
+        ------
+        ValueError
+            If the input states, unitary shape, or unitary dtype is invalid for
+            the current graph configuration.
         """
         if len(unitary.shape) == 2:
             unitary = unitary.unsqueeze(0)  # Add batch dimension [1 x m x m]
@@ -757,18 +793,23 @@ class SLOSComputeGraph:
 
     def compute_probs(self, unitary, input_state):
         """
-        Compute the probability distribution using the pre-built graph.
+        Compute probabilities with the pre-built graph.
 
-        Args:
-            unitary (torch.Tensor): Single unitary matrix [m x m] or batch of unitaries [b x m x m].\
-                The unitary should be provided in the complex dtype corresponding to the graph's dtype.\
-                For example, for torch.float32, use torch.cfloat; for torch.float64, use torch.cdouble.
-            input_state (list[int]): Input_state of length self.m with self.n_photons in the input state
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Single unitary matrix with shape ``(m, m)`` or batch of unitaries
+            with shape ``(batch_size, m, m)``. For example, for torch.float32,
+            use torch.cfloat; for torch.float64, use torch.cdouble.
+        input_state : list[int]
+            Input occupation list of length ``m`` containing ``n_photons``
+            photons.
 
-        Returns:
-            Tuple[List[Tuple[int, ...]], torch.Tensor]:
-                - List of tuples representing output Fock state configurations
-                - Probability distribution tensor
+        Returns
+        -------
+        tuple[list[tuple[int, ...]] | None, torch.Tensor] | torch.Tensor
+            - List of tuples representing output Fock state configurations
+            - Probability distribution tensor
         """
         keys, amplitudes = self.compute(unitary, input_state)
         keys, probabilities = self.compute_probs_from_amplitudes(amplitudes)
@@ -789,11 +830,22 @@ class SLOSComputeGraph:
 
     def to(self, device: str | torch.device):
         """
-        Moves the converter to a specific device.
+        Move graph tensors to a specific device.
 
-        :param dtype: The data type to use for the tensors - one can specify either a float or complex dtype.
-                      Supported dtypes are torch.float32 or torch.complex64, torch.float64 or torch.complex128.
-        :param device: The device to move the converter to.
+        Parameters
+        ----------
+        device : str | torch.device
+            Target device.
+
+        Returns
+        -------
+        SLOSComputeGraph
+            The graph instance moved to ``device``.
+
+        Raises
+        ------
+        TypeError
+            If ``device`` is neither a string nor a ``torch.device``.
         """
         if isinstance(device, str):
             self.device = torch.device(device)
@@ -823,7 +875,36 @@ class SLOSComputeGraph:
         input_state_prev: list[int],
         input_state: list[int],
         changed_unitary=False,
-    ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
+    ) -> torch.Tensor:
+        """
+        Update amplitudes incrementally after a change in input occupation.
+
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Single unitary matrix with shape ``(m, m)`` or batch of unitaries
+            with shape ``(batch_size, m, m)``.
+        input_state_prev : list[int]
+            Previously evaluated input occupation list.
+        input_state : list[int]
+            New input occupation list.
+        changed_unitary : bool
+            Whether cached inverse tensors must be recomputed. Default is
+            ``False``.
+
+        Returns
+        -------
+        torch.Tensor
+            Updated amplitude tensor.
+
+        Raises
+        ------
+        RuntimeError
+            If no previous amplitudes are available.
+        ValueError
+            If the input state, unitary shape, or unitary dtype is invalid for
+            the current graph configuration.
+        """
         if len(unitary.shape) == 2:
             unitary = unitary.unsqueeze(0)  # Add batch dimension [1 x m x m]
         else:
@@ -908,6 +989,20 @@ class SLOSComputeGraph:
         return amplitudes
 
     def compute_probs_from_amplitudes(self, amplitudes):
+        """
+        Convert amplitudes into probabilities and apply output mapping.
+
+        Parameters
+        ----------
+        amplitudes : torch.Tensor
+            Amplitude tensor with shape ``(n_states,)`` or
+            ``(batch_size, n_states)``.
+
+        Returns
+        -------
+        tuple[list[tuple[int, ...]] | None, torch.Tensor]
+            Output keys and probability tensor.
+        """
         added_batch_dim = False
         if amplitudes.ndim == 1:
             amplitudes = amplitudes.unsqueeze(0)
@@ -952,22 +1047,27 @@ def build_slos_distribution_computegraph(
         Number of modes in the circuit.
     n_photons : int
         Total number of photons injected in the circuit.
-    output_map_func : callable, optional
+    output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None
         Mapping applied to each output Fock state, allowing post-processing.
-    computation_space : ComputationSpace, optional
-    keep_keys : bool, optional
-        Whether to keep the list of mapped Fock states.
-    device : torch.device, optional
+    computation_space : ComputationSpace | None
+        Logical computation subspace used to build the basis and transitions.
+        When omitted, defaults to ``ComputationSpace.UNBUNCHED``.
+    no_bunching : bool | None
+        Deprecated legacy flag. Use ``computation_space`` instead.
+    keep_keys : bool
+        Whether to keep the list of mapped Fock states. Default is ``True``.
+    device : torch.device | str | None
         Device on which tensors should be allocated.
-    dtype : torch.dtype, optional
-        Real dtype controlling numerical precision.
-    index_photons : list[tuple[int, ...]], optional
+    dtype : torch.dtype
+        Real dtype controlling numerical precision. Default is ``torch.float``.
+    index_photons : list[tuple[int, ...]] | None
         Bounds for each photon placement.
 
     Returns
     -------
     SLOSComputeGraph
         Pre-built computation graph ready for repeated evaluations.
+
     """
 
     if no_bunching is not None:
@@ -992,8 +1092,10 @@ def build_slos_distribution_computegraph(
         """
         Save the SLOS computation graph to a file.
 
-        Args:
-            path: Path to save the computation graph
+        Parameters
+        ----------
+        path : str | os.PathLike[str]
+            Destination path.
         """
         # Create directory if it doesn't exist
         dir_path = os.path.dirname(path)
@@ -1018,15 +1120,21 @@ def build_slos_distribution_computegraph(
                 "vectorized_operations": compute_graph.vectorized_operations,
                 "final_keys": compute_graph.final_keys,
                 "mapped_keys": compute_graph.mapped_keys,
-                "mapped_indices": compute_graph.mapped_indices
-                if hasattr(compute_graph, "mapped_indices")
-                else None,
-                "total_mapped_keys": compute_graph.total_mapped_keys
-                if hasattr(compute_graph, "total_mapped_keys")
-                else None,
-                "target_indices": compute_graph.target_indices
-                if hasattr(compute_graph, "target_indices")
-                else None,
+                "mapped_indices": (
+                    compute_graph.mapped_indices
+                    if hasattr(compute_graph, "mapped_indices")
+                    else None
+                ),
+                "total_mapped_keys": (
+                    compute_graph.total_mapped_keys
+                    if hasattr(compute_graph, "total_mapped_keys")
+                    else None
+                ),
+                "target_indices": (
+                    compute_graph.target_indices
+                    if hasattr(compute_graph, "target_indices")
+                    else None
+                ),
             },
             path,
         )
@@ -1041,13 +1149,18 @@ def load_slos_distribution_computegraph(path):
     """
     Load a previously saved SLOS distribution computation graph.
 
-    Args:
-        path: Path to the saved computation graph
+    Parameters
+    ----------
+    path : str | os.PathLike[str]
+        Path to the saved computation graph.
 
-    Returns:
-        SLOSComputeGraph: Loaded computation graph ready for computations
+    Returns
+    -------
+    SLOSComputeGraph
+        Loaded computation graph ready for computations.
 
-    Example:
+    Examples
+    --------
         >>> # Save a computation graph
         >>> graph = build_slos_distribution_computegraph([1, 1])
         >>> graph.save("hom_graph.pt")
@@ -1119,26 +1232,34 @@ def compute_slos_distribution(
     index_photons: list[tuple[int, ...]] | None = None,
 ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
     """
-    TorchScript-optimized version of pytorch_slos_output_distribution.
+    Compute a SLOS output distribution with a TorchScript-optimized graph.
 
-    This function builds the computation graph first, then uses it to compute the probabilities.
-    For repeated calculations with the same input configuration but different unitaries,
-    it's more efficient to use build_slos_compute_graph() directly.
+    This function builds the computation graph first, then uses it to compute
+    the probabilities. For repeated calculations with the same input
+    configuration but different unitaries, it is more efficient to use
+    ``build_slos_distribution_computegraph`` directly.
 
-    Args:
-        unitary (torch.Tensor): Single unitary matrix [m x m] or batch of unitaries [b x m x m]
-        input_state (List[int]): Number of photons in every mode of the circuit
-        output_map_func (callable, optional): Function that maps output states
-        computation_space ComputationSpace): Enumeration domain.
-        keep_keys (bool): If True, output state keys are returned
-        index_photons: List of tuples (first_integer, second_integer). The first_integer is the\
-                  lowest index layer a photon can take and the second_integer is the highest index
+    Parameters
+    ----------
+    unitary : torch.Tensor
+        Single unitary matrix with shape ``(m, m)`` or batch of unitaries with
+        shape ``(batch_size, m, m)``.
+    input_state : list[int]
+        Number of photons in every mode of the circuit.
+    output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None
+        Function that maps output states.
+    computation_space : ComputationSpace
+        Computation subspace used to build the graph. Default is
+        ``ComputationSpace.UNBUNCHED``.
+    keep_keys : bool
+        If ``True``, output state keys are returned. Default is ``True``.
+    index_photons : list[tuple[int, ...]] | None
+        Bounds for each photon placement.
 
-
-    Returns:
-        Tuple[List[Tuple[int, ...]], torch.Tensor]:
-            - List of tuples representing output Fock state configurations
-            - Probability distribution tensor
+    Returns
+    -------
+    tuple[list[tuple[int, ...]] | None, torch.Tensor]
+        Output keys and probability tensor.
     """
     # Extract device from unitary for graph building
     device = unitary.device if hasattr(unitary, "device") else None

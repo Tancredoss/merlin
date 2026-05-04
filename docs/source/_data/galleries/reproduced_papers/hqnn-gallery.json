@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Benchmark your Hybrid Quantum Neural Network",
+    "summary": "Code reproduction of the HQNN spiral data classification benchmark",
+    "image": "_static/reproduced_papers/hqnn/blobs_dataset.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/HQNN_MythOrReality",
+    "tags": ["External Link", "HQNN", "Benchmark", "Spiral"]
+  }
+]

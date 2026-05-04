@@ -75,3 +75,100 @@ a {
     background-position: calc(25% - 500px) -30px,calc(50% + 500px) -600px,calc(25%) 400px !important;
     background-repeat: repeat-y;
 }
+
+/* Reusable MerLin gallery component */
+.mq-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin: 12px 0 24px 0;
+}
+
+.mq-gallery-card {
+    --mq-effective-contour: var(--mq-card-contour, var(--mq-page-contour, transparent));
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    border: 1px solid #e5e7eb;
+    border-left: 4px solid var(--mq-effective-contour);
+    border-radius: 10px;
+    background: #ffffff;
+    text-decoration: none !important;
+    color: inherit !important;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.mq-gallery-card:visited {
+    color: inherit !important;
+}
+
+.mq-gallery-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+}
+
+.mq-gallery-card-media img {
+    display: block;
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+}
+
+.mq-gallery-card-body {
+    padding: 12px;
+}
+
+.mq-gallery-card-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #1f2937;
+}
+
+.mq-gallery-card-summary {
+    margin: 8px 0 0 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #5d6068;
+}
+
+.mq-gallery-card-tags {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.mq-gallery-card-tag {
+    display: inline-block;
+    border: 1px solid #bfecea;
+    background: #eaf8f7;
+    color: #0b7f7b;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+}
+
+/* Show the destination page title above previous/next footer buttons */
+.rst-footer-buttons a.btn::before {
+    content: attr(title);
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 0.35rem;
+    color: #5d6068;
+    white-space: normal;
+}
+
+.rst-footer-buttons a.btn {
+    max-width: 48%;
+    white-space: normal;
+    min-height: 4.5rem;
+}

@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Distributed Quantum Neural Networks",
+    "summary": "Distributed photonic parameter generation for CNN compression and MNIST-classification experiments.",
+    "image": "_static/reproduced_papers/DQNN.png",
+    "doc": "reproduced_papers/reproductions/distributed_nn",
+    "tags": ["Chen et al.", "2025", "Complete"]
+  }
+]

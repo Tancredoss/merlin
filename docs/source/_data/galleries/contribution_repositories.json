@@ -1,0 +1,16 @@
+[
+  {
+    "title": "MerLin Framework",
+    "summary": "Contribute to the core photonic QML framework: APIs, algorithms, tests, docs, and tooling.",
+    "image": "_static/img/merlin_black.png",
+    "url": "https://github.com/merlinquantum/merlin",
+    "tags": ["Core framework", "Docs", "Benchmarks"]
+  },
+  {
+    "title": "Reproduced Papers",
+    "summary": "Contribute new reproductions, improve baselines, and strengthen benchmark-driven validation.",
+    "image": "_static/reproduced_papers/photonicQGAN.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers",
+    "tags": ["Reproductions", "Experiments", "Results"]
+  }
+]

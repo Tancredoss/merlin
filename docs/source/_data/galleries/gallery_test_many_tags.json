@@ -1,0 +1,64 @@
+[
+  {
+    "title": "FQL Tag Stress Test A",
+    "summary": "Card with many tags to validate wrapping and spacing behavior.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": [
+      "Classification",
+      "Iris",
+      "QuantumLayer",
+      "PyTorch",
+      "Photonic",
+      "Builder",
+      "QML",
+      "Hybrid",
+      "Encoding",
+      "Training",
+      "Inference",
+      "Notebook"
+    ]
+  },
+  {
+    "title": "FQL Tag Stress Test B",
+    "summary": "Card with many tags to validate wrapping and spacing behavior.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": [
+      "LongTags",
+      "ManyBadges",
+      "VisualDensity",
+      "UIComponent",
+      "Reusable",
+      "Sphinx",
+      "Gallery",
+      "CardLayout",
+      "DocsUX",
+      "Navigation",
+      "InternalLink",
+      "RegressionTest"
+    ]
+  },
+  {
+    "title": "FQL Tag Stress Test C",
+    "summary": "Card with many tags to validate wrapping and spacing behavior.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": [
+      "CaseC",
+      "Tag01",
+      "Tag02",
+      "Tag03",
+      "Tag04",
+      "Tag05",
+      "Tag06",
+      "Tag07",
+      "Tag08",
+      "Tag09",
+      "Tag10",
+      "Tag11",
+      "Tag12",
+      "Tag13"
+    ]
+  }
+]

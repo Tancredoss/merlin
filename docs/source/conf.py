@@ -47,6 +47,7 @@ from importlib.metadata import metadata
 from pathlib import Path
 
 sys.path.insert(0, os.path.realpath("../../"))
+sys.path.insert(0, os.path.abspath("_ext"))
 
 
 merlin_metadata = metadata("merlinquantum")
@@ -72,16 +73,48 @@ release = merlin_metadata["Version"]
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.mathjax",
+    "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
     "sphinx.ext.autosectionlabel",
     "sphinxcontrib.bibtex",
     "enum_tools.autoenum",
     "nbsphinx",
     "sphinx_multiversion",
+    "merlin_gallery",
+    "sphinx.ext.intersphinx",
+]
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "torch": ("https://pytorch.org/docs/stable", None),
+    "perceval": ("https://perceval.quandela.net/docs/v1.1/", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "pandas": ("https://pandas.pydata.org/docs/", None),
+}
+
+
+nitpick_ignore = [
+    ("py:attr", "dst_type"),
+    ("py:attr", "non_blocking"),
+    ("py:class", "Dropout"),
+    ("py:class", "BatchNorm"),
+    ("py:class", "perceval.utils.states.BasicState"),
+    ("py:class", "merlin.measurement.strategies._LegacyMeasurementStrategy"),
+    ("py:class", "torch.nn.modules.loss._Loss"),
+    ("py:class", "Module"),
+    ("py:attr", "dtype"),
+    ("py:attr", "device"),
 ]
 
 suppress_warnings = ["autosectionlabel.*"]
-bibtex_bibfiles = ["references.bib"]
+bibtex_bibfiles = [
+    "references.bib",
+    "QML_library/QML_library_other_papers.bib",
+    "QML_library/QML_library_reproduced_papers.bib",
+    "QML_library/QML_library_reproduced_papers_to_do.bib",
+    "QML_library/QML_library_reproduced_papers_in_progress.bib",
+]
+bibtex_default_style = "alpha"
 bibtex_reference_style = "author_year"
 
 # Autodoc configuration
@@ -91,6 +124,13 @@ autodoc_default_options = {
     "show-inheritance": True,
     "imported-members": False,  # Don't document imported members to avoid duplicates
 }
+autodoc_typehints = "signature"
+
+typehints_use_rtype = False
+napoleon_google_docstring = False
+napoleon_numpy_docstring = True
+napoleon_use_param = True
+napoleon_use_rtype = True
 
 # Suppress duplicate object warnings for re-exported classes
 suppress_warnings.extend(["autodoc.import_object"])
@@ -118,7 +158,7 @@ html_theme = "renku"
 html_static_path = ["_static"]
 
 html_theme_options = {
-    "navigation_depth": 2,
+    "navigation_depth": 4,
     "titles_only": False,
     "version_selector": True,
 }

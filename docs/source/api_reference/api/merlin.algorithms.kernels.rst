@@ -2,15 +2,30 @@ merlin.algorithms.kernels module
 ================================
 
 .. automodule:: merlin.algorithms.kernels
-   :members: FeatureMap, FidelityKernel, KernelCircuitBuilder
+   :no-members:
+
+.. currentmodule:: merlin.algorithms.kernels
+
+.. autoclass:: FeatureMap
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: FidelityKernel
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: KernelCircuitBuilder
+   :members:
    :undoc-members:
    :show-inheritance:
 
 .. note::
 
    When the wrapped :class:`~merlin.algorithms.kernels.FeatureMap` exposes a
-   :class:`perceval.Experiment`, fidelity kernels compose the attached
-   :class:`perceval.NoiseModel` (photon loss) before applying any detector
+   :class:`pcvl.Experiment`, fidelity kernels compose the attached
+   :class:`pcvl.NoiseModel` (photon loss) before applying any detector
    transforms. The resulting kernel values therefore reflect both survival
    probabilities and detector post-processing.
 
@@ -30,7 +45,7 @@ Quickstart: Fidelity kernel in a few lines
     # Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
     kernel = FidelityKernel.simple(
         input_size=2,
-        n_modes=4,               # Here the number of modes is optional, if n_modes is not given, n_modes=input_size
+        n_modes=4,               # Here the number of modes is optional, if n_modes is not given, n_modes=input_size+1
         shots=0,                 # exact probabilities (no sampling)
         computation_space=ComputationSpace.FOCK,       # allow bunched outcomes if needed
         dtype=torch.float32,

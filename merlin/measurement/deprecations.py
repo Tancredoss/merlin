@@ -1,3 +1,7 @@
+"""Measurement-specific deprecation helpers.
+
+Can be removed when MeasurementStrategy enum is fully deprecated."""
+
 # MIT License
 #
 # Copyright (c) 2025 Quandela
@@ -19,11 +23,9 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
 from __future__ import annotations
 
 from ..utils.deprecations import warn_deprecated_enum_access
-
-"""Measurement-specific deprecation helpers."""
-"""Can be removed when MeasurementStrategy enum is fully deprecated."""
 
 __all__ = ["warn_deprecated_enum_access"]

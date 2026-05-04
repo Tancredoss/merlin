@@ -47,6 +47,23 @@ from .module import MerlinModule
 
 @dataclass
 class FFStage:
+    """
+    Static description of one feed-forward stage extracted from an experiment.
+
+    Parameters
+    ----------
+    unitary : pcvl.Circuit
+        Circuit executed for the stage.
+    active_modes : tuple[int, ...]
+        Modes actively transformed by the stage circuit.
+    measured_modes : tuple[int, ...]
+        Modes measured immediately after the stage.
+    detectors : dict[int, pcvl.Detector | None]
+        Detector configuration indexed by measured mode.
+    provider : FFCircuitProvider | None
+        Optional conditional-circuit provider associated with the stage.
+    """
+
     unitary: pcvl.Circuit
     active_modes: tuple[int, ...]
     measured_modes: tuple[int, ...]
@@ -56,6 +73,45 @@ class FFStage:
 
 @dataclass
 class StageRuntime:
+    """
+    Runtime objects needed to execute one feed-forward stage.
+
+    Parameters
+    ----------
+    circuit : pcvl.Circuit
+        Full circuit executed for the stage.
+    pre_layer : QuantumLayer | None
+        Layer applied before any conditional branching.
+    detector_transform : DetectorTransform | None
+        Detector transform used to process measured outputs.
+    conditional_circuits : dict[tuple[int, ...], pcvl.Circuit]
+        Conditional circuits indexed by measurement outcomes.
+    conditional_default_key : tuple[int, ...] | None
+        Default conditional-circuit key when no exact outcome match exists.
+    measured_modes : tuple[int, ...]
+        Stage-local measured modes.
+    global_measured_modes : tuple[int, ...]
+        Measured modes expressed in the global circuit indexing.
+    active_modes : tuple[int, ...]
+        Modes actively transformed by this stage.
+    detectors : dict[int, pcvl.Detector | None]
+        Detector configuration indexed by measured mode.
+    provider : FFCircuitProvider | None
+        Optional provider used to build conditional circuits.
+    pre_layers : dict[int, QuantumLayer]
+        Cache of pre-layers indexed by branch state size.
+    detector_cache : dict[int, DetectorTransform]
+        Cache of detector transforms indexed by branch state size.
+    conditional_layer_cache : dict[tuple[tuple[int, ...], int], QuantumLayer]
+        Cache of conditional layers indexed by measurement key and state size.
+    trainable_parameters : list[str] | None
+        Trainable parameter prefixes kept for the stage.
+    initial_amplitudes : torch.Tensor | None
+        Initial amplitudes for amplitude-encoding execution.
+    classical_input_size : int
+        Number of classical inputs consumed by the stage. Default is ``0``.
+    """
+
     circuit: pcvl.Circuit
     pre_layer: QuantumLayer | None
     detector_transform: DetectorTransform | None
@@ -78,6 +134,23 @@ class StageRuntime:
 
 @dataclass
 class BranchState:
+    """
+    State carried by one feed-forward branch during execution.
+
+    Parameters
+    ----------
+    amplitudes : torch.Tensor
+        Branch amplitudes in the current basis.
+    weight : torch.Tensor
+        Classical probability weight accumulated for the branch.
+    remaining_n : int
+        Number of photons remaining after the branch measurements.
+    measurement_key : tuple[int | None, ...]
+        Measurement outcomes accumulated so far.
+    basis_keys : tuple[tuple[int, ...], ...]
+        Basis states associated with ``amplitudes``.
+    """
+
     amplitudes: torch.Tensor
     weight: torch.Tensor
     remaining_n: int
@@ -90,7 +163,7 @@ class FeedForwardBlock(MerlinModule):
     Feed-forward photonic block constructed directly from a Perceval experiment.
 
     The block introspects the provided :class:`pcvl.Experiment`, splits it into
-    unitary / detector / :class:`~perceval.components.feed_forward_configurator.FFCircuitProvider`
+    unitary / detector / :class:`~pcvl.FFCircuitProvider`
     stages and turns each segment into one or more :class:`~merlin.algorithms.layer.QuantumLayer`
     instances. At run time the block executes every stage, branching on every
     partial measurement outcome and accumulating the classical probability for
@@ -98,49 +171,54 @@ class FeedForwardBlock(MerlinModule):
 
     Parameters
     ----------
-    experiment:
+    experiment : pcvl.Experiment
         Perceval experiment containing the full feed-forward definition. The
-        current implementation requires noise-free experiments (``NoiseModel()``
-        or ``None``).
-    input_state:
+        current implementation requires noise-free experiments (``NoiseModel()`` or
+        ``None``).
+    input_state : list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None
         Initial quantum state. May be provided as a Fock occupation list,
-        :class:`pcvl.BasicState`, :class:`pcvl.StateVector`, or a tensor whose
-        components represent amplitudes in the experiment Fock basis (the tensor
-        is only required for amplitude-encoding inputs).
-    trainable_parameters:
-        Optional list of Perceval parameter prefixes that should remain
-        learnable across all stages.
-    input_parameters:
+        `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_, :class:`~exqalibur.StateVector`, or a tensor whose
+        components represent amplitudes in the experiment Fock basis. The tensor
+        form is only required for amplitude-encoding inputs.
+    trainable_parameters : list[str] | None
+        Optional list of Perceval parameter prefixes that should remain learnable
+        across all stages.
+    input_parameters : list[str] | None
         Perceval parameter prefixes that receive classical inputs. They are
-        consumed by the *first* stage only; once the first detection happens all
-        branches switch to amplitude encoding and the classical tensor is
-        ignored.
-    computation_space:
-        Currently restricted to :attr:`~merlin.core.computation_space.ComputationSpace.FOCK`.
-    measurement_strategy:
+        consumed by the first stage only; once the first detection happens all
+        branches switch to amplitude encoding and the classical tensor is ignored.
+    computation_space : ComputationSpace
+        Currently restricted to
+        :class:`~merlin.core.computation_space.ComputationSpace`\\ ``.FOCK``.
+    measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
         Controls how classical outputs are produced.
-        - ``MeasurementStrategy.probs(computation_space)`` (default) returns a tensor of
-          shape ``(batch_size, num_output_keys)`` whose columns match the fully
-          specified Fock states stored in :pyattr:`output_keys`.
-        - ``MeasurementStrategy.mode_expectations(computation_space)`` collapses every branch into
-          a single tensor of shape ``(batch_size, num_modes)`` that contains the
-          per-mode photon expectations aggregated across all measurement keys.
-          The :pyattr:`output_keys` attribute is retained for metadata while
-          :pyattr:`output_state_sizes` reports ``num_modes`` for every key.
+
+        - ``MeasurementStrategy.probs(computation_space)`` (default) returns a
+          tensor of shape ``(batch_size, num_output_keys)`` whose columns match
+          the fully specified Fock states stored in :attr:`output_keys`.
+        - ``MeasurementStrategy.mode_expectations(computation_space)`` collapses
+          every branch into a single tensor of shape ``(batch_size, num_modes)``
+          that contains the per-mode photon expectations aggregated across all
+          measurement keys. The :attr:`output_keys` attribute is retained for
+          metadata while :attr:`output_state_sizes` reports ``num_modes`` for
+          every key.
         - ``MeasurementStrategy.AMPLITUDES`` yields a list of tuples
-          ``(measurement_key, branch_probability, remaining_photons, amplitudes)``
-          so callers can reason about the mixed state left by each branch.
+          ``(measurement_key, branch_probability, remaining_photons,
+          amplitudes)`` so callers can reason about the mixed state left by each
+          branch.
+    device : torch.device | None
+        Target device used for internal tensors and generated layers.
+    dtype : torch.dtype | None
+        Real dtype used for classical outputs and derived complex amplitudes.
     """
 
     def __init__(
         self,
         experiment: pcvl.Experiment,
         *,
-        input_state: list[int]
-        | pcvl.BasicState
-        | pcvl.StateVector
-        | torch.Tensor
-        | None = None,
+        input_state: (
+            list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None
+        ) = None,
         trainable_parameters: list[str] | None = None,
         input_parameters: list[str] | None = None,
         computation_space: ComputationSpace = ComputationSpace.FOCK,
@@ -214,11 +292,9 @@ class FeedForwardBlock(MerlinModule):
     def _resolve_input_state_from_experiment(
         self,
         experiment: pcvl.Experiment,
-        provided_state: list[int]
-        | pcvl.BasicState
-        | pcvl.StateVector
-        | torch.Tensor
-        | None,
+        provided_state: (
+            list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None
+        ),
     ):
         experiment_state = getattr(experiment, "input_state", None)
         if experiment_state is None:
@@ -258,11 +334,9 @@ class FeedForwardBlock(MerlinModule):
 
     def _prepare_initial_state(
         self,
-        input_state: list[int]
-        | pcvl.BasicState
-        | pcvl.StateVector
-        | torch.Tensor
-        | None,
+        input_state: (
+            list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None
+        ),
         experiment: pcvl.Experiment,
     ) -> tuple[list[int], int, torch.Tensor | None]:
         source_state = input_state
@@ -626,8 +700,24 @@ class FeedForwardBlock(MerlinModule):
         return configurations, default_state
 
     def _prepare_classical_features(self, x: torch.Tensor | None) -> torch.Tensor:
-        """
-        Normalize/validate the classical input tensor expected by the first stage.
+        """Normalize and validate the classical input tensor expected by the first stage.
+
+        Parameters
+        ----------
+        x : torch.Tensor | None
+            Candidate classical feature tensor provided to :meth:`forward`.
+
+        Returns
+        -------
+        torch.Tensor
+            Tensor on the block device with the expected batch and feature
+            dimensions for the first stage.
+
+        Raises
+        ------
+        ValueError
+            If the provided tensor shape is incompatible with the experiment's
+            classical input configuration.
         """
         runtime = self._stage_runtimes[0]
         classical_size = int(runtime.classical_input_size or 0)
@@ -677,7 +767,7 @@ class FeedForwardBlock(MerlinModule):
 
         Parameters
         ----------
-        x:
+        x : torch.Tensor | None
             Classical feature tensor. Only the first stage consumes classical
             inputs; subsequent stages operate purely in amplitude-encoding mode.
             When the experiment does not expose classical inputs this argument
@@ -686,13 +776,13 @@ class FeedForwardBlock(MerlinModule):
 
         Returns
         -------
-        torch.Tensor | list
+        torch.Tensor | list[tuple[tuple[int, ...], torch.Tensor, int, torch.Tensor]]
             ``PROBABILITIES`` returns a tensor of shape
             ``(batch_size, len(output_keys))`` aligned with the fully specified
-            Fock states in :pyattr:`output_keys`. ``MODE_EXPECTATIONS`` produces
+            Fock states in :attr:`output_keys`. ``MODE_EXPECTATIONS`` produces
             a tensor of shape ``(batch_size, total_modes)`` where the columns
             already encode the per-mode expectations aggregated across all
-            measurement keys (:pyattr:`output_state_sizes` stores
+            measurement keys (:attr:`output_state_sizes` stores
             ``total_modes`` for every key). ``AMPLITUDES`` yields a list of
             tuples ``(measurement_key, branch_probability, remaining_photons,
             amplitudes)`` describing every branch of the resulting mixed state.
@@ -710,14 +800,23 @@ class FeedForwardBlock(MerlinModule):
 
     @property
     def output_keys(self) -> list[tuple[int, ...]]:
-        """
-        Return the measurement keys associated with the most recent classical forward pass.
+        """Return the measurement keys associated with the most recent classical forward pass.
 
         The list is populated after :meth:`forward` completes. For the
         ``PROBABILITIES`` strategy the list lines up with the tensor columns. For
         ``MODE_EXPECTATIONS`` it is retained for reference even though the
         returned tensor already aggregates all measurement outcomes. Calling the
         property before running the block raises ``RuntimeError``.
+
+        Returns
+        -------
+        list[tuple[int, ...]]
+            Measurement keys describing the classical outputs.
+
+        Raises
+        ------
+        RuntimeError
+            If the block has not been executed yet.
         """
         if self._output_keys is None:
             raise RuntimeError(
@@ -727,14 +826,24 @@ class FeedForwardBlock(MerlinModule):
 
     @property
     def output_state_sizes(self) -> dict[tuple[int, ...], int]:
-        """
-        Return the number of remaining Fock states represented by each entry in ``output_keys``.
+        """Return the number of remaining Fock states represented by each entry in ``output_keys``.
 
         Only available when ``measurement_strategy`` is ``PROBABILITIES`` or
         ``MODE_EXPECTATIONS``. For ``PROBABILITIES`` the value is always ``1``
         because each key now denotes a fully specified Fock state, while for
         ``MODE_EXPECTATIONS`` it equals the total number of modes contributing
         to the expectation vector.
+
+        Returns
+        -------
+        dict[tuple[int, ...], int]
+            Mapping from measurement key to the size of the represented output
+            state space.
+
+        Raises
+        ------
+        RuntimeError
+            If the block has not produced classical outputs yet.
         """
         if self._output_state_sizes is None:
             raise RuntimeError(
@@ -743,13 +852,17 @@ class FeedForwardBlock(MerlinModule):
         return dict(self._output_state_sizes)
 
     def describe(self) -> str:
-        """
-        Return a multi-line description of the feed-forward stages.
+        """Return a multi-line description of the feed-forward stages.
 
         The summary lists, in order, the global modes that remain active at each
         step, the subset of measured modes, and the type of feed-forward
         configurator attached to the stage. It is primarily intended for
         debugging or for logging experiment structure.
+
+        Returns
+        -------
+        str
+            Human-readable stage summary.
         """
         lines: list[str] = []
         for idx, stage in enumerate(self.stages):
@@ -1238,12 +1351,14 @@ class FeedForwardBlock(MerlinModule):
             self._output_state_sizes = dict.fromkeys(flat_keys, self.total_modes)
             return torch.zeros(
                 (0, self.total_modes),
-                dtype=probability_tensor.dtype
-                if probability_tensor.ndim
-                else self.dtype,
-                device=probability_tensor.device
-                if probability_tensor.ndim
-                else self.device,
+                dtype=(
+                    probability_tensor.dtype if probability_tensor.ndim else self.dtype
+                ),
+                device=(
+                    probability_tensor.device
+                    if probability_tensor.ndim
+                    else self.device
+                ),
             )
 
         basis_tuple = tuple(flat_keys)

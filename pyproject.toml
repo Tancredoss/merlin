@@ -30,7 +30,7 @@ classifiers=[
 ]
 
 dependencies = [
-    "torch>=2.0.0",
+    "torch>=2.0.0,<=2.10.0",
     "perceval-quandela>=0.13.1",
     "numpy>=2.2.6",
     "pandas",
@@ -56,6 +56,7 @@ docs = [
     "ipython",
     "ipykernel",
     "gitpython",
+    "sphinx-multiversion-contrib @ git+https://github.com/Quandela/sphinx-multiversion-contrib.git@1.1.1",
     "jinja2==3.0.0",
     "scikit-learn>=1.0.0",
 ]

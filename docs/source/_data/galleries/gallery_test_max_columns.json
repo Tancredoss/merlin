@@ -1,0 +1,58 @@
+[
+  {
+    "title": "FQL Card 01",
+    "summary": "FirstQuantumLayers notebook with a compact card layout test.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Columns", "Card 1"]
+  },
+  {
+    "title": "FQL Card 02",
+    "summary": "FirstQuantumLayers notebook with a compact card layout test.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Columns", "Card 2"]
+  },
+  {
+    "title": "FQL Card 03",
+    "summary": "FirstQuantumLayers notebook with a compact card layout test.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Columns", "Card 3"]
+  },
+  {
+    "title": "FQL Card 04",
+    "summary": "FirstQuantumLayers notebook with a compact card layout test.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Columns", "Card 4"]
+  },
+  {
+    "title": "FQL Card 05",
+    "summary": "FirstQuantumLayers notebook with a compact card layout test.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Columns", "Card 5"]
+  },
+  {
+    "title": "FQL Card 06",
+    "summary": "FirstQuantumLayers notebook with a compact card layout test.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Columns", "Card 6"]
+  },
+  {
+    "title": "FQL Card 07",
+    "summary": "FirstQuantumLayers notebook with a compact card layout test.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Columns", "Card 7"]
+  },
+  {
+    "title": "FQL Card 08",
+    "summary": "FirstQuantumLayers notebook with a compact card layout test.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers",
+    "tags": ["Columns", "Card 8"]
+  }
+]

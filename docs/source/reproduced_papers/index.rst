@@ -1,13 +1,7 @@
-:github_url: https://github.com/merlinquantum/merlin
-
-.. _reproduced_papers:
-
-=================
-Reproduced Papers
-=================
+.. include:: reproduced_papers.rst
 
 .. toctree::
    :maxdepth: 1
-   :caption: Table of Contents
+   :hidden:
 
-   reproduced_papers    
+   reproduced_papers

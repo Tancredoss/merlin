@@ -1,4 +1,5 @@
 """Verify MerlinProcessor raises ValueError when no token can be extracted."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest

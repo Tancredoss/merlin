@@ -1,6 +1,9 @@
 merlin.core.partial_measurement
 ===============================
 
+.. automodule:: merlin.core.partial_measurement
+   :no-members:
+
 .. currentmodule:: merlin.core.partial_measurement
 
 PartialMeasurementBranch
@@ -8,16 +11,21 @@ PartialMeasurementBranch
 
 .. autoclass:: PartialMeasurementBranch
    :members:
+   :undoc-members:
    :member-order: bysource
    :show-inheritance:
+   
 
 PartialMeasurement
 ------------------
 
 .. autoclass:: PartialMeasurement
    :members:
+   :undoc-members:
    :member-order: bysource
    :show-inheritance:
+
+.. autodata:: DetectorTransformOutput
 
 Notes and Examples
 ------------------

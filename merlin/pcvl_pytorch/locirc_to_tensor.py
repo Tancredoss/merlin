@@ -59,19 +59,25 @@ class CircuitConverter:
     for efficient training and handles various quantum components like beam splitters,
     phase shifters, and unitary operations.
 
+    Parameters
+    ----------
+    circuit : pcvl.Circuit
+        Perceval circuit to convert.
+    input_specs : list[str] | None
+        Parameter name prefixes used to group parameters into input tensors.
+    dtype : torch.dtype
+        Target tensor dtype.
+    device : torch.device
+        Device used for tensor operations.
+
+    Notes
+    -----
     Supported Components:
         - PS (Phase Shifter)
         - BS (Beam Splitter)
         - PERM (Permutation)
         - Unitary (Generic unitary matrix)
         - Barrier (no-op, removed during compilation)
-
-    Attributes:
-        circuit: The Perceval circuit to convert
-        param_mapping: Maps parameter names to tensor indices
-        device: PyTorch device for tensor operations
-        tensor_cdtype: Complex tensor dtype
-        tensor_fdtype: Float tensor dtype
 
     Example:
         Basic usage with a single phase shifter:
@@ -134,16 +140,24 @@ class CircuitConverter:
     ):
         """Initialize the CircuitConverter with a Perceval circuit.
 
-        Args:
-            circuit: A parameterized Perceval Circuit object to convert
-            input_specs: List of parameter name prefixes for grouping parameters into separate tensors.\
-                         If None, all parameters go into a single tensor
-            dtype: Tensor data type (float32/complex64 or float64/complex128)
-            device: PyTorch device for tensor operations
+        Parameters
+        ----------
+        circuit : pcvl.Circuit
+            Parameterized Perceval circuit to convert.
+        input_specs : list[str] | None
+            Parameter name prefixes used to group parameters into separate
+            tensors. If ``None``, all parameters go into a single tensor.
+        dtype : torch.dtype
+            Tensor dtype.
+        device : torch.device
+            PyTorch device for tensor operations.
 
-        Raises:
-            ValueError: If input_specs don't match any circuit parameters
-            TypeError: If circuit is not a Perceval Circuit object
+        Raises
+        ------
+        ValueError
+            If ``input_specs`` do not match circuit parameters.
+        TypeError
+            If ``circuit`` is not a Perceval circuit.
         """
 
         # device is the device where the tensors will be allocated, default is set with torch.device('xxx')
@@ -196,11 +210,15 @@ class CircuitConverter:
     def set_dtype(self, dtype: torch.dtype):
         """Set the tensor data types for float and complex operations.
 
-        Args:
-            dtype: Target dtype (float32/complex64 or float64/complex128)
+        Parameters
+        ----------
+        dtype : torch.dtype
+            Target dtype (float32/complex64 or float64/complex128).
 
-        Raises:
-            TypeError: If dtype is not supported
+        Raises
+        ------
+        TypeError
+            If ``dtype`` is not supported.
         """
         float_dtype, complex_dtype = resolve_float_complex(dtype)
         self.tensor_fdtype = float_dtype
@@ -209,15 +227,22 @@ class CircuitConverter:
     def to(self, dtype: torch.dtype, device: str | torch.device):
         """Move the converter to a specific device and dtype.
 
-        Args:
-            dtype: Target tensor dtype (float32/complex64 or float64/complex128)
-            device: Target device (string or torch.device)
+        Parameters
+        ----------
+        dtype : torch.dtype
+            Target tensor dtype (float32/complex64 or float64/complex128).
+        device : str | torch.device
+            Target device (string or torch.device).
 
-        Returns:
-            Self for method chaining
+        Returns
+        -------
+        CircuitConverter
+            ``self`` for method chaining.
 
-        Raises:
-            TypeError: If device type or dtype is not supported
+        Raises
+        ------
+        TypeError
+            If ``device`` type is not supported.
         """
         if isinstance(device, str):
             self.device = torch.device(device)
@@ -246,11 +271,15 @@ class CircuitConverter:
         2. Precomputes tensors for components without parameters
         3. Merges adjacent non-parameterized components to reduce computation
 
-        Returns:
+        Returns
+        -------
+        list[tuple[range | object, torch.Tensor | AComponent]]
             List of (mode_range, component_or_tensor) tuples for the compiled circuit
 
-        Raises:
-            TypeError: If circuit contains unsupported component types
+        Raises
+        ------
+        TypeError
+            If the circuit contains unsupported component types.
         """
 
         # we are building a list of components or precompiled tensors or dimension (1, m, m)
@@ -327,17 +356,29 @@ class CircuitConverter:
     ) -> torch.Tensor:
         r"""Convert the parameterized circuit to a PyTorch unitary tensor.
 
-        Args:
-            \*input_params: Variable number of parameter tensors. Each tensor has shape (num_params,) or (batch_size, num_params) corresponding to input_specs order.
-            batch_size: Explicit batch size. If None, inferred from input tensors.
+        Parameters
+        ----------
+        input_params : torch.Tensor
+            Variable number of parameter tensors. Each tensor has shape
+            ``(num_params,)`` or ``(batch_size, num_params)`` in the order of
+            ``input_specs``.
+        batch_size : int | None
+            Explicit batch size. If ``None``, it is inferred from the input
+            tensors.
 
-        Returns:
-            Complex unitary tensor of shape (circuit.m, circuit.m) for single samples\
-                 or (batch_size, circuit.m, circuit.m) for batched inputs.
+        Returns
+        -------
+        torch.Tensor
+            Complex unitary tensor of shape ``(circuit.m, circuit.m)`` for a
+            single sample or ``(batch_size, circuit.m, circuit.m)`` for batched
+            inputs.
 
-        Raises:
-            ValueError: If wrong number of input tensors provided.
-            TypeError: If input_params is not a list or tuple.
+        Raises
+        ------
+        ValueError
+            If the wrong number of input tensors is provided.
+        TypeError
+            If ``input_params`` is not a list or tuple.
         """
         if len(input_params) == 1 and isinstance(input_params[0], list):
             input_params = input_params[0]  # type: ignore[assignment]

@@ -5,17 +5,17 @@ Experiment Support
 ==================
 
 Photonic experiments in `Perceval <https://perceval.quandela.net/>`_ bundle the elements of an optical circuit and its post-processing rules. MerLin uses this abstraction:
-passing a :class:`perceval.Experiment` to :class:`~merlin.algorithms.layer.QuantumLayer` or to :class:`~merlin.algorithms.kernels.FeatureMap` lets you specify how each optical mode should be measured.
+passing a :class:`pcvl.Experiment` to :class:`~merlin.algorithms.layer.QuantumLayer` or to :class:`~merlin.algorithms.kernels.FeatureMap` lets you specify how each optical mode should be measured.
 
 Why use an Experiment?
----------------
+-----------------------
 
 - **Single source of truth** – The circuit and every detector live in one object
   that can be shared across QuantumLayers or kernels.
 - **Detector customization** – You can mix photon-number-resolving (PNR),
   threshold, or partially projected detectors mode-by-mode while keeping the
   rest of the configuration identical.
-- **Photon-loss modelling** – Attach a :class:`perceval.NoiseModel` and MerLin
+- **Photon-loss modelling** – Attach a :class:`pcvl.NoiseModel` and MerLin
   will propagate its brightness/transmittance parameters before any detector
   logic, exposing photon loss events in the returned classical outcomes.
 

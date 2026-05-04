@@ -75,16 +75,18 @@ from typing import List, Tuple, Dict, Any
 # Your imports here
 import merlin as ML
 
+
 class YourFeatureBenchmarkRunner:
     """Utility class for running and validating your feature benchmarks."""
-    
+
     def __init__(self):
         self.results = []
-    
+
     def validate_output_correctness(self, output, expected_shape) -> bool:
         """Validate that the output is correct."""
         # Add your validation logic
         return True
+
 
 # Test configurations for different complexity levels
 BENCHMARK_CONFIGS = [
@@ -97,54 +99,63 @@ DEVICE_CONFIGS = ["cpu"]
 
 benchmark_runner = YourFeatureBenchmarkRunner()
 
+
 @pytest.mark.parametrize("config", BENCHMARK_CONFIGS)
 @pytest.mark.parametrize("device", DEVICE_CONFIGS)
 def test_your_feature_benchmark(benchmark, config: Dict, device: str):
     """Benchmark your feature functionality."""
-    
+
     # Setup test data
     test_data = create_test_data(config)
-    
+
     def run_your_function():
         return your_function(test_data)
-    
+
     # Run benchmark
     result = benchmark(run_your_function)
-    
+
     # Validate correctness
     assert benchmark_runner.validate_output_correctness(result, expected_shape)
+
 
 # Performance regression tests
 class TestYourFeaturePerformanceRegression:
     """Test suite for detecting performance regressions."""
-    
+
     def test_performance_bounds(self):
         """Test that your feature stays within reasonable time bounds."""
         # Add performance bounds testing
         pass
 
+
 # Utility function to save benchmark results
-def save_benchmark_results(results: List[Dict[str, Any]], output_path: str = "your-feature-results.json"):
+def save_benchmark_results(
+    results: List[Dict[str, Any]], output_path: str = "your-feature-results.json"
+):
     """Save benchmark results in the format expected by github-action-benchmark."""
     formatted_results = []
-    
+
     for result in results:
         formatted_results.append({
             "name": result.get("name", "unknown"),
-            "unit": "seconds", 
+            "unit": "seconds",
             "value": result.get("mean", 0),
             "extra": {
                 "min": result.get("min", 0),
                 "max": result.get("max", 0),
                 "stddev": result.get("stddev", 0),
-                "iterations": result.get("rounds", 1)
-            }
+                "iterations": result.get("rounds", 1),
+            },
         })
-    
-    os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
-    
+
+    os.makedirs(
+        os.path.dirname(output_path) if os.path.dirname(output_path) else ".",
+        exist_ok=True,
+    )
+
     with open(output_path, "w") as f:
         json.dump(formatted_results, f, indent=2)
+
 
 if __name__ == "__main__":
     print("Running your feature benchmarks...")

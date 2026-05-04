@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Run Distributed QNN Reproduction",
+    "summary": "Code reproduction for distributed photonic quantum neural networks.",
+    "image": "_static/reproduced_papers/DQNN.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/DQNN",
+    "tags": ["External Link", "Distributed QNN", "Repository"]
+  }
+]

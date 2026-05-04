@@ -36,20 +36,30 @@ def pcvl_to_tensor(
     device: torch.device = torch.device("cpu"),
 ) -> torch.Tensor:
     """
-    Convert a Perceval StateVector into a torch Tensor.
+    Convert a Perceval ``StateVector`` into a torch tensor.
 
-    Args:
-        state_vector: Perceval StateVector.
-        computation_space: Computation space of the state vector following combinadics ordering.
-        dtype: Desired torch dtype of the output Tensor.
-        device: Desired torch device of the output Tensor.
+    Parameters
+    ----------
+    state_vector : pcvl.StateVector
+        Perceval state vector.
+    computation_space : merlin.core.computation_space.ComputationSpace
+        Computation space of the state vector following combinadics ordering. Default is ``ComputationSpace.FOCK``
+    dtype : torch.dtype
+        Desired torch dtype of the output tensor. Default is ``torch.complex64``.
+    device : torch.device
+        Desired torch device of the output tensor. Default is ``torch.device("cpu")``.
 
-    Returns:
-        Equivalent torch Tensor.
+    Returns
+    -------
+    torch.Tensor
+        Equivalent torch tensor.
 
-    Raises:
-        ValueError: If the StateVector includes states with incompatible photon number for the specified computation space,
-            or non consistent number of photons across the states.
+    Raises
+    ------
+    ValueError
+        If the state vector includes states with incompatible photon number for
+        the specified computation space, or inconsistent photon numbers across
+        the states.
 
     """
     # Perceval StateVector.n is a set.

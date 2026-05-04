@@ -1,0 +1,37 @@
+[
+  {
+    "title": "Quickstart",
+    "summary": "Start with the essentials and build your first photonic quantum layer.",
+    "image": "_static/img/classifying_circles_decision_simple.png",
+    "doc": "notebooks/classifying_circles_from_installation.ipynb",
+    "tags": ["Getting Started", "PyTorch", "Quickstart"]
+  },
+  {
+    "title": "Your first QuantumLayers (Iris)",
+    "summary": "Three practical ways to build and train QuantumLayer models on Iris.",
+    "image": "_static/examples/iris_sepal_classes.png",
+    "doc": "notebooks/FirstQuantumLayers.ipynb",
+    "tags": ["Classification", "Iris", "QuantumLayer"]
+  },
+  {
+    "title": "From simple to the CircuitBuilder",
+    "summary": "How to use MerLin's circuit builder to easily create custom quantum layers.",
+    "image": "_static/img/from_simple_to_builder_galley_img.png",
+    "doc": "notebooks/FromSimpleToBuilder.ipynb",
+    "tags": ["Tutorial","Classification", "Moons", "Load_digits", "CircuitBuilder"]
+  },
+  {
+    "title": "Binary classification (Iris)",
+    "summary": "How to use MerLin for binary classification. Includes usage of a Variational Quantum Circuit (VQC) and a quantum kernel method.",
+    "image": "_static/img/binary_iris.png",
+    "doc": "notebooks/binary_classification.ipynb",
+    "tags": ["Tutorial", "Binary Classification", "Iris", "VQC", "Quantum kernel method"]
+  },
+  {
+    "title": "Build a hybrid model",
+    "summary": "Build a hybrid PyTorch model with classical layers around a quantum layer.",
+    "image": "_static/reproduced_papers/hqnn/blobs_dataset.png",
+    "doc": "reproduced_papers/reproductions/hqnn-myth",
+    "tags": ["Reproduced paper","Hybrid model"]
+  }
+]

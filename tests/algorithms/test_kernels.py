@@ -551,19 +551,13 @@ class TestFeatureMapFactoryMethods:
     def test_simple_num_photons_modes_and_input_state(self):
         for i in range(1, 15):
             kernel = FeatureMap.simple(input_size=i)
-            if i == 1:
-                assert kernel.circuit.m == 2
-            else:
-                assert kernel.circuit.m == i
+            assert kernel.circuit.m == i + 1
         for i in range(1, 15):
-            kernel = FeatureMap.simple(input_size=1, n_modes=i)
-            if i == 1:
-                assert kernel.circuit.m == 2
-            else:
-                assert kernel.circuit.m == i
+            kernel = FeatureMap.simple(input_size=1, n_modes=i + 1)
+            assert kernel.circuit.m == i + 1
 
     def test_simple_trainable(self):
-        for i in range(1, 21):
+        for i in range(1, 20):
             kernel = FeatureMap.simple(input_size=i)
             assert kernel.is_trainable
 
@@ -624,7 +618,7 @@ class TestFidelityKernelFactoryMethods:
         assert kernel.feature_map.circuit.m == 4
         assert len(kernel.input_state) == 4
         assert sum(kernel.input_state) == 2
-        assert kernel.input_state == [0, 1, 0, 1]
+        assert kernel.input_state == [1, 0, 1, 0]
 
     def test_simple_factory_default_photons(self):
         """Test simple factory with default n_photons."""
@@ -632,59 +626,43 @@ class TestFidelityKernelFactoryMethods:
 
         assert kernel.input_size == 3
         assert sum(kernel.input_state) == 3  # Should default to input_size photons
-        assert kernel.input_state == [0, 1, 0, 1, 0, 1]
+        assert kernel.input_state == [1, 0, 1, 0, 1, 0]
 
     def test_simple_num_photons_modes_and_input_state(self):
         for i in range(1, 15):
             kernel = FidelityKernel.simple(input_size=i)
-            if i == 1:
-                assert kernel.feature_map.circuit.m == 2
-                assert kernel.input_state == [0, 1]
-            else:
-                assert kernel.feature_map.circuit.m == i
-                assert np.sum(kernel.input_state) == (i) // 2
-                assert len(kernel.input_state) == i
+            assert kernel.feature_map.circuit.m == i + 1
+            assert np.sum(kernel.input_state) == int(np.ceil((i + 1) / 2))
+            assert len(kernel.input_state) == i + 1
 
-                input_state = [0] * (i)
-                for j in range(len(input_state)):
-                    if j % 2 == 1:
-                        input_state[j] = 1
-                assert kernel.input_state == input_state
+            input_state = [0] * (i + 1)
+            for j in range(len(input_state)):
+                if j % 2 == 0:
+                    input_state[j] = 1
+            assert kernel.input_state == input_state
         for i in range(1, 15):
-            kernel = FidelityKernel.simple(input_size=1, n_modes=i)
-            if i == 1:
-                assert kernel.feature_map.circuit.m == 2
-                assert kernel.input_state == [0, 1]
-            else:
-                assert kernel.feature_map.circuit.m == i
-                assert np.sum(kernel.input_state) == (i) // 2
-                assert len(kernel.input_state) == i
+            kernel = FidelityKernel.simple(input_size=1, n_modes=i + 1)
+            assert kernel.feature_map.circuit.m == i + 1
+            assert np.sum(kernel.input_state) == int(np.ceil((i + 1) / 2))
+            assert len(kernel.input_state) == i + 1
 
-                input_state = [0] * (i)
-                for j in range(len(input_state)):
-                    if j % 2 == 1:
-                        input_state[j] = 1
-                assert kernel.input_state == input_state
+            input_state = [0] * (i + 1)
+            for j in range(len(input_state)):
+                if j % 2 == 0:
+                    input_state[j] = 1
+            assert kernel.input_state == input_state
 
     def test_simple_parameters(self):
         for i in range(1, 15):
             kernel = FidelityKernel.simple(input_size=i)
             params = list(kernel.parameters())
             named_params = [i[0] for i in kernel.named_parameters()]
-            if i == 1:
-                assert params[0].numel() == 2
-                assert params[0].numel() == 2
-                assert len(params) == 2
-                assert kernel.feature_map.is_trainable
-                assert "LI_simple" in named_params
-                assert "RI_simple" in named_params
-            else:
-                assert params[0].numel() == i * (i - 1)
-                assert params[1].numel() == i * (i - 1)
-                assert len(params) == 2
-                assert kernel.feature_map.is_trainable
-                assert "LI_simple" in named_params
-                assert "RI_simple" in named_params
+            assert params[0].numel() == i * (i + 1)
+            assert params[1].numel() == i * (i + 1)
+            assert len(params) == 2
+            assert kernel.feature_map.is_trainable
+            assert "LI_simple" in named_params
+            assert "RI_simple" in named_params
 
 
 class TestKernelCircuitBuilder:

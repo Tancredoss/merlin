@@ -1354,19 +1354,15 @@ class TestQuantumLayer:
 def test_simple_num_photons_modes_and_input_state():
     for i in range(1, 15):
         ql = ML.QuantumLayer.simple(input_size=i)
-        if i < 2:
-            assert ql.quantum_layer.n_photons == 1
-            assert ql.quantum_layer.input_state == pcvl.BasicState([0, 1])
-        else:
-            assert ql.quantum_layer.n_photons == (i) // 2
-            assert sum(ql.quantum_layer.input_state) == (i) // 2
-            assert len(ql.quantum_layer.input_state) == i
+        assert ql.quantum_layer.n_photons == int(np.ceil((i + 1) / 2))
+        assert sum(ql.quantum_layer.input_state) == int(np.ceil((i + 1) / 2))
+        assert len(ql.quantum_layer.input_state) == i + 1
 
-            input_state = [0] * (i)
-            for j in range(len(input_state)):
-                if j % 2 == 1:
-                    input_state[j] = 1
-            assert ql.quantum_layer.input_state == pcvl.BasicState(input_state)
+        input_state = [0] * (i + 1)
+        for j in range(len(input_state)):
+            if j % 2 == 0:
+                input_state[j] = 1
+        assert ql.quantum_layer.input_state == pcvl.BasicState(input_state)
 
 
 def test_simple_parameters():
@@ -1374,15 +1370,9 @@ def test_simple_parameters():
         ql = ML.QuantumLayer.simple(input_size=i)
         params = list(ql.quantum_layer.parameters())
         named_params = [k[0] for k in ql.quantum_layer.named_parameters()]
-        if i < 2:
-            assert params[0].numel() == 2
-            assert params[0].numel() == 2
-            assert len(params) == 2
-            assert "LI_simple" in named_params
-            assert "RI_simple" in named_params
-        else:
-            assert params[0].numel() == i * (i - 1)
-            assert params[1].numel() == i * (i - 1)
-            assert len(params) == 2
-            assert "LI_simple" in named_params
-            assert "RI_simple" in named_params
+
+        assert params[0].numel() == i * (i + 1)
+        assert params[1].numel() == i * (i + 1)
+        assert len(params) == 2
+        assert "LI_simple" in named_params
+        assert "RI_simple" in named_params

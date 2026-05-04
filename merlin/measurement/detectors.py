@@ -37,17 +37,21 @@ class DetectorTransform(torch.nn.Module):
     """
     Linear map applying per-mode detector rules to a Fock probability vector.
 
-    Args:
-        simulation_keys: Iterable describing the raw Fock states produced by the
-            simulator (as tuples or lists of integers).
-        detectors: One detector per optical mode. Each detector must expose the
-            :meth:`detect` method from :class:`perceval.Detector`.
-        dtype: Optional torch dtype for the transform matrix. Defaults to
-            ``torch.float32``.
-        device: Optional device used to stage the transform matrix.
-        partial_measurement: When ``True``, only the modes whose detector entry is
-            not ``None`` are measured. The transform then operates on complex
-            amplitudes and returns per-outcome dictionaries (see :meth:`forward`).
+    Parameters
+    ----------
+    simulation_keys : Iterable[Sequence[int]] | torch.Tensor
+        Raw Fock states produced by the simulator (as tuples or lists of integers).
+    detectors : Sequence[pcvl.Detector | None]
+        One detector per optical mode. Each detector must expose a ``detect``
+        method compatible with :class:`pcvl.Detector`.
+    dtype : torch.dtype | None
+        Torch dtype for the transform matrix. Defaults to
+        ``torch.float32``.
+    device : torch.device | str | None
+        Device used to stage the transform matrix.
+    partial_measurement : bool
+        When ``True``, only the modes whose detector entry is not ``None`` are
+        measured.
     """
 
     def __init__(
@@ -59,6 +63,22 @@ class DetectorTransform(torch.nn.Module):
         device: torch.device | str | None = None,
         partial_measurement: bool = False,
     ) -> None:
+        """Initialize the detector transform.
+
+        Parameters
+        ----------
+        simulation_keys : Iterable[Sequence[int]] | torch.Tensor
+            Raw Fock states produced by the simulator (as tuples or lists of integers).
+        detectors : Sequence[pcvl.Detector | None]
+            One detector per optical mode.
+        dtype : torch.dtype | None
+            Torch dtype for the transform matrix. Defaults to
+            ``torch.float32``
+        device : torch.device | str | None
+            Device used to stage the transform matrix.
+        partial_measurement : bool
+            Whether the transform should operate in partial measurement mode.
+        """
         super().__init__()
 
         if simulation_keys is None:
@@ -580,7 +600,7 @@ class DetectorTransform(torch.nn.Module):
 
     @property
     def output_size(self) -> int:
-        """Number of classical outcomes produced by the detectors."""
+        """int: Number of classical outcomes produced by the detectors."""
         if self._partial_measurement:
             return self._remaining_dim
         return len(self._detector_keys)
@@ -596,17 +616,20 @@ class DetectorTransform(torch.nn.Module):
         torch.Tensor
         | list[dict[tuple[int, ...], list[tuple[torch.Tensor, torch.Tensor]]]]
     ):
-        """
-        Apply the detector transform.
+        """Apply the detector transform.
 
-        Args:
-            tensor: Probability distribution (complete mode) or amplitudes
-                (partial measurement). The last dimension must match the simulator
-                basis.
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            Probability distribution in complete mode or amplitudes in partial
+            measurement mode. The last dimension must match the simulator
+            basis.
 
-        Returns:
-            - Complete mode: real probability tensor expressed in the detector basis.
-            - Partial mode: list indexed by remaining photon count. Each entry is a
+        Returns
+        -------
+        torch.Tensor | list[dict[tuple[int, ...], list[tuple[torch.Tensor, torch.Tensor]]]]
+           - Complete mode: real probability tensor expressed in the detector basis.
+           - Partial mode: list indexed by remaining photon count. Each entry is a
               dictionary whose keys are full-length mode tuples (unmeasured modes set
               to ``None``) and whose values are lists of
               (probability, normalized remaining-mode amplitudes) pairs – one per
@@ -655,8 +678,21 @@ class DetectorTransform(torch.nn.Module):
         dtype: torch.dtype | None = None,
         device: torch.device | str | None = None,
     ) -> torch.Tensor:
-        """
-        Return a single detector transform row as a dense tensor.
+        """Return a single detector transform row as a dense tensor.
+
+        Parameters
+        ----------
+        index : int
+            Row index in the detector transform.
+        dtype : torch.dtype | None
+            Optional target dtype.
+        device : torch.device | str | None
+            Optional target device.
+
+        Returns
+        -------
+        torch.Tensor
+            Dense row of the detector transform.
         """
         if self._partial_measurement:
             raise RuntimeError("row() is not available when partial_measurement=True.")
@@ -696,16 +732,19 @@ class DetectorTransform(torch.nn.Module):
         return self._partial_measurement
 
     def remaining_basis(self, remaining_n: int | None = None) -> list[tuple[int, ...]]:
-        """
-        Return the ordered Fock-state basis for the unmeasured modes.
+        """Return the ordered Fock-state basis for the unmeasured modes.
 
-        Args:
-            remaining_n: Optional photon count used to select a specific block.
-                When omitted, the method returns the concatenation of every
-                remaining-mode basis enumerated during detector initialisation.
+        Parameters
+        ----------
+        remaining_n : int | None
+            Optional photon count used to select a specific block. When
+            omitted, the concatenation of every remaining-mode basis is
+            returned.
 
-        Returns:
-            List of tuples describing the photon distribution over the unmeasured modes.
+        Returns
+        -------
+        list[tuple[int, ...]]
+            Photon distributions over the unmeasured modes.
         """
         if not self._partial_measurement:
             raise RuntimeError(
@@ -726,18 +765,20 @@ class DetectorTransform(torch.nn.Module):
 def resolve_detectors(
     experiment: pcvl.Experiment, n_modes: int
 ) -> tuple[list[pcvl.Detector], bool]:
-    """
-    Build a per-mode detector list from a Perceval experiment.
+    """Build a per-mode detector list from a Perceval experiment.
 
-    Args:
-        experiment: Perceval experiment carrying detector configuration.
-        n_modes: Number of photonic modes to cover.
+    Parameters
+    ----------
+    experiment : pcvl.Experiment
+        Perceval experiment carrying detector configuration.
+    n_modes : int
+        Number of photonic modes to cover.
 
-    Returns:
-        normalized: list[pcvl.Detector]
-            List of detectors (defaulting to ideal PNR where unspecified),
-        empty_detectors: bool
-            If True, no Detector was defined in experiment. If False, at least one Detector was defined in experiement.
+    Returns
+    -------
+    tuple[list[pcvl.Detector], bool]
+        Normalized detector list (defaulting to ideal PNR where unspecified) and a flag indicating whether the experiment
+        originally defined any detectors.
     """
     empty_detectors = True
     detectors_attr = getattr(experiment, "detectors", None)

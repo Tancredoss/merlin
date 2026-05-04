@@ -60,7 +60,19 @@ from ..pcvl_pytorch.utils import pcvl_to_tensor
 
 @dataclass(frozen=True)
 class EncodingModeConfig:
-    """Validated encoding configuration."""
+    """Store the validated encoding configuration.
+
+    Parameters
+    ----------
+    amplitude_encoding : bool
+        Whether amplitude encoding is enabled.
+    input_size : int | None
+        Resolved classical input size.
+    n_photons : int | None
+        Resolved photon count.
+    input_parameters : list[str]
+        Resolved list of input parameter prefixes.
+    """
 
     amplitude_encoding: bool
     input_size: int | None
@@ -70,7 +82,25 @@ class EncodingModeConfig:
 
 @dataclass(frozen=True)
 class CircuitSource:
-    """Resolved circuit source configuration."""
+    """Store the resolved circuit source configuration.
+
+    Parameters
+    ----------
+    source_type : Literal["builder", "circuit", "experiment"]
+        Kind of source provided by the caller.
+    builder : CircuitBuilder | None
+        Builder instance when ``source_type == "builder"``.
+    circuit : pcvl.Circuit | None
+        Perceval circuit when ``source_type == "circuit"``.
+    experiment : pcvl.Experiment | None
+        Perceval experiment when ``source_type == "experiment"``.
+    trainable_parameters : list[str]
+        Resolved trainable parameter prefixes.
+    input_parameters : list[str]
+        Resolved input parameter prefixes.
+    angle_encoding_specs : dict[str, dict[str, Any]]
+        Stored angle encoding metadata extracted from the builder, if any.
+    """
 
     source_type: Literal["builder", "circuit", "experiment"]
     builder: CircuitBuilder | None
@@ -83,7 +113,19 @@ class CircuitSource:
 
 @dataclass(frozen=True)
 class ResolvedCircuit:
-    """Resolved circuit and experiment."""
+    """Store the resolved circuit and experiment pair.
+
+    Parameters
+    ----------
+    circuit : pcvl.Circuit
+        Resolved circuit instance.
+    experiment : pcvl.Experiment
+        Experiment wrapping the resolved circuit.
+    noise_model : Any | None
+        Attached experiment noise model, if present.
+    has_custom_noise : bool
+        Whether the experiment exposes a non-empty custom noise model.
+    """
 
     circuit: pcvl.Circuit
     experiment: pcvl.Experiment
@@ -93,7 +135,21 @@ class ResolvedCircuit:
 
 @dataclass(frozen=True)
 class NoiseAndDetectorConfig:
-    """Extracted noise and detector configuration."""
+    """Store extracted noise and detector configuration.
+
+    Parameters
+    ----------
+    photon_survival_probs : list[float]
+        Photon survival probabilities derived from the experiment noise model.
+    has_custom_noise : bool
+        Whether a custom noise model is present.
+    detectors : list[pcvl.Detector]
+        Resolved detector list for every mode.
+    has_custom_detectors : bool
+        Whether the experiment defines non-default detectors.
+    detector_warnings : list[str]
+        Compatibility warnings emitted while resolving detector behavior.
+    """
 
     photon_survival_probs: list[float]
     has_custom_noise: bool
@@ -104,7 +160,53 @@ class NoiseAndDetectorConfig:
 
 @dataclass(frozen=True)
 class InitializationContext:
-    """Immutable context for QuantumLayer initialization."""
+    """Store immutable QuantumLayer initialization state.
+
+    Parameters
+    ----------
+    device : torch.device | None
+        Target device for the layer.
+    dtype : torch.dtype
+        Real dtype used by the layer.
+    complex_dtype : torch.dtype
+        Complex dtype paired with ``dtype``.
+    amplitude_encoding : bool
+        Whether amplitude encoding is enabled.
+    input_size : int | None
+        Resolved classical input size.
+    circuit : pcvl.Circuit
+        Resolved circuit.
+    experiment : pcvl.Experiment
+        Resolved experiment.
+    noise_model : Any | None
+        Attached noise model, if any.
+    has_custom_noise : bool
+        Whether the experiment defines custom noise.
+    input_state : merlin.core.state_vector.StateVector | pcvl.BasicState | torch.Tensor | None
+        Normalized input state.
+    n_photons : int | None
+        Resolved photon count.
+    trainable_parameters : list[str]
+        Trainable parameter prefixes.
+    input_parameters : list[str]
+        Classical input parameter prefixes.
+    angle_encoding_specs : dict[str, dict[str, Any]]
+        Angle encoding metadata extracted from the builder.
+    photon_survival_probs : list[float]
+        Photon survival probabilities derived from the experiment.
+    detectors : list[pcvl.Detector]
+        Resolved detector list.
+    has_custom_detectors : bool
+        Whether custom detectors are configured.
+    computation_space : ComputationSpace
+        Resolved computation space.
+    measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
+        Measurement strategy used by the layer.
+    warnings : list[str]
+        Initialization warnings to surface to the caller.
+    return_object : bool
+        Whether the layer returns structured objects instead of tensors.
+    """
 
     device: torch.device | None
     dtype: torch.dtype
@@ -135,7 +237,30 @@ def validate_encoding_mode(
     n_photons: int | None,
     input_parameters: list[str] | None,
 ) -> EncodingModeConfig:
-    """Fail-fast validation for amplitude encoding constraints."""
+    """Validate amplitude-encoding constraints.
+
+    Parameters
+    ----------
+    amplitude_encoding : bool
+        Whether amplitude encoding is requested.
+    input_size : int | None
+        User-provided classical input size.
+    n_photons : int | None
+        User-provided photon count.
+    input_parameters : list[str] | None
+        User-provided classical input parameter prefixes.
+
+    Returns
+    -------
+    EncodingModeConfig
+        Validated and normalized encoding configuration.
+
+    Raises
+    ------
+    ValueError
+        If amplitude encoding is requested with incompatible classical-input
+        settings.
+    """
     resolved_input_params = list(input_parameters) if input_parameters else []
 
     if amplitude_encoding:
@@ -163,13 +288,15 @@ def validate_encoding_mode(
 
 
 def prepare_input_state(
-    input_state: StateVector
-    | pcvl.StateVector
-    | pcvl.BasicState
-    | list
-    | tuple
-    | torch.Tensor
-    | None,
+    input_state: (
+        StateVector
+        | pcvl.StateVector
+        | pcvl.BasicState
+        | list
+        | tuple
+        | torch.Tensor
+        | None
+    ),
     n_photons: int | None,
     computation_space: ComputationSpace,
     device: torch.device | None,
@@ -182,8 +309,8 @@ def prepare_input_state(
 
     Parameters
     ----------
-    input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
-        The input state in various formats. ``StateVector`` is the canonical type.
+    input_state : :class:`~merlin.core.state_vector.StateVector` | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
+        The input state in various formats. :class:`~merlin.core.state_vector.StateVector` is the canonical type.
         Legacy formats are auto-converted with deprecation warnings where appropriate.
     n_photons : int | None
         Number of photons (used for default state generation).
@@ -202,7 +329,7 @@ def prepare_input_state(
 
     Returns
     -------
-    tuple[StateVector | pcvl.BasicState | torch.Tensor | None, int | None]
+    tuple[merlin.core.state_vector.StateVector | pcvl.BasicState | torch.Tensor | None, int | None]
         The normalized input state and resolved photon count.
 
     Raises
@@ -297,9 +424,10 @@ def prepare_input_state(
     if isinstance(input_state, list):
         return pcvl.BasicState(tuple(cast(list[int], input_state))), n_photons
 
-    return cast(
-        StateVector | pcvl.BasicState | torch.Tensor | None, input_state
-    ), n_photons
+    return (
+        cast(StateVector | pcvl.BasicState | torch.Tensor | None, input_state),
+        n_photons,
+    )
 
 
 def validate_and_resolve_circuit_source(
@@ -309,7 +437,32 @@ def validate_and_resolve_circuit_source(
     trainable_parameters: list[str] | None,
     input_parameters: list[str] | None,
 ) -> CircuitSource:
-    """Enforce exactly one of (builder, circuit, experiment) is provided."""
+    """Validate and normalize the circuit source selection.
+
+    Parameters
+    ----------
+    builder : CircuitBuilder | None
+        Builder source, if provided.
+    circuit : pcvl.Circuit | None
+        Circuit source, if provided.
+    experiment : pcvl.Experiment | None
+        Experiment source, if provided.
+    trainable_parameters : list[str] | None
+        User-provided trainable parameter prefixes.
+    input_parameters : list[str] | None
+        User-provided input parameter prefixes.
+
+    Returns
+    -------
+    CircuitSource
+        Resolved circuit-source configuration.
+
+    Raises
+    ------
+    ValueError
+        If zero or multiple circuit sources are provided, or if builder-derived
+        prefixes are mixed with explicit parameter prefixes.
+    """
     if sum(x is not None for x in (circuit, builder, experiment)) != 1:
         raise ValueError(
             "Provide exactly one of 'circuit', 'builder', or 'experiment'."
@@ -352,7 +505,24 @@ def validate_and_resolve_circuit_source(
 
 
 def vet_experiment(experiment: pcvl.Experiment) -> dict[str, bool]:
-    """Check experiment constraints."""
+    """Check experiment constraints.
+
+    Parameters
+    ----------
+    experiment : pcvl.Experiment
+        Experiment to validate.
+
+    Returns
+    -------
+    dict[str, bool]
+        Summary of experiment properties relevant to QuantumLayer support.
+
+    Raises
+    ------
+    ValueError
+        If the experiment uses unsupported features such as post-selection,
+        heralding, feed-forward, time dependence, or minimum-photon filters.
+    """
     has_post_select = experiment.post_select_fn is not None
     has_heralding = bool(experiment.heralds) or bool(experiment.in_heralds)
     has_feedforward = bool(getattr(experiment, "has_feedforward", False))
@@ -390,7 +560,25 @@ def resolve_circuit(
     circuit_source: CircuitSource,
     pcvl_module,
 ) -> ResolvedCircuit:
-    """Convert builder/circuit/experiment to unified circuit form."""
+    """Resolve a builder, circuit, or experiment into a unified circuit form.
+
+    Parameters
+    ----------
+    circuit_source : CircuitSource
+        Resolved circuit source configuration.
+    pcvl_module : Any
+        Perceval module used to instantiate experiments when needed.
+
+    Returns
+    -------
+    ResolvedCircuit
+        Unified circuit and experiment wrapper.
+
+    Raises
+    ------
+    RuntimeError
+        If the provided ``circuit_source`` is internally inconsistent.
+    """
     if circuit_source.source_type == "builder":
         if circuit_source.builder is None:
             raise RuntimeError("Builder must be provided for builder source type.")
@@ -431,7 +619,30 @@ def setup_noise_and_detectors(
     computation_space: ComputationSpace,
     measurement_strategy: MeasurementStrategyLike,
 ) -> NoiseAndDetectorConfig:
-    """Extract and validate noise/detectors."""
+    """Extract and validate photon-loss and detector configuration.
+
+    Parameters
+    ----------
+    experiment : pcvl.Experiment
+        Experiment from which noise and detectors are extracted.
+    circuit : pcvl.Circuit
+        Resolved circuit used to determine the number of modes.
+    computation_space : ComputationSpace
+        Logical computation space requested by the layer.
+    measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
+        Measurement strategy used to validate detector and noise compatibility.
+
+    Returns
+    -------
+    NoiseAndDetectorConfig
+        Extracted and validated noise/detector configuration.
+
+    Raises
+    ------
+    RuntimeError
+        If amplitude readout is requested together with incompatible noise or
+        detector settings.
+    """
     photon_survival_probs, empty_noise_model = resolve_photon_loss(
         experiment, circuit.m
     )
@@ -473,7 +684,26 @@ def apply_angle_encoding(
     x: torch.Tensor,
     spec: dict[str, Any],
 ) -> torch.Tensor:
-    """Apply custom angle encoding using stored metadata."""
+    """Apply custom angle encoding using stored metadata.
+
+    Parameters
+    ----------
+    x : torch.Tensor
+        Input tensor to encode. May be one- or two-dimensional.
+    spec : dict[str, Any]
+        Angle encoding metadata containing feature combinations and scales.
+
+    Returns
+    -------
+    torch.Tensor
+        Encoded tensor matching the requested combinations.
+
+    Raises
+    ------
+    ValueError
+        If ``x`` has unsupported rank or does not provide enough features for a
+        requested combination.
+    """
     combos: list[tuple[int, ...]] = spec.get("combinations", [])
     scale_map: dict[int, float] = spec.get("scales", {})
 
@@ -522,7 +752,23 @@ def prepare_input_encoding(
     prefix: str | None = None,
     angle_encoding_specs: dict[str, dict[str, Any]] | None = None,
 ) -> torch.Tensor:
-    """Prepare input encoding based on mode."""
+    """Prepare input encoding for a given parameter prefix.
+
+    Parameters
+    ----------
+    x : torch.Tensor
+        Input tensor to encode.
+    prefix : str | None
+        Prefix identifying the relevant angle encoding specification.
+    angle_encoding_specs : dict[str, dict[str, Any]] | None
+        Available angle encoding specifications.
+
+    Returns
+    -------
+    torch.Tensor
+        Encoded tensor if a matching specification is found, otherwise the
+        input tensor unchanged.
+    """
     if not angle_encoding_specs:
         return x
 
@@ -544,7 +790,24 @@ def split_inputs_by_prefix(
     angle_encoding_specs: dict[str, dict[str, Any]],
     spec_mappings: dict[str, list[str]] | None = None,
 ) -> list[torch.Tensor] | None:
-    """Split a single logical input tensor into per-prefix chunks when possible."""
+    """Split a logical input tensor into per-prefix chunks when possible.
+
+    Parameters
+    ----------
+    prefixes : list[str]
+        Ordered parameter prefixes to split against.
+    tensor : torch.Tensor
+        Input tensor containing all logical features.
+    angle_encoding_specs : dict[str, dict[str, Any]]
+        Angle encoding specifications keyed by prefix.
+    spec_mappings : dict[str, list[str]] | None
+        Optional spec mappings used as a fallback for feature counting.
+
+    Returns
+    -------
+    list[torch.Tensor] | None
+        Per-prefix tensor slices when the split is possible, otherwise ``None``.
+    """
     counts: list[int] = []
     for prefix in prefixes:
         count = feature_count_for_prefix(prefix, angle_encoding_specs, spec_mappings)
@@ -573,7 +836,23 @@ def feature_count_for_prefix(
     angle_encoding_specs: dict[str, dict[str, Any]],
     spec_mappings: dict[str, list[str]] | None = None,
 ) -> int | None:
-    """Infer the number of raw features associated with an encoding prefix."""
+    """Infer the number of raw features associated with an encoding prefix.
+
+    Parameters
+    ----------
+    prefix : str
+        Encoding prefix to inspect.
+    angle_encoding_specs : dict[str, dict[str, Any]]
+        Angle encoding specifications keyed by prefix.
+    spec_mappings : dict[str, list[str]] | None
+        Optional spec mappings used as a fallback.
+
+    Returns
+    -------
+    int | None
+        Number of raw features associated with ``prefix``, or ``None`` if it
+        cannot be inferred.
+    """
     spec = angle_encoding_specs.get(prefix)
     if spec:
         combos = spec.get("combinations", [])
@@ -591,7 +870,18 @@ def feature_count_for_prefix(
 def normalize_output_key(
     key: Iterable[int] | torch.Tensor | Sequence[int],
 ) -> tuple[int, ...]:
-    """Normalize output key to tuple[int, ...]."""
+    """Normalize an output key to ``tuple[int, ...]``.
+
+    Parameters
+    ----------
+    key : Iterable[int] | torch.Tensor | Sequence[int]
+        Output key in iterable or tensor form.
+
+    Returns
+    -------
+    tuple[int, ...]
+        Normalized tuple representation of the output key.
+    """
     if isinstance(key, torch.Tensor):
         return tuple(int(v) for v in key.tolist())
     return tuple(int(v) for v in key)

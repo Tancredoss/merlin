@@ -30,9 +30,9 @@ Three components cooperate to build and evaluate kernels:
 1. :class:`~merlin.algorithms.kernels.FeatureMap` – embeds classical data into
 	 a photonic circuit and returns unitaries ``U(x)``. It accepts:
 
-	 - a :class:`perceval.Circuit` (manual construction),
+	 - a :class:`pcvl.Circuit` (manual construction),
 	 - a :class:`~merlin.builder.circuit_builder.CircuitBuilder` (declarative), or
-	 - a :class:`perceval.Experiment` (unitary circuit + measurement semantics).
+	 - a :class:`pcvl.Experiment` (unitary circuit + measurement semantics).
 
 2. :class:`~merlin.algorithms.kernels.FidelityKernel` – computes kernel values
 	 from a feature map and an input Fock state using SLOS.
@@ -48,7 +48,7 @@ its circuit expects before calling the Torch converter
 (:class:`~merlin.pcvl_pytorch.locirc_to_tensor.CircuitConverter`) to obtain
 ``U(x)``. The encoding logic follows a strict preference order:
 
-1. If the feature map was created from a :class:`CircuitBuilder`, use its
+1. If the feature map was created from a :class:`~merlin.builder.circuit_builder.CircuitBuilder`, use its
 	 angle‑encoding metadata (``combinations`` and per‑index ``scales``) to
 	 compute linear forms of the input vector. This guarantees the encoded vector
 	 length matches the converter specification for the declared input prefix.
@@ -63,7 +63,7 @@ its circuit expects before calling the Torch converter
 Unitary construction
 --------------------
 
-The :class:`CircuitConverter` holds a compiled representation of the photonic
+The :class:`~merlin.pcvl_pytorch.locirc_to_tensor.CircuitConverter` holds a compiled representation of the photonic
 model (unitary compute graph) and exposes ``to_tensor(...)`` to produce a
 complex matrix on the configured ``device``/``dtype``. When the feature map is
 trainable, extra trainable torch parameters (``torch.nn.Parameter``) are
@@ -104,11 +104,11 @@ and reuses pre‑computed sparse transitions per layer.
 Photon loss and detectors
 -------------------------
 
-If the :class:`FeatureMap` comes from an experiment (or if the kernel creates
+If the :class:`~merlin.algorithms.kernels.FeatureMap` comes from an experiment (or if the kernel creates
 one from its circuit), two transforms may be applied to raw probabilities:
 
 * :class:`~merlin.measurement.photon_loss.PhotonLossTransform` – composes the
-	experiment's :class:`perceval.NoiseModel` into survival probabilities. This
+	experiment's :class:`pcvl.NoiseModel` into survival probabilities. This
 	returns a new probability vector and a new set of output keys.
 * :class:`~merlin.measurement.detectors.DetectorTransform` – projects (or maps)
 	the post‑loss probabilities to the detector outcome basis (threshold, PNR,
@@ -148,7 +148,7 @@ Shapes, devices and dtypes
 
 * Inputs are reshaped to ``[N, input_size]`` (and ``[M, input_size]`` when
 	``x2`` is provided). Scalars and 1D vectors are validated by
-	:meth:`FeatureMap.is_datapoint` for single‑pair evaluations.
+	:meth:`~merlin.algorithms.kernels.FeatureMap.is_datapoint` for single‑pair evaluations.
 * All intermediate tensors are created on the feature map's device/dtype unless
 	explicit overrides are passed to the kernel.
 * The SLOS graph internally operates on complex dtypes that match the chosen
@@ -158,7 +158,7 @@ Complexity and performance tips
 -------------------------------
 
 * Reduce ``m`` (modes) or ``n`` (photons) to shrink the Fock space; use the 
-  ``ComputationSpace.UNBUNCHED`` computation space instead of ``ComputationSpace.FOCK``
+    ``ComputationSpace.UNBUNCHED`` computation space instead of ``ComputationSpace.FOCK``
 	when your circuit forbids multi‑occupancy per mode.
 * Reuse feature maps and kernels across batches to amortize converter/setup
 	costs.

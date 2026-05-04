@@ -1,0 +1,30 @@
+[
+  {
+    "title": "Fock State-Enhanced Expressivity",
+    "summary": "Expressivity study of photonic variational models with increasing photon counts.",
+    "image": "_static/img/Circ_simple.png",
+    "doc": "reproduced_papers/reproductions/fock_state_expressivity",
+    "tags": ["Gan et al.", "2022", "Complete"]
+  },
+  {
+    "title": "HQNN: Myth or Reality?",
+    "summary": "Controlled benchmark of hybrid quantum neural networks versus classical baselines across feature complexity.",
+    "image": "_static/reproduced_papers/hqnn/blobs_dataset.png",
+    "doc": "reproduced_papers/reproductions/hqnn-myth",
+    "tags": ["Kashif et al.", "2025", "Complete"]
+  },
+  {
+    "title": "Experimental Data Re-uploading",
+    "summary": "Resource-efficient photonic data re-uploading model reproduced on multiple datasets.",
+    "image": "_static/reproduced_papers/DataReuploading.png",
+    "doc": "reproduced_papers/reproductions/data_reuploading",
+    "tags": ["Mauser et al.", "2025", "Complete"]
+  },
+  {
+    "title": "Limitations of Amplitude Encoding",
+    "summary": "Theoretical and experimental study of amplitude-encoding concentration effects and their impact on quantum classification.",
+    "image": "_static/reproduced_papers/AA_study.png",
+    "doc": "reproduced_papers/reproductions/amplitude_limitations",
+    "tags": ["Wang et al.", "2025", "Complete"]
+  }
+]

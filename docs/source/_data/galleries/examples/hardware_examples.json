@@ -1,0 +1,30 @@
+[
+  {
+    "title": "Remote processor usage",
+    "summary": "How to run yor quantum layer on Quandela's photonic hardware.",
+    "image": "_static/img/quandela_cloud.png",
+    "doc": "user_guide/remote_execution.rst",
+    "tags": ["Documentation","Quandela Cloud","MerlinProcessor"]
+  },
+  {  
+    "title": "Comparing simulation and hardware reservoirs on Ascella QPU",
+    "summary": "A comparison of the performance of an optical reservoir on a simulated quantum layer and on Ascella QPU.",
+    "image": "_static/ecosystem/Fig5_QAML.png",
+    "doc": "notebooks/QORC-demo-MNIST.ipynb",
+    "tags": ["Reservoir","Quandela Cloud", "MNIST", "Ascella", "Benchmark"]
+  },
+  {
+    "title": "Reservoir Computing on Belenos",
+    "summary": "A tutorial on how to run yor quantum layer on Quandela's photonic hardware.",
+    "image": "_static/img/Iris_pipeline.png",
+    "doc": "notebooks/HelloWorldMerLinCloud.ipynb",
+    "tags": ["Reservoir","Quandela Cloud","Iris"]
+  },
+  {
+    "title": "Hardware-Aware Model Design",
+    "summary": "Listing some practical guidelines for designing circuits compatible with hardware.",
+    "image": "_static/img/merlin_black.png",
+    "doc": "examples/index",
+    "tags": ["Tutorial","Quandela Cloud", "DATASET", "Coming soon!"]
+  }
+]

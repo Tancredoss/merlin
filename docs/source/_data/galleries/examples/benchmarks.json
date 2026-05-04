@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Parameter efficiency",
+    "summary": "Benchmarking the efficiency of parameter updates in MerLin.",
+    "image": "_static/reproduced_papers/hqnn/blobs_dataset.png",
+    "doc": "reproduced_papers/reproductions/hqnn-myth",
+    "tags": ["Reproduced paper","Hybrid model","Benchmark","DATASET","Coming soon!"]
+  },
+  {
+    "title": "Memory and Time",
+    "summary": "Benchmarking the memory and time needed for MerLin modules.",
+    "image": "_static/img/merlin_black.png",
+    "doc": "examples/index",
+    "tags": ["Benchmark","DATASET","Coming soon!"]
+  },
+  {
+    "title": "Hardware vs Simulation",
+    "summary": "MerLin's performance compared on simulation and on hardware.",
+    "image": "_static/img/merlin_black.png",
+    "doc": "examples/index",
+    "tags": ["Benchmark","DATASET","Coming soon!"]
+  }
+]

@@ -7,6 +7,7 @@ import perceval as pcvl
 import pytest
 from perceval.runtime import RemoteConfig
 
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     """Add Scaleway test option (--run-cloud-tests is defined in parent conftest)."""
     try:
@@ -100,9 +101,7 @@ def remote_processor():
 
 def _has_scaleway_credentials() -> bool:
     """Check if Scaleway credentials are available in environment."""
-    return bool(
-        os.environ.get("SCW_PROJECT_ID") and os.environ.get("SCW_SECRET_KEY")
-    )
+    return bool(os.environ.get("SCW_PROJECT_ID") and os.environ.get("SCW_SECRET_KEY"))
 
 
 @pytest.fixture(scope="session")
