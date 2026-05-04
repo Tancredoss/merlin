@@ -638,12 +638,12 @@ def resolve_circuit(
     )
 
 
-# TODO: call classify + validate + raise NotImplementedError
 def setup_noise_and_detectors(
     experiment: pcvl.Experiment,
     circuit: pcvl.Circuit,
     computation_space: ComputationSpace,
     measurement_strategy: MeasurementStrategyLike,
+    backend: str = None,
 ) -> NoiseAndDetectorConfig:
     """Extract and validate photon-loss and detector configuration.
 
@@ -697,14 +697,39 @@ def setup_noise_and_detectors(
             "Compute amplitudes without detectors and apply a Partial DetectorTransform manually if needed."
         )
 
-    noise_groups = classify_noise_model(experiment.noise)
     validate_noisy_measurement_strategy(
-        "SLOS", output=measurement_strategy.value, noise_groups=noise_groups
+        backend,
+        output=measurement_strategy.type.name.lower(),
+        noise_model=experiment.noise,
+        empty_detectors=empty_detectors,
     )
-    if (noise_groups.circuit is not None) or (noise_groups.source is not None):
-        raise NotImplementedError(
-            "Only post measurement noise is implemented right now"
-        )
+    noise_groups = (
+        None if experiment.noise is None else classify_noise_model(experiment.noise)
+    )
+    # Not implemented errors
+    if noise_groups is not None:
+        if noise_groups.source is not None:
+            if noise_groups.source["indistinguishability"] is not None:
+                raise NotImplementedError(
+                    "The indistinguishability error is not implement yet"
+                )
+
+            if noise_groups.source["g2_distinguishable"] is not None:
+                raise NotImplementedError(
+                    "The g2_distinguishable error is not implement yet"
+                )
+
+            if noise_groups.source["g2"] is not None:
+                raise NotImplementedError("The g2 error is not implement yet")
+
+        if noise_groups.circuit is not None:
+            if noise_groups.circuit["phase_imprecision"] is not None:
+                raise NotImplementedError(
+                    "The phase_imprecision error is not implement yet"
+                )
+
+            if noise_groups.circuit["phase_error"] is not None:
+                raise NotImplementedError("The phase_error error is not implement yet")
 
     return NoiseAndDetectorConfig(
         photon_survival_probs=photon_survival_probs,
@@ -923,8 +948,22 @@ def normalize_output_key(
     return tuple(int(v) for v in key)
 
 
-def classify_noise_model(noise_model: pcvl.NoiseModel) -> NoiseGroups:
+def classify_noise_model(noise_model: pcvl.NoiseModel | None) -> NoiseGroups | None:
+    """From a noise model, create a NoiseGroups object splitting the noise inputs.
+
+    Parameters
+    ----------
+    noise_model : pcvl.NoiseModel | None
+        The noise model to apply to the circuit
+
+    Returns
+    -------
+    NoiseGroups | None
+        The NoiseGroups object that contains the noise sources per category.
+    """
     # Source noise
+    if noise_model is None:
+        return None
     source = {
         "indistinguishability": noise_model.indistinguishability,
         "g2_distinguishable": noise_model.g2_distinguishable,
@@ -952,30 +991,46 @@ def classify_noise_model(noise_model: pcvl.NoiseModel) -> NoiseGroups:
 
 
 def validate_noisy_measurement_strategy(
-    strategy: str, output: str, noise_groups: NoiseGroups
+    strategy: str | None,
+    output: str,
+    noise_model: pcvl.NoiseModel | None = None,
+    empty_detectors: bool = False,
 ) -> None:
-    if (
-        (noise_groups.source is None)
-        and (noise_groups.circuit is None)
-        and (noise_groups.post_measurement is None)
-    ):
+    """Validate the noise model and QuantumLayer configurations so that they match.
+
+    Parameters
+    ----------
+    strategy : str | None
+        The simulation backend used.
+    output : str
+        The measurement strategy used.
+    noise_model: pcvl.NoiseModel | None
+        The noise model to use. By default it is None (no noise).
+    empty_detectors: bool
+        If there is no pcvl.Detectors used in the circuit.
+
+    Returns
+    -------
+    """
+    if noise_model is None and empty_detectors:
         return
-    if (
-        noise_groups.source["g2_distinguishable"] is True
-        and noise_groups.source["indistinguishability"] == 1.0
-    ):
-        ValueError(
-            "The g2_distinguishable noise can not be True if photons are completely indistinguishable (indistinguishability=1.0)"
-        )
     if not output == "probabilities":
-        ValueError(
+        raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )
-
-    if not strategy == "SLOS":
-        ValueError(
-            "When doing a noisy Simulation, the SLOS backend must be used as well as the probabilities measurement strategy."
+    if strategy is not None and strategy.upper() != "SLOS":
+        raise NotImplementedError(
+            f"Backend '{strategy}' is not supported. "
+            "Only 'slos' is currently available."
         )
+    if noise_model is not None:
+        if (
+            noise_model.g2_distinguishable is True
+            and noise_model.indistinguishability == 1.0
+        ):
+            raise ValueError(
+                "The g2_distinguishable noise can not be True if photons are completely indistinguishable (indistinguishability=1.0)"
+            )
     return
 
 
@@ -983,6 +1038,20 @@ def normalize_noise_model(
     layer_noise_model: pcvl.NoiseModel | None,
     experiment_noise_model: pcvl.NoiseModel | None,
 ) -> pcvl.NoiseModel | None:
+    """Normalize the NoiseModels from two different inputs in the QuantumLayer.
+
+    Parameters
+    ----------
+    layer_noise_model: pcvl.NoiseModel | None
+        The noise model declared in the noise_model argument in the QuantumLayer.
+    layer_noise_model: pcvl.NoiseModel | None
+        The noise model declared in the experiment given to the QuantumLayer.
+
+    Returns
+    -------
+    pcvl.NoiseModel | None
+        The declared noise model or None if the is none.
+    """
     if layer_noise_model is None:
         return experiment_noise_model
     else:

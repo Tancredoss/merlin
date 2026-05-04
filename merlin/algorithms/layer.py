@@ -251,8 +251,11 @@ class QuantumLayer(MerlinModule):
             builder, circuit, experiment, trainable_parameters, input_parameters
         )
         # Phase 3.5 normalization of the noise
-        self.noise_model = normalize_noise_model(noise_model, experiment.noise)
-        self.experiment.noise = self.noise_model
+        self.noise_model = normalize_noise_model(
+            noise_model, experiment.noise if experiment is not None else None
+        )
+        if experiment is not None:
+            circuit_source.experiment.noise = self.noise_model
 
         # Phase 4: encoding validation (post-resolution)
         encoding_config = validate_encoding_mode(
@@ -280,11 +283,13 @@ class QuantumLayer(MerlinModule):
             amplitude_encoding=amplitude_encoding,
         )
         # Phase 9: noise + detector setup
+        self.backend = None  # TODO Change when implemented
         noise_and_detectors = setup_noise_and_detectors(
             resolved_circuit.experiment,
             resolved_circuit.circuit,
             computation_space,
             measurement_strategy,
+            backend=self.backend,
         )
 
         # Phase 10: build initialization context
@@ -310,6 +315,7 @@ class QuantumLayer(MerlinModule):
             measurement_strategy=measurement_strategy,
             warnings=noise_and_detectors.detector_warnings,
             return_object=return_object,
+            noise_groups=noise_and_detectors.noise_groups,
         )
 
         # Phase 11: assign context to self + warnings
