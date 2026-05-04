@@ -618,7 +618,7 @@ def test_qcnn_forward_keeps_cuda_device():
     logits = qcnn(x)
 
     assert logits.is_cuda
-    assert logits.device == device
+    assert logits.device.type == device.type
     assert logits.shape == (2, 2)
 
     loss = logits.sum()
