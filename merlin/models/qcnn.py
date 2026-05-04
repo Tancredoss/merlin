@@ -114,10 +114,10 @@ class QCNNClassifier(torch.nn.Module):
         if validated_input_shape[0] <= 0 or validated_input_shape[1] <= 0:
             raise ValueError("input_shape must contain values superior to 0.")
 
-        if num_classes <= 0:
-            raise ValueError("num_classes must be superior to 0.")
         if type(num_classes) is not int:
             raise TypeError("num_classes must have int type.")
+        if num_classes <= 0:
+            raise ValueError("num_classes must be superior to 0.")
 
         if stages is not None and type(stages) is not list:
             raise TypeError("stages must be None or have the list type.")
@@ -181,14 +181,14 @@ class QCNNClassifier(torch.nn.Module):
             self.stride = stride
 
             # Verification of inputs
-            if kernel_size <= 0:
-                raise ValueError("kernel_size must be superior to 0.")
             if type(kernel_size) is not int:
                 raise TypeError("kernel_size must have int type.")
-            if stride <= 0:
-                raise ValueError("stride must be superior to 0.")
+            if kernel_size <= 1:
+                raise ValueError("kernel_size must be superior to 1.")
             if type(stride) is not int:
                 raise TypeError("stride must have int type.")
+            if stride <= 0:
+                raise ValueError("stride must be superior to 0.")
 
         def __eq__(self, other):
             """Return whether two quantum convolution stages are identical."""
@@ -229,10 +229,10 @@ class QCNNClassifier(torch.nn.Module):
             self.kernel_size = kernel_size
 
             # Verification of input
-            if kernel_size <= 1:
-                raise ValueError("kernel_size must be superior to 1.")
             if type(kernel_size) is not int:
                 raise TypeError("kernel_size must have int type.")
+            if kernel_size <= 1:
+                raise ValueError("kernel_size must be superior to 1.")
 
         def __eq__(self, other):
             """Return whether two quantum pooling stages are identical."""
@@ -948,7 +948,7 @@ class QCNNClassifier(torch.nn.Module):
         x_combine = torch.zeros(
             batch_size,
             self.num_classes,
-            dtype=torch.float64,
+            dtype=x.branches[0].probability.dtype,
             device=x.branches[0].amplitudes.device,
         )
         for branch in branches:
