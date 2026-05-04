@@ -94,6 +94,15 @@ def test_qcnn_basic_api():
     qcnn_classifier_from_list = QCNNClassifier(list_input_shape, accepted_num_classes)
     assert qcnn_classifier_from_list.input_shape == accepted_input_shape
 
+    amplitude_basis_indices = qcnn_classifier_from_list._amplitude_basis_indices.clone()
+    list_input_shape[0] = 2
+    assert qcnn_classifier_from_list.input_shape == accepted_input_shape
+    assert torch.equal(
+        qcnn_classifier_from_list._amplitude_basis_indices, amplitude_basis_indices
+    )
+    with pytest.raises(AttributeError):
+        qcnn_classifier_from_list.input_shape = (2, 2)
+
     qcnn_classifier_above_former_limit = QCNNClassifier(
         input_shape_above_former_limit,
         accepted_num_classes,
@@ -102,6 +111,17 @@ def test_qcnn_basic_api():
     assert (
         qcnn_classifier_above_former_limit.input_shape == input_shape_above_former_limit
     )
+
+    # Modifying the input shape list after model initialization should not change the model's input shape
+    input_shape = [2, 2]
+    num_classes = 2
+    qcnn = QCNNClassifier(input_shape, num_classes)
+    original_input_shape = qcnn.input_shape
+
+    input_shape[0] += 2
+    input_shape[1] += 2
+
+    assert qcnn.input_shape == original_input_shape
 
 
 def test_qcnn_stage_api():
@@ -439,6 +459,8 @@ def test_qcnn_amplitude_encoding():
     x_tensor = x_tensor.unsqueeze(1)
 
     assert x_tensor.shape == (4, 1, 4, 4)
+    assert qcnn._amplitude_basis_indices.shape == (input_shape[0] * input_shape[1],)
+    assert qcnn._amplitude_basis_indices.device.type == "cpu"
 
     amplitude_encoded_state_vector = qcnn.amplitude_encode(x_tensor)
 
@@ -620,6 +642,7 @@ def test_qcnn_forward_keeps_cuda_device():
     x = torch.rand((2, 1, 4, 4), device=device)
 
     assert x.is_cuda
+    assert qcnn._amplitude_basis_indices.is_cuda
     for parameter in qcnn.parameters():
         assert parameter.is_cuda
     for layer in qcnn.layers:

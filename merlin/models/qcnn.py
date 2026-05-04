@@ -74,6 +74,9 @@ class QCNNClassifier(torch.nn.Module):
         positive, or if ``stages`` does not satisfy the QCNN stage constraints.
     """
 
+    _amplitude_basis_indices: torch.Tensor
+    _input_shape: tuple[int, int]
+
     def __init__(
         self,
         input_shape: tuple[int, int] | list[int],
@@ -106,7 +109,7 @@ class QCNNClassifier(torch.nn.Module):
         if type(input_shape[0]) is not int or type(input_shape[1]) is not int:
             raise ValueError("input_shape must contain integers.")
         validated_input_shape: tuple[int, int] = (input_shape[0], input_shape[1])
-        self.input_shape = validated_input_shape
+        self._input_shape = validated_input_shape
         if validated_input_shape[0] != validated_input_shape[1]:
             raise ValueError(
                 "input_shape must represent a square (i.e. input_shape[0] == input_shape[1])."
@@ -124,6 +127,16 @@ class QCNNClassifier(torch.nn.Module):
 
         self._resolved_stages = self.resolve_stages()
         self.layers = self.build_qcnn_model()
+        self.register_buffer(
+            "_amplitude_basis_indices",
+            self._build_amplitude_basis_indices(),
+            persistent=False,
+        )
+
+    @property
+    def input_shape(self) -> tuple[int, int]:
+        """Validated input image shape."""
+        return copy.deepcopy(self._input_shape)
 
     @property
     def resolved_stages(self) -> list[QCNNClassifier._Stage]:
@@ -852,6 +865,26 @@ class QCNNClassifier(torch.nn.Module):
 
         return x_current
 
+    def _build_amplitude_basis_indices(self) -> torch.Tensor:
+        """Return the Fock-basis index used by each image pixel."""
+        height, width = self.input_shape
+        state_vector = StateVector(torch.tensor([]), height + width, 2)
+        basis_indices: list[int] = []
+
+        for i in range(height):
+            for j in range(width):
+                basic_state = [0] * (height + width)
+                basic_state[i] = 1
+                basic_state[height + j] = 1
+                basis_index = state_vector.index(basic_state)
+                if basis_index is None:
+                    raise ValueError(
+                        "Could not map QCNN amplitude-encoding pixel to a Fock basis index."
+                    )
+                basis_indices.append(basis_index)
+
+        return torch.tensor(basis_indices, dtype=torch.long)
+
     def amplitude_encode(self, x: torch.Tensor):
         """Encode image pixels as amplitudes of a two-photon state vector.
 
@@ -874,43 +907,22 @@ class QCNNClassifier(torch.nn.Module):
             ``sum(input_shape)`` modes and two photons.
         """
         batch_size = x.shape[0]
-
-        # Prepare amplitude encoded tensor `state_tensor`
-        empty_tensor = torch.tensor([], device=x.device)
-        state_vector = StateVector(empty_tensor, sum(self.input_shape), 2)
+        state_vector = StateVector(
+            torch.tensor([], device=x.device), sum(self.input_shape), 2
+        )
         basis_size = state_vector.basis_size
+
         state_tensor = torch.zeros(
             (batch_size, basis_size), dtype=torch.complex64, device=x.device
         )
+        pixel_amplitudes = x[:, 0, :, :].reshape(batch_size, -1).to(torch.complex64)
+        basis_indices = self._amplitude_basis_indices.to(x.device)
+        expanded_indices = basis_indices.unsqueeze(0).expand(batch_size, -1)
+        state_tensor = state_tensor.scatter(1, expanded_indices, pixel_amplitudes)
 
-        for i in range(self.input_shape[0]):
-            for j in range(self.input_shape[1]):
-                # Build basic state
-                basic_state = [0] * self.input_shape[0] + [0] * self.input_shape[1]
-                basic_state[i] = 1
-                basic_state[self.input_shape[0] + j] = 1
-                basic_state_vector = StateVector.from_basic_state(basic_state)
-                repeated_basic_state_tensor = (
-                    basic_state_vector.tensor
-                    .to_dense()
-                    .to(device=x.device, dtype=state_tensor.dtype)
-                    .unsqueeze(0)
-                    .repeat(batch_size, 1)
-                )
-                # Scale by pixel value
-                pixel_scaling = x[:, :, i, j]
-                pixel_state_tensor = pixel_scaling * repeated_basic_state_tensor
-                # Add this pixel scaled state vector to the amplitude encoded tensor
-                state_tensor += pixel_state_tensor
-
-        # Convert from tensor to StateVector
-        final_state_vector = StateVector.from_tensor(
+        return StateVector.from_tensor(
             state_tensor, n_modes=sum(self.input_shape), n_photons=2
-        )
-        # Normalization
-        final_state_vector_norm = final_state_vector.clone().normalize()
-
-        return final_state_vector_norm
+        ).normalize()
 
     def postprocess_pooling(self, x: PartialMeasurement, layer_index: int):
         """Process pooling measurement branches and combine their logits.
