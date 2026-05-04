@@ -22,6 +22,8 @@
 
 """Tests for the QCNNClassifier model class"""
 
+import json
+
 import pytest
 import torch
 
@@ -31,29 +33,13 @@ from merlin.measurement import MeasurementStrategy
 from merlin.models import QCNNClassifier
 
 
-def _stages_from_config(config: dict) -> list[QCNNClassifier._Stage]:
-    stage_registry = {
-        "QConv": QCNNClassifier.QConv,
-        "QPool": QCNNClassifier.QPool,
-        "QDense": QCNNClassifier.QDense,
-    }
-
-    stages = []
-    for stage_config in config["_resolved_stages"]:
-        stage_type = stage_config["type"]
-        stage_cls = stage_registry[stage_type]
-        kwargs = {k: v for k, v in stage_config.items() if k != "type"}
-        stages.append(stage_cls(**kwargs))
-
-    return stages
-
-
 def test_qcnn_basic_api():
     accepted_input_shape = (4, 4)
     non_square_input_shape = (4, 8)
-    too_big_input_shape = (1080, 1080)
     three_tuple_input_shape = (4, 4, 4)
-    array_input_shape = [4, 4]
+    list_input_shape = [4, 4]
+    input_shape_above_former_limit = (29, 29)
+    invalid_input_shape = "4,4"
     float_input_shape_v1 = (4.0, 4.0)
     float_input_shape_v2 = (float(4), float(4))
     negative_input_shape = (-4, -4)
@@ -71,11 +57,13 @@ def test_qcnn_basic_api():
     with pytest.raises(ValueError, match="input_shape must represent a square"):
         QCNNClassifier(non_square_input_shape, accepted_num_classes)
 
-    with pytest.raises(ValueError, match="input_shape must be a tuple of size 2"):
+    with pytest.raises(
+        ValueError, match="input_shape must be a tuple or list of size 2"
+    ):
         QCNNClassifier(three_tuple_input_shape, accepted_num_classes)
 
-    with pytest.raises(TypeError, match="input_shape must have tuple type"):
-        QCNNClassifier(array_input_shape, accepted_num_classes)
+    with pytest.raises(TypeError, match="input_shape must have tuple or list type"):
+        QCNNClassifier(invalid_input_shape, accepted_num_classes)
 
     with pytest.raises(TypeError, match="input_shape elements must have int type"):
         QCNNClassifier(float_input_shape_v1, accepted_num_classes)
@@ -87,11 +75,6 @@ def test_qcnn_basic_api():
         ValueError, match="input_shape must contain values superior to 0"
     ):
         QCNNClassifier(negative_input_shape, accepted_num_classes)
-
-    with pytest.raises(
-        ValueError, match="input_shape values must be inferior or equal to 28"
-    ):
-        QCNNClassifier(too_big_input_shape, accepted_num_classes)
 
     with pytest.raises(ValueError, match="num_classes must be superior to 0"):
         QCNNClassifier(accepted_input_shape, zero_num_classes)
@@ -107,6 +90,18 @@ def test_qcnn_basic_api():
 
     assert qcnn_classifier.input_shape == accepted_input_shape
     assert qcnn_classifier.num_classes == accepted_num_classes
+
+    qcnn_classifier_from_list = QCNNClassifier(list_input_shape, accepted_num_classes)
+    assert qcnn_classifier_from_list.input_shape == accepted_input_shape
+
+    qcnn_classifier_above_former_limit = QCNNClassifier(
+        input_shape_above_former_limit,
+        accepted_num_classes,
+        [QCNNClassifier.QDense()],
+    )
+    assert (
+        qcnn_classifier_above_former_limit.input_shape == input_shape_above_former_limit
+    )
 
 
 def test_qcnn_stage_api():
@@ -189,6 +184,24 @@ def test_qcnn_stage_api():
     )
     assert custom_qcnn.resolved_stages == valid_custom_stages
 
+    with pytest.raises(ValueError, match="stages cannot be an empty list"):
+        QCNNClassifier(accepted_input_shape, accepted_num_classes, [])
+
+    with pytest.raises(ValueError, match="stage 0 has invalid type"):
+        QCNNClassifier(accepted_input_shape, accepted_num_classes, [object()])
+
+    with pytest.raises(ValueError, match="stage 2 has invalid type"):
+        QCNNClassifier(
+            accepted_input_shape,
+            accepted_num_classes,
+            [
+                QCNNClassifier.QConv(2, 1),
+                QCNNClassifier.QPool(2),
+                object(),
+                QCNNClassifier.QDense(),
+            ],
+        )
+
     with pytest.raises(ValueError, match="only last stage can be QDense"):
         QCNNClassifier(
             accepted_input_shape,
@@ -253,6 +266,20 @@ def test_qcnn_stage_api():
     with pytest.raises(AttributeError):
         qcnn_classifier.resolved_stages = []
 
+    resolved_stages = qcnn_classifier.resolved_stages
+    resolved_stages.append(QCNNClassifier.QDense())
+    assert qcnn_classifier.resolved_stages == stages
+
+    resolved_stages[0].kernel_size = 4
+    assert qcnn_classifier.resolved_stages == stages
+
+    valid_custom_stages.append(QCNNClassifier.QDense())
+    assert custom_qcnn.resolved_stages == [
+        QCNNClassifier.QConv(2, 1),
+        QCNNClassifier.QPool(2),
+        QCNNClassifier.QDense(),
+    ]
+
     # Try to access stages class through import without QCNNClassifier
     # Have to ignore ruff here or else it replaces unused imports with `pass` statements
     with pytest.raises(ImportError):
@@ -284,6 +311,56 @@ def test_qcnn_stage_api():
         QCNNClassifier((4, 4), 2, stages)
 
 
+def test_qcnn_resolved_stages_isolated_from_input_stages_mutation():
+    stages = [QCNNClassifier.QConv(2, 2), QCNNClassifier.QDense()]
+    model = QCNNClassifier((4, 4), 2, stages=stages)
+    expected_summary = model.summary()
+    expected_config = model.export_config()
+    expected_layers = list(model.layers._modules)
+    expected_stages = [QCNNClassifier.QConv(2, 2), QCNNClassifier.QDense()]
+
+    stages.append(QCNNClassifier.QPool(2))
+    stages[0].kernel_size = 3
+    stages[0].stride = 1
+
+    assert model.resolved_stages == expected_stages
+    assert model.summary() == expected_summary
+    assert model.export_config() == expected_config
+    assert list(model.layers._modules) == expected_layers
+
+
+def test_qcnn_resolved_stages_snapshot_mutation_does_not_change_model_metadata():
+    model = QCNNClassifier((4, 4), 2)
+    expected_stages = [
+        QCNNClassifier.QConv(2, 2),
+        QCNNClassifier.QPool(2),
+        QCNNClassifier.QDense(),
+    ]
+    expected_summary = model.summary()
+    expected_config = model.export_config()
+    expected_layers = list(model.layers._modules)
+
+    resolved_stages = model.resolved_stages
+    resolved_stages.append(QCNNClassifier.QDense())
+    resolved_stages[0].kernel_size = 4
+    resolved_stages[0].stride = 1
+    resolved_stages[1] = QCNNClassifier.QConv(2, 1)
+
+    assert model.resolved_stages == expected_stages
+    assert model.summary() == expected_summary
+    assert model.export_config() == expected_config
+    assert list(model.layers._modules) == expected_layers
+
+
+def test_qcnn_invalid_stage_object_raises_clear_value_error():
+    with pytest.raises(ValueError) as exc_info:
+        QCNNClassifier((4, 4), 2, stages=[object()])
+
+    message = str(exc_info.value)
+    assert "stage 0 has invalid type" in message
+    assert "stages must be of type QConv, QPool or QDense" in message
+
+
 def test_qcnn_summary():
     qcnn_classifier = QCNNClassifier((4, 4), 10)
 
@@ -307,7 +384,7 @@ def test_qcnn_export_config():
     expected_config = {
         "input_shape": (4, 4),
         "num_classes": 3,
-        "_resolved_stages": [
+        "stages": [
             {"type": "QConv", "kernel_size": 4, "stride": 1},
             {"type": "QDense"},
         ],
@@ -317,15 +394,19 @@ def test_qcnn_export_config():
     # Round trip test
     config = qcnn_classifier.export_config()
 
-    config_stages = _stages_from_config(config)
-    # Build new QCNNClassifier from the config
-    new_qcnn_classifier = QCNNClassifier(
-        config["input_shape"], config["num_classes"], config_stages
-    )
+    new_qcnn_classifier = QCNNClassifier.from_config(config)
 
     assert new_qcnn_classifier.input_shape == qcnn_classifier.input_shape
     assert new_qcnn_classifier.num_classes == qcnn_classifier.num_classes
     assert new_qcnn_classifier.resolved_stages == qcnn_classifier.resolved_stages
+
+    json_config = json.loads(json.dumps(config))
+    restored_qcnn_classifier = QCNNClassifier.from_config(json_config)
+
+    assert isinstance(json_config["input_shape"], list)
+    assert restored_qcnn_classifier.input_shape == qcnn_classifier.input_shape
+    assert restored_qcnn_classifier.num_classes == qcnn_classifier.num_classes
+    assert restored_qcnn_classifier.resolved_stages == qcnn_classifier.resolved_stages
 
 
 def test_qcnn_amplitude_encoding():
@@ -521,6 +602,32 @@ def test_full_default_qcnn():
         assert not torch.allclose(before, after, atol=1e-4, rtol=1e-4)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA GPU not available")
+def test_qcnn_forward_keeps_cuda_device():
+    device = torch.device("cuda")
+    qcnn = QCNNClassifier((4, 4), 2).to(device)
+    x = torch.rand((2, 1, 4, 4), device=device)
+
+    assert x.is_cuda
+    for parameter in qcnn.parameters():
+        assert parameter.is_cuda
+    for layer in qcnn.layers:
+        if isinstance(layer, QuantumLayer):
+            assert torch.device(layer.device).type == "cuda"
+
+    logits = qcnn(x)
+
+    assert logits.is_cuda
+    assert logits.device == device
+    assert logits.shape == (2, 2)
+
+    loss = logits.sum()
+    loss.backward()
+    for parameter in qcnn.parameters():
+        assert parameter.grad is not None
+        assert parameter.grad.is_cuda
+
+
 def test_qcnn_layers_public_sequential_api():
     qcnn = QCNNClassifier((4, 4), 3)
 
@@ -623,11 +730,7 @@ def test_qcnn_state_dict_round_trip_with_export_config():
         key: value.detach().clone() for key, value in qcnn.state_dict().items()
     }
 
-    restored_qcnn = QCNNClassifier(
-        config["input_shape"],
-        config["num_classes"],
-        _stages_from_config(config),
-    )
+    restored_qcnn = QCNNClassifier.from_config(config)
     load_result = restored_qcnn.load_state_dict(state_dict)
 
     assert load_result.missing_keys == []

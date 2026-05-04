@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from enum import Enum
 
@@ -39,16 +40,15 @@ class QCNNClassifier(torch.nn.Module):
 
     Parameters
     ----------
-    input_shape : tuple
+    input_shape : tuple | list
         Spatial shape of the input image, written as ``(height, width)``. The
-        current implementation requires a positive square shape and supports
-        dimensions up to ``28``.
+        current implementation requires a positive square shape.
     num_classes : int
         Number of output classes produced by the final readout layer.
     stages : list[QCNNClassifier._Stage] | None, default: None
-        Optional stage specification. If omitted or empty, the classifier uses
+        Optional stage specification. If omitted, the classifier uses
         ``QConv(kernel_size=2, stride=2)``, ``QPool(kernel_size=2)``, then
-        ``QDense()``.
+        ``QDense()``. An empty list is invalid and raises ``ValueError``.
 
     Attributes
     ----------
@@ -66,17 +66,17 @@ class QCNNClassifier(torch.nn.Module):
     Raises
     ------
     TypeError
-        If ``input_shape`` is not a tuple of integers, if ``num_classes`` is not
-        an integer, or if ``stages`` is neither ``None`` nor a list.
+        If ``input_shape`` is not a tuple or list of integers, if
+        ``num_classes`` is not an integer, or if ``stages`` is neither ``None``
+        nor a list.
     ValueError
-        If ``input_shape`` is not positive and square, if it exceeds the
-        supported size, if ``num_classes`` is not positive, or if ``stages`` does
-        not satisfy the QCNN stage constraints.
+        If ``input_shape`` is not positive and square, if ``num_classes`` is not
+        positive, or if ``stages`` does not satisfy the QCNN stage constraints.
     """
 
     def __init__(
         self,
-        input_shape: tuple,
+        input_shape: tuple[int, int] | list[int],
         num_classes: int,
         stages: list[QCNNClassifier._Stage] | None = None,
     ):
@@ -84,7 +84,7 @@ class QCNNClassifier(torch.nn.Module):
 
         Parameters
         ----------
-        input_shape : tuple
+        input_shape : tuple | list
             Square image shape expected by :meth:`forward`.
         num_classes : int
             Number of output logits.
@@ -93,30 +93,26 @@ class QCNNClassifier(torch.nn.Module):
             :class:`QDense` stages.
         """
         super().__init__()
-        self.input_shape = input_shape
         self.num_classes = num_classes
         self.stages = stages
 
         # Verify inputs
-        max_input_size = 28  # Set to 28 by default (to reevaluate)
-        if not isinstance(input_shape, tuple):
-            raise TypeError("input_shape must have tuple type")
+        if not isinstance(input_shape, (tuple, list)):
+            raise TypeError("input_shape must have tuple or list type")
+        if len(input_shape) != 2:
+            raise ValueError("input_shape must be a tuple or list of size 2.")
         if not isinstance(input_shape[0], int) or not isinstance(input_shape[1], int):
             raise TypeError("input_shape elements must have int type")
-        if len(input_shape) != 2:
-            raise ValueError("input_shape must be a tuple of size 2.")
         if type(input_shape[0]) is not int or type(input_shape[1]) is not int:
             raise ValueError("input_shape must contain integers.")
-        if input_shape[0] != input_shape[1]:
+        validated_input_shape: tuple[int, int] = (input_shape[0], input_shape[1])
+        self.input_shape = validated_input_shape
+        if validated_input_shape[0] != validated_input_shape[1]:
             raise ValueError(
                 "input_shape must represent a square (i.e. input_shape[0] == input_shape[1])."
             )
-        if input_shape[0] <= 0 or input_shape[1] <= 0:
+        if validated_input_shape[0] <= 0 or validated_input_shape[1] <= 0:
             raise ValueError("input_shape must contain values superior to 0.")
-        if input_shape[0] > max_input_size:
-            raise ValueError(
-                f"input_shape values must be inferior or equal to {max_input_size}."
-            )
 
         if num_classes <= 0:
             raise ValueError("num_classes must be superior to 0.")
@@ -132,7 +128,7 @@ class QCNNClassifier(torch.nn.Module):
     @property
     def resolved_stages(self) -> list[QCNNClassifier._Stage]:
         """Validated stage sequence used to build the model."""
-        return self._resolved_stages
+        return copy.deepcopy(self._resolved_stages)
 
     class _QCNNStageTypes(Enum):
         """Internal stage identifiers used in serialized configs."""
@@ -290,8 +286,8 @@ class QCNNClassifier(torch.nn.Module):
             If the stage order or stage parameters are incompatible with the
             current register dimensions, or if an unknown stage type is present.
         """
-        # Check if stages is None or empty
-        if self.stages is None or not self.stages:
+        # Check if stages is None
+        if self.stages is None:
             resolved_stages: list[QCNNClassifier._Stage] = []
             # Default stages
             resolved_stages.append(QCNNClassifier.QConv(2, 2))
@@ -299,10 +295,29 @@ class QCNNClassifier(torch.nn.Module):
             resolved_stages.append(QCNNClassifier.QDense())
             return resolved_stages
 
+        # Check if stages is empty
+        if len(self.stages) == 0:
+            raise ValueError(
+                "Invalid stage specification: stages cannot be an empty list "
+                "and it must include a QDense stage as its final stage."
+            )
+
         # If stages were specified
-        resolved_stages: list[QCNNClassifier._Stage] = self.stages
         # Check that only last stage is QDense
         for i, stage in enumerate(self.stages):
+            # Verify that stages are of the correct type
+            if not isinstance(
+                stage,
+                (
+                    QCNNClassifier.QConv,
+                    QCNNClassifier.QPool,
+                    QCNNClassifier.QDense,
+                ),
+            ):
+                raise ValueError(
+                    f"Invalid stage type: stage {i} has invalid type {type(stage)}; "
+                    "stages must be of type QConv, QPool or QDense."
+                )
             if stage.type == QCNNClassifier._QCNNStageTypes.QDense and i != (
                 len(self.stages) - 1
             ):
@@ -342,7 +357,7 @@ class QCNNClassifier(torch.nn.Module):
                         f"Invalid stage specification: current spatial dimension ({dim}) must be divisible by the pooling kernel size ({stage.kernel_size})."
                     )
                 # Adjust current dimension after the pooling
-                dim = dim - (dim / stage.kernel_size)
+                dim = dim - (dim // stage.kernel_size)
 
             elif isinstance(stage, QCNNClassifier.QDense):
                 continue
@@ -352,7 +367,7 @@ class QCNNClassifier(torch.nn.Module):
                     f"Invalid stage type; must be QConv, QPool or QDense but got: {type(stage)}"
                 )
 
-        return resolved_stages
+        return copy.deepcopy(self.stages)
 
     def summary(self):
         """Return a concise, human-readable description of the architecture.
@@ -394,10 +409,10 @@ class QCNNClassifier(torch.nn.Module):
         -------
         dict
             Serializable architecture metadata containing ``input_shape``,
-            ``num_classes``, and the resolved stage list.
+            ``num_classes``, and the resolved stage list under ``stages``.
         """
         serializable_stages = []
-        for stage in self._resolved_stages:
+        for stage in self.resolved_stages:
             stage_cfg = {"type": stage.type.value}
             if isinstance(stage, QCNNClassifier.QConv):
                 stage_cfg["kernel_size"] = stage.kernel_size
@@ -409,8 +424,51 @@ class QCNNClassifier(torch.nn.Module):
         return {
             "input_shape": self.input_shape,
             "num_classes": self.num_classes,
-            "_resolved_stages": serializable_stages,
+            "stages": serializable_stages,
         }
+
+    @classmethod
+    def from_config(cls, config: dict) -> QCNNClassifier:
+        """Build a classifier from :meth:`export_config` metadata.
+
+        Parameters
+        ----------
+        config : dict
+            Serialized architecture metadata containing ``input_shape``,
+            ``num_classes``, and ``stages``.
+
+        Returns
+        -------
+        QCNNClassifier
+            Reconstructed classifier with the same architecture.
+
+        Raises
+        ------
+        ValueError
+            If a serialized stage type is unknown.
+        """
+        stage_registry = {
+            cls._QCNNStageTypes.QConv.value: cls.QConv,
+            cls._QCNNStageTypes.QPool.value: cls.QPool,
+            cls._QCNNStageTypes.QDense.value: cls.QDense,
+        }
+
+        stages = []
+        for stage_config in config["stages"]:
+            stage_type = stage_config["type"]
+            try:
+                stage_cls = stage_registry[stage_type]
+            except KeyError as exc:
+                raise ValueError(
+                    f"Invalid serialized QCNN stage type: {stage_type}"
+                ) from exc
+
+            kwargs = {
+                key: value for key, value in stage_config.items() if key != "type"
+            }
+            stages.append(stage_cls(**kwargs))
+
+        return cls(config["input_shape"], config["num_classes"], stages)
 
     def build_qcnn_model(self):
         """Build the executable quantum-classical QCNN pipeline.
@@ -810,10 +868,12 @@ class QCNNClassifier(torch.nn.Module):
         batch_size = x.shape[0]
 
         # Prepare amplitude encoded tensor `state_tensor`
-        empty_tensor = torch.tensor([])
+        empty_tensor = torch.tensor([], device=x.device)
         state_vector = StateVector(empty_tensor, sum(self.input_shape), 2)
         basis_size = state_vector.basis_size
-        state_tensor = torch.zeros((batch_size, basis_size), dtype=torch.complex64)
+        state_tensor = torch.zeros(
+            (batch_size, basis_size), dtype=torch.complex64, device=x.device
+        )
 
         for i in range(self.input_shape[0]):
             for j in range(self.input_shape[1]):
@@ -825,6 +885,7 @@ class QCNNClassifier(torch.nn.Module):
                 repeated_basic_state_tensor = (
                     basic_state_vector.tensor
                     .to_dense()
+                    .to(device=x.device, dtype=state_tensor.dtype)
                     .unsqueeze(0)
                     .repeat(batch_size, 1)
                 )
