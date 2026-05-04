@@ -470,6 +470,14 @@ class QCNNClassifier(torch.nn.Module):
 
         return cls(config["input_shape"], config["num_classes"], stages)
 
+    def to(self, *args, **kwargs):
+        """Move the classifier and quantum-layer runtime state to a device or dtype."""
+        super().to(*args, **kwargs)
+        for layer in self.layers:
+            if isinstance(layer, QuantumLayer):
+                layer.to(*args, **kwargs)
+        return self
+
     def build_qcnn_model(self):
         """Build the executable quantum-classical QCNN pipeline.
 
