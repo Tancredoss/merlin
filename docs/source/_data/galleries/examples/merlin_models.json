@@ -1,0 +1,9 @@
+[
+  {
+    "title": "QCNNClassifier demonstration",
+    "summary": "Introduction to the QCNNClassifier model on binary MNIST classification.",
+    "image": "_static/img/25_binary_mnist_samples.png",
+    "doc": "notebooks/QCNNClassifier-demo-MNIST.ipynb",
+    "tags": ["Tutorial", "QCNN", "MNIST", "Vision", "Classification"]
+  }
+]
