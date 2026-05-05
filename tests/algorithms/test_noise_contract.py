@@ -128,12 +128,14 @@ def test_noisy_layer_with_detectors_with_other_computation_spaces():
             input_size=5,
             experiment=exp,
             input_state=[1, 0, 0, 0, 0],
+            trainable_parameters=list(circ.trainable_parameter_prefixes),
+            input_parameters=list(circ.input_parameter_prefixes),
             measurement_strategy=ml.MeasurementStrategy.probs(
                 computation_space=ml.ComputationSpace.UNBUNCHED
             ),
         )
 
-    circ2 = ml.CircuitBuilder(n_modes=5)
+    circ2 = ml.CircuitBuilder(n_modes=6)
     circ2.add_entangling_layer()
     circ2.add_angle_encoding()
     circuit2 = circ2.to_pcvl_circuit()
@@ -145,10 +147,12 @@ def test_noisy_layer_with_detectors_with_other_computation_spaces():
         UserWarning, match="Detectors are ignored in favor of ComputationSpace"
     ):
         _ = ml.QuantumLayer(
-            n_photons=2,
-            input_size=5,
+            n_photons=3,
+            input_size=6,
             experiment=exp2,
-            input_state=[1, 0, 0, 0, 0],
+            input_state=[1, 0, 1, 0, 1, 0],
+            trainable_parameters=list(circ2.trainable_parameter_prefixes),
+            input_parameters=list(circ2.input_parameter_prefixes),
             measurement_strategy=ml.MeasurementStrategy.probs(
                 computation_space=ml.ComputationSpace.DUAL_RAIL
             ),
@@ -195,7 +199,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
 
     with pytest.raises(
         NotImplementedError,
-        match="The indistinguishability error is not implement yet",
+        match="The indistinguishability error is not implemented yet",
     ):
         _ = ml.QuantumLayer(
             n_photons=2,
@@ -207,7 +211,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
         )
     with pytest.raises(
         NotImplementedError,
-        match="The g2 error is not implement yet",
+        match="The g2 error is not implemented yet",
     ):
         _ = ml.QuantumLayer(
             n_photons=2,
@@ -219,20 +223,20 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
         )
     with pytest.raises(
         NotImplementedError,
-        match="The g2_distinguishable error is not implement yet",
+        match="The g2_distinguishable error is not implemented yet",
     ):
         _ = ml.QuantumLayer(
             n_photons=2,
             input_size=5,
             builder=circ,
             noise_model=pcvl.NoiseModel(
-                g2=0.3,
-                g2_distinguishable=True,
+                indistinguishability=0.3,
+                g2_distinguishable=False,
             ),
         )
     with pytest.raises(
         NotImplementedError,
-        match="The phase_imprecision error is not implement yet",
+        match="The phase_imprecision error is not implemented yet",
     ):
         _ = ml.QuantumLayer(
             n_photons=2,
@@ -245,7 +249,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
 
     with pytest.raises(
         NotImplementedError,
-        match="The phase_error error is not implement yet",
+        match="The phase_error error is not implemented yet",
     ):
         _ = ml.QuantumLayer(
             n_photons=2,
@@ -344,11 +348,11 @@ def test_impossible_noise():
 
     noise = pcvl.NoiseModel(
         indistinguishability=1.0,
-        g2_distinguishable=True,
+        g2_distinguishable=False,
     )
 
     with pytest.raises(
         ValueError,
-        match="g2_distinguishable noise can not be True",
+        match="g2_distinguishable noise can not be False",
     ):
         _ = ml.QuantumLayer(n_photons=2, input_size=5, builder=circ, noise_model=noise)

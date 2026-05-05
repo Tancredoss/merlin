@@ -129,22 +129,35 @@ class TestPhotonLossWithQuantumLayer:
             input_state=[1, 0],
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
+        with pytest.raises(
+            ValueError,
+            match="When doing a noisy simulation, the probabilities measurement strategy must be used.",
+        ):
+            expectation_layer = ML.QuantumLayer(
+                input_size=0,
+                experiment=experiment,
+                input_state=[1, 0],
+                measurement_strategy=ML.MeasurementStrategy.mode_expectations(
+                    computation_space=ComputationSpace.UNBUNCHED
+                ),
+            )
+
+        experiment_no_noise = pcvl.Experiment(circuit)
         expectation_layer = ML.QuantumLayer(
             input_size=0,
-            experiment=experiment,
+            experiment=experiment_no_noise,
             input_state=[1, 0],
             measurement_strategy=ML.MeasurementStrategy.mode_expectations(
                 computation_space=ComputationSpace.UNBUNCHED
             ),
         )
+
         prob_output = prob_layer()
         expectation_output = expectation_layer()
         keys = prob_layer.output_keys
 
         assert prob_output.shape[-1] == len(keys)
         assert expectation_output.shape[-1] == len(keys[0])
-
-        experiment_no_noise = pcvl.Experiment(circuit)
 
         amplitude_layer = ML.QuantumLayer(
             input_size=0,

@@ -254,8 +254,6 @@ class QuantumLayer(MerlinModule):
         self.noise_model = normalize_noise_model(
             noise_model, experiment.noise if experiment is not None else None
         )
-        if experiment is not None:
-            circuit_source.experiment.noise = self.noise_model
 
         # Phase 4: encoding validation (post-resolution)
         encoding_config = validate_encoding_mode(
@@ -268,9 +266,10 @@ class QuantumLayer(MerlinModule):
         # Phase 6: experiment vetting (if provided)
         if experiment is not None:
             vet_experiment(experiment)
+            experiment.noise = self.noise_model
 
         # Phase 7: circuit resolution
-        resolved_circuit = resolve_circuit(circuit_source, pcvl)
+        resolved_circuit = resolve_circuit(circuit_source, pcvl, self.noise_model)
         # Phase 8: input state normalization
         input_state, resolved_n_photons = prepare_input_state(
             input_state,
@@ -290,6 +289,7 @@ class QuantumLayer(MerlinModule):
             computation_space,
             measurement_strategy,
             backend=self.backend,
+            noise_model=self.noise_model,
         )
 
         # Phase 10: build initialization context

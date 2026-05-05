@@ -584,6 +584,7 @@ def vet_experiment(experiment: pcvl.Experiment) -> dict[str, bool]:
 def resolve_circuit(
     circuit_source: CircuitSource,
     pcvl_module,
+    noise_model: pcvl.NoiseModel | None = None,
 ) -> ResolvedCircuit:
     """Resolve a builder, circuit, or experiment into a unified circuit form.
 
@@ -593,6 +594,8 @@ def resolve_circuit(
         Resolved circuit source configuration.
     pcvl_module : Any
         Perceval module used to instantiate experiments when needed.
+    noise_model: pcvl.NoiseModel | None
+        The resolved NoiseModel of the layer. Defaults to None (no noise).
 
     Returns
     -------
@@ -609,24 +612,21 @@ def resolve_circuit(
             raise RuntimeError("Builder must be provided for builder source type.")
         circuit = circuit_source.builder.to_pcvl_circuit(pcvl_module)
         experiment = pcvl_module.Experiment(circuit)
-        noise_model = None
-        has_custom_noise = False
     elif circuit_source.source_type == "circuit":
         if circuit_source.circuit is None:
             raise RuntimeError("Circuit must be provided for circuit source type.")
         circuit = circuit_source.circuit
         experiment = pcvl_module.Experiment(circuit)
-        noise_model = None
-        has_custom_noise = False
     elif circuit_source.source_type == "experiment":
         if circuit_source.experiment is None:
             raise RuntimeError(
                 "Experiment must be provided for experiment source type."
             )
         experiment = circuit_source.experiment
-        noise_model = getattr(experiment, "noise", None)
+        noise_model = (
+            getattr(experiment, "noise", None) if noise_model is None else noise_model
+        )
         circuit = experiment.unitary_circuit()
-        has_custom_noise = noise_model is not None
     else:
         raise RuntimeError("Resolved circuit could not be determined.")
 
@@ -634,7 +634,7 @@ def resolve_circuit(
         circuit=circuit,
         experiment=experiment,
         noise_model=noise_model,
-        has_custom_noise=has_custom_noise,
+        has_custom_noise=noise_model is not None,
     )
 
 
@@ -644,6 +644,7 @@ def setup_noise_and_detectors(
     computation_space: ComputationSpace,
     measurement_strategy: MeasurementStrategyLike,
     backend: str = None,
+    noise_model: pcvl.NoiseModel | None = None,
 ) -> NoiseAndDetectorConfig:
     """Extract and validate photon-loss and detector configuration.
 
@@ -700,36 +701,40 @@ def setup_noise_and_detectors(
     validate_noisy_measurement_strategy(
         backend,
         output=measurement_strategy.type.name.lower(),
-        noise_model=experiment.noise,
+        noise_model=noise_model,
         empty_detectors=empty_detectors,
     )
-    noise_groups = (
-        None if experiment.noise is None else classify_noise_model(experiment.noise)
-    )
+    noise_groups = None if noise_model is None else classify_noise_model(noise_model)
     # Not implemented errors
     if noise_groups is not None:
         if noise_groups.source is not None:
-            if noise_groups.source["indistinguishability"] is not None:
-                raise NotImplementedError(
-                    "The indistinguishability error is not implement yet"
-                )
-
             if noise_groups.source["g2_distinguishable"] is not None:
-                raise NotImplementedError(
-                    "The g2_distinguishable error is not implement yet"
-                )
+                if noise_groups.source["g2_distinguishable"] is False:
+                    raise NotImplementedError(
+                        "The g2_distinguishable error is not implemented yet"
+                    )
+            if noise_groups.source["indistinguishability"] is not None:
+                if not noise_groups.source["indistinguishability"] == 1.0:
+                    raise NotImplementedError(
+                        "The indistinguishability error is not implemented yet"
+                    )
 
             if noise_groups.source["g2"] is not None:
-                raise NotImplementedError("The g2 error is not implement yet")
+                if not noise_groups.source["g2"] == 0.0:
+                    raise NotImplementedError("The g2 error is not implemented yet")
 
         if noise_groups.circuit is not None:
             if noise_groups.circuit["phase_imprecision"] is not None:
-                raise NotImplementedError(
-                    "The phase_imprecision error is not implement yet"
-                )
+                if not noise_groups.circuit["phase_imprecision"] == 0.0:
+                    raise NotImplementedError(
+                        "The phase_imprecision error is not implemented yet"
+                    )
 
             if noise_groups.circuit["phase_error"] is not None:
-                raise NotImplementedError("The phase_error error is not implement yet")
+                if not noise_groups.circuit["phase_error"] == 0.0:
+                    raise NotImplementedError(
+                        "The phase_error error is not implemented yet"
+                    )
 
     return NoiseAndDetectorConfig(
         photon_survival_probs=photon_survival_probs,
@@ -1018,7 +1023,7 @@ def validate_noisy_measurement_strategy(
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )
-    if output == "mode_expectation" and noise_model is not None:
+    if output == "mode_expectations" and noise_model is not None:
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )
@@ -1032,7 +1037,7 @@ def validate_noisy_measurement_strategy(
             noise_model.indistinguishability == 1.0
         ):
             raise ValueError(
-                "The g2_distinguishable noise can not be True if photons are completely indistinguishable (indistinguishability=1.0)"
+                "The g2_distinguishable noise can not be False if photons are completely indistinguishable (indistinguishability=1.0)"
             )
     return
 
