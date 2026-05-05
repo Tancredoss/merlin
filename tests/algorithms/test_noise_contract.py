@@ -1,5 +1,6 @@
-import pytest
 import perceval as pcvl
+import pytest
+
 import merlin as ml
 from merlin.algorithms.layer_utils import (
     classify_noise_model,
@@ -47,7 +48,7 @@ def test_indistinguishability_and_g2_distinguishable_classified_as_source(
     assert "indistinguishability" not in noise_groups.post_measurement.keys()
     assert "indistinguishability" not in noise_groups.circuit.keys()
 
-    assert noise_groups.source["g2_distinguishable"] == True
+    assert noise_groups.source["g2_distinguishable"]
     assert "g2_distinguishable" not in noise_groups.post_measurement.keys()
     assert "g2_distinguishable" not in noise_groups.circuit.keys()
 

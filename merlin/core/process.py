@@ -30,8 +30,8 @@ from typing import Literal, overload
 import perceval as pcvl
 import torch
 
-from ..pcvl_pytorch import CircuitConverter, build_slos_distribution_computegraph
 from ..algorithms.layer_utils import NoiseGroups
+from ..pcvl_pytorch import CircuitConverter, build_slos_distribution_computegraph
 from ..utils.combinadics import Combinadics
 from ..utils.deprecations import raise_no_bunching_deprecated
 from .base import AbstractComputationProcess

@@ -685,9 +685,8 @@ def setup_noise_and_detectors(
             f"Detectors are ignored in favor of ComputationSpace: {computation_space}"
         )
 
-    amplitude_readout = (
-        _resolve_measurement_kind(measurement_strategy) == MeasurementKind.AMPLITUDES
-    )
+    measurement_kind = _resolve_measurement_kind(measurement_strategy)
+    amplitude_readout = measurement_kind == MeasurementKind.AMPLITUDES
     if amplitude_readout and has_custom_noise:
         raise RuntimeError(
             "measurement_strategy=MeasurementStrategy.AMPLITUDES cannot be used when the experiment defines a NoiseModel."
@@ -700,7 +699,7 @@ def setup_noise_and_detectors(
 
     validate_noisy_measurement_strategy(
         backend,
-        output=measurement_strategy.type.name.lower(),
+        output=measurement_kind.name.lower(),
         noise_model=noise_model,
         empty_detectors=empty_detectors,
     )
