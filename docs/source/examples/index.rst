@@ -94,6 +94,7 @@ Application examples
    :maxdepth: 1
 
    ../notebooks/binary_classification
+   ../notebooks/CACIB_Project_Bankruptcy_Prediction_Tutorial
    ../reproduced_papers/reproductions/qssl
    ../reproduced_papers/reproductions/quantum_transfer_learning
    ../notebooks/QORC-timeseries
