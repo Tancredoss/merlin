@@ -958,7 +958,11 @@ class FidelityKernel(MerlinModule):
                 else torch.as_tensor(x2, dtype=self.dtype, device=self.device)
             )
             U_adjoint = torch.stack([
-                self.feature_map.compute_unitary(x).transpose(0, 1).conj().to(x1.device)
+                self.feature_map
+                .compute_unitary(x)
+                .transpose(0, 1)
+                .conj()
+                .to(x1.device)
                 for x in x2_tensor
             ])
             if isinstance(x2, torch.Tensor):
