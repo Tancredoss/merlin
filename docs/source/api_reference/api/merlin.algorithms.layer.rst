@@ -233,6 +233,30 @@ In the first example the circuit always starts from ``bell``; in the second, eac
 different logical photonic state that flows through the layer. This separation allows you to mix classical angle
 encoding with fully quantum, amplitude-based data pipelines.
 
+Chunked amplitude execution
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Amplitude inputs can be passed as ordinary dense tensors or as
+:class:`~merlin.core.state_vector.StateVector` objects. Internally,
+``QuantumLayer`` normalizes these inputs into compact active support before
+propagation: only basis states with non-zero amplitudes are sent to the
+simulator. Those active components are processed in chunks and accumulated into
+the final dense output amplitudes.
+
+This reduces peak temporary memory from a whole-support table of roughly
+``num_input_basis_states * num_output_states`` to approximately
+``chunk_size * num_output_states``. The tradeoff is that smaller chunks use less
+memory but require more simulator calls; larger chunks can improve throughput
+when memory is available. The chunk size is controlled by the
+``simultaneous_processes`` argument:
+
+.. code-block:: python
+
+    out = layer(prepared_states, simultaneous_processes=32)
+
+Changing ``simultaneous_processes`` should not change the numerical result; it
+only changes how the active support is batched internally.
+
 
 Returning typed objects
 -------------------------
