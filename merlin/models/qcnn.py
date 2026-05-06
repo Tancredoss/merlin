@@ -45,16 +45,17 @@ class QCNNClassifier(torch.nn.Module):
         current implementation requires a positive square shape.
     num_classes : int
         Number of output classes produced by the final readout layer.
-    stages : list[QCNNClassifier._Stage] | None, default: None
+    stages : list[QCNNClassifier.QConv | QCNNClassifier.QPool | QCNNClassifier.QDense] | None
         Optional stage specification. If omitted, the classifier uses
         ``QConv(kernel_size=2, stride=2)``, ``QPool(kernel_size=2)``, then
-        ``QDense()``. An empty list is invalid and raises ``ValueError``.
+        ``QDense()``. Default is ``None``. An empty list is invalid and raises
+        ``ValueError``.
 
     Attributes
     ----------
     num_classes : int
         Number of output classes.
-    stages : list[QCNNClassifier._Stage] | None
+    stages : list[QCNNClassifier.QConv | QCNNClassifier.QPool | QCNNClassifier.QDense] | None
         User-provided stage specification.
     layers : torch.nn.Sequential
         Executable PyTorch module containing the named quantum stages and
@@ -79,7 +80,10 @@ class QCNNClassifier(torch.nn.Module):
         self,
         input_shape: tuple[int, int] | list[int],
         num_classes: int,
-        stages: list[QCNNClassifier._Stage] | None = None,
+        stages: (
+            list[QCNNClassifier.QConv | QCNNClassifier.QPool | QCNNClassifier.QDense]
+            | None
+        ) = None,
     ):
         """Initialize and build the QCNN classifier.
 
@@ -89,9 +93,12 @@ class QCNNClassifier(torch.nn.Module):
             Square image shape expected by :meth:`forward`.
         num_classes : int
             Number of output logits.
-        stages : list[QCNNClassifier._Stage] | None, default: None
-            Optional list made of :class:`QConv`, :class:`QPool`, and
-            :class:`QDense` stages.
+        stages : list[QCNNClassifier.QConv | QCNNClassifier.QPool | QCNNClassifier.QDense] | None
+            Optional list made of
+            :class:`~merlin.models.qcnn.QCNNClassifier.QConv`,
+            :class:`~merlin.models.qcnn.QCNNClassifier.QPool`, and
+            :class:`~merlin.models.qcnn.QCNNClassifier.QDense` stages.
+            Default is ``None``.
         """
         super().__init__()
         self.num_classes = num_classes
@@ -152,9 +159,11 @@ class QCNNClassifier(torch.nn.Module):
     class _Stage:
         """Base container for a QCNN stage.
 
+        :meta public:
+
         Parameters
         ----------
-        type : QCNNClassifier._QCNNStageTypes
+        type : ``QCNNClassifier._QCNNStageTypes``
             Internal identifier of the stage kind.
         """
 
@@ -288,7 +297,7 @@ class QCNNClassifier(torch.nn.Module):
 
         Returns
         -------
-        list[QCNNClassifier._Stage]
+        list[QCNNClassifier.QConv | QCNNClassifier.QPool | QCNNClassifier.QDense]
             Validated stage sequence used to build the QCNN.
 
         Raises
@@ -492,7 +501,8 @@ class QCNNClassifier(torch.nn.Module):
     def build_qcnn_model(self):
         """Build the executable quantum-classical QCNN pipeline.
 
-        Each resolved stage is converted into a :class:`QuantumLayer`. Quantum
+        Each resolved stage is converted into a
+        :class:`~merlin.algorithms.layer.QuantumLayer`. Quantum
         convolution layers return amplitudes so that later quantum stages can
         continue operating on state vectors. Quantum pooling layers return
         :class:`~merlin.core.partial_measurement.PartialMeasurement` objects for
@@ -636,7 +646,7 @@ class QCNNClassifier(torch.nn.Module):
             Number of modes covered by the window.
         circuit : pcvl.Circuit
             Circuit to mutate with the trainable beam splitters.
-        parameter : pcvl.P
+        parameter : ``pcvl.P``
             Shared Perceval parameter used as the ``theta`` value for every beam
             splitter in the convolution window.
 

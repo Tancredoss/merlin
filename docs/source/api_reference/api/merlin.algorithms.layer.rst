@@ -298,7 +298,7 @@ The snippet below prepares a basic quantum layer and returns a :class:`~merlin.c
 
 Memristive phase-shifter
 -------------------------
-When using the :class:`~merlin.builder.circuit_builder.CircuitBuilder` to create a :class:`~merlin.algorithms.layer.QuantumLayer`, it is important to set the batch size
+When using the :class:`~merlin.builder.circuit_builder.CircuitBuilder` that contains a memristive phase-shifter (added with the :meth:`~merlin.builder.circuit_builder.CircuitBuilder.add_memristive_ps` method) to create a :class:`~merlin.algorithms.layer.QuantumLayer`, it is important to set the batch size
 of the memristors. To do so, call the :meth:`~merlin.algorithms.layer.QuantumLayer.reset` method. This resets the memristors to their initial state while clearing their history.
 It also prepares the memristors to be run with the specified ``batch_size`` parameter of the function, which defaults to 1.
 

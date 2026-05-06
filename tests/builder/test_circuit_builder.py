@@ -799,3 +799,96 @@ def test_memristive_own_type_of_parameter():
 
     assert num_memristor == 4
     assert num_other > 0
+
+
+def test_invalid_memristive_configurations():
+    builder = CircuitBuilder(n_modes=5)
+
+    # Valid update rule signature
+    def valid_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state + 0.1
+
+    # Valid: correct signature should pass
+    builder.add_memristive_ps(mode=0, update_rule=valid_update, initial_state=0.5)
+
+    # Invalid: missing annotation on first parameter
+    def no_annotation(state, output):
+        return state
+
+    with pytest.raises(TypeError, match="requires type annotation"):
+        builder.add_memristive_ps(mode=0, update_rule=no_annotation, initial_state=0.5)
+
+    # Invalid: wrong type for first parameter
+    def wrong_first_type(state: int, output: torch.Tensor) -> torch.Tensor:
+        return torch.zeros(1)
+
+    with pytest.raises(TypeError, match="must be torch.Tensor"):
+        builder.add_memristive_ps(
+            mode=0, update_rule=wrong_first_type, initial_state=0.5
+        )
+
+    # Invalid: wrong number of arguments
+    def too_many_args(
+        state: torch.Tensor, output: torch.Tensor, extra: int
+    ) -> torch.Tensor:
+        return state
+
+    with pytest.raises(TypeError, match="exactly 2 positional arguments"):
+        builder.add_memristive_ps(mode=0, update_rule=too_many_args, initial_state=0.5)
+
+    # Valid: valid mode values
+    builder.add_memristive_ps(mode=1, update_rule=valid_update, initial_state=0.5)
+    builder.add_memristive_ps(mode=3, update_rule=valid_update, initial_state=0.5)
+    builder.add_memristive_ps(mode=4, update_rule=valid_update, initial_state=0.5)
+
+    # Invalid: float mode
+    with pytest.raises(ValueError, match="The mode parameter must be an int"):
+        builder.add_memristive_ps(mode=0.0, update_rule=valid_update, initial_state=0.5)
+
+    # Invalid: negative mode
+    with pytest.raises(ValueError, match="The assigned mode must be between 0"):
+        builder.add_memristive_ps(mode=-1, update_rule=valid_update, initial_state=0.5)
+
+    # Invalid: mode out of range
+    with pytest.raises(ValueError, match="The assigned mode must be between 0"):
+        builder.add_memristive_ps(mode=5, update_rule=valid_update, initial_state=0.5)
+
+    # Valid: various initial_state types
+    builder.add_memristive_ps(mode=2, update_rule=valid_update, initial_state=0.5)
+    builder.add_memristive_ps(
+        mode=2,
+        update_rule=valid_update,
+        initial_state=torch.tensor(0.5, dtype=torch.float32),
+    )
+    builder.add_memristive_ps(mode=2, update_rule=valid_update, initial_state=1)
+    builder.add_memristive_ps(
+        mode=2,
+        update_rule=valid_update,
+        initial_state=torch.tensor(1, dtype=torch.int32),
+    )
+
+    # Invalid: complex initial_state
+    with pytest.raises(
+        ValueError, match="The initial_state parameter must be an float"
+    ):
+        builder.add_memristive_ps(
+            mode=2, update_rule=valid_update, initial_state=0.5 + 1.0j
+        )
+
+    # Invalid: complex tensor
+    with pytest.raises(
+        ValueError, match="The initial_state parameter must be an float"
+    ):
+        builder.add_memristive_ps(
+            mode=2,
+            update_rule=valid_update,
+            initial_state=torch.tensor(0.5 + 1.0j),
+        )
+
+    # Invalid: tensor array (not scalar)
+    with pytest.raises(
+        ValueError, match="The initial_state parameter must be an float"
+    ):
+        builder.add_memristive_ps(
+            mode=2, update_rule=valid_update, initial_state=torch.tensor([1.0])
+        )

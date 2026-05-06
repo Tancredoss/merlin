@@ -24,11 +24,14 @@
 Circuit builder for constructing quantum circuits declaratively.
 """
 
+import inspect
 import math
 import numbers
+import types
 from collections.abc import Callable
 from itertools import combinations
-from typing import Any
+import torch
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from ..core.circuit import Circuit
 from ..core.components import (
@@ -431,6 +434,105 @@ class CircuitBuilder:
         factor = float(scale)
         return dict.fromkeys(feature_indices, factor)
 
+    @staticmethod
+    def _validate_memristive_update_rule(update_rule: Callable) -> None:
+        """Validate update_rule signature.
+
+        Expected: update_rule(state: torch.Tensor,
+                             output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement)
+                  -> torch.Tensor
+
+        Raises
+        ------
+        TypeError
+            If signature does not match or annotations are missing/incorrect.
+        """
+        from ..core.partial_measurement import PartialMeasurement
+        from ..core.probability_distribution import ProbabilityDistribution
+        from ..core.state_vector import StateVector
+
+        try:
+            sig = inspect.signature(update_rule)
+        except (ValueError, TypeError) as e:
+            raise TypeError(
+                f"update_rule must be callable with inspectable signature, "
+                f"but got {type(update_rule).__name__}: {e}"
+            ) from e
+
+        params = list(sig.parameters.values())
+        positional_params = [
+            param
+            for param in params
+            if param.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+        ]
+        if len(positional_params) != 2:
+            raise TypeError(
+                f"update_rule must accept exactly 2 positional arguments, got {len(positional_params)}. "
+                f"Expected: update_rule(state: torch.Tensor, "
+                f"output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement) "
+                f"-> torch.Tensor"
+            )
+
+        state_param, output_param = positional_params
+
+        try:
+            resolved_hints = get_type_hints(update_rule)
+        except (
+            Exception
+        ) as e:  # pragma: no cover - defensive guard for unresolvable hints
+            raise TypeError(
+                f"update_rule type annotations could not be resolved: {e}"
+            ) from e
+
+        # Validate state parameter
+        if state_param.name not in resolved_hints:
+            raise TypeError(
+                f"update_rule first parameter '{state_param.name}' requires type annotation: "
+                f"{state_param.name}: torch.Tensor"
+            )
+        state_annotation = resolved_hints[state_param.name]
+        if state_annotation is not torch.Tensor:
+            raise TypeError(
+                f"update_rule first parameter '{state_param.name}' must be torch.Tensor, "
+                f"got {state_annotation}"
+            )
+
+        # Validate output parameter
+        if output_param.name not in resolved_hints:
+            raise TypeError(
+                f"update_rule second parameter '{output_param.name}' requires type annotation: "
+                f"{output_param.name}: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement"
+            )
+
+        expected_types = {
+            torch.Tensor,
+            StateVector,
+            ProbabilityDistribution,
+            PartialMeasurement,
+        }
+        annotation = resolved_hints[output_param.name]
+
+        # Handle Union types (both typing.Union and | notation)
+        origin = get_origin(annotation)
+        if origin in (Union, types.UnionType):
+            union_args = get_args(annotation)
+            for arg in union_args:
+                if arg not in expected_types:
+                    raise TypeError(
+                        f"update_rule second parameter '{output_param.name}' contains unexpected type: {arg}. "
+                        f"Expected union of: torch.Tensor, StateVector, ProbabilityDistribution, PartialMeasurement"
+                    )
+        elif annotation not in expected_types:
+            raise TypeError(
+                f"update_rule second parameter '{output_param.name}' must be annotated as: "
+                f"torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement, "
+                f"got {annotation}"
+            )
+
     def add_memristive_ps(
         self,
         mode: int,
@@ -445,9 +547,9 @@ class CircuitBuilder:
         mode : int
            Circuit mode to target
         update_rule : ~collections.abc.Callable
-           Update rule to change the angle of the phase shifter after each forward pass. The function must take two
-           positional arguments: update_rule(state,output). The update rule must also handle batch inputs and return
-           a tensor of size `[batch_size]`, just like the state parameter. The output will be the same as the forward.
+           update_rule(state,output). The update rule must also handle batch inputs and return
+           a tensor of size ``[batch_size]``, just like the state parameter. The output will be
+           the same as the corresponding :class:`~merlin.algorithms.layer.QuantumLayer` forward.
         initial_state : float
            The initial value of the phase shifter. This will be the value used after each :meth:`~merlin.algorithms.layer.QuantumLayer.reset` call
         name : str | None
@@ -462,10 +564,52 @@ class CircuitBuilder:
         if name is None:
             name = "mem"
 
+        # Verifying the parameters
+        if not isinstance(mode, int):
+            raise ValueError(f"The mode parameter must be an int, got {type(mode)}")
+
+        if mode < 0 or mode >= self.n_modes:
+            raise ValueError(
+                f"The assigned mode must be between 0 and CircuitBuilder.n_modes ({self.n_modes} here). Got {mode}."
+            )
+
+        scalar_initial_state = initial_state
+        if isinstance(initial_state, torch.Tensor):
+            is_valid_tensor_scalar = (
+                initial_state.ndim == 0
+                and not initial_state.is_complex()
+                and (
+                    torch.is_floating_point(initial_state)
+                    or initial_state.dtype
+                    in {
+                        torch.int8,
+                        torch.int16,
+                        torch.int32,
+                        torch.int64,
+                        torch.uint8,
+                    }
+                )
+            )
+            if not is_valid_tensor_scalar:
+                raise ValueError(
+                    f"The initial_state parameter must be an float, got {type(initial_state)}"
+                )
+            scalar_initial_state = initial_state.item()
+        elif not isinstance(initial_state, numbers.Real):
+            raise ValueError(
+                f"The initial_state parameter must be an float, got {type(initial_state)}"
+            )
+
+        # Validate update_rule signature before accepting it
+        self._validate_memristive_update_rule(update_rule)
+
         # Assign contiguous logical feature indices so downstream encoders do not rely on physical modes
 
         self.add_rotations(
-            modes=mode, role=ParameterRole.MEMRISTOR, name=name, value=initial_state
+            modes=mode,
+            role=ParameterRole.MEMRISTOR,
+            name=name,
+            value=scalar_initial_state,
         )
 
         self.memristor_specs.append(
@@ -473,7 +617,7 @@ class CircuitBuilder:
                 "target_mode": mode,
                 "name": f"{name}{self._memristor_counter}",
                 "update_rule": update_rule,
-                "initial_state": initial_state,
+                "initial_state": scalar_initial_state,
             }
         )
         return self

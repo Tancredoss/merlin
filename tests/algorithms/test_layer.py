@@ -25,7 +25,7 @@ Tests for the main QuantumLayer class.
 """
 
 import math
-
+from copy import deepcopy
 import numpy as np
 import perceval as pcvl
 import pytest
@@ -302,10 +302,12 @@ class TestQuantumLayer:
 
         amplitude = torch.rand(len(layer.output_keys))
         remaining_input = torch.rand(2)
-        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input([
-            amplitude,
-            remaining_input,
-        ])
+        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input(
+            [
+                amplitude,
+                remaining_input,
+            ]
+        )
 
         assert saved_state is original_state
         assert remaining[0] is remaining_input
@@ -346,10 +348,12 @@ class TestQuantumLayer:
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
 
-        params, batch_dim = layer._prepare_classical_parameters([
-            torch.rand(2, 2),
-            torch.rand(2, 2),
-        ])
+        params, batch_dim = layer._prepare_classical_parameters(
+            [
+                torch.rand(2, 2),
+                torch.rand(2, 2),
+            ]
+        )
 
         assert batch_dim == 2
         assert len(params) >= 2
@@ -937,9 +941,9 @@ class TestQuantumLayer:
         assert model[1].out_features == 3
         # Check that it has trainable parameters (only in Linear layer)
         trainable_params_layer = [p for p in layer.parameters() if p.requires_grad]
-        assert len(trainable_params_layer) == 0, (
-            "Layer should have no trainable parameters"
-        )
+        assert (
+            len(trainable_params_layer) == 0
+        ), "Layer should have no trainable parameters"
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         assert len(trainable_params) > 0, "Model should have trainable parameters"
 
@@ -1694,6 +1698,320 @@ class TestQuantumLayer:
         assert metadata[name_to_index["mem2"]]["update_rule"] == update_rule_exp
         assert current_state[name_to_index["mem1"]] == torch.Tensor([1.2])
         assert current_state[name_to_index["mem2"]] == torch.Tensor([0.01])
+
+    def test_memristor_gradient_flow(self):
+        def update_rule(state: torch.Tensor, output: torch.Tensor):
+            return state + output[:, 0]
+
+        def update_rule_exp(state: torch.Tensor, output: torch.Tensor):
+            return torch.exp(state + output[:, 0])
+
+        circ = ML.CircuitBuilder(n_modes=3)
+        circ.add_entangling_layer()
+        circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
+        circ.add_memristive_ps(mode=0, update_rule=update_rule_exp, initial_state=0.01)
+        circ.add_entangling_layer()
+
+        ql = ML.QuantumLayer(
+            builder=circ,
+            n_photons=3,
+            measurement_strategy=ML.MeasurementStrategy.probs(
+                computation_space=ML.ComputationSpace.FOCK
+            ),
+        )
+
+        # Check that the returned tensor remains attached to autograd even though
+        # memristive state updates use a detached copy internally.
+        output = ql()
+
+        assert isinstance(output, torch.Tensor)
+        assert output.requires_grad
+        assert output.grad_fn is not None
+
+        trainable_params = [param for param in ql.parameters() if param.requires_grad]
+        assert trainable_params
+        params_before_step = [param.detach().clone() for param in trainable_params]
+
+        opt = torch.optim.Adam(trainable_params)
+
+        weights = torch.arange(
+            1,
+            output.shape[-1] + 1,
+            device=output.device,
+            dtype=output.dtype,
+        )
+        loss = (output * weights).sum()
+        loss.backward()
+
+        assert all(param.grad is not None for param in trainable_params)
+        assert all(torch.isfinite(param.grad).all() for param in trainable_params)
+        assert any(torch.any(param.grad != 0) for param in trainable_params)
+
+        opt.step()
+
+        assert any(
+            not torch.allclose(param_before, param_after)
+            for param_before, param_after in zip(
+                params_before_step, trainable_params, strict=True
+            )
+        )
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_memristor_works_on_cuda(self):
+        def update_rule(state: torch.Tensor, output: torch.Tensor):
+            return state + output[:, 0]
+
+        def update_rule_exp(state: torch.Tensor, output: torch.Tensor):
+            return torch.exp(state + output[:, 0])
+
+        circ = ML.CircuitBuilder(n_modes=3)
+        circ.add_entangling_layer()
+        circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
+        circ.add_memristive_ps(mode=0, update_rule=update_rule_exp, initial_state=0.01)
+        circ.add_entangling_layer()
+        circ.add_angle_encoding(modes=[0, 2])
+
+        ql = ML.QuantumLayer(
+            builder=circ,
+            n_photons=3,
+            measurement_strategy=ML.MeasurementStrategy.probs(
+                computation_space=ML.ComputationSpace.FOCK
+            ),
+        )
+        # Copy to check the memristor states are correclty moved
+        ql_copy = deepcopy(ql)
+        ql = ql.to(torch.device("cuda"))
+
+        # Initial metadata check
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert ql.memristive_history[0][0].device == torch.device("cuda")
+        assert ql._memristive_state[0].device == torch.device("cuda")
+
+        assert torch.allclose(
+            ql.memristive_state[0], torch.Tensor([[1.2]]).to(torch.device("cuda"))
+        )
+        assert torch.allclose(
+            ql.memristive_state[1], torch.Tensor([[0.01]]).to(torch.device("cuda"))
+        )
+
+        assert ql.memristive_history[0][0] == ql.memristive_state[0]
+        assert ql.memristive_history[1][0] == ql.memristive_state[1]
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristor_specs
+
+        ql.reset(batch_size=5)
+
+        # Initial metadata check after reset
+        assert ql.input_size == 2
+
+        assert torch.allclose(
+            ql.memristive_state[0], torch.Tensor([[1.2] * 5]).to(torch.device("cuda"))
+        )
+        assert torch.allclose(
+            ql.memristive_state[1], torch.Tensor([[0.01] * 5]).to(torch.device("cuda"))
+        )
+
+        assert torch.allclose(ql.memristive_history[0][0], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][0], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristor_specs
+
+        input_1 = torch.zeros([5, 2])
+        first_output = ql(input_1)
+
+        # Metadata check after one pass
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert ql.memristive_history[0][0].device == torch.device("cuda")
+        assert ql._memristive_state[0].device == torch.device("cuda")
+
+        new_state_0_t1 = update_rule(
+            torch.Tensor([1.2] * 5), first_output.to(torch.device("cpu"))
+        ).to(torch.device("cuda"))
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t1)
+        new_state_1_t1 = update_rule_exp(
+            torch.Tensor([0.01] * 5), first_output.to(torch.device("cpu"))
+        ).to(torch.device("cuda"))
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t1)
+
+        assert torch.allclose(
+            ql.memristive_history[0][0],
+            torch.Tensor([[1.2] * 5]).to(torch.device("cuda")),
+        )
+        assert torch.allclose(
+            ql.memristive_history[1][0],
+            torch.Tensor([[0.01] * 5]).to(torch.device("cuda")),
+        )
+        assert torch.allclose(ql.memristive_history[0][1], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][1], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 2
+
+        assert ql._memristive_metadata == circ.memristor_specs
+
+        input_2 = torch.arange(10).reshape([5, 2])
+        second_output = ql(input_2)
+
+        # Metadata check after two passes
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert ql.memristive_history[0][0].device == torch.device("cuda")
+        assert ql._memristive_state[0].device == torch.device("cuda")
+
+        new_state_0_t2 = update_rule(
+            new_state_0_t1, second_output.to(torch.device("cpu"))
+        ).to(torch.device("cuda"))
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t2)
+        new_state_1_t2 = update_rule_exp(
+            new_state_1_t1, second_output.to(torch.device("cpu"))
+        ).to(torch.device("cuda"))
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t2)
+
+        assert torch.allclose(
+            ql.memristive_history[0][0],
+            torch.Tensor([[1.2] * 5]).to(torch.device("cuda")),
+        )
+        assert torch.allclose(
+            ql.memristive_history[1][0],
+            torch.Tensor([[0.01] * 5]).to(torch.device("cuda")),
+        )
+        assert torch.allclose(ql.memristive_history[0][1], new_state_0_t1)
+        assert torch.allclose(ql.memristive_history[1][1], new_state_1_t1)
+        assert torch.allclose(ql.memristive_history[0][2], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][2], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 3
+
+        assert ql._memristive_metadata == circ.memristor_specs
+
+        # Metadata check after smaller last batch
+        input_3 = torch.arange(15, 21).reshape([3, 2]).to(torch.device("cuda"))
+        third_output = ql(input_3)
+
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert ql.memristive_history[0][0].device == torch.device("cuda")
+        assert ql._memristive_state[0].device == torch.device("cuda")
+        new_state_0_t3 = update_rule(
+            new_state_0_t2[:3], third_output.to(torch.device("cpu"))
+        ).to(torch.device("cuda"))
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t3)
+        new_state_1_t3 = update_rule_exp(
+            new_state_1_t2[:3], third_output.to(torch.device("cpu"))
+        ).to(torch.device("cuda"))
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t3)
+
+        assert torch.allclose(
+            ql.memristive_history[0][0],
+            torch.Tensor([[1.2] * 5]).to(torch.device("cuda")),
+        )
+        assert torch.allclose(
+            ql.memristive_history[1][0],
+            torch.Tensor([[0.01] * 5]).to(torch.device("cuda")),
+        )
+        assert torch.allclose(ql.memristive_history[0][1], new_state_0_t1)
+        assert torch.allclose(ql.memristive_history[1][1], new_state_1_t1)
+        assert torch.allclose(ql.memristive_history[0][2], new_state_0_t2)
+        assert torch.allclose(ql.memristive_history[1][2], new_state_1_t2)
+        assert torch.allclose(ql.memristive_history[0][3], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][3], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 4
+        assert ql.memristive_history[0][0].size(0) == 5
+        assert ql.memristive_history[0][3].size(0) == 3
+
+        assert ql._memristive_metadata == circ.memristor_specs
+
+        ql.reset()
+
+        # Metadata check after a reset
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert ql.memristive_history[0][0].device == torch.device("cuda")
+        assert ql._memristive_state[0].device == torch.device("cuda")
+
+        assert torch.allclose(
+            ql.memristive_state[0], torch.Tensor([[1.2]]).to(torch.device("cuda"))
+        )
+        assert torch.allclose(
+            ql.memristive_state[1], torch.Tensor([[0.01]]).to(torch.device("cuda"))
+        )
+
+        assert ql.memristive_history[0][0] == ql.memristive_state[0]
+        assert ql.memristive_history[1][0] == ql.memristive_state[1]
+        assert len(ql.memristive_history[0]) == 1
+        assert len(ql.memristive_history[1]) == 1
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristor_specs
+
+        # Running again after a reset
+        try:
+            ql(torch.Tensor([[0, 0]]).to(torch.device("cuda")))
+        except Exception as e:
+            pytest.fail(f"Unexpected exception raised: {e}")
+
+        # Running three forward and seeing if the input is correctly moved
+        ql_copy(input_1)
+        ql_copy(input_2)
+        ql_copy(input_3)
+        ql_copy.to(torch.device("cuda"))
+
+        assert ql_copy.memristive_history[0][0].device == torch.device("cuda")
+        assert ql_copy._memristive_state[0].device == torch.device("cuda")
+        assert ql_copy.input_size == 2
+        assert "mem0" not in ql_copy.input_parameters
+        assert "mem1" not in ql_copy.input_parameters
+
+        assert torch.allclose(
+            ql_copy.memristive_history[0][0],
+            torch.Tensor([[1.2] * 5]).to(torch.device("cuda")),
+        )
+        assert torch.allclose(
+            ql_copy.memristive_history[1][0],
+            torch.Tensor([[0.01] * 5]).to(torch.device("cuda")),
+        )
+        assert torch.allclose(ql_copy.memristive_history[0][1], new_state_0_t1)
+        assert torch.allclose(ql_copy.memristive_history[1][1], new_state_1_t1)
+        assert torch.allclose(ql_copy.memristive_history[0][2], new_state_0_t2)
+        assert torch.allclose(ql_copy.memristive_history[1][2], new_state_1_t2)
+        assert torch.allclose(
+            ql_copy.memristive_history[0][3], ql_copy.memristive_state[0]
+        )
+        assert torch.allclose(
+            ql_copy.memristive_history[1][3], ql_copy.memristive_state[1]
+        )
+        assert len(ql_copy.memristive_history) == len(ql_copy.memristive_state) == 2
+        assert (
+            len(ql_copy.memristive_history[0])
+            == len(ql_copy.memristive_history[1])
+            == 4
+        )
+        assert ql_copy.memristive_history[0][0].size(0) == 5
+        assert ql_copy.memristive_history[0][3].size(0) == 3
+
+        assert ql_copy._memristive_metadata == circ.memristor_specs
+
+        # Moving the data back
+        ql_copy.to(torch.device("cpu"))
+        assert ql_copy.memristive_history[0][0].device == torch.device("cpu")
+        assert ql_copy._memristive_state[0].device == torch.device("cpu")
 
 
 def test_simple_num_photons_modes_and_input_state():

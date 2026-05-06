@@ -123,9 +123,9 @@ Adds a memristive phase-shifter.
 Arguments:
 
 - ``mode`` (``int``): Circuit mode to target.
-- ``update_rule`` (``callable``): Update rule to change the angle of the phase shifter after each forward pass. The function must take two
+- ``update_rule`` (``callable``): Update rule to change the angle of the phase shifter after each forward pass of associated the :class:`~merlin.algorithms.layer.QuantumLayer` object. The function must take two
    positional arguments: update_rule(state,output). The update rule must also handle batch inputs and return
-   a tensor of size ``[batch_size]``, just like the state parameter. The output will be the same as the forward.
+   a tensor of size ``[batch_size]``, just like the state parameter. The output will be the same as the corresponding :class:`~merlin.algorithms.layer.QuantumLayer` forward.
 - ``initial_state`` (``float``): The initial value of the phase shifter. This will be the value used after each :meth:`~merlin.algorithms.layer.QuantumLayer.reset` call.
 - ``name`` (``str``): Prefix used for the generated memristive phase shifter parameter. Defaults to ``"mem"``.
 
