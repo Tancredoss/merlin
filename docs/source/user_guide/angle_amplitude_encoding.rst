@@ -240,7 +240,7 @@ internal active-support representation:
    active basis indices + compact coefficient tensor [batch_size, nnz]
 
 Only those active Fock components are propagated through the simulator. Merlin
-processes them in chunks, calls the batched simulation kernel for each chunk,
+processes them in chunks, calls the batched simulator routine for each chunk,
 weights the returned amplitudes by the corresponding input coefficients, and
 accumulates directly into the final dense output tensor.
 
