@@ -228,10 +228,10 @@ def embed_tensor_in_fock_basis(
         raise ValueError("Amplitude input must be at least one-dimensional.")
 
     feature_dim = tensor.shape[-1]
-    fock_basis = Combinadics("fock", n_photons, n_modes)
-    fock_size = fock_basis.compute_space_size()
+    fock_size = _basis_size(n_modes, n_photons)
     if feature_dim == fock_size:
         return tensor
+    fock_basis = _basis_for(n_modes, n_photons)
 
     space = ComputationSpace.coerce(computation_space)
     candidate_schemes: list[str] = []

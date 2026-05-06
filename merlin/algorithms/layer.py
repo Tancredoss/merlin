@@ -418,13 +418,8 @@ class QuantumLayer(MerlinModule):
 
         # If input_state was a StateVector, set the actual tensor now (after init to bypass validation)
         if statevector_input is not None:
-            sv_tensor = statevector_input.to_dense()
-            if sv_tensor.device != self.device:
-                sv_tensor = sv_tensor.to(self.device)
-            if sv_tensor.dtype != self.complex_dtype:
-                sv_tensor = sv_tensor.to(self.complex_dtype)
             self.computation_process.input_state = self._embed_amplitude_tensor(
-                sv_tensor
+                self._statevector_tensor(statevector_input)
             )
 
         # Setup PhotonLossTransform & DetectorTransform
@@ -717,11 +712,7 @@ class QuantumLayer(MerlinModule):
             return
 
         if isinstance(input_state, StateVector):
-            tensor_state = input_state.to_dense()
-            if tensor_state.device != self.device:
-                tensor_state = tensor_state.to(self.device)
-            if tensor_state.dtype != self.complex_dtype:
-                tensor_state = tensor_state.to(self.complex_dtype)
+            tensor_state = self._statevector_tensor(input_state)
             embedded = self._embed_amplitude_tensor(tensor_state)
             self.input_state = input_state
             self.computation_process.input_state = embedded
@@ -736,6 +727,18 @@ class QuantumLayer(MerlinModule):
 
         self.input_state = input_state
         self.computation_process.input_state = input_state
+
+    def _statevector_tensor(self, statevector: StateVector) -> torch.Tensor:
+        """Return the wrapped amplitude tensor without changing sparse layout."""
+        tensor = statevector.tensor
+        if self.device is not None and tensor.device != self.device:
+            tensor = tensor.to(self.device)
+        if tensor.dtype != self.complex_dtype:
+            if tensor.is_complex():
+                tensor = tensor.to(self.complex_dtype)
+            else:
+                tensor = tensor.to(self.dtype)
+        return tensor
 
     def prepare_parameters(
         self, input_parameters: list[torch.Tensor]
@@ -846,7 +849,7 @@ class QuantumLayer(MerlinModule):
                     "Use either tensor inputs (angle encoding) or StateVector (amplitude encoding)."
                 )
             sv = input_parameters[0]
-            amplitude_tensor = sv.to_dense()
+            amplitude_tensor = self._statevector_tensor(sv)
             amplitude_input = self._embed_amplitude_tensor(
                 self._validate_amplitude_input(amplitude_tensor)
             )
@@ -1026,7 +1029,17 @@ class QuantumLayer(MerlinModule):
                 return self.computation_process.compute_ebs_simultaneously(
                     params, simultaneous_processes=chunk
                 )
-            return self.computation_process.compute_superposition_state(params)
+            if simultaneous_processes is None:
+                return cast(
+                    torch.Tensor,
+                    self.computation_process.compute_superposition_state(params),
+                )
+            return cast(
+                torch.Tensor,
+                self.computation_process.compute_superposition_state(
+                    params, simultaneous_processes=simultaneous_processes
+                ),
+            )
         return self.computation_process.compute(params)
 
     def _renormalize_distribution_and_amplitudes(
@@ -1060,7 +1073,8 @@ class QuantumLayer(MerlinModule):
         if amplitude_input is None:
             yield
             return
-        self.set_input_state(amplitude_input)
+        self.input_state = amplitude_input
+        self.computation_process.input_state = amplitude_input
         try:
             yield
         finally:
