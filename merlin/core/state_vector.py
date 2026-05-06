@@ -41,6 +41,7 @@ import torch
 
 from ..utils.combinadics import Combinadics
 from ..utils.dtypes import complex_dtype_for
+from .computation_space import ComputationSpace
 
 Scalar = float | int | complex
 
@@ -153,6 +154,128 @@ def _ensure_last_dim(tensor: torch.Tensor, expected: int) -> None:
         raise ValueError(
             f"Tensor last dimension {tensor.shape[-1]} does not match basis size {expected}."
         )
+
+
+def _remap_last_dim(
+    tensor: torch.Tensor, indices: list[int], target_dim: int
+) -> torch.Tensor:
+    if tensor.is_sparse:
+        coalesced = tensor.coalesce()
+        sparse_indices = coalesced.indices().clone()
+        sparse_values = coalesced.values()
+        if sparse_indices.numel() == 0:
+            shape = list(coalesced.shape)
+            shape[-1] = target_dim
+            return torch.sparse_coo_tensor(
+                sparse_indices,
+                sparse_values,
+                tuple(shape),
+                device=coalesced.device,
+            )
+        index_lookup = torch.tensor(indices, dtype=torch.long, device=coalesced.device)
+        sparse_indices[-1] = index_lookup[sparse_indices[-1]]
+        shape = list(coalesced.shape)
+        shape[-1] = target_dim
+        return torch.sparse_coo_tensor(
+            sparse_indices,
+            sparse_values,
+            tuple(shape),
+            device=coalesced.device,
+        )
+
+    expanded_shape = list(tensor.shape)
+    expanded_shape[-1] = target_dim
+    expanded = tensor.new_zeros(tuple(expanded_shape))
+    index_tensor = torch.tensor(indices, dtype=torch.long, device=tensor.device)
+    expanded.index_copy_(-1, index_tensor, tensor)
+    return expanded
+
+
+def embed_tensor_in_fock_basis(
+    tensor: torch.Tensor,
+    *,
+    n_modes: int,
+    n_photons: int,
+    computation_space: ComputationSpace | str,
+) -> torch.Tensor:
+    """Embed a compact logical tensor into the full Fock basis when applicable.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        Dense or sparse amplitude tensor in either Fock ordering or a compact
+        logical ordering compatible with the provided computation space.
+    n_modes : int
+        Number of photonic modes.
+    n_photons : int
+        Total number of photons.
+    computation_space : ComputationSpace | str
+        Logical ordering associated with ``tensor``.
+
+    Returns
+    -------
+    torch.Tensor
+        Tensor expressed in the full Fock basis. If ``tensor`` is already in
+        Fock ordering, it is returned unchanged.
+
+    Raises
+    ------
+    ValueError
+        If the tensor shape is not compatible with a supported compact input
+        ordering.
+    """
+    if tensor.dim() == 0:
+        raise ValueError("Amplitude input must be at least one-dimensional.")
+
+    feature_dim = tensor.shape[-1]
+    fock_basis = Combinadics("fock", n_photons, n_modes)
+    fock_size = fock_basis.compute_space_size()
+    if feature_dim == fock_size:
+        return tensor
+
+    space = ComputationSpace.coerce(computation_space)
+    candidate_schemes: list[str] = []
+    if space is ComputationSpace.UNBUNCHED:
+        candidate_schemes.append("unbunched")
+    elif space is ComputationSpace.DUAL_RAIL:
+        candidate_schemes.append("dual_rail")
+    elif space is ComputationSpace.FOCK:
+        # Preserve the current compact-input behaviour for collision-free
+        # states in Fock mode until explicit encoding selection lands.
+        candidate_schemes.append("unbunched")
+
+    for scheme in candidate_schemes:
+        try:
+            logical_basis = Combinadics(scheme, n_photons, n_modes)
+        except ValueError:
+            continue
+        if feature_dim != logical_basis.compute_space_size():
+            continue
+        indices = [fock_basis.fock_to_index(state) for state in logical_basis]
+        return _remap_last_dim(tensor, indices, fock_size)
+
+    if space is ComputationSpace.FOCK:
+        detail = (
+            f"expected either Fock size {fock_size} or compact unbunched size "
+            f"{Combinadics('unbunched', n_photons, n_modes).compute_space_size()}"
+            if n_photons <= n_modes
+            else f"expected Fock size {fock_size}"
+        )
+    elif space is ComputationSpace.UNBUNCHED:
+        detail = (
+            f"expected compact unbunched size "
+            f"{Combinadics('unbunched', n_photons, n_modes).compute_space_size()} "
+            f"or full Fock size {fock_size}"
+        )
+    else:
+        detail = (
+            f"expected compact dual_rail size "
+            f"{Combinadics('dual_rail', n_photons, n_modes).compute_space_size()} "
+            f"or full Fock size {fock_size}"
+        )
+    raise ValueError(
+        f"Amplitude input dimension mismatch: got {feature_dim}, {detail}."
+    )
 
 
 def _basic_state_counts(state: Sequence[int] | pcvl.BasicState) -> tuple[int, ...]:

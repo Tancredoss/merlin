@@ -24,7 +24,6 @@
 Quantum computation processes and factories.
 """
 
-import math
 from typing import Literal, overload
 
 import perceval as pcvl
@@ -137,6 +136,10 @@ class ComputationProcess(AbstractComputationProcess):
             state_tensor: torch.Tensor = self.input_state
             self._validate_superposition_state_shape(state_tensor)
 
+    def _input_basis_states(self) -> list[tuple[int, ...]]:
+        """Enumerate the full Fock basis used for superposition inputs."""
+        return Combinadics("fock", self.n_photons, self.m).enumerate_states()
+
     def _setup_computation_graphs(self):
         """Setup unitary and simulation computation graphs."""
         # Determine parameter specs
@@ -229,8 +232,9 @@ class ComputationProcess(AbstractComputationProcess):
 
         masked_input_state = (~mask).int().tolist()
 
+        fock_basis_states = self._input_basis_states()
         input_states = [
-            (k, self.simulation_graph.mapped_keys[k])
+            (k, fock_basis_states[k])
             for k, mask in enumerate(masked_input_state)
             if mask == 1
         ]
@@ -321,8 +325,8 @@ class ComputationProcess(AbstractComputationProcess):
               ``self.input_state`` live on the same device.
         """
 
-        # input state was validated by _prepare_superposition_tensor, ie: renormalized, typed, and converted from logical basis to fock basis (if shape did not match)
-        # we don't want anymore the logical basis but normalization and typing cannot hurt even if it is a small overhead
+        # The layer now hands ComputationProcess a full-Fock superposition
+        # tensor, so this step only validates, normalizes, and casts it.
         prepared_state = self._prepare_superposition_tensor()
 
         unitary = self.converter.to_tensor(*parameters)
@@ -335,8 +339,9 @@ class ComputationProcess(AbstractComputationProcess):
         # Find non-zero input states - for efficient processing of only not zero amplitude states
         mask = (prepared_state.real**2 + prepared_state.imag**2 < 1e-13).all(dim=0)
         masked_input_state = (~mask).int().tolist()
+        fock_basis_states = self._input_basis_states()
         input_states = [
-            (k, self.simulation_graph.mapped_keys[k])
+            (k, fock_basis_states[k])
             for k, mask in enumerate(masked_input_state)
             if mask == 1
         ]
@@ -409,30 +414,8 @@ class ComputationProcess(AbstractComputationProcess):
 
         return keys, amplitudes
 
-    def _expected_superposition_size(self) -> int:
-        """Expected number of Fock states given current computation space."""
-        if self.n_photons < 0:
-            raise ValueError("Number of photons must be non-negative.")
-        if self.computation_space is ComputationSpace.DUAL_RAIL:
-            if self.n_photons is None:
-                raise ValueError("Dual-rail encoding requires 'n_photons'.")
-            if self.m != 2 * self.n_photons:
-                raise ValueError(
-                    "Dual-rail encoding requires the number of modes to equal 2 * n_photons."
-                )
-            # Dual-rail limits to 2**n logical states (one photon per rail pair).
-            return 2**self.n_photons
-        if self.computation_space is ComputationSpace.UNBUNCHED:
-            if self.n_photons > self.m:
-                raise ValueError(
-                    "Invalid configuration: ComputationSpace.UNBUNCHED requires "
-                    "n_photons to be less than or equal to the number of modes."
-                )
-            return math.comb(self.m, self.n_photons)
-        return math.comb(self.m + self.n_photons - 1, self.n_photons)
-
     def _validate_superposition_state_shape(self, input_state: torch.Tensor) -> None:
-        """Ensure the provided superposition state matches the configured computation space."""
+        """Ensure the provided superposition state matches the full Fock basis."""
         if not isinstance(input_state, torch.Tensor):
             raise TypeError("Input state should be a tensor")
 
@@ -445,96 +428,13 @@ class ComputationProcess(AbstractComputationProcess):
                 f"Superposed input state must be 1D or 2D tensor, got shape {tuple(input_state.shape)}"
             )
 
-        expected = self._expected_superposition_size()
+        expected = Combinadics("fock", self.n_photons, self.m).compute_space_size()
         if state_dim != expected:
-            if (
-                self.computation_space is ComputationSpace.DUAL_RAIL
-                and state_dim == len(self.simulation_graph.mapped_keys)
-            ):
-                return
-            if self.computation_space is ComputationSpace.DUAL_RAIL:
-                explanation = (
-                    f"expected 2**n_photons = 2**{self.n_photons} = {expected}"
-                )
-            elif self.computation_space is ComputationSpace.UNBUNCHED:
-                explanation = f"expected C(m, n_photons) = C({self.m}, {self.n_photons}) = {expected}"
-            else:
-                explanation = (
-                    f"expected C(m + n_photons - 1, n_photons) = "
-                    f"C({self.m + self.n_photons - 1}, {self.n_photons}) = {expected}"
-                )
             raise ValueError(
-                "Input state dimension mismatch for computation_space "
-                f"'{self.computation_space}': got {state_dim}, {explanation}."
+                "Input state dimension mismatch for Fock basis: "
+                f"got {state_dim}, expected C(m + n_photons - 1, n_photons) = "
+                f"C({self.m + self.n_photons - 1}, {self.n_photons}) = {expected}."
             )
-
-    def _should_defer_state_validation(self, tensor: torch.Tensor) -> bool:
-        """Detect amplitude tensors that will be validated after configuring dual-rail space."""
-        if tensor.dim() == 1:
-            state_dim = tensor.shape[0]
-        elif tensor.dim() == 2:
-            state_dim = tensor.shape[1]
-        else:
-            return False
-
-        if self.n_photons is None or self.m is None:
-            return False
-
-        return (
-            self.computation_space is ComputationSpace.UNBUNCHED
-            and self.m == 2 * self.n_photons
-            and state_dim == 2**self.n_photons
-        )
-
-    def _coerce_superposition_tensor_shape(
-        self, tensor: torch.Tensor
-    ) -> torch.Tensor | None:
-        """Attempt to reconcile tensors encoded in a smaller logical basis."""
-        if self.computation_space is not ComputationSpace.FOCK:
-            return None
-
-        if self.n_photons is None or self.m is None:
-            return None
-
-        if tensor.dim() == 1:
-            feature_dim = tensor.shape[0]
-        elif tensor.dim() == 2:
-            feature_dim = tensor.shape[1]
-        else:
-            return None
-
-        # Detect tensors encoded in the UNBUNCHED basis and lift them to the Fock basis.
-        unbunched_size = math.comb(self.m, self.n_photons)
-        if feature_dim != unbunched_size:
-            return None
-
-        mapped_keys = [
-            tuple(key)
-            for key in self.simulation_graph.mapped_keys  # type: ignore[attr-defined]
-        ]
-        key_to_index = {state: idx for idx, state in enumerate(mapped_keys)}
-
-        try:
-            combinator = Combinadics("unbunched", self.n_photons, self.m)
-        except ValueError:
-            return None
-
-        indices: list[int] = []
-        for state in combinator.iter_states():
-            index = key_to_index.get(state)
-            if index is None:
-                return None
-            indices.append(index)
-
-        target_dim = len(mapped_keys)
-        if tensor.dim() == 1:
-            expanded = tensor.new_zeros(target_dim)
-            expanded[indices] = tensor
-        else:
-            expanded = tensor.new_zeros(tensor.shape[0], target_dim)
-            expanded[:, indices] = tensor
-
-        return expanded
 
     def _prepare_superposition_tensor(self) -> torch.Tensor:
         """Validate, normalise, and convert the stored superposition state to the correct dtype."""
@@ -542,10 +442,6 @@ class ComputationProcess(AbstractComputationProcess):
             raise TypeError("Input state should be a tensor")
 
         tensor = self.input_state
-
-        coerced = self._coerce_superposition_tensor_shape(tensor)
-        if coerced is not None:
-            tensor = coerced
 
         self._validate_superposition_state_shape(tensor)
 
