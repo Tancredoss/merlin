@@ -102,7 +102,11 @@ class QCNNClassifier(torch.nn.Module):
         """
         super().__init__()
         self.num_classes = num_classes
-        self.stages: list[QCNNClassifier._Stage] = stages
+        self.stages: list[QCNNClassifier._Stage] | None
+        if stages is None:
+            self.stages = None
+        else:
+            self.stages = list(stages)
 
         # Verify inputs
         if not isinstance(input_shape, (tuple, list)):
