@@ -11,6 +11,7 @@ from merlin import MeasurementStrategy, QuantumLayer
 from merlin.builder import CircuitBuilder
 from merlin.core.components import (
     BeamSplitter,
+    EntanglingBlock,
     GenericInterferometer,
     ParameterRole,
     Rotation,
@@ -732,6 +733,7 @@ def test_memristive_own_type_of_parameter():
     builder.add_rotations(trainable=True)
     builder.add_rotations(trainable=False)
     builder.add_superpositions()
+    builder.add_entangling_layer()
 
     builder.add_memristive_ps(mode=0, update_rule=exponential_decay, initial_state=1)
     builder.add_memristive_ps(mode=1, update_rule=sum_outputs, initial_state=1000)
@@ -742,6 +744,7 @@ def test_memristive_own_type_of_parameter():
     builder.add_rotations(trainable=True)
     builder.add_rotations(trainable=False)
     builder.add_superpositions()
+    builder.add_entangling_layer()
 
     assert builder._memristor_prefixes == ["mem", "mem", "mem", "mem"]
     assert builder._memristor_counter == 4
@@ -781,13 +784,18 @@ def test_memristive_own_type_of_parameter():
     num_memristor = 0
     num_other = 0
     for component in builder.circuit.components:
-        if component.role is ParameterRole.MEMRISTOR:
-            assert component.custom_name in custom_names
-            assert isinstance(component, Rotation)
-            num_memristor += 1
-        else:
-            assert component.custom_name not in custom_names
+        if isinstance(component, EntanglingBlock):
             num_other += 1
+        elif isinstance(component, GenericInterferometer):
+            num_other += 1
+        else:
+            if component.role is ParameterRole.MEMRISTOR:
+                assert component.custom_name in custom_names
+                assert isinstance(component, Rotation)
+                num_memristor += 1
+            else:
+                assert component.custom_name not in custom_names
+                num_other += 1
 
     assert num_memristor == 4
     assert num_other > 0

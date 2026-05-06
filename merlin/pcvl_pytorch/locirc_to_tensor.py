@@ -276,7 +276,7 @@ class CircuitConverter:
                     c.to(dtype=self.tensor_cdtype, device=self.device),
                 )
         # Memristive current state
-        for state in range(self.memristive_current_state):
+        for state in range(len(self.memristive_current_state)):
             self.memristive_current_state[state] = self.memristive_current_state[
                 state
             ].to(self.dtype, device)

@@ -319,11 +319,11 @@ class QuantumLayer(MerlinModule):
             else []
         )
         self.memristive_history = [
-            [torch.Tensor([i["initial_state"]], device=device, dtype=dtype)]
+            [torch.tensor([i["initial_state"]], device=device, dtype=dtype)]
             for i in self._memristive_metadata
         ]
         self.memristive_state = [
-            torch.Tensor([i["initial_state"]], device=device, dtype=dtype)
+            torch.tensor([i["initial_state"]], device=device, dtype=dtype)
             for i in self._memristive_metadata
         ]
         self._memristive_smaller_last_batch = False
@@ -1183,13 +1183,13 @@ class QuantumLayer(MerlinModule):
                 self._detector_transform = self._detector_transform.to(device)
 
             # memristor state and history
-            for state in range(self.memristive_history):
-                for t in range(state):
+            for state in range(len(self.memristive_history)):
+                for t in range(len(state)):
                     self.memristive_history[state][t] = self.memristive_history[state][
                         t
                     ].to(self.dtype, device)
 
-            for state in range(self.memristive_state):
+            for state in range(len(self.memristive_state)):
                 self.memristive_state[state] = self.memristive_state[state].to(
                     self.dtype, device
                 )
