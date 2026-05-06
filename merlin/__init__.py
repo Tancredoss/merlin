@@ -59,7 +59,6 @@ from .measurement import (
 from .measurement.autodiff import AutoDiffProcess
 from .measurement.process import SamplingProcess
 from .measurement.strategies import MeasurementStrategy
-from .models.qcnn import QCNNClassifier
 from .pcvl_pytorch import CircuitConverter, build_slos_distribution_computegraph
 from .utils.combinadics import Combinadics
 from .utils.grouping import LexGrouping, ModGrouping
@@ -74,7 +73,6 @@ __all__ = [
     # Core classes (most common usage)
     "QuantumLayer",
     "QuantumBridge",
-    "QCNNClassifier",
     # Configuration enums
     "ComputationSpace",
     "MeasurementStrategy",

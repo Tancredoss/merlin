@@ -545,14 +545,11 @@ class DetectorTransform(torch.nn.Module):
                 probabilities = probabilities.reshape(())
 
             if local_dim > 0:
-                # Guard against tiny negative numerical noise before sqrt.
-                safe_probabilities = torch.clamp(probabilities, min=1e-30)
-                normalization = safe_probabilities.sqrt()
-                zero_mask = probabilities <= 0
+                normalization = probabilities.sqrt()
                 if amplitudes_view.ndim == normalization.ndim + 1:
                     normalization = normalization.unsqueeze(-1)
-                    zero_mask = zero_mask.unsqueeze(-1)
                 normalization = normalization.to(amplitudes_view.dtype)
+                zero_mask = normalization == 0
                 safe_norm = torch.where(
                     zero_mask,
                     torch.ones_like(normalization),

@@ -680,16 +680,7 @@ class QuantumLayer(MerlinModule):
                 "Amplitude-encoded inputs must be 1D (single state) or 2D (batch of states) tensors"
             )
 
-        # With partial measurement, the amplitude input size cannot be verified using `output_keys` (reduced by the partial measurement)
-        # Instead it should be confirmed with `_raw_output_keys`.
-        if (
-            isinstance(self.measurement_strategy, MeasurementStrategy)
-            and self.measurement_strategy.type is MeasurementKind.PARTIAL
-        ):
-            expected_dim = len(self._raw_output_keys)
-        else:
-            expected_dim = len(self.output_keys)
-
+        expected_dim = len(self.output_keys)
         feature_dim = amplitude.shape[-1]
         if feature_dim != expected_dim:
             raise ValueError(

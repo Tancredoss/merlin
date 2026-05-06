@@ -23,8 +23,6 @@ Packages
      - Dataset loaders and metadata helpers.
    * - :doc:`api/merlin.measurement`
      - Measurement strategies, detectors, mappers, autodiff, and sampling tools.
-   * - :doc:`api/merlin.models`
-     - Ready to use quantum machine learning model architectures.
    * - :doc:`api/merlin.pcvl_pytorch`
      - Perceval-to-PyTorch conversion and SLOS compute-graph utilities.
    * - :doc:`api/merlin.utils`
@@ -40,6 +38,5 @@ Packages
    api/merlin.core
    api/merlin.datasets
    api/merlin.measurement
-   api/merlin.models
    api/merlin.pcvl_pytorch
    api/merlin.utils
