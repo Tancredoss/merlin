@@ -102,7 +102,7 @@ class QCNNClassifier(torch.nn.Module):
         """
         super().__init__()
         self.num_classes = num_classes
-        self.stages = stages
+        self.stages: list[QCNNClassifier._Stage] = stages
 
         # Verify inputs
         if not isinstance(input_shape, (tuple, list)):
@@ -387,10 +387,7 @@ class QCNNClassifier(torch.nn.Module):
                     f"Invalid stage type; must be QConv, QPool or QDense but got: {type(stage)}"
                 )
 
-        validated_stages: list[QCNNClassifier._Stage] = []
-        for stage in self.stages:
-            validated_stages.append(stage)
-        return copy.deepcopy(validated_stages)
+        return copy.deepcopy(self.stages)
 
     def summary(self):
         """Return a concise, human-readable description of the architecture.
