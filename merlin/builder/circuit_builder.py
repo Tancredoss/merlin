@@ -30,8 +30,9 @@ import numbers
 import types
 from collections.abc import Callable
 from itertools import combinations
-import torch
 from typing import Any, Union, get_args, get_origin, get_type_hints
+
+import torch
 
 from ..core.circuit import Circuit
 from ..core.components import (
@@ -612,14 +613,12 @@ class CircuitBuilder:
             value=scalar_initial_state,
         )
 
-        self.memristor_specs.append(
-            {
-                "target_mode": mode,
-                "name": f"{name}{self._memristor_counter}",
-                "update_rule": update_rule,
-                "initial_state": scalar_initial_state,
-            }
-        )
+        self.memristor_specs.append({
+            "target_mode": mode,
+            "name": f"{name}{self._memristor_counter}",
+            "update_rule": update_rule,
+            "initial_state": scalar_initial_state,
+        })
         return self
 
     def add_entangling_layer(
