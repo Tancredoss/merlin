@@ -286,7 +286,7 @@ class CircuitBuilder:
                 self._trainable_counter += 1
                 custom_name = self._unique_trainable_name(base_name)
             elif resolved_role == ParameterRole.MEMRISTOR:
-                custom_name = f"mem{self._input_counter + 1}"
+                custom_name = f"mem{self._memristor_counter + 1}"
                 self._memristor_counter += 1
             else:
                 custom_name = None
@@ -468,12 +468,14 @@ class CircuitBuilder:
             modes=mode, role=ParameterRole.MEMRISTOR, name=name, value=initial_state
         )
 
-        self.memristor_specs.append({
-            "target_mode": mode,
-            "name": f"{name}{self._memristor_counter}",
-            "update_rule": update_rule,
-            "initial_state": initial_state,
-        })
+        self.memristor_specs.append(
+            {
+                "target_mode": mode,
+                "name": f"{name}{self._memristor_counter}",
+                "update_rule": update_rule,
+                "initial_state": initial_state,
+            }
+        )
         return self
 
     def add_entangling_layer(

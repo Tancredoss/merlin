@@ -29,6 +29,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from contextlib import contextmanager
+from copy import deepcopy
 from typing import Any, cast
 
 import perceval as pcvl
@@ -318,10 +319,12 @@ class QuantumLayer(MerlinModule):
             else []
         )
         self.memristive_history = [
-            [torch.Tensor([i["initial_state"]])] for i in self._memristive_metadata
+            [torch.Tensor([i["initial_state"]], device=device, dtype=dtype)]
+            for i in self._memristive_metadata
         ]
         self.memristive_state = [
-            torch.Tensor([i["initial_state"]]) for i in self._memristive_metadata
+            torch.Tensor([i["initial_state"]], device=device, dtype=dtype)
+            for i in self._memristive_metadata
         ]
         self._memristive_smaller_last_batch = False
 
@@ -1022,10 +1025,18 @@ class QuantumLayer(MerlinModule):
 
         # Phase 7: memristive update
         if len(self.memristive_state) > 0:
+            # Detach output for memristive computation to prevent autograd graph retention.
+            # Return the original output untouched by detaching a separate copy.
+            if isinstance(output, torch.Tensor):
+                output_for_memristive = output.detach()
+            else:
+                # StateVector, ProbabilityDistribution, and PartialMeasurement all have .detach()
+                output_for_memristive = output.detach()
+
             self.memristive_state = compute_new_memristive_ps_angles(
                 memristive_metadata=self._memristive_metadata,
                 memristive_state=self.memristive_state,
-                output=output,
+                output=output_for_memristive,
             )
             for i in range(len(self.memristive_history)):
                 self.memristive_history[i].append(self.memristive_state[i])
@@ -1170,6 +1181,18 @@ class QuantumLayer(MerlinModule):
             # Detector Module
             if self._detector_transform is not None:
                 self._detector_transform = self._detector_transform.to(device)
+
+            # memristor state and history
+            for state in range(self.memristive_history):
+                for t in range(state):
+                    self.memristive_history[state][t] = self.memristive_history[state][
+                        t
+                    ].to(self.dtype, device)
+
+            for state in range(self.memristive_state):
+                self.memristive_state[state] = self.memristive_state[state].to(
+                    self.dtype, device
+                )
 
         return self
 
@@ -1499,7 +1522,7 @@ class QuantumLayer(MerlinModule):
         return base_str + ")"
 
     def reset(self, batch_size: int = 1) -> None:
-        """Rests the memristors to their initial state while clearing the history. It also
+        """Resets the memristors to their initial state while clearing the history. It also
         defines the allowed batch size to be ran per forward pass for circuits with memristive phase shifters.
 
         Parameters
@@ -1509,7 +1532,7 @@ class QuantumLayer(MerlinModule):
 
         """
         if batch_size < 1:
-            raise ValueError(f"batch_size must be al least 1, got {batch_size}")
+            raise ValueError(f"batch_size must be at least 1, got {batch_size}")
 
         self._memristive_smaller_last_batch = False
 
@@ -1518,7 +1541,10 @@ class QuantumLayer(MerlinModule):
 
         for i in range(len(self.memristive_history)):
             self.memristive_state[i] = torch.full(
-                [batch_size], self._memristive_metadata[i]["initial_state"]
+                [batch_size],
+                self._memristive_metadata[i]["initial_state"],
+                device=self.device,
+                dtype=self.dtype,
             )
             self.memristive_history[i] = [self.memristive_state[i]]
         return

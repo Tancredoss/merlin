@@ -180,9 +180,9 @@ class CircuitConverter:
 
         self.set_dtype(dtype)
 
-        assert isinstance(circuit, Circuit), (
-            f"Expected a Perceval LO circuit, but got {type(circuit).__name__}"
-        )
+        assert isinstance(
+            circuit, Circuit
+        ), f"Expected a Perceval LO circuit, but got {type(circuit).__name__}"
         self.circuit = circuit
 
         # Create parameter mapping - it will map parameter names to their index in the input tensors
@@ -275,6 +275,11 @@ class CircuitConverter:
                     r,
                     c.to(dtype=self.tensor_cdtype, device=self.device),
                 )
+        # Memristive current state
+        for state in range(self.memristive_current_state):
+            self.memristive_current_state[state] = self.memristive_current_state[
+                state
+            ].to(self.dtype, device)
 
         return self
 
@@ -416,6 +421,13 @@ class CircuitConverter:
         self.memristive_current_state = (
             [] if memristive_current_state is None else memristive_current_state
         )
+        if len(self.memristive_current_state) < len(self.memristive_metadata):
+            raise ValueError(
+                "Expected at least "
+                f"{len(self.memristive_metadata)} memristive current state value(s) "
+                f"for the configured memristive metadata, but got "
+                f"{len(self.memristive_current_state)}."
+            )
 
         if batch_size is None:
             if input_params and input_params[0].dim() > 1:
@@ -429,8 +441,7 @@ class CircuitConverter:
         self.batch_size = batch_size
 
         converted_tensor = (
-            torch
-            .eye(self.circuit.m, dtype=self.tensor_cdtype, device=self.device)
+            torch.eye(self.circuit.m, dtype=self.tensor_cdtype, device=self.device)
             .unsqueeze(0)
             .repeat(batch_size, 1, 1)
         )
@@ -468,8 +479,7 @@ class CircuitConverter:
             Batched unitary tensor of shape (batch_size, comp_size, comp_size)
         """
         return (
-            torch
-            .tensor(
+            torch.tensor(
                 comp.compute_unitary(), dtype=self.tensor_cdtype, device=self.device
             )
             .unsqueeze(0)
@@ -538,8 +548,7 @@ class CircuitConverter:
             )
 
         unitary_tensor = (
-            unitary_tensor
-            .unsqueeze(0)
+            unitary_tensor.unsqueeze(0)
             .repeat(self.batch_size, 1, 1)
             .to(cos_theta.device)
         )

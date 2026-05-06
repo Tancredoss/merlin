@@ -36,7 +36,7 @@ class ParameterRole(Enum):
     FIXED = "fixed"  # Fixed value, not a parameter
     INPUT = "input"  # Input parameter (fed from data)
     TRAINABLE = "trainable"  # Trainable parameter (nn.Parameter)
-    MEMRISTOR = "memristor"  # Memristor parameters to be updtaed with respect to a rule
+    MEMRISTOR = "memristor"  # Memristor parameters to be updated with respect to a rule
 
 
 @dataclass

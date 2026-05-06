@@ -298,13 +298,13 @@ The snippet below prepares a basic quantum layer and returns a :class:`~merlin.c
 
 Memristive phase-shifter
 -------------------------
-While using the  :class:`~merlin.builder.circuit_builder.CircuitBuilder` to create a :class:`~merlin.algorithms.layer.QuantumLayer`, it is important to set the batch size
-of the memristors. In order to do so, the :meth:`~merlin.algorithms.layer.QuantumLayer.reset` method needs to be called. It resets the memristors to their initial state while clearing the history.
-It also prepares the memristors to be ran in a ``batch_size`` (the parameter of the function, defaults to 1) batch size.
+When using the :class:`~merlin.builder.circuit_builder.CircuitBuilder` to create a :class:`~merlin.algorithms.layer.QuantumLayer`, it is important to set the batch size
+of the memristors. To do so, call the :meth:`~merlin.algorithms.layer.QuantumLayer.reset` method. This resets the memristors to their initial state while clearing their history.
+It also prepares the memristors to be run with the specified ``batch_size`` parameter of the function, which defaults to 1.
 
-The :class:`~merlin.algorithms.layer.QuantumLayer` needs to have a ``batch_size`` input on all forward pass unless :meth:`~merlin.algorithms.layer.QuantumLayer.reset` is called. However if only one batch
-is smaller than the others it can be ran once. The first " smaller batch size" memresitor states will be used. To make another forward call after that, the :meth:`~merlin.algorithms.layer.QuantumLayer.reset` method
-needs to be called again.
+The :class:`~merlin.algorithms.layer.QuantumLayer` expects all forward passes to use the configured ``batch_size`` unless :meth:`~merlin.algorithms.layer.QuantumLayer.reset` is called again. However, if only one batch
+is smaller than the others, it can be run once. In that case, the first ``smaller batch size`` memristor states will be used. Before making another forward call after that, the :meth:`~merlin.algorithms.layer.QuantumLayer.reset` method
+must be called again.
 
 The current state of the memristive phase-shifters can be accessed with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_state` attribute. The full history of the memristive phase-shifters can be accessed
 with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` attribute. The order of the states and history is defined by the order in which the memristive phase-shifters were added in the :class:`~merlin.builder.circuit_builder.CircuitBuilder`.

@@ -235,6 +235,30 @@ class PartialMeasurement:
             raise TypeError("Grouping 'output_size' must be an int.")
         return output_size
 
+    def detach(self) -> "PartialMeasurement":
+        """Return a detached ``PartialMeasurement`` with detached branches.
+
+        Returns
+        -------
+        PartialMeasurement
+            Detached partial measurement with probability and amplitude tensors
+            detached from the autograd graph.
+        """
+        detached_branches = tuple(
+            PartialMeasurementBranch(
+                outcome=branch.outcome,
+                probability=branch.probability.detach(),
+                amplitudes=branch.amplitudes.detach(),
+            )
+            for branch in self.branches
+        )
+        return PartialMeasurement(
+            detached_branches,
+            self.measured_modes,
+            self.unmeasured_modes,
+            grouping=self.grouping,
+        )
+
     @staticmethod
     def from_detector_transform_output(
         detector_output: DetectorTransformOutput,
