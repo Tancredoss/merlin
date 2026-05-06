@@ -53,6 +53,20 @@ Core Concepts
    :columns: 4
    :contour-color: #5648ED
 
+MerLin Models
+-------------
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../notebooks/QCNNClassifier-demo-MNIST
+
+.. merlin-gallery::
+   :data: _data/galleries/examples/merlin_models.json
+   :columns: 4
+   :contour-color: #5648ED
+
 Model Families
 --------------
 
