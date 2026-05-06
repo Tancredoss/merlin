@@ -387,7 +387,10 @@ class QCNNClassifier(torch.nn.Module):
                     f"Invalid stage type; must be QConv, QPool or QDense but got: {type(stage)}"
                 )
 
-        return copy.deepcopy(self.stages)
+        validated_stages: list[QCNNClassifier._Stage] = []
+        for stage in self.stages:
+            validated_stages.append(stage)
+        return copy.deepcopy(validated_stages)
 
     def summary(self):
         """Return a concise, human-readable description of the architecture.

@@ -1035,6 +1035,12 @@ class QuantumLayer(MerlinModule):
         if len(self.memristive_state) > 0:
             # Detach output for memristive computation to prevent autograd graph retention.
             # Return the original output untouched by detaching a separate copy.
+            output_for_memristive: (
+                torch.Tensor
+                | PartialMeasurement
+                | ProbabilityDistribution
+                | StateVector
+            )
             if isinstance(output, torch.Tensor):
                 output_for_memristive = output.detach()
             else:
