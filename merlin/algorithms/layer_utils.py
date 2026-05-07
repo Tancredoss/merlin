@@ -773,7 +773,17 @@ def compute_new_memristive_ps_angles(
     """
     new_memristive_states = []
     for metadata, state in zip(memristive_metadata, memristive_state, strict=True):
-        new_memristive_states.append(metadata["update_rule"](state, output))
+        try:
+            new_memristive_states.append(metadata["update_rule"](state, output))
+        except:
+            raise ValueError(
+                f"""The update rule of the following memristor does not follow the correct build or raises an error. Here is the expected signature:
+                    
+                    Expected: update_rule(state: torch.Tensor,output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement)-> torch.Tensor
+                    
+                    Memristive phase-shifter analyzed: {metadata}
+                    """
+            )
     return new_memristive_states
 
 

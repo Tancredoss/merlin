@@ -313,7 +313,7 @@ class QuantumLayer(MerlinModule):
 
         # Phase 11: Extract memristive metadata
         self._memristive_metadata = (
-            circuit_source.builder.memristor_specs
+            circuit_source.builder.memristive_specs
             if circuit_source.source_type == "builder"
             else []
         )
@@ -1052,7 +1052,19 @@ class QuantumLayer(MerlinModule):
                 memristive_state=self.memristive_state,
                 output=output_for_memristive,
             )
+
+            expected_output_shape = torch.Size([batch_dim])
             for i in range(len(self.memristive_history)):
+                if not (
+                    self.memristive_state[i].shape == expected_output_shape
+                    or self._memristive_smaller_last_batch
+                ):
+                    raise ValueError(
+                        f"""The following memristive phase shifter's update rule does not return a Tensor of shape [batch_dim]. Got {self.memristive_state[i].shape} instead of {expected_output_shape}.
+                                     
+                            Memristive phase-shifter analyzed: {self._memristive_metadata[i]}
+                        """
+                    )
                 self.memristive_history[i].append(self.memristive_state[i])
 
         return output
@@ -1198,14 +1210,14 @@ class QuantumLayer(MerlinModule):
 
             # memristor state and history
             for state in range(len(self.memristive_history)):
-                for t in range(len(state)):
+                for t in range(len(self.memristive_history[state])):
                     self.memristive_history[state][t] = self.memristive_history[state][
                         t
-                    ].to(self.dtype, device)
+                    ].to(dtype=self.dtype, device=device)
 
             for state in range(len(self.memristive_state)):
                 self.memristive_state[state] = self.memristive_state[state].to(
-                    self.dtype, device
+                    dtype=self.dtype, device=device
                 )
 
         return self

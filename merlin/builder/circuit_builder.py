@@ -102,7 +102,7 @@ class CircuitBuilder:
         self._angle_encoding_specs: dict[str, list[tuple[int, ...]]] = {}
         self._angle_encoding_scales: dict[str, dict[int, float]] = {}
         self._angle_encoding_counts: dict[str, int] = {}
-        self.memristor_specs: list[dict] = []
+        self.memristive_specs: list[dict] = []
         self._memristor_prefixes: list[str] = []
         self._memristor_prefix_set: set[str] = set()
         self._trainable_name_counts: dict[str, int] = {}
@@ -437,20 +437,13 @@ class CircuitBuilder:
 
     @staticmethod
     def _validate_memristive_update_rule(update_rule: Callable) -> None:
-        """Validate update_rule signature.
-
-        Expected: update_rule(state: torch.Tensor,
-                             output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement)
-                  -> torch.Tensor
+        """Validates that update rule has exactly 2 positional parameters
 
         Raises
         ------
         TypeError
             If signature does not match or annotations are missing/incorrect.
         """
-        from ..core.partial_measurement import PartialMeasurement
-        from ..core.probability_distribution import ProbabilityDistribution
-        from ..core.state_vector import StateVector
 
         try:
             sig = inspect.signature(update_rule)
@@ -476,62 +469,6 @@ class CircuitBuilder:
                 f"Expected: update_rule(state: torch.Tensor, "
                 f"output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement) "
                 f"-> torch.Tensor"
-            )
-
-        state_param, output_param = positional_params
-
-        try:
-            resolved_hints = get_type_hints(update_rule)
-        except (
-            Exception
-        ) as e:  # pragma: no cover - defensive guard for unresolvable hints
-            raise TypeError(
-                f"update_rule type annotations could not be resolved: {e}"
-            ) from e
-
-        # Validate state parameter
-        if state_param.name not in resolved_hints:
-            raise TypeError(
-                f"update_rule first parameter '{state_param.name}' requires type annotation: "
-                f"{state_param.name}: torch.Tensor"
-            )
-        state_annotation = resolved_hints[state_param.name]
-        if state_annotation is not torch.Tensor:
-            raise TypeError(
-                f"update_rule first parameter '{state_param.name}' must be torch.Tensor, "
-                f"got {state_annotation}"
-            )
-
-        # Validate output parameter
-        if output_param.name not in resolved_hints:
-            raise TypeError(
-                f"update_rule second parameter '{output_param.name}' requires type annotation: "
-                f"{output_param.name}: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement"
-            )
-
-        expected_types = {
-            torch.Tensor,
-            StateVector,
-            ProbabilityDistribution,
-            PartialMeasurement,
-        }
-        annotation = resolved_hints[output_param.name]
-
-        # Handle Union types (both typing.Union and | notation)
-        origin = get_origin(annotation)
-        if origin in (Union, types.UnionType):
-            union_args = get_args(annotation)
-            for arg in union_args:
-                if arg not in expected_types:
-                    raise TypeError(
-                        f"update_rule second parameter '{output_param.name}' contains unexpected type: {arg}. "
-                        f"Expected union of: torch.Tensor, StateVector, ProbabilityDistribution, PartialMeasurement"
-                    )
-        elif annotation not in expected_types:
-            raise TypeError(
-                f"update_rule second parameter '{output_param.name}' must be annotated as: "
-                f"torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement, "
-                f"got {annotation}"
             )
 
     def add_memristive_ps(
@@ -613,12 +550,14 @@ class CircuitBuilder:
             value=scalar_initial_state,
         )
 
-        self.memristor_specs.append({
-            "target_mode": mode,
-            "name": f"{name}{self._memristor_counter}",
-            "update_rule": update_rule,
-            "initial_state": scalar_initial_state,
-        })
+        self.memristive_specs.append(
+            {
+                "target_mode": mode,
+                "name": f"{name}{self._memristor_counter}",
+                "update_rule": update_rule,
+                "initial_state": scalar_initial_state,
+            }
+        )
         return self
 
     def add_entangling_layer(

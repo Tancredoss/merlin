@@ -25,6 +25,7 @@ Tests for the main QuantumLayer class.
 """
 
 import math
+import re
 from copy import deepcopy
 import numpy as np
 import perceval as pcvl
@@ -1356,7 +1357,7 @@ class TestQuantumLayer:
 
     def test_memrsistive_update(self):
         def update_rule(state: torch.Tensor, output: torch.Tensor):
-            return state + torch.vstack([output[0, 0]] * state.size(0))
+            return state + torch.vstack([output[0, 0]] * state.size(0)).squeeze(dim=0)
 
         circ = ML.CircuitBuilder(n_modes=3)
         circ.add_entangling_layer()
@@ -1412,7 +1413,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         input = torch.Tensor([[0, 0]])
 
@@ -1435,7 +1436,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 2
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         second_output = ql(input)
 
@@ -1458,7 +1459,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 3
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         ql.reset()
 
@@ -1477,7 +1478,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
     def test_reset_and_batches(self):
         def update_rule(state: torch.Tensor, output: torch.Tensor):
@@ -1514,7 +1515,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         # Test batch too big
         with pytest.raises(
@@ -1543,7 +1544,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         input_1 = torch.zeros([5, 2])
         first_output = ql(input_1)
@@ -1565,7 +1566,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 2
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         input_2 = torch.arange(10).reshape([5, 2])
         second_output = ql(input_2)
@@ -1589,7 +1590,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 3
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         # Metadata check after smaller last batch
         input_3 = torch.arange(15, 21).reshape([3, 2])
@@ -1617,7 +1618,7 @@ class TestQuantumLayer:
         assert ql.memristive_history[0][0].size(0) == 5
         assert ql.memristive_history[0][3].size(0) == 3
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         # Test last batch error
         with pytest.raises(
@@ -1649,7 +1650,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         # Running again after a reset
         try:
@@ -1802,7 +1803,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         ql.reset(batch_size=5)
 
@@ -1821,7 +1822,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         input_1 = torch.zeros([5, 2])
         first_output = ql(input_1)
@@ -1856,7 +1857,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 2
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         input_2 = torch.arange(10).reshape([5, 2])
         second_output = ql(input_2)
@@ -1893,7 +1894,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 3
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         # Metadata check after smaller last batch
         input_3 = torch.arange(15, 21).reshape([3, 2]).to(torch.device("cuda"))
@@ -1933,7 +1934,7 @@ class TestQuantumLayer:
         assert ql.memristive_history[0][0].size(0) == 5
         assert ql.memristive_history[0][3].size(0) == 3
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         ql.reset()
 
@@ -1959,7 +1960,7 @@ class TestQuantumLayer:
         assert len(ql.memristive_history) == len(ql.memristive_state) == 2
         assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
 
-        assert ql._memristive_metadata == circ.memristor_specs
+        assert ql._memristive_metadata == circ.memristive_specs
 
         # Running again after a reset
         try:
@@ -2006,12 +2007,107 @@ class TestQuantumLayer:
         assert ql_copy.memristive_history[0][0].size(0) == 5
         assert ql_copy.memristive_history[0][3].size(0) == 3
 
-        assert ql_copy._memristive_metadata == circ.memristor_specs
+        assert ql_copy._memristive_metadata == circ.memristive_specs
 
         # Moving the data back
         ql_copy.to(torch.device("cpu"))
         assert ql_copy.memristive_history[0][0].device == torch.device("cpu")
         assert ql_copy._memristive_state[0].device == torch.device("cpu")
+
+
+def _identity_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+    """Keep a memristive state unchanged while satisfying current annotations."""
+    return state
+
+
+def _builder_with_memristor(
+    update_rule=_identity_update,
+    *,
+    with_inputs: bool = False,
+) -> ML.CircuitBuilder:
+    """Build the smallest useful memristive circuit for review probes."""
+    builder = ML.CircuitBuilder(n_modes=3)
+    builder.add_entangling_layer()
+    if with_inputs:
+        builder.add_angle_encoding(modes=[0, 2], name="input")
+    builder.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=0.25)
+    builder.add_entangling_layer()
+    return builder
+
+
+def _layer(builder: ML.CircuitBuilder, *, input_size: int = 0) -> ML.QuantumLayer:
+    """Create a probability layer in FOCK space so batch behavior is explicit."""
+    return ML.QuantumLayer(
+        builder=builder,
+        input_size=input_size,
+        input_state=[1, 0, 1],
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+    )
+
+
+def test_memristive_layer_to_moves_state_and_history_without_raising():
+    """``QuantumLayer.to(...)`` should work for layers with memristive state.
+
+    The device/dtype movement path is part of making the feature usable with
+    CPU/GPU workflows. The current implementation raises even for
+    ``layer.to(torch.device("cpu"))`` because it calls ``len(...)`` on an integer
+    loop index while moving ``memristive_history``.
+    """
+    layer = _layer(_builder_with_memristor())
+
+    layer.to(torch.device("cpu"))
+
+    assert layer.memristive_state[0].device == torch.device("cpu")
+    assert layer.memristive_history[0][0].device == torch.device("cpu")
+
+
+def test_update_rule_return_shape_is_validated_close_to_user_callback():
+    """The update rule must return a state tensor of shape ``[batch_size]``.
+
+    The ticket and docs both describe the runtime state as one scalar per batch
+    element. A user callback returning ``[batch_size, 1]`` should fail with a
+    clear validation error near the callback boundary instead of being stored as
+    the next memristive state and surfacing later as converter shape behavior.
+    """
+
+    def bad_shape_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return torch.ones((state.size(0), 1), dtype=state.dtype, device=state.device)
+
+    layer = _layer(
+        _builder_with_memristor(bad_shape_update, with_inputs=True),
+        input_size=2,
+    )
+    layer.reset(batch_size=2)
+
+    with pytest.raises(ValueError, match="shape|batch_size"):
+        layer(torch.zeros(2, 2))
+
+
+def test_invalid_memristor_updtae_rule():
+    def valid_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state + 0.1
+
+    def invalid_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        raise ValueError("Not valid")
+
+    builder = ML.CircuitBuilder(n_modes=5)
+    builder.add_memristive_ps(mode=1, update_rule=valid_update, initial_state=0.1)
+    builder.add_memristive_ps(mode=4, update_rule=invalid_update, initial_state=0.3)
+    builder.add_memristive_ps(mode=3, update_rule=valid_update, initial_state=0.5)
+
+    layer = ML.QuantumLayer(builder=builder, n_photons=3)
+
+    error_string = f"""The update rule of the following memristor does not follow the correct build or raises an error. Here is the expected signature:
+                    
+                    Expected: update_rule(state: torch.Tensor,output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement)-> torch.Tensor
+                    
+                    Memristive phase-shifter analyzed: {builder.memristive_specs[1]}
+                    """
+
+    with pytest.raises(ValueError, match=re.escape(error_string)):
+        layer()
 
 
 def test_simple_num_photons_modes_and_input_state():
