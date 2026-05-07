@@ -2099,12 +2099,12 @@ def test_invalid_memristor_update_rule():
 
     layer = ML.QuantumLayer(builder=builder, n_photons=3)
 
-    error_string = f"""The update rule of the following memristor does not follow the correct build or raises an error. Here is the expected signature:
-                    
-                    Expected: update_rule(state: torch.Tensor,output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement)-> torch.Tensor
-                    
-                    Memristive phase-shifter analyzed: {builder.memristive_specs[1]}
-                    """
+    error_string = (
+        "The update rule of the following memristor does not follow the correct build or raises an error. Here is the expected signature:\n\n"
+        "                    Expected: update_rule(state: torch.Tensor,output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement)-> torch.Tensor\n\n"
+        f"                    Memristive phase-shifter analyzed: {builder.memristive_specs[1]}\n"
+        "                    "
+    )
 
     with pytest.raises(ValueError, match=re.escape(error_string)):
         layer()
