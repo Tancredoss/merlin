@@ -232,6 +232,78 @@ def test_processor_is_used_in_fit_and_predict():
     assert processor.calls == 2
 
 
+def test_layer_processor_is_used_in_fit_and_predict():
+    X, _ = _toy_data()
+    processor = DummyProcessor()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=2),
+        cache=False,
+    )
+
+    model.layer.processor = processor
+    model.fit_reservoir(X)
+    _ = model.predict(X + 0.05)
+
+    assert processor.calls == 2
+
+
+def test_processor_argument_overrides_layer_processor_with_warning():
+    X, _ = _toy_data()
+    argument_processor = DummyProcessor()
+    layer_processor = DummyProcessor()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=2),
+        cache=False,
+    )
+    model.layer.processor = layer_processor
+
+    with pytest.warns(UserWarning, match="processor argument"):
+        model.fit_reservoir(X, processor=argument_processor)
+    with pytest.warns(UserWarning, match="processor argument"):
+        _ = model.predict(X + 0.05, processor=argument_processor)
+
+    assert argument_processor.calls == 2
+    assert layer_processor.calls == 0
+
+
+def test_layer_processor_survives_reservoir_rebuild():
+    processor = DummyProcessor()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=None,
+    )
+
+    model.layer.processor = processor
+    model.layer.n_modes = 5
+
+    assert model.layer.processor is processor
+
+
+def test_layer_processor_is_not_saved(tmp_path):
+    processor = DummyProcessor()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=2),
+    )
+    model.layer.processor = processor
+
+    path = tmp_path / "reservoir_processor.pt"
+    model.save(path)
+    restored = ReservoirClassifier.load(path)
+
+    assert restored.layer.processor is None
+
+
 def test_save_load_roundtrip(tmp_path):
     X, y = _toy_data()
     model = ReservoirClassifier(

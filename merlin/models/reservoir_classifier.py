@@ -380,6 +380,7 @@ class ReservoirClassifier(MerlinModule):
         self._reset_readout()
 
     def _rebuild_quantum_layer(self) -> None:
+        processor = getattr(self._quantum_layer, "processor", None)
         self._quantum_layer = self._build_layer(
             unitary_matrix=self._unitary_matrix,
             encoded_input_size=self.encoded_input_features,
@@ -387,6 +388,7 @@ class ReservoirClassifier(MerlinModule):
             measurement_strategy=self._measurement_strategy,
             noise_model=self._noise_model,
         )
+        self._quantum_layer.processor = processor
         self._invalidate_fit_state()
 
     def _set_layer_measurement_strategy(self, measurement_strategy: Any) -> None:
@@ -507,13 +509,25 @@ class ReservoirClassifier(MerlinModule):
         )
         with torch.no_grad():
             self.layer.eval()
-            # Use PyTorch SLOS backend
-            if processor is None:
+            effective_processor = self._resolve_processor(processor)
+            if effective_processor is None:
                 outputs = self._quantum_layer(inputs)
             else:
-                # If a processor is provided, we use it to execute the layer's circuit. This allows for flexibility in how the quantum reservoir is simulated or executed, and can be used to integrate with different backends or simulators.
-                outputs = processor.forward(self._quantum_layer, inputs)
+                outputs = effective_processor.forward(self._quantum_layer, inputs)
         return outputs.to(dtype=self.dtype).detach()
+
+    def _resolve_processor(self, processor: Any | None) -> Any | None:
+        layer_processor = getattr(self._quantum_layer, "processor", None)
+        if processor is not None:
+            if layer_processor is not None:
+                warnings.warn(
+                    "Both processor and reservoir.layer.processor are set; "
+                    "using the processor argument for this call.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+            return processor
+        return layer_processor
 
     @staticmethod
     def _fingerprint(X: np.ndarray) -> str:
@@ -541,8 +555,10 @@ class ReservoirClassifier(MerlinModule):
             features, and store their standardization statistics.
         processor : merlin.core.merlin_processor.MerlinProcessor|None
             Optional processor used to evaluate the frozen quantum reservoir
-            through Merlin's local or remote execution path. If omitted, the
-            quantum layer is executed locally.
+            through Merlin's local or remote execution path. If omitted,
+            ``reservoir.layer.processor`` is used when configured. If both are
+            set, this argument wins and emits a ``UserWarning``. If neither is
+            set, the quantum layer is executed locally.
 
         Returns
         -------
@@ -679,7 +695,9 @@ class ReservoirClassifier(MerlinModule):
             One-dimensional classification targets aligned with ``X``.
         processor : merlin.core.merlin_processor.MerlinProcessor|None
             Optional processor used to evaluate the frozen quantum reservoir.
-            If omitted, the quantum layer is executed locally.
+            If omitted, ``reservoir.layer.processor`` is used when configured.
+            If both are set, this argument wins and emits a ``UserWarning``. If
+            neither is set, the quantum layer is executed locally.
 
         Returns
         -------
@@ -732,7 +750,9 @@ class ReservoirClassifier(MerlinModule):
             Two-dimensional feature matrix to encode through the reservoir.
         processor : merlin.core.merlin_processor.MerlinProcessor|None
             Optional processor used to evaluate the frozen quantum reservoir.
-            If omitted, the quantum layer is executed locally.
+            If omitted, ``reservoir.layer.processor`` is used when configured.
+            If both are set, this argument wins and emits a ``UserWarning``. If
+            neither is set, the quantum layer is executed locally.
 
         Returns
         -------

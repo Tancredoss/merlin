@@ -222,6 +222,7 @@ class QuantumLayer(MerlinModule):
 
         """
         super().__init__()
+        self.processor: Any | None = None
 
         # === DEPRECATION WARNING: amplitude_encoding ===
         if amplitude_encoding:
