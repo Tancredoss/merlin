@@ -27,10 +27,9 @@ Circuit builder for constructing quantum circuits declaratively.
 import inspect
 import math
 import numbers
-import types
 from collections.abc import Callable
 from itertools import combinations
-from typing import Any, Union, get_args, get_origin, get_type_hints
+from typing import Any
 
 import torch
 

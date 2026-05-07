@@ -1061,7 +1061,7 @@ class QuantumLayer(MerlinModule):
                 ):
                     raise ValueError(
                         f"""The following memristive phase shifter's update rule does not return a Tensor of shape [batch_dim]. Got {self.memristive_state[i].shape} instead of {expected_output_shape}.
-                                     
+
                             Memristive phase-shifter analyzed: {self._memristive_metadata[i]}
                         """
                     )

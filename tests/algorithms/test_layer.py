@@ -2085,7 +2085,7 @@ def test_update_rule_return_shape_is_validated_close_to_user_callback():
         layer(torch.zeros(2, 2))
 
 
-def test_invalid_memristor_updtae_rule():
+def test_invalid_memristor_update_rule():
     def valid_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
         return state + 0.1
 
