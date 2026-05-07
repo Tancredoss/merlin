@@ -54,6 +54,12 @@ import torch
 import merlin.core.process as process_module
 from merlin import ComputationSpace, MeasurementStrategy, QuantumLayer
 
+try:
+    from merlin.core import EncodingSpace, StateVector
+except ImportError:  # pragma: no cover - supports running against older baselines
+    EncodingSpace = None  # type: ignore[assignment]
+    StateVector = None  # type: ignore[assignment]
+
 
 @dataclass(frozen=True)
 class Case:
@@ -217,6 +223,35 @@ def _make_dense_input(size: int, nnz: int) -> torch.Tensor:
     return state / state.abs().pow(2).sum().sqrt()
 
 
+def _make_logical_dual_rail_input(size: int) -> torch.Tensor:
+    """Create a normalized logical dual-rail vector with deterministic phases."""
+    values = torch.arange(1, size + 1, dtype=torch.float32)
+    state = torch.complex(values, torch.flip(values, dims=(0,)))
+    return state / state.abs().pow(2).sum().sqrt()
+
+
+def _manual_dual_rail_embedding(
+    logical: torch.Tensor, *, n_modes: int, n_photons: int
+) -> torch.Tensor:
+    """Embed dual-rail amplitudes using explicit zero-fill and index placement."""
+    if EncodingSpace is None:
+        raise RuntimeError("EncodingSpace is not available.")
+
+    fock_size = math.comb(n_modes + n_photons - 1, n_photons)
+    fock_indices = torch.tensor(
+        list(
+            EncodingSpace.DUAL_RAIL.logical_to_fock_indices(
+                n_modes=n_modes, n_photons=n_photons
+            ).values()
+        ),
+        dtype=torch.long,
+        device=logical.device,
+    )
+    embedded = logical.new_zeros((*logical.shape[:-1], fock_size))
+    embedded.index_copy_(-1, fock_indices, logical)
+    return embedded
+
+
 def _output_values(output: torch.Tensor) -> dict[str, Any]:
     """Return a JSON-serializable complex output vector for comparison."""
     flat = output.detach().cpu().reshape(-1)
@@ -282,6 +317,133 @@ def _run_case(
     return result
 
 
+def _mean_timed_call(runs: int, warmups: int, callback) -> tuple[float, list[float]]:
+    timings: list[float] = []
+    for index in range(warmups + runs):
+        start = time.perf_counter()
+        result = callback()
+        if isinstance(result, torch.Tensor):
+            # Force eager tensor work to complete before measuring the elapsed time.
+            _ = float(result.detach().abs().sum().cpu())
+        elapsed = time.perf_counter() - start
+        if index >= warmups:
+            timings.append(elapsed)
+        del result
+        gc.collect()
+    return mean(timings), timings
+
+
+def _run_encoding_api_check(runs: int, warmups: int) -> dict[str, Any]:
+    """Compare encoding-aware from_tensor with an explicitly embedded tensor."""
+    if EncodingSpace is None or StateVector is None:
+        return {
+            "name": "statevector_from_tensor_dual_rail_vs_manual",
+            "status": "skipped",
+            "reason": "EncodingSpace or StateVector is unavailable on this revision.",
+        }
+    if not hasattr(EncodingSpace.DUAL_RAIL, "logical_basis_size"):
+        return {
+            "name": "statevector_from_tensor_dual_rail_vs_manual",
+            "status": "skipped",
+            "reason": "EncodingSpace.logical_basis_size is unavailable on this revision.",
+        }
+
+    n_modes = 6
+    n_photons = 3
+    chunk_size = 4
+    logical_size = EncodingSpace.DUAL_RAIL.logical_basis_size(
+        n_modes=n_modes, n_photons=n_photons
+    )
+    fock_size = math.comb(n_modes + n_photons - 1, n_photons)
+    logical_input = _make_logical_dual_rail_input(logical_size)
+
+    try:
+        api_state = StateVector.from_tensor(
+            logical_input,
+            n_modes=n_modes,
+            n_photons=n_photons,
+            encoding=EncodingSpace.DUAL_RAIL,
+        )
+    except TypeError as exc:
+        return {
+            "name": "statevector_from_tensor_dual_rail_vs_manual",
+            "status": "skipped",
+            "reason": f"StateVector.from_tensor does not accept encoding: {exc}",
+        }
+
+    manual_tensor = _manual_dual_rail_embedding(
+        logical_input, n_modes=n_modes, n_photons=n_photons
+    )
+    tensor_diff = (api_state.tensor - manual_tensor).abs()
+
+    torch.manual_seed(1234)
+    layer = _make_layer(
+        Case(
+            "encoding_api_dual_rail_m6_p3_chunk4",
+            n_modes=n_modes,
+            n_photons=n_photons,
+            nnz=logical_size,
+            chunk_size=chunk_size,
+        )
+    )
+    api_output = layer(api_state, simultaneous_processes=chunk_size)
+    manual_output = layer(manual_tensor, simultaneous_processes=chunk_size)
+    output_diff = (api_output - manual_output).abs()
+    probability_diff = (api_output.abs().pow(2) - manual_output.abs().pow(2)).abs()
+
+    api_from_tensor_mean_s, api_from_tensor_times_s = _mean_timed_call(
+        runs,
+        warmups,
+        lambda: StateVector.from_tensor(
+            logical_input,
+            n_modes=n_modes,
+            n_photons=n_photons,
+            encoding=EncodingSpace.DUAL_RAIL,
+        ).tensor,
+    )
+    manual_embedding_mean_s, manual_embedding_times_s = _mean_timed_call(
+        runs,
+        warmups,
+        lambda: _manual_dual_rail_embedding(
+            logical_input, n_modes=n_modes, n_photons=n_photons
+        ),
+    )
+    api_forward_mean_s, api_forward_times_s = _mean_timed_call(
+        runs,
+        warmups,
+        lambda: layer(api_state, simultaneous_processes=chunk_size),
+    )
+    manual_forward_mean_s, manual_forward_times_s = _mean_timed_call(
+        runs,
+        warmups,
+        lambda: layer(manual_tensor, simultaneous_processes=chunk_size),
+    )
+
+    return {
+        "name": "statevector_from_tensor_dual_rail_vs_manual",
+        "status": "passed",
+        "encoding": "dual_rail",
+        "n_modes": n_modes,
+        "n_photons": n_photons,
+        "logical_size": logical_size,
+        "fock_size": fock_size,
+        "chunk_size": chunk_size,
+        "runs": runs,
+        "warmups": warmups,
+        "tensor_max_abs_diff": float(tensor_diff.max().item()),
+        "output_max_abs_diff": float(output_diff.max().item()),
+        "output_max_probability_diff": float(probability_diff.max().item()),
+        "api_from_tensor_mean_s": api_from_tensor_mean_s,
+        "api_from_tensor_times_s": api_from_tensor_times_s,
+        "manual_embedding_mean_s": manual_embedding_mean_s,
+        "manual_embedding_times_s": manual_embedding_times_s,
+        "api_forward_mean_s": api_forward_mean_s,
+        "api_forward_times_s": api_forward_times_s,
+        "manual_forward_mean_s": manual_forward_mean_s,
+        "manual_forward_times_s": manual_forward_times_s,
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--label", required=True, help="Human label for this run.")
@@ -307,6 +469,11 @@ def parse_args() -> argparse.Namespace:
         action="append",
         choices=[case.name for case in DEFAULT_CASES],
         help="Run one or more named cases. Defaults to all cases.",
+    )
+    parser.add_argument(
+        "--no-encoding-api-check",
+        action="store_true",
+        help="Skip the StateVector.from_tensor(..., encoding=...) benchmark check.",
     )
     return parser.parse_args()
 
@@ -334,6 +501,9 @@ def main() -> int:
         "platform": platform.platform(),
         "torch": torch.__version__,
         "pid": os.getpid(),
+        "encoding_api_check": None
+        if args.no_encoding_api_check
+        else _run_encoding_api_check(args.runs, args.warmups),
         "cases": [
             _run_case(
                 case,
