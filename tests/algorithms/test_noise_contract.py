@@ -384,16 +384,6 @@ def _is_empty_group(group: dict | None) -> bool:
 
 
 def test_direct_noise_model_brightness_feeds_photon_loss_transform():
-    """Direct ``noise_model=`` must feed the existing post-measurement loss path.
-
-    PML-284 says ``brightness`` is classified as post-measurement noise and must
-    remain handled by the existing ``PhotonLossTransform`` plumbing. The direct
-    API should therefore produce per-mode survival probabilities of ``0.3``.
-
-    Current bug: for builder/circuit sources, the resolved direct noise model is
-    not attached to the synthetic experiment used by ``resolve_photon_loss()``,
-    so survival probabilities stay at ``1.0``.
-    """
     layer = ml.QuantumLayer(
         n_photons=2,
         input_size=4,
@@ -405,16 +395,6 @@ def test_direct_noise_model_brightness_feeds_photon_loss_transform():
 
 
 def test_direct_noise_model_transmittance_feeds_photon_loss_transform():
-    """Direct ``transmittance`` must also stay in the photon-loss post-process.
-
-    This is the sibling case to ``brightness``. The ticket explicitly says
-    ``brightness`` and ``transmittance`` are post-measurement values consumed by
-    ``resolve_photon_loss()`` and the existing ``PhotonLossTransform``.
-
-    Current bug: direct ``noise_model=NoiseModel(transmittance=...)`` is
-    classified but not consumed by photon-loss resolution for builder/circuit
-    sources.
-    """
     layer = ml.QuantumLayer(
         n_photons=2,
         input_size=4,
@@ -426,17 +406,6 @@ def test_direct_noise_model_transmittance_feeds_photon_loss_transform():
 
 
 def test_noise_groups_are_passed_to_computation_process():
-    """The PR plumbing must actually pass ``noise_groups`` into the process.
-
-    PML-284 asks for ``NoiseGroups`` to propagate through initialization so that
-    ``ComputationProcessFactory.create()`` can route to the correct noisy process
-    subclass in follow-up work.
-
-    Current bug: ``NoiseGroups`` is stored on the initialization context, and the
-    factory accepts a ``noise_groups`` keyword, but ``QuantumLayer`` does not pass
-    it at the call site. The resulting ``layer.computation_process.noise_groups``
-    is ``None``.
-    """
     layer = ml.QuantumLayer(
         n_photons=2,
         input_size=4,
@@ -451,16 +420,6 @@ def test_noise_groups_are_passed_to_computation_process():
 
 
 def test_empty_noise_model_has_no_active_groups():
-    """A default Perceval ``NoiseModel()`` should not classify active noise.
-
-    The ticket says default/no-op values are excluded because they represent
-    "no noise on this axis." Perceval exposes defaults as concrete identity
-    values such as ``brightness=1``, ``g2=0`` and ``phase_error=0`` rather than
-    as ``None``.
-
-    Current bug: classification checks only for ``None``, so an empty model is
-    classified as having source, circuit and post-measurement groups.
-    """
     groups = classify_noise_model(pcvl.NoiseModel())
 
     assert groups is None or (
@@ -471,12 +430,6 @@ def test_empty_noise_model_has_no_active_groups():
 
 
 def test_brightness_only_classification_has_no_source_or_circuit_groups():
-    """A brightness-only model should produce only post-measurement groups.
-
-    This test makes the misclassification easy to see in pytest output. The
-    expected group is only ``{"brightness": 0.3}``; source and circuit groups
-    should be empty because all their values are Perceval identity defaults.
-    """
     groups = classify_noise_model(pcvl.NoiseModel(brightness=0.3))
 
     assert groups is not None
@@ -486,16 +439,6 @@ def test_brightness_only_classification_has_no_source_or_circuit_groups():
 
 
 def test_not_implemented_error_lists_classified_groups():
-    """The construction-time ``NotImplementedError`` should summarize groups.
-
-    PML-284 asks for a clear error, after classification and validation, that
-    identifies the source/circuit/post-measurement groups found and states that
-    differentiable noisy SLOS is not implemented yet.
-
-    Current bug: the implementation raises field-specific messages such as
-    ``The g2 error is not implemented yet`` and does not include the group
-    summary reviewers and follow-up implementers need.
-    """
     with pytest.raises(NotImplementedError) as exc_info:
         ml.QuantumLayer(
             n_photons=2,
@@ -512,16 +455,6 @@ def test_not_implemented_error_lists_classified_groups():
 
 
 def test_experiment_noise_amplitudes_uses_value_error_contract():
-    """Both noise entry points should use the same wrong-strategy error type.
-
-    The ticket defines error ordering as: wrong ``measurement_strategy`` raises
-    ``ValueError`` before noisy execution reaches the ``NotImplementedError``
-    gate.
-
-    Current bug: the direct ``noise_model=`` path raises ``ValueError``, but the
-    ``experiment.noise`` path still hits the older amplitude/noise check and
-    raises ``RuntimeError``.
-    """
     experiment = pcvl.Experiment(pcvl.Circuit(4))
     experiment.noise = pcvl.NoiseModel(brightness=0.5)
 
@@ -535,16 +468,6 @@ def test_experiment_noise_amplitudes_uses_value_error_contract():
 
 
 def test_return_object_with_noise_model_fails_fast():
-    """``return_object=True`` with noise is listed as out of scope for PML-284.
-
-    The ticket explicitly says supporting ``return_object=True`` with a noise
-    model is out of scope. Construction should therefore fail fast with a clear
-    validation error instead of silently accepting a contract the ticket does not
-    support.
-
-    Current bug: a post-measurement-only direct noise model can be constructed
-    with ``return_object=True``.
-    """
     with pytest.raises(
         NotImplementedError,
         match="The noise computation with the return_object feature set at True is not yet implemented.",
