@@ -227,3 +227,74 @@ def test_statevector_tensor_helpers_preserve_encoding_metadata():
     assert sv.clone().encoding is EncodingSpace.DUAL_RAIL
     assert sv.detach().encoding is EncodingSpace.DUAL_RAIL
     assert sv.to(dtype=torch.complex128).encoding is EncodingSpace.DUAL_RAIL
+
+
+def test_logical_to_fock_map_for_fock_encoding_is_identity_by_fock_order():
+    n_modes, n_photons = 4, 2
+    amplitudes = torch.zeros(
+        Combinadics("fock", n_photons, n_modes).compute_space_size()
+    )
+    sv = StateVector.from_tensor(amplitudes, n_modes=n_modes, n_photons=n_photons)
+
+    expected = {
+        tuple(state): index
+        for index, state in enumerate(Combinadics("fock", n_photons, n_modes))
+    }
+
+    assert sv.encoding is EncodingSpace.FOCK
+    assert sv.logical_to_fock_map() == expected
+
+
+def test_logical_to_fock_map_for_unbunched_encoding():
+    n_modes, n_photons = 4, 2
+    logical = torch.zeros(
+        EncodingSpace.UNBUNCHED.logical_basis_size(
+            n_modes=n_modes,
+            n_photons=n_photons,
+        )
+    )
+    sv = StateVector.from_tensor(
+        logical,
+        n_modes=n_modes,
+        n_photons=n_photons,
+        encoding=EncodingSpace.UNBUNCHED,
+    )
+
+    assert sv.logical_to_fock_map() == EncodingSpace.UNBUNCHED.logical_to_fock_indices(
+        n_modes=n_modes,
+        n_photons=n_photons,
+    )
+
+
+def test_logical_to_fock_map_for_dual_rail_encoding():
+    n_modes, n_photons = 4, 2
+    logical = torch.zeros(
+        EncodingSpace.DUAL_RAIL.logical_basis_size(
+            n_modes=n_modes,
+            n_photons=n_photons,
+        )
+    )
+    sv = StateVector.from_tensor(
+        logical,
+        n_modes=n_modes,
+        n_photons=n_photons,
+        encoding=EncodingSpace.DUAL_RAIL,
+    )
+
+    assert sv.logical_to_fock_map() == EncodingSpace.DUAL_RAIL.logical_to_fock_indices(
+        n_modes=n_modes,
+        n_photons=n_photons,
+    )
+
+
+def test_logical_to_fock_map_for_custom_partitioned_encoding():
+    encoding = EncodingSpace(modes_per_photon=[3, 2])
+    logical = torch.zeros(encoding.logical_basis_size())
+    sv = StateVector.from_tensor(
+        logical,
+        n_modes=5,
+        n_photons=2,
+        encoding=encoding,
+    )
+
+    assert sv.logical_to_fock_map() == encoding.logical_to_fock_indices()

@@ -176,7 +176,29 @@ class EncodingSpace:
     def logical_basis_size(
         self, *, n_modes: int | None = None, n_photons: int | None = None
     ) -> int:
-        """Return the logical tensor width expected before Fock embedding."""
+        """Return the logical tensor width expected before Fock embedding.
+
+        Parameters
+        ----------
+        n_modes : int | None
+            Number of photonic modes used to resolve built-in encodings. If
+            omitted, custom partitioned encodings use their own configured
+            mode count. Default value is None.
+        n_photons : int | None
+            Number of photons used to resolve built-in encodings. If omitted,
+            custom partitioned encodings use their own configured photon
+            count. Default value is None.
+
+        Returns
+        -------
+        int
+            Number of logical amplitude components expected for this encoding.
+
+        Raises
+        ------
+        ValueError
+            If the encoding cannot resolve ``n_modes`` and ``n_photons``.
+        """
 
         return self.basis_size(n_modes=n_modes, n_photons=n_photons)
 
@@ -187,7 +209,36 @@ class EncodingSpace:
         n_modes: int | None = None,
         n_photons: int | None = None,
     ) -> torch.Tensor:
-        """Embed a logical amplitude tensor into canonical full-Fock ordering."""
+        """Embed a logical amplitude tensor into canonical full-Fock ordering.
+
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            Logical amplitude tensor. The final dimension stores amplitudes in
+            this encoding's logical basis order; all leading dimensions are
+            preserved as batch axes.
+        n_modes : int | None
+            Number of photonic modes used to resolve built-in encodings. If
+            omitted, custom partitioned encodings use their own configured
+            mode count. Default value is None.
+        n_photons : int | None
+            Number of photons used to resolve built-in encodings. If omitted,
+            custom partitioned encodings use their own configured photon
+            count. Default value is None.
+
+        Returns
+        -------
+        torch.Tensor
+            Amplitude tensor with the same leading dimensions as ``tensor`` and
+            final dimension equal to the full Fock basis size.
+
+        Raises
+        ------
+        ValueError
+            If ``tensor`` is scalar, if its final dimension does not match the
+            logical basis size, or if the encoding cannot resolve
+            ``n_modes`` and ``n_photons``.
+        """
 
         if tensor.dim() == 0:
             raise ValueError("Amplitude tensor must be at least one-dimensional.")

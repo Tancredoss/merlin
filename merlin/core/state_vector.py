@@ -311,8 +311,12 @@ class StateVector:
         Number of modes in the Fock space.
     n_photons : int
         Total photon number represented by the state.
+    encoding : EncodingSpace
+        Logical encoding used to construct the stored tensor. Default value is
+        EncodingSpace.FOCK.
     _normalized : bool
-        Internal flag tracking whether the stored tensor is normalized.
+        Internal flag tracking whether the stored tensor is normalized. Default
+        value is False.
 
     Notes
     -----
@@ -454,6 +458,38 @@ class StateVector:
                 idx.numel() * idx.element_size() + vals.numel() * vals.element_size()
             )
         return int(self.tensor.numel() * self.tensor.element_size())
+
+    def logical_to_fock_map(self) -> dict[tuple[int, ...], int]:
+        """Return the logical-to-Fock index map for this state vector.
+
+        The returned dictionary exposes the exact embedding order implied by
+        ``self.encoding`` for this state vector's ``n_modes`` and
+        ``n_photons``. Keys are logical basis labels and values are indices in
+        Merlin's canonical full-Fock basis. For ``EncodingSpace.FOCK``, keys are
+        full Fock occupation tuples and values are their descending-lexicographic
+        Fock indices.
+
+        Parameters
+        ----------
+        None
+            This method uses the state vector metadata stored on ``self``.
+
+        Returns
+        -------
+        dict[tuple[int, ...], int]
+            Mapping from logical basis labels to canonical Fock-basis indices.
+
+        Raises
+        ------
+        ValueError
+            If the stored encoding cannot resolve a basis for this state
+            vector's ``n_modes`` and ``n_photons``.
+        """
+
+        return self.encoding.logical_to_fock_indices(
+            n_modes=self.n_modes,
+            n_photons=self.n_photons,
+        )
 
     def _tensor_coalesced(self) -> torch.Tensor:
         if not self.tensor.is_sparse:
