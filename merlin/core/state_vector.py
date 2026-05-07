@@ -41,13 +41,10 @@ import torch
 
 from ..utils.combinadics import Combinadics
 from ..utils.dtypes import complex_dtype_for
-from ..utils.sparse import ensure_sparse_invariant_policy, sparse_coo_tensor
 
 Scalar = float | int | complex
 
 Basis = Combinadics
-
-ensure_sparse_invariant_policy()
 
 
 @cache
@@ -95,7 +92,7 @@ def _to_complex(
     if tensor.is_sparse:
         coalesced = tensor.coalesce()
         values = _to_complex_dense(coalesced.values(), dtype=dtype, device=device)
-        return sparse_coo_tensor(
+        return torch.sparse_coo_tensor(
             coalesced.indices(),
             values,
             coalesced.shape,
@@ -115,7 +112,7 @@ def _normalize_tensor(tensor: torch.Tensor) -> torch.Tensor:
                 return tensor
             norm = torch.sqrt(norm_sq)
             new_values = values / norm
-            return sparse_coo_tensor(
+            return torch.sparse_coo_tensor(
                 indices, new_values, tensor.shape, device=tensor.device
             )
 
@@ -142,7 +139,7 @@ def _normalize_tensor(tensor: torch.Tensor) -> torch.Tensor:
             else:
                 scaled_values.append(values[col] / norm)
         new_values_tensor = torch.stack(scaled_values)
-        return sparse_coo_tensor(
+        return torch.sparse_coo_tensor(
             indices, new_values_tensor, tensor.shape, device=tensor.device
         )
 
@@ -533,7 +530,7 @@ class StateVector:
             values = torch.tensor(
                 values_list, dtype=complex_dtype_for(torch.float32), device=device
             )
-            tensor = sparse_coo_tensor(
+            tensor = torch.sparse_coo_tensor(
                 indices, values, (_basis_size(n_modes, n_photons),), device=device
             )
             tensor = _to_complex(tensor, dtype=dtype, device=device)
@@ -592,7 +589,9 @@ class StateVector:
             values = torch.ones(
                 1, dtype=complex_dtype_for(torch.float32), device=device
             )
-            tensor = sparse_coo_tensor(indices, values, (basis_size,), device=device)
+            tensor = torch.sparse_coo_tensor(
+                indices, values, (basis_size,), device=device
+            )
         else:
             tensor = torch.zeros(
                 basis_size, dtype=complex_dtype_for(torch.float32), device=device
@@ -762,7 +761,7 @@ class StateVector:
                 return StateVector(zero, m_total, n_total)
             indices = torch.tensor([idx_list], dtype=torch.long, device=device)
             values_tensor = torch.stack(val_list)
-            tensor = sparse_coo_tensor(
+            tensor = torch.sparse_coo_tensor(
                 indices, values_tensor, (size_total,), device=device
             )
             return StateVector(
