@@ -82,6 +82,7 @@ packages = [
     "merlin.builder",
     "merlin.core",
     "merlin.datasets",
+    "merlin.models",
     "merlin.measurement",
     "merlin.pcvl_pytorch",
     "merlin.utils",

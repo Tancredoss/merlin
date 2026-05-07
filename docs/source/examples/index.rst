@@ -53,6 +53,20 @@ Core Concepts
    :columns: 4
    :contour-color: #5648ED
 
+MerLin Models
+-------------
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   ../notebooks/QCNNClassifier-demo-MNIST
+
+.. merlin-gallery::
+   :data: _data/galleries/examples/merlin_models.json
+   :columns: 4
+   :contour-color: #5648ED
+
 Model Families
 --------------
 
@@ -80,6 +94,7 @@ Application examples
    :maxdepth: 1
 
    ../notebooks/binary_classification
+   ../notebooks/CACIB_Project_Bankruptcy_Prediction_Tutorial
    ../reproduced_papers/reproductions/qssl
    ../reproduced_papers/reproductions/quantum_transfer_learning
    ../notebooks/QORC-timeseries
