@@ -42,6 +42,7 @@ import torch
 from ..utils.combinadics import Combinadics
 from ..utils.dtypes import complex_dtype_for
 from .computation_space import ComputationSpace
+from .encoding_space import EncodingSpace
 
 Scalar = float | int | complex
 
@@ -326,11 +327,14 @@ class StateVector:
     tensor: torch.Tensor
     n_modes: int
     n_photons: int
+    encoding: EncodingSpace = EncodingSpace.FOCK
     _normalized: bool = field(default=False)
 
     def __setattr__(self, name: str, value) -> None:
-        if name in ("n_modes", "n_photons") and name in self.__dict__:
-            raise AttributeError("n_modes and n_photons are immutable once set")
+        if name in ("n_modes", "n_photons", "encoding") and name in self.__dict__:
+            raise AttributeError(
+                "n_modes, n_photons, and encoding are immutable once set"
+            )
         super().__setattr__(name, value)
 
     def __getattr__(self, name: str):
@@ -385,7 +389,11 @@ class StateVector:
         """
         new_tensor = self.tensor.to(*args, **kwargs)
         return StateVector(
-            new_tensor, self.n_modes, self.n_photons, _normalized=self._normalized
+            new_tensor,
+            self.n_modes,
+            self.n_photons,
+            encoding=self.encoding,
+            _normalized=self._normalized,
         )
 
     def clone(self) -> StateVector:
@@ -400,6 +408,7 @@ class StateVector:
             self.tensor.clone(),
             self.n_modes,
             self.n_photons,
+            encoding=self.encoding,
             _normalized=self._normalized,
         )
 
@@ -415,6 +424,7 @@ class StateVector:
             self.tensor.detach(),
             self.n_modes,
             self.n_photons,
+            encoding=self.encoding,
             _normalized=self._normalized,
         )
 
@@ -730,6 +740,7 @@ class StateVector:
         *,
         n_modes: int,
         n_photons: int,
+        encoding: EncodingSpace | None = None,
         dtype: torch.dtype | None = None,
         device: torch.device | None = None,
     ) -> StateVector:
@@ -743,6 +754,9 @@ class StateVector:
             Number of modes.
         n_photons : int
             Total photons.
+        encoding : EncodingSpace | None
+            Logical input encoding. When omitted, the tensor is treated as
+            canonical Fock-space amplitudes and stored unchanged.
         dtype : torch.dtype | None
             Optional target dtype.
         device : torch.device | None
@@ -758,10 +772,30 @@ class StateVector:
         ValueError
             If the last dimension does not match the basis size.
         """
-        basis_size = _basis_size(n_modes, n_photons)
-        _ensure_last_dim(tensor, basis_size)
+        resolved_encoding = encoding or EncodingSpace.FOCK
+        logical_basis_size = resolved_encoding.logical_basis_size(
+            n_modes=n_modes, n_photons=n_photons
+        )
+        if tensor.shape[-1] != logical_basis_size:
+            if resolved_encoding.kind == "fock":
+                _ensure_last_dim(tensor, logical_basis_size)
+            raise ValueError(
+                "Tensor last dimension does not match the logical basis size "
+                f"for encoding '{resolved_encoding.kind}': got {tensor.shape[-1]}, "
+                f"expected {logical_basis_size}."
+            )
         normalized = _to_complex(tensor, dtype=dtype, device=device)
-        return cls(normalized, n_modes, n_photons, _normalized=False)
+        if resolved_encoding.kind != "fock":
+            normalized = resolved_encoding.embed(
+                normalized, n_modes=n_modes, n_photons=n_photons
+            )
+        return cls(
+            normalized,
+            n_modes,
+            n_photons,
+            encoding=resolved_encoding,
+            _normalized=False,
+        )
 
     def tensor_product(
         self,
