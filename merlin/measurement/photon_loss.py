@@ -355,8 +355,8 @@ def resolve_photon_loss(
 
     Parameters
     ----------
-    experiment : pcvl.Experiment
-        Quantum experiment carrying the noise model.
+    noise_groups : NoiseGroups|None
+        The noise groups of the current model.
     n_modes : int
         Number of photonic modes to cover.
 

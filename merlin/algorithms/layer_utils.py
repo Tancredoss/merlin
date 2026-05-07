@@ -659,6 +659,8 @@ def setup_noise_and_detectors(
         Logical computation space requested by the layer.
     measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
         Measurement strategy used to validate detector and noise compatibility.
+    return_object : bool
+        Whether the layer returns structured objects instead of tensors. Default is False
 
     Returns
     -------
@@ -1057,6 +1059,8 @@ def validate_noisy_measurement_strategy(
         The noise model to use. By default it is None (no noise).
     empty_detectors: bool
         If there is no pcvl.Detectors used in the circuit.
+    return_object : bool
+        Whether the layer returns structured objects instead of tensors.
 
     Returns
     -------
