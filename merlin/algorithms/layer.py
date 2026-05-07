@@ -290,6 +290,7 @@ class QuantumLayer(MerlinModule):
             measurement_strategy,
             backend=self.backend,
             noise_model=self.noise_model,
+            return_object=return_object,
         )
 
         # Phase 10: build initialization context
@@ -357,6 +358,7 @@ class QuantumLayer(MerlinModule):
         self._output_size = 0
         self._current_params: dict[str, Any] = {}
         self.return_object = context.return_object
+        self._noise_groups = context.noise_groups
 
         for warning_msg in context.warnings:
             warnings.warn(warning_msg, UserWarning, stacklevel=3)
@@ -427,6 +429,7 @@ class QuantumLayer(MerlinModule):
             device=self.device,
             dtype=self.dtype,
             computation_space=self.computation_space,
+            noise_groups=self._noise_groups,
         )
 
         # If input_state was a StateVector, set the actual tensor now (after init to bypass validation)

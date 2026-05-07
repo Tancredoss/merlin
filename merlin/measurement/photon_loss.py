@@ -26,10 +26,13 @@ import itertools
 import math
 import warnings
 from collections.abc import Sequence
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import perceval as pcvl
 import torch
+
+if TYPE_CHECKING:
+    from merlin.algorithms.layer_utils import NoiseGroups
 
 '''def _is_sequence(value: object) -> bool:
     """Return True if the value behaves like a sequence (and is not a string)."""
@@ -346,6 +349,63 @@ class PhotonLossTransform(torch.nn.Module):
 
 
 def resolve_photon_loss(
+    noise_groups: NoiseGroups | None, n_modes: int
+) -> tuple[list[float], bool]:
+    """Resolve photon loss from the experiment's noise model.
+
+    Parameters
+    ----------
+    experiment : pcvl.Experiment
+        Quantum experiment carrying the noise model.
+    n_modes : int
+        Number of photonic modes to cover.
+
+    Returns
+    -------
+    tuple[list[float], bool]
+        Per-mode survival probabilities and a flag indicating whether an
+        effective noise model was provided.
+    """
+    survival_probs = [1.0] * n_modes  # Default: no loss
+    empty_noise_model = True
+
+    if noise_groups is None:
+        return survival_probs, empty_noise_model
+
+    if noise_groups.post_measurement is None:
+        survival_probs = [1.0] * n_modes
+        empty_noise_model = True
+    else:
+        if "brightness" not in noise_groups.post_measurement:
+            survival_probs = [
+                float(noise_groups.post_measurement["transmittance"])
+            ] * n_modes
+            empty_noise_model = False
+        elif "transmittance" not in noise_groups.post_measurement:
+            survival_probs = [
+                float(noise_groups.post_measurement["brightness"])
+            ] * n_modes
+            empty_noise_model = False
+        else:
+            survival_probs = [
+                float(noise_groups.post_measurement["brightness"])
+                * float(noise_groups.post_measurement["transmittance"])
+            ] * n_modes
+            empty_noise_model = False
+
+    if not all(0.0 <= prob <= 1.0 for prob in survival_probs):
+        raise ValueError("Photon survival probabilities must be within [0, 1].")
+    if empty_noise_model and not all(
+        math.isclose(prob, 1.0, rel_tol=1e-12, abs_tol=1e-12) for prob in survival_probs
+    ):
+        raise ValueError(
+            "Inconsistent noise model: marked as empty but contains non-trivial loss parameters."
+        )
+
+    return survival_probs, empty_noise_model
+
+
+def resolve_photon_loss_kernel(
     experiment: pcvl.Experiment, n_modes: int
 ) -> tuple[list[float], bool]:
     """Resolve photon loss from the experiment's noise model.
@@ -400,5 +460,4 @@ def resolve_photon_loss(
         raise ValueError(
             "Inconsistent noise model: marked as empty but contains non-trivial loss parameters."
         )
-
     return survival_probs, empty_noise_model

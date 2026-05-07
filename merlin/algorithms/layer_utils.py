@@ -645,6 +645,7 @@ def setup_noise_and_detectors(
     measurement_strategy: MeasurementStrategyLike,
     backend: str = None,
     noise_model: pcvl.NoiseModel | None = None,
+    return_object: bool = False,
 ) -> NoiseAndDetectorConfig:
     """Extract and validate photon-loss and detector configuration.
 
@@ -670,26 +671,18 @@ def setup_noise_and_detectors(
         If amplitude readout is requested together with incompatible noise or
         detector settings.
     """
-    photon_survival_probs, empty_noise_model = resolve_photon_loss(
-        experiment, circuit.m
-    )
+    # Measurement resolution
+    measurement_kind = _resolve_measurement_kind(measurement_strategy)
+    amplitude_readout = measurement_kind == MeasurementKind.AMPLITUDES
+
+    # Checking and resolving the detectors
     detectors, empty_detectors = resolve_detectors(experiment, circuit.m)
-
-    has_custom_noise = not empty_noise_model
-    has_custom_detectors = not empty_detectors
     detector_warnings: list[str] = []
-
+    has_custom_detectors = not empty_detectors
     if has_custom_detectors and computation_space is not ComputationSpace.FOCK:
         detectors = [pcvl.Detector.pnr()] * circuit.m
         detector_warnings.append(
             f"Detectors are ignored in favor of ComputationSpace: {computation_space}"
-        )
-
-    measurement_kind = _resolve_measurement_kind(measurement_strategy)
-    amplitude_readout = measurement_kind == MeasurementKind.AMPLITUDES
-    if amplitude_readout and has_custom_noise:
-        raise RuntimeError(
-            "measurement_strategy=MeasurementStrategy.AMPLITUDES cannot be used when the experiment defines a NoiseModel."
         )
     if amplitude_readout and has_custom_detectors:
         raise RuntimeError(
@@ -697,47 +690,61 @@ def setup_noise_and_detectors(
             "Compute amplitudes without detectors and apply a Partial DetectorTransform manually if needed."
         )
 
+    # Validating and sorting the noise model
     validate_noisy_measurement_strategy(
         backend,
         output=measurement_kind.name.lower(),
         noise_model=noise_model,
         empty_detectors=empty_detectors,
+        return_object=return_object,
     )
     noise_groups = None if noise_model is None else classify_noise_model(noise_model)
+
+    # Post measurement error
+    photon_survival_probs, empty_post_measurement_noise = resolve_photon_loss(
+        noise_groups, circuit.m
+    )
+    has_post_measurement_noise = not empty_post_measurement_noise
+
     # Not implemented errors
     if noise_groups is not None:
+        noises_not_implemented_source = []
+        noises_not_implemented_circuit = []
         if noise_groups.source is not None:
-            if noise_groups.source["g2_distinguishable"] is not None:
-                if noise_groups.source["g2_distinguishable"] is False:
-                    raise NotImplementedError(
-                        "The g2_distinguishable error is not implemented yet"
-                    )
-            if noise_groups.source["indistinguishability"] is not None:
-                if not noise_groups.source["indistinguishability"] == 1.0:
-                    raise NotImplementedError(
-                        "The indistinguishability error is not implemented yet"
-                    )
+            if "g2_distinguishable" in noise_groups.source:
+                noises_not_implemented_source.append("g2_distinguishable")
 
-            if noise_groups.source["g2"] is not None:
-                if not noise_groups.source["g2"] == 0.0:
-                    raise NotImplementedError("The g2 error is not implemented yet")
+            if "indistinguishability" in noise_groups.source:
+                noises_not_implemented_source.append("indistinguishability")
+
+            if "g2" in noise_groups.source:
+                noises_not_implemented_source.append("g2")
 
         if noise_groups.circuit is not None:
-            if noise_groups.circuit["phase_imprecision"] is not None:
-                if not noise_groups.circuit["phase_imprecision"] == 0.0:
-                    raise NotImplementedError(
-                        "The phase_imprecision error is not implemented yet"
-                    )
+            if "phase_imprecision" in noise_groups.circuit:
+                noises_not_implemented_circuit.append("phase_imprecision")
 
-            if noise_groups.circuit["phase_error"] is not None:
-                if not noise_groups.circuit["phase_error"] == 0.0:
-                    raise NotImplementedError(
-                        "The phase_error error is not implemented yet"
-                    )
+            if "phase_error" in noise_groups.circuit:
+                noises_not_implemented_circuit.append("phase_error")
+        if len(noises_not_implemented_source) > 0:
+            if len(noises_not_implemented_circuit) > 0:
+                raise NotImplementedError(
+                    f"The following noises are not implemented yet for the QuantumLayer. Source noises: {noises_not_implemented_source}. Circuit noises: {noises_not_implemented_circuit}."
+                )
+            else:
+                raise NotImplementedError(
+                    f"The following noises are not implemented yet for the QuantumLayer. Source noises: {noises_not_implemented_source}."
+                )
 
+        elif len(noises_not_implemented_circuit) > 0:
+            raise NotImplementedError(
+                f"The following noises are not implemented yet for the QuantumLayer. Circuit noises: {noises_not_implemented_circuit}."
+            )
+
+    # Creating the noise config object
     return NoiseAndDetectorConfig(
         photon_survival_probs=photon_survival_probs,
-        has_custom_noise=has_custom_noise,
+        has_custom_noise=has_post_measurement_noise,
         detectors=detectors,
         has_custom_detectors=has_custom_detectors,
         detector_warnings=detector_warnings,
@@ -965,30 +972,67 @@ def classify_noise_model(noise_model: pcvl.NoiseModel | None) -> NoiseGroups | N
     NoiseGroups | None
         The NoiseGroups object that contains the noise sources per category.
     """
-    # Source noise
+
     if noise_model is None:
         return None
-    source = {
-        "indistinguishability": noise_model.indistinguishability,
-        "g2_distinguishable": noise_model.g2_distinguishable,
-        "g2": noise_model.g2,
-    }
-    if all(value is None for value in source.values()):
+    # Source noise
+    source = {}
+    # indistinguishability
+    if noise_model.indistinguishability is None:
+        pass
+    elif not noise_model.indistinguishability == 1.0:
+        source["indistinguishability"] = noise_model.indistinguishability
+    # g2_distinguishable
+    if noise_model.g2_distinguishable is None:
+        pass
+    elif not noise_model.g2_distinguishable:
+        source["g2_distinguishable"] = False
+    # g2
+    if noise_model.g2 is None:
+        pass
+    elif not noise_model.g2 == 0.0:
+        source["g2"] = noise_model.g2
+    if source == {}:
         source = None
+
     # Circuit noise
-    circuit = {
-        "phase_imprecision": noise_model.phase_imprecision,
-        "phase_error": noise_model.phase_error,
-    }
-    if all(value is None for value in circuit.values()):
+    circuit = {}
+    # phase_imprecision
+    if noise_model.phase_imprecision is None:
+        pass
+    elif not noise_model.phase_imprecision == 0.0:
+        circuit["phase_imprecision"] = noise_model.phase_imprecision
+    # phase_error
+    if noise_model.phase_error is None:
+        pass
+    elif not noise_model.phase_error == 0.0:
+        circuit["phase_error"] = noise_model.phase_error
+    if circuit == {}:
         circuit = None
+
     # Post-measurement noise
     post_measurement = {
         "transmittance": noise_model.transmittance,
         "brightness": noise_model.brightness,
     }
-    if all(value is None for value in post_measurement.values()):
+    post_measurement = {}
+    # transmittance
+    if noise_model.transmittance is None:
+        pass
+    elif not noise_model.transmittance == 1.0:
+        post_measurement["transmittance"] = noise_model.transmittance
+    # brightness
+    if noise_model.brightness is None:
+        pass
+    elif not noise_model.brightness == 1.0:
+        post_measurement["brightness"] = noise_model.brightness
+
+    if post_measurement == {}:
         post_measurement = None
+
+    # Building the NoiseGroups object
+    if (source is None) and (circuit is None) and (post_measurement is None):
+        return None
     return NoiseGroups(
         source=source, circuit=circuit, post_measurement=post_measurement
     )
@@ -999,6 +1043,7 @@ def validate_noisy_measurement_strategy(
     output: str,
     noise_model: pcvl.NoiseModel | None = None,
     empty_detectors: bool = False,
+    return_object: bool = False,
 ) -> None:
     """Validate the noise model and QuantumLayer configurations so that they match.
 
@@ -1018,6 +1063,10 @@ def validate_noisy_measurement_strategy(
     """
     if noise_model is None and empty_detectors:
         return
+    if (noise_model is not None) and return_object:
+        raise NotImplementedError(
+            "The noise computation with the return_object feature set at True is not yet implemented."
+        )
     if output == "amplitudes":
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."

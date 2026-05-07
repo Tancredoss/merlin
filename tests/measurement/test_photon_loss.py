@@ -113,8 +113,8 @@ class TestPhotonLossWithQuantumLayer:
         )
 
         with pytest.raises(
-            RuntimeError,
-            match="measurement_strategy=MeasurementStrategy.AMPLITUDES cannot be used when the experiment defines a NoiseModel.",
+            ValueError,
+            match="When doing a noisy simulation, the probabilities measurement strategy must be used.",
         ):
             ML.QuantumLayer(
                 input_size=0,
@@ -460,11 +460,13 @@ class TestPhotonLossWithQuantumLayer:
         layer.train()
         probabilities = layer(x)
         probabilities = probabilities
-        target = torch.tensor([
-            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-        ])
+        target = torch.tensor(
+            [
+                [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            ]
+        )
 
         cel = torch.nn.CrossEntropyLoss()
         loss = cel(probabilities, target)

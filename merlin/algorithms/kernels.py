@@ -35,7 +35,7 @@ from ..core.computation_space import ComputationSpace
 from ..core.state import StatePattern, generate_state
 from ..measurement.autodiff import AutoDiffProcess
 from ..measurement.detectors import DetectorTransform, resolve_detectors
-from ..measurement.photon_loss import PhotonLossTransform, resolve_photon_loss
+from ..measurement.photon_loss import PhotonLossTransform, resolve_photon_loss_kernel
 from ..pcvl_pytorch.locirc_to_tensor import CircuitConverter
 from ..pcvl_pytorch.slos_torchscript import (
     build_slos_distribution_computegraph as build_slos_graph,
@@ -830,7 +830,7 @@ class FidelityKernel(MerlinModule):
                 "Input state is not present in the simulation basis produced by the circuit."
             ) from exc
 
-        self._photon_survival_probs, empty_noise_model = resolve_photon_loss(
+        self._photon_survival_probs, empty_noise_model = resolve_photon_loss_kernel(
             self.experiment, m
         )
         self.has_custom_noise_model = not empty_noise_model
@@ -946,9 +946,9 @@ class FidelityKernel(MerlinModule):
 
         # Check if we are constructing training matrix
         equal_inputs = self._check_equal_inputs(x1, x2)
-        U_forward = torch.stack([
-            self.feature_map.compute_unitary(x).to(x1.device) for x in x1
-        ])
+        U_forward = torch.stack(
+            [self.feature_map.compute_unitary(x).to(x1.device) for x in x1]
+        )
 
         len_x1 = len(x1)
         if x2 is not None:
@@ -957,19 +957,25 @@ class FidelityKernel(MerlinModule):
                 if isinstance(x2, torch.Tensor)
                 else torch.as_tensor(x2, dtype=self.dtype, device=self.device)
             )
-            U_adjoint = torch.stack([
-                self.feature_map.compute_unitary(x).transpose(0, 1).conj().to(x1.device)
-                for x in x2_tensor
-            ])
-            if isinstance(x2, torch.Tensor):
-                U_adjoint = torch.stack([
-                    self.feature_map
-                    .compute_unitary(x)
+            U_adjoint = torch.stack(
+                [
+                    self.feature_map.compute_unitary(x)
                     .transpose(0, 1)
                     .conj()
                     .to(x1.device)
-                    for x in x2
-                ])
+                    for x in x2_tensor
+                ]
+            )
+            if isinstance(x2, torch.Tensor):
+                U_adjoint = torch.stack(
+                    [
+                        self.feature_map.compute_unitary(x)
+                        .transpose(0, 1)
+                        .conj()
+                        .to(x1.device)
+                        for x in x2
+                    ]
+                )
             else:
                 raise (TypeError("x2 is not None nor torch.Tensor"))
 
