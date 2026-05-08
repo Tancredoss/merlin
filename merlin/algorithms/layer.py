@@ -918,6 +918,14 @@ class QuantumLayer(MerlinModule):
 
             batch_dim = max(parameter_batch_dim, 1)
 
+            state_dimensions = set()
+            for state in self.memristive_state:
+                state_dimensions.add(state.size(0))
+            if len(state_dimensions) > 1:
+                raise RuntimeError(
+                    "batch size mismatch: Not all memristive states have the same size. Call reset(batch_size=N) before starting a new batch to set them to the same dimension"
+                )
+
             if not self.memristive_state[0].size(0) == batch_dim:
                 if (not self._memristive_smaller_last_batch) and (
                     batch_dim < self.memristive_state[0].size(0)
@@ -1213,12 +1221,10 @@ class QuantumLayer(MerlinModule):
                 for t in range(len(self.memristive_history[state])):
                     self.memristive_history[state][t] = self.memristive_history[state][
                         t
-                    ].to(dtype=self.dtype, device=device)
+                    ].to(device)
 
             for state in range(len(self.memristive_state)):
-                self.memristive_state[state] = self.memristive_state[state].to(
-                    dtype=self.dtype, device=device
-                )
+                self.memristive_state[state] = self.memristive_state[state].to(device)
 
         return self
 
@@ -1547,6 +1553,91 @@ class QuantumLayer(MerlinModule):
 
         return base_str + ")"
 
+    def get_extra_state(self) -> dict[str, Any] | None:
+        """Return memristive state and history for serialization via :meth:`state_dict`.
+
+        Called automatically by :meth:`torch.nn.Module.state_dict`.  Returns
+        ``None`` when the layer has no memristive phase shifters so that no
+        ``_extra_state`` key is added to the checkpoint.
+
+        Returns
+        -------
+        dict[str, Any] | None
+            A dict with keys ``"memristive_state"`` (list of detached tensors)
+            and ``"memristive_history"`` (list of stacked tensors, one per
+            memristor), or ``None`` if the layer has no memristors.
+        """
+        if not self._memristive_metadata:
+            return None
+        return {
+            "memristive_state": [s.detach() for s in self.memristive_state],
+            "memristive_history": [
+                (
+                    torch.stack([t.detach() for t in hist])
+                    if hist
+                    else torch.empty(0, device=self.device, dtype=self.dtype)
+                )
+                for hist in self.memristive_history
+            ],
+        }
+
+    def set_extra_state(self, state: dict[str, Any] | None) -> None:
+        """Restore memristive state and history from a checkpoint.
+
+        Called automatically by :meth:`torch.nn.Module.load_state_dict`.
+        Emits a :class:`UserWarning` when the checkpoint predates memristive
+        serialization support (i.e. the expected keys are absent) so that the
+        caller is not silently left with the wrong memristive state.
+
+        Parameters
+        ----------
+        state : dict[str, Any] | None
+            Extra state produced by :meth:`get_extra_state`.  Must contain
+            ``"memristive_state"`` (list of tensors, one per memristor) and
+            optionally ``"memristive_history"`` (list of stacked tensors).
+            ``None`` is accepted for compatibility with non-memristive layers.
+
+        Raises
+        ------
+        RuntimeError
+            If the number of memristive states in the checkpoint does not match
+            the number of memristors in the layer.
+        """
+        if not self._memristive_metadata:
+            return
+
+        if state is None or "memristive_state" not in state:
+            warnings.warn(
+                "Checkpoint extra state does not contain 'memristive_state'. "
+                "The memristive state will remain at its current (initial) value. "
+                "Re-save the checkpoint with the current version of Merlin to "
+                "preserve the memristive state across save/load round-trips.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return
+
+        loaded_states: list[torch.Tensor] = state["memristive_state"]
+        n = len(self.memristive_state)
+        if len(loaded_states) != n:
+            raise RuntimeError(
+                f"Checkpoint contains {len(loaded_states)} memristive state tensor(s) "
+                f"but the layer has {n}. The checkpoint is incompatible with this layer."
+            )
+        for i, tensor in enumerate(loaded_states):
+            self.memristive_state[i] = tensor.to(device=self.device, dtype=self.dtype)
+
+        loaded_histories: list[torch.Tensor] | None = state.get("memristive_history")
+        if loaded_histories is not None:
+            for i, stacked in enumerate(loaded_histories):
+                if stacked.numel() > 0:
+                    self.memristive_history[i] = [
+                        stacked[t].to(device=self.device, dtype=self.dtype)
+                        for t in range(stacked.shape[0])
+                    ]
+                else:
+                    self.memristive_history[i] = []
+
     def reset(self, batch_size: int = 1) -> None:
         """Resets the memristors to their initial state while clearing the history. It also
         defines the allowed batch size to be ran per forward pass for circuits with memristive phase shifters.
@@ -1554,7 +1645,7 @@ class QuantumLayer(MerlinModule):
         Parameters
         ----------
         batch_size : int
-            Size of the batches that will be used in forward.
+            Batch size that will be used in forward.
 
         """
         if batch_size < 1:

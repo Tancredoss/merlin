@@ -435,24 +435,30 @@ def test_qcnn_amplitude_encoding():
     qcnn = QCNNClassifier(input_shape, num_classes)
 
     # Build input to amplitude encode
-    x_tensor_0 = torch.tensor([
-        [1, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-    ]).unsqueeze(0)
-    x_tensor_1 = torch.tensor([
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 1],
-    ]).unsqueeze(0)
-    x_tensor_2 = torch.tensor([
-        [1, 1, 1, 1],
-        [1, 1, 1, 1],
-        [1, 1, 1, 1],
-        [1, 1, 1, 1],
-    ]).unsqueeze(0)
+    x_tensor_0 = torch.tensor(
+        [
+            [1, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+        ]
+    ).unsqueeze(0)
+    x_tensor_1 = torch.tensor(
+        [
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 1],
+        ]
+    ).unsqueeze(0)
+    x_tensor_2 = torch.tensor(
+        [
+            [1, 1, 1, 1],
+            [1, 1, 1, 1],
+            [1, 1, 1, 1],
+            [1, 1, 1, 1],
+        ]
+    ).unsqueeze(0)
     x_tensor_3 = torch.rand((4, 4)).unsqueeze(0)
 
     x_tensor = torch.cat([x_tensor_0, x_tensor_1, x_tensor_2, x_tensor_3], dim=0)
@@ -567,24 +573,30 @@ def test_full_default_qcnn():
         initial_param_values[name] = before
 
     # Generate data and labels
-    x_tensor_0 = torch.tensor([
-        [1, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-    ]).unsqueeze(0)
-    x_tensor_1 = torch.tensor([
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 1],
-    ]).unsqueeze(0)
-    x_tensor_2 = torch.tensor([
-        [1, 1, 1, 1],
-        [1, 1, 1, 1],
-        [1, 1, 1, 1],
-        [1, 1, 1, 1],
-    ]).unsqueeze(0)
+    x_tensor_0 = torch.tensor(
+        [
+            [1, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+        ]
+    ).unsqueeze(0)
+    x_tensor_1 = torch.tensor(
+        [
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 1],
+        ]
+    ).unsqueeze(0)
+    x_tensor_2 = torch.tensor(
+        [
+            [1, 1, 1, 1],
+            [1, 1, 1, 1],
+            [1, 1, 1, 1],
+            [1, 1, 1, 1],
+        ]
+    ).unsqueeze(0)
     x_tensor_3 = torch.rand((4, 4)).unsqueeze(0)
 
     x_tensor = torch.cat([x_tensor_0, x_tensor_1, x_tensor_2, x_tensor_3], dim=0)
