@@ -323,10 +323,10 @@ defines the allowed batch size to be ran per forward pass for circuits with memr
 
     input_tensor=torch.rand((5,2))
     
-    #Will fail since it expects tensor of batch dimension of 1 not 5.
-    probs=ql(input_tensor)
+    # Will fail since it expects tensor of batch dimension of 1 not 5.
+    # probs=ql(input_tensor)
 
-    #Will pass since the layer was reset to accept tensors of batch dimension 5.
+    # Will pass since the layer was reset to accept tensors of batch dimension 5.
     ql.reset(5)
     probs=ql(input_tensor)
 

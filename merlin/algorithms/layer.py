@@ -1196,35 +1196,75 @@ class QuantumLayer(MerlinModule):
             The updated layer instance.
         """
         super().to(*args, **kwargs)
-        # Manually move any additional tensors
-        device = kwargs.get("device", None)
-        if device is None and len(args) > 0:
-            device = args[0]
+        # Manually move tensors that are not registered as parameters/buffers.
+        device = kwargs.get("device")
+        dtype = kwargs.get("dtype")
+
+        # Support all torch.nn.Module.to signatures.
+        if len(args) > 0:
+            first_arg = args[0]
+            if isinstance(first_arg, torch.dtype):
+                dtype = first_arg if dtype is None else dtype
+            elif isinstance(first_arg, (torch.device, str)):
+                device = first_arg if device is None else device
+            elif isinstance(first_arg, torch.Tensor):
+                if device is None:
+                    device = first_arg.device
+                if dtype is None and first_arg.dtype in (torch.float32, torch.float64):
+                    dtype = first_arg.dtype
+
+        if len(args) > 1 and isinstance(args[1], torch.dtype) and dtype is None:
+            dtype = args[1]
+
+        if dtype is not None:
+            _, self.dtype, self.complex_dtype = MerlinModule.setup_device_and_dtype(
+                None,
+                dtype,
+            )
+
         if device is not None:
-            self.device = device
+            self.device = torch.device(device)
             self.computation_process.simulation_graph = (
-                self.computation_process.simulation_graph.to(device)
-            )
-            self.computation_process.converter = self.computation_process.converter.to(
-                self.dtype, device
+                self.computation_process.simulation_graph.to(self.device)
             )
 
-            # Photon loss Module
-            if self._photon_loss_transform is not None:
-                self._photon_loss_transform = self._photon_loss_transform.to(device)
-            # Detector Module
-            if self._detector_transform is not None:
-                self._detector_transform = self._detector_transform.to(device)
+        if device is None and dtype is None:
+            return self
 
-            # memristor state and history
-            for state in range(len(self.memristive_history)):
-                for t in range(len(self.memristive_history[state])):
-                    self.memristive_history[state][t] = self.memristive_history[state][
-                        t
-                    ].to(device)
+        self.computation_process.converter = self.computation_process.converter.to(
+            self.dtype,
+            self.device,
+        )
 
-            for state in range(len(self.memristive_state)):
-                self.memristive_state[state] = self.memristive_state[state].to(device)
+        # Photon loss Module
+        if self._photon_loss_transform is not None:
+            self._photon_loss_transform = self._photon_loss_transform.to(
+                device=self.device,
+                dtype=self.dtype,
+            )
+
+        # Detector Module
+        if self._detector_transform is not None:
+            self._detector_transform = self._detector_transform.to(
+                device=self.device,
+                dtype=self.dtype,
+            )
+
+        target_kwargs: dict[str, Any] = {"dtype": self.dtype}
+        if self.device is not None:
+            target_kwargs["device"] = self.device
+
+        # memristor state and history
+        for state in range(len(self.memristive_history)):
+            for t in range(len(self.memristive_history[state])):
+                self.memristive_history[state][t] = self.memristive_history[state][
+                    t
+                ].to(**target_kwargs)
+
+        for state in range(len(self.memristive_state)):
+            self.memristive_state[state] = self.memristive_state[state].to(
+                **target_kwargs
+            )
 
         return self
 
@@ -1553,62 +1593,36 @@ class QuantumLayer(MerlinModule):
 
         return base_str + ")"
 
-    def get_extra_state(self) -> dict[str, Any] | None:
-        """Return memristive state and history for serialization via :meth:`state_dict`.
+    def _serialize_memristive_runtime_state(
+        self, keep_vars: bool
+    ) -> dict[str, list[torch.Tensor]]:
+        """Serialize memristive state and history for checkpointing."""
 
-        Called automatically by :meth:`torch.nn.Module.state_dict`.  Returns
-        ``None`` when the layer has no memristive phase shifters so that no
-        ``_extra_state`` key is added to the checkpoint.
+        def _tensor_for_checkpoint(tensor: torch.Tensor) -> torch.Tensor:
+            return tensor if keep_vars else tensor.detach()
 
-        Returns
-        -------
-        dict[str, Any] | None
-            A dict with keys ``"memristive_state"`` (list of detached tensors)
-            and ``"memristive_history"`` (list of stacked tensors, one per
-            memristor), or ``None`` if the layer has no memristors.
-        """
-        if not self._memristive_metadata:
-            return None
         return {
-            "memristive_state": [s.detach() for s in self.memristive_state],
+            "memristive_state": [
+                _tensor_for_checkpoint(state) for state in self.memristive_state
+            ],
             "memristive_history": [
                 (
-                    torch.stack([t.detach() for t in hist])
-                    if hist
+                    torch.stack([_tensor_for_checkpoint(tensor) for tensor in history])
+                    if history
                     else torch.empty(0, device=self.device, dtype=self.dtype)
                 )
-                for hist in self.memristive_history
+                for history in self.memristive_history
             ],
         }
 
-    def set_extra_state(self, state: dict[str, Any] | None) -> None:
-        """Restore memristive state and history from a checkpoint.
-
-        Called automatically by :meth:`torch.nn.Module.load_state_dict`.
-        Emits a :class:`UserWarning` when the checkpoint predates memristive
-        serialization support (i.e. the expected keys are absent) so that the
-        caller is not silently left with the wrong memristive state.
-
-        Parameters
-        ----------
-        state : dict[str, Any] | None
-            Extra state produced by :meth:`get_extra_state`.  Must contain
-            ``"memristive_state"`` (list of tensors, one per memristor) and
-            optionally ``"memristive_history"`` (list of stacked tensors).
-            ``None`` is accepted for compatibility with non-memristive layers.
-
-        Raises
-        ------
-        RuntimeError
-            If the number of memristive states in the checkpoint does not match
-            the number of memristors in the layer.
-        """
+    def _restore_memristive_runtime_state(self, state: dict[str, Any] | None) -> None:
+        """Restore memristive state and history from checkpointed runtime state."""
         if not self._memristive_metadata:
             return
 
         if state is None or "memristive_state" not in state:
             warnings.warn(
-                "Checkpoint extra state does not contain 'memristive_state'. "
+                "Checkpoint does not contain memristive runtime state. "
                 "The memristive state will remain at its current (initial) value. "
                 "Re-save the checkpoint with the current version of Merlin to "
                 "preserve the memristive state across save/load round-trips.",
@@ -1618,25 +1632,80 @@ class QuantumLayer(MerlinModule):
             return
 
         loaded_states: list[torch.Tensor] = state["memristive_state"]
-        n = len(self.memristive_state)
-        if len(loaded_states) != n:
+        n_states = len(self.memristive_state)
+        if len(loaded_states) != n_states:
             raise RuntimeError(
                 f"Checkpoint contains {len(loaded_states)} memristive state tensor(s) "
-                f"but the layer has {n}. The checkpoint is incompatible with this layer."
+                f"but the layer has {n_states}. The checkpoint is incompatible with this layer."
             )
-        for i, tensor in enumerate(loaded_states):
-            self.memristive_state[i] = tensor.to(device=self.device, dtype=self.dtype)
+
+        for index, tensor in enumerate(loaded_states):
+            self.memristive_state[index] = tensor.to(
+                device=self.device,
+                dtype=self.dtype,
+            )
 
         loaded_histories: list[torch.Tensor] | None = state.get("memristive_history")
         if loaded_histories is not None:
-            for i, stacked in enumerate(loaded_histories):
+            for index, stacked in enumerate(loaded_histories):
                 if stacked.numel() > 0:
-                    self.memristive_history[i] = [
-                        stacked[t].to(device=self.device, dtype=self.dtype)
-                        for t in range(stacked.shape[0])
+                    self.memristive_history[index] = [
+                        stacked[time_index].to(device=self.device, dtype=self.dtype)
+                        for time_index in range(stacked.shape[0])
                     ]
                 else:
-                    self.memristive_history[i] = []
+                    self.memristive_history[index] = []
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        """Save module parameters plus memristive runtime state when present."""
+        super()._save_to_state_dict(destination, prefix, keep_vars)
+
+        if not self._memristive_metadata:
+            return
+
+        runtime_state = self._serialize_memristive_runtime_state(keep_vars)
+        destination[prefix + "_memristive_state"] = runtime_state["memristive_state"]
+        destination[prefix + "_memristive_history"] = runtime_state[
+            "memristive_history"
+        ]
+
+    def _load_from_state_dict(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
+        """Load module parameters plus memristive runtime state when present."""
+        memristive_state_key = prefix + "_memristive_state"
+        memristive_history_key = prefix + "_memristive_history"
+        legacy_extra_state_key = prefix + "_extra_state"
+
+        runtime_state: dict[str, Any] | None = None
+        if memristive_state_key in state_dict:
+            runtime_state = {"memristive_state": state_dict.pop(memristive_state_key)}
+            if memristive_history_key in state_dict:
+                runtime_state["memristive_history"] = state_dict.pop(
+                    memristive_history_key
+                )
+        elif legacy_extra_state_key in state_dict:
+            runtime_state = state_dict.pop(legacy_extra_state_key)
+
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
+
+        if runtime_state is not None or self._memristive_metadata:
+            self._restore_memristive_runtime_state(runtime_state)
 
     def reset(self, batch_size: int = 1) -> None:
         """Resets the memristors to their initial state while clearing the history. It also

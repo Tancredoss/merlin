@@ -2141,9 +2141,9 @@ def test_memristive_state_dict_round_trip_preserves_state_and_history():
     """``state_dict`` / ``load_state_dict`` must preserve memristive state.
 
     Plain Python lists of tensors are invisible to PyTorch's default
-    serialization.  ``get_extra_state`` / ``set_extra_state`` hook into the
-    standard checkpointing path so that save/load round-trips preserve both the
-    current memristive state and the accumulated history.
+    serialization. QuantumLayer therefore injects explicit memristive runtime
+    entries into its own ``state_dict`` so save/load round-trips preserve both
+    the current memristive state and the accumulated history.
     """
     import io
 
@@ -2176,8 +2176,8 @@ def test_memristive_state_dict_round_trip_as_submodule():
     """Serialization must work when ``QuantumLayer`` is a child of another module.
 
     When the parent calls ``state_dict()`` the prefix for child keys is
-    ``"quantum_layer."``; ``get_extra_state`` / ``set_extra_state`` must still
-    resolve the memristive state correctly in that case.
+    ``"quantum_layer."``; the custom memristive runtime entries must still
+    resolve correctly in that case.
     """
     import io
 
@@ -2211,15 +2211,17 @@ def test_memristive_state_dict_round_trip_as_submodule():
     ), "memristive_history length was not preserved when QuantumLayer is a submodule"
 
 
-def test_non_memristive_layer_uses_none_extra_state_placeholder():
-    """Non-memristive layers expose a ``None`` extra-state placeholder."""
+def test_non_memristive_layer_state_dict_has_no_memristive_runtime_entries():
+    """Non-memristive layers should not inject memristive runtime entries."""
     builder = ML.CircuitBuilder(n_modes=3)
     builder.add_entangling_layer()
     layer = ML.QuantumLayer(builder=builder, n_photons=2)
 
     sd = layer.state_dict()
 
-    assert sd["_extra_state"] is None
+    assert "_extra_state" not in sd
+    assert all("_memristive_state" not in key for key in sd)
+    assert all("_memristive_history" not in key for key in sd)
 
 
 def test_memristive_reset_after_to_uses_updated_device_and_dtype():
@@ -2283,7 +2285,9 @@ def test_memristive_updates_still_run_in_eval_mode():
     def increment_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
         return state + 1.0
 
-    layer = _layer(_builder_with_memristor(increment_update, with_inputs=True), input_size=2)
+    layer = _layer(
+        _builder_with_memristor(increment_update, with_inputs=True), input_size=2
+    )
     initial_state = layer.memristive_state[0].clone()
 
     layer.eval()
