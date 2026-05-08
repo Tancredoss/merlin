@@ -233,9 +233,10 @@ class ReservoirClassifier(MerlinModule):
             raise TypeError(
                 "reduction must expose scikit-learn style fit() and transform() methods."
             )
-        if not reduction.__class__.__module__.startswith("sklearn.decomposition"):
+        if not hasattr(reduction, "n_components"):
             raise TypeError(
-                "reduction must be a scikit-learn decomposition estimator instance."
+                "reduction must expose an n_components attribute "
+                "(e.g. a scikit-learn decomposition estimator such as PCA or FastICA)."
             )
         return reduction
 
@@ -606,6 +607,9 @@ class ReservoirClassifier(MerlinModule):
         self._is_fitted = True
         return self
 
+    #: Alias for :meth:`fit_reservoir` provided for API consistency with
+    #: scikit-learn pipeline conventions (``estimator.sample(X)`` ↔
+    #: ``estimator.fit_reservoir(X)``).
     sample = fit_reservoir
 
     def _require_fitted(self) -> None:
@@ -655,7 +659,10 @@ class ReservoirClassifier(MerlinModule):
 
         mean = self._quantum_mean
         std = self._quantum_std
-        assert mean is not None and std is not None
+        if mean is None or std is None:
+            raise RuntimeError(
+                "ReservoirClassifier must be fitted with fit_reservoir() before use."
+            )
         # Standardize the quantum features with the statistics learned on the
         # training set so train and inference use the same feature scale.
         return self._normalize_standard(
@@ -906,6 +913,13 @@ class ReservoirClassifier(MerlinModule):
             If ``path`` does not exist.
         RuntimeError
             If the checkpoint cannot be deserialized by :func:`torch.load`.
+
+        .. warning::
+
+            This method calls :func:`torch.load` with ``weights_only=False``,
+            which allows arbitrary Python objects to be unpickled. Only load
+            checkpoints from trusted sources. Loading a malicious file can
+            execute arbitrary code on your machine.
         """
         try:
             if map_location is None:
