@@ -306,6 +306,7 @@ This method resets the memristors to their initial state while clearing the hist
 defines the allowed batch size to be ran per forward pass for circuits with memristive phase shifters. Here is an example to run a N dimension batch.
 
 .. code-block:: python
+
     from merlin.algorithms.layer import QuantumLayer
     from merlin.builder.circuit_builder import CircuitBuilder
 
@@ -322,7 +323,7 @@ defines the allowed batch size to be ran per forward pass for circuits with memr
     )
 
     input_tensor=torch.rand((5,2))
-    
+
     # Will fail since it expects tensor of batch dimension of 1 not 5.
     # probs=ql(input_tensor)
 
