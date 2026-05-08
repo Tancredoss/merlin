@@ -1,6 +1,6 @@
 # MIT License
 #
-# Copyright (c) 2025 Quandela
+# Copyright (c) 2026 Quandela
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,5 +23,9 @@
 """High-level ready-to-use Merlin models."""
 
 from .reservoir_classifier import ReservoirClassifier
+from .qcnn import QCNNClassifier
 
-__all__ = ["ReservoirClassifier"]
+__all__ = [
+    "ReservoirClassifier",
+    "QCNNClassifier",
+    ]

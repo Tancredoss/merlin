@@ -13,8 +13,11 @@ Modules
 
    * - :doc:`merlin.models.reservoir_classifier`
      - Frozen photonic reservoir classifier with a trainable linear readout and optional preprocessing.
+   * - :doc:`merlin.models.qcnn`
+     - Quantum convolutional neural network classifier model built from quantum convolution and quantum pooling stages followed by a quantum dense and a readout stage.
 
 .. toctree::
    :hidden:
 
    merlin.models.reservoir_classifier
+   merlin.models.qcnn

@@ -24,7 +24,7 @@ Packages
    * - :doc:`api/merlin.measurement`
      - Measurement strategies, detectors, mappers, autodiff, and sampling tools.
    * - :doc:`api/merlin.models`
-     - High-level ready-to-use models including the frozen photonic reservoir classifier.
+     - Ready to use quantum machine learning model architectures.
    * - :doc:`api/merlin.pcvl_pytorch`
      - Perceval-to-PyTorch conversion and SLOS compute-graph utilities.
    * - :doc:`api/merlin.utils`
