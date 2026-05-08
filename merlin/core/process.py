@@ -610,3 +610,8 @@ class ComputationProcessFactory:
             computation_space=computation_space,
             **kwargs,
         )
+
+
+class NoisyComputationProcess(ComputationProcess):
+    def __init__(self):
+        super.__init__(self)
