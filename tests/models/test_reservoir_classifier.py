@@ -84,6 +84,7 @@ def test_accepts_fastica_reduction():
     logits = model.predict(X)
 
     assert model.layer.input_size == 2
+    assert model.layer.n_modes == 3
     assert features.shape == (len(X), 4 + model.layer.output_size)
     assert targets.shape == (len(y),)
     assert logits.shape == (len(X), 2)
@@ -140,7 +141,7 @@ def test_rejects_non_decomposition_reduction():
 def test_warns_for_large_mode_count_without_reduction():
     with pytest.warns(UserWarning, match="20 modes"):
         ReservoirClassifier(
-            in_features=20,
+            in_features=19,
             out_features=2,
             n_photons=1,
             reduction=None,
@@ -414,7 +415,7 @@ def test_save_load_preserves_measurement_strategy_override(tmp_path):
         restored.layer.measurement_strategy.computation_space
         == merlin.ComputationSpace.FOCK
     )
-    assert restored.layer.output_size == 10
+    assert restored.layer.output_size == 15
 
 
 def test_same_seed_same_predictions():
@@ -457,7 +458,7 @@ def test_layer_measurement_strategy_rebuilds_layer_and_invalidates_fit():
     )
 
     assert model.layer.output_size != old_output_size
-    assert model.layer.output_size == 10
+    assert model.layer.output_size == 15
     assert model._is_fitted is False
     assert model._fit_quantum_cache is None
 
@@ -473,12 +474,13 @@ def test_grouped_measurement_strategy_updates_lazylinear_input_width():
     )
     model.fit_reservoir(X)
 
-    assert model.layer.output_size == 6
-    assert model.readout.in_features == 10
+    assert model.layer.n_modes == 5
+    assert model.layer.output_size == 10
+    assert model.readout.in_features == 14
 
     model.layer.measurement_strategy = merlin.MeasurementStrategy.probs(
         computation_space=merlin.ComputationSpace.UNBUNCHED,
-        grouping=merlin.ModGrouping(6, 3),
+        grouping=merlin.ModGrouping(10, 3),
     )
     model.fit_reservoir(X)
     grouped_features = model._make_feature_tensor(X)
@@ -504,10 +506,10 @@ def test_layer_n_modes_rebuilds_layer_without_mutating_reduction():
     )
     model.fit_reservoir(X)
 
-    model.layer.n_modes = 5
+    model.layer.n_modes = 6
 
-    assert model.quantum_input_features == 5
-    assert model.layer.n_modes == 5
+    assert model.quantum_input_features == 6
+    assert model.layer.n_modes == 6
     assert model.layer.input_size == 4
     assert model.encoded_input_features == 4
     assert model._reduction_template.n_components == 4
@@ -531,7 +533,7 @@ def test_layer_n_modes_without_reduction_can_grow_modes():
     assert model.encoded_input_features == 4
 
 
-def test_layer_n_modes_cannot_shrink_below_encoded_feature_count():
+def test_layer_n_modes_cannot_shrink_below_circuit_width():
     model = ReservoirClassifier(
         in_features=4,
         out_features=2,
@@ -539,8 +541,8 @@ def test_layer_n_modes_cannot_shrink_below_encoded_feature_count():
         reduction=None,
     )
 
-    with pytest.raises(ValueError, match="encoded input features"):
-        model.layer.n_modes = 3
+    with pytest.raises(ValueError, match="encoded input features plus one"):
+        model.layer.n_modes = 4
 
 
 def test_layer_noise_model_rebuilds_layer_and_invalidates_fit():

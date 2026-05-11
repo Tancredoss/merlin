@@ -194,7 +194,7 @@ class ReservoirClassifier(MerlinModule):
             else None
         )
         self.encoded_input_features = self._infer_encoded_input_features()
-        self.quantum_input_features = self.encoded_input_features
+        self.quantum_input_features = self.encoded_input_features + 1
         self._warn_for_configuration()
 
         self._unitary_matrix = self._draw_unitary(
@@ -404,10 +404,11 @@ class ReservoirClassifier(MerlinModule):
         n_modes = int(n_modes)
         if n_modes <= 0:
             raise ValueError("n_modes must be a positive integer.")
-        if n_modes < self.encoded_input_features:
+        minimum_n_modes = self.encoded_input_features + 1
+        if n_modes < minimum_n_modes:
             raise ValueError(
-                "n_modes cannot be smaller than the number of encoded input features "
-                f"({self.encoded_input_features})."
+                "n_modes cannot be smaller than the number of encoded input "
+                f"features plus one ({minimum_n_modes})."
             )
 
         self.quantum_input_features = n_modes
