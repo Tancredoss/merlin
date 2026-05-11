@@ -22,10 +22,10 @@
 
 """High-level ready-to-use Merlin models."""
 
-from .reservoir_classifier import ReservoirClassifier
 from .qcnn import QCNNClassifier
+from .reservoir_classifier import ReservoirClassifier
 
 __all__ = [
     "ReservoirClassifier",
     "QCNNClassifier",
-    ]
+]

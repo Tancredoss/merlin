@@ -484,6 +484,12 @@ class ReservoirClassifier(MerlinModule):
             self._input_max,
         )
 
+    def _reservoir_feature_width(self) -> int:
+        grouping = getattr(self._measurement_strategy, "grouping", None)
+        if grouping is not None:
+            return int(grouping.output_size)
+        return int(self.layer.output_size)
+
     def _materialize_readout(self, input_width: int) -> None:
         # LazyLinear would otherwise initialize on the first real forward pass,
         # using the ambient torch RNG state at that moment. We materialize it
@@ -622,13 +628,15 @@ class ReservoirClassifier(MerlinModule):
             self._quantum_mean = quantum.mean(dim=0).detach().cpu()
             self._quantum_std = quantum.std(dim=0, unbiased=False).detach().cpu()
             self._fit_quantum_cache = quantum.detach().cpu()
+            reservoir_feature_width = int(quantum.shape[1])
         else:
             self._quantum_mean = None
             self._quantum_std = None
             self._fit_quantum_cache = None
+            reservoir_feature_width = self._reservoir_feature_width()
 
         # 5. Cache the quantum features of the training data if caching is enabled, and store a fingerprint of the input data for cache validation during prediction.
-        feature_width = self.layer.output_size + (
+        feature_width = reservoir_feature_width + (
             self.in_features if self.concatenate else 0
         )
         self._materialize_readout(feature_width)
@@ -661,9 +669,8 @@ class ReservoirClassifier(MerlinModule):
 
         fingerprint = self._fingerprint(X_np)
         if (
-            (self._quantum_mean is None or self._quantum_std is None)
-            and fingerprint != self._fit_fingerprint
-        ):
+            self._quantum_mean is None or self._quantum_std is None
+        ) and fingerprint != self._fit_fingerprint:
             raise RuntimeError(
                 "ReservoirClassifier with cache=False must initialize quantum "
                 "normalization on the fitted training data before transforming "
@@ -982,12 +989,12 @@ class ReservoirClassifier(MerlinModule):
         RuntimeError
             If the checkpoint cannot be deserialized by :func:`torch.load`.
 
-        .. warning::
-
-            This method calls :func:`torch.load` with ``weights_only=False``,
-            which allows arbitrary Python objects to be unpickled. Only load
-            checkpoints from trusted sources. Loading a malicious file can
-            execute arbitrary code on your machine.
+        Notes
+        -----
+        This method calls :func:`torch.load` with ``weights_only=False``, which
+        allows arbitrary Python objects to be unpickled. Only load checkpoints
+        from trusted sources. Loading a malicious file can execute arbitrary
+        code on your machine.
         """
         try:
             if map_location is None:
