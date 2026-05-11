@@ -538,7 +538,7 @@ class ReservoirClassifier(MerlinModule):
         stride = max(1, len(X) // 1000)
         sample = np.ascontiguousarray(X[::stride][:1000])
         payload = f"{X.shape}:{X.dtype}".encode() + sample.tobytes()
-        return hashlib.md5(payload, usedforsecurity=False).hexdigest()
+        return hashlib.blake2b(payload, digest_size=16).hexdigest()
 
     def fit_reservoir(
         self,
@@ -581,13 +581,13 @@ class ReservoirClassifier(MerlinModule):
             if self._reduction_template is not None
             else None
         )
-        # 3. Normalize the reduced features to a [0, 1] range based on the min and max of the reduced data.
-        reduced = (
-            np.asarray(self.reduction.fit_transform(X_np), dtype=np.float32)
-            if self.reduction is not None
-            else X_np
-        )
+        if self.reduction is None:
+            reduced = X_np
+        else:
+            self.reduction.fit(X_np)
+            reduced = np.asarray(self.reduction.transform(X_np), dtype=np.float32)
 
+        # 3. Normalize the reduced features to a [0, 1] range based on the min and max of the reduced data.
         self._input_min = float(np.min(reduced))
         self._input_max = float(np.max(reduced))
         reduced_normalized = self._normalize_min_max(

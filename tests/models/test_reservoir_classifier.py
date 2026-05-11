@@ -6,6 +6,7 @@ import numpy as np
 import perceval as pcvl
 import pytest
 import torch
+from sklearn.base import BaseEstimator
 from sklearn.datasets import make_blobs
 from sklearn.decomposition import PCA, FastICA
 from sklearn.preprocessing import StandardScaler
@@ -39,6 +40,22 @@ class DummyProcessor:
         return module(inputs)
 
 
+class FitTransformlessReduction(BaseEstimator):
+    def __init__(self, n_components=2) -> None:
+        self.n_components = n_components
+        self.fit_calls = 0
+        self.transform_calls = 0
+
+    def fit(self, X):
+        self.fit_calls += 1
+        self.offset_ = np.mean(X[:, : self.n_components], axis=0)
+        return self
+
+    def transform(self, X):
+        self.transform_calls += 1
+        return X[:, : self.n_components] - self.offset_
+
+
 def test_public_import_surface():
     assert merlin.models.ReservoirClassifier is ReservoirClassifier
     assert merlin.ReservoirClassifier is ReservoirClassifier
@@ -70,6 +87,29 @@ def test_accepts_fastica_reduction():
     assert features.shape == (len(X), 4 + model.layer.output_size)
     assert targets.shape == (len(y),)
     assert logits.shape == (len(X), 2)
+
+
+def test_reduction_only_needs_fit_and_transform(monkeypatch):
+    X, _ = _toy_data()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=FitTransformlessReduction(n_components=2),
+    )
+
+    assert not hasattr(model.reduction, "fit_transform")
+
+    def _fake_encode_quantum(X_reduced_normalized, processor=None):
+        del processor
+        return torch.as_tensor(X_reduced_normalized, dtype=model.dtype)
+
+    monkeypatch.setattr(model, "_encode_quantum", _fake_encode_quantum)
+
+    model.fit_reservoir(X)
+
+    assert model.reduction.fit_calls == 1
+    assert model.reduction.transform_calls == 1
 
 
 def test_rejects_non_decomposition_reduction():
