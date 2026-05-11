@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import warnings
+from numbers import Integral
 from pathlib import Path
 from typing import Any
 
@@ -102,9 +103,10 @@ class ReservoirClassifier(MerlinModule):
 
     The quantum reservoir is initialized once from a Haar-random interferometer
     and kept frozen afterwards. Training is therefore split in two stages:
-    :meth:`fit_reservoir` computes the fixed reservoir features and stores the
-    normalization statistics, while downstream optimization only updates the
-    classical readout returned by :meth:`parameters`.
+    :meth:`fit_reservoir` fits the reservoir preprocessing, and
+    :meth:`transform_reservoir` computes standardized quantum embeddings.
+    Downstream optimization only updates the classical readout returned by
+    :meth:`parameters`.
     """
 
     def __init__(
@@ -143,7 +145,8 @@ class ReservoirClassifier(MerlinModule):
         cache : bool
             If ``True``, cache the fitted training-set reservoir features so
             repeated access to the same data avoids recomputing the frozen
-            quantum layer.
+            quantum layer. If ``False``, :meth:`fit_reservoir` skips the
+            quantum pass and reservoir embeddings are recomputed on demand.
         seed : int|None
             Optional random seed used for the Haar-random unitary and the lazy
             readout initialization.
@@ -166,12 +169,9 @@ class ReservoirClassifier(MerlinModule):
         """
         super().__init__()
 
-        if in_features <= 0:
-            raise ValueError("in_features must be a positive integer.")
-        if out_features <= 0:
-            raise ValueError("out_features must be a positive integer.")
-        if n_photons <= 0:
-            raise ValueError("n_photons must be a positive integer.")
+        self._validate_positive_integer(in_features, "in_features")
+        self._validate_positive_integer(out_features, "out_features")
+        self._validate_positive_integer(n_photons, "n_photons")
 
         resolved_device, resolved_dtype, _ = MerlinModule.setup_device_and_dtype(
             device, dtype
@@ -222,6 +222,13 @@ class ReservoirClassifier(MerlinModule):
         self._quantum_std: torch.Tensor | None = None
         self._fit_fingerprint: str | None = None
         self._fit_quantum_cache: torch.Tensor | None = None
+
+    @staticmethod
+    def _validate_positive_integer(value: Any, name: str) -> None:
+        if isinstance(value, bool) or not isinstance(value, Integral):
+            raise ValueError(f"{name} must be a positive integer.")
+        if value <= 0:
+            raise ValueError(f"{name} must be a positive integer.")
 
     @staticmethod
     def _validate_reduction(reduction: Any | None) -> Any | None:
@@ -469,6 +476,14 @@ class ReservoirClassifier(MerlinModule):
             return X
         return np.asarray(self.reduction.transform(X), dtype=np.float32)
 
+    def _transform_and_normalize_input(self, X: np.ndarray) -> np.ndarray:
+        reduced = self._transform_reduction(X)
+        return self._normalize_min_max(
+            reduced,
+            self._input_min,
+            self._input_max,
+        )
+
     def _materialize_readout(self, input_width: int) -> None:
         # LazyLinear would otherwise initialize on the first real forward pass,
         # using the ambient torch RNG state at that moment. We materialize it
@@ -553,14 +568,18 @@ class ReservoirClassifier(MerlinModule):
         ----------
         X : numpy.ndarray|torch.Tensor|list[Any]
             Two-dimensional feature matrix used to fit the optional reduction,
-            learn the min-max input scaling, compute the frozen reservoir
-            features, and store their standardization statistics.
+            learn the min-max input scaling, and initialize the readout input
+            width. When ``cache=True``, this method also computes and stores
+            the fitted training-set reservoir features and their
+            standardization statistics. When ``cache=False``, the quantum pass
+            is deferred until the fitted training data is transformed.
         processor : merlin.core.merlin_processor.MerlinProcessor|None
             Optional processor used to evaluate the frozen quantum reservoir
-            through Merlin's local or remote execution path. If omitted,
-            ``reservoir.layer.processor`` is used when configured. If both are
-            set, this argument wins and emits a ``UserWarning``. If neither is
-            set, the quantum layer is executed locally.
+            through Merlin's local or remote execution path when
+            ``cache=True``. If omitted, ``reservoir.layer.processor`` is used
+            when configured. If both are set, this argument wins and emits a
+            ``UserWarning``. If neither is set, the quantum layer is executed
+            locally. This argument is not used when ``cache=False``.
 
         Returns
         -------
@@ -596,14 +615,22 @@ class ReservoirClassifier(MerlinModule):
             self._input_min,
             self._input_max,
         )
-        # 4. Encode the normalized features into quantum states using the reservoir's quantum layer.
-        quantum = self._encode_quantum(reduced_normalized, processor=processor)
-        self._quantum_mean = quantum.mean(dim=0).detach().cpu()
-        self._quantum_std = quantum.std(dim=0, unbiased=False).detach().cpu()
-        # 5. Cache the quantum features of the training data if caching is enabled, and store a fingerprint of the input data for cache validation during prediction.
         self._fit_fingerprint = self._fingerprint(X_np)
-        self._fit_quantum_cache = quantum.detach().cpu() if self.cache else None
-        feature_width = quantum.shape[1] + (self.in_features if self.concatenate else 0)
+        if self.cache:
+            # 4. Encode the normalized features into quantum states using the reservoir's quantum layer.
+            quantum = self._encode_quantum(reduced_normalized, processor=processor)
+            self._quantum_mean = quantum.mean(dim=0).detach().cpu()
+            self._quantum_std = quantum.std(dim=0, unbiased=False).detach().cpu()
+            self._fit_quantum_cache = quantum.detach().cpu()
+        else:
+            self._quantum_mean = None
+            self._quantum_std = None
+            self._fit_quantum_cache = None
+
+        # 5. Cache the quantum features of the training data if caching is enabled, and store a fingerprint of the input data for cache validation during prediction.
+        feature_width = self.layer.output_size + (
+            self.in_features if self.concatenate else 0
+        )
         self._materialize_readout(feature_width)
         self._is_fitted = True
         return self
@@ -632,38 +659,41 @@ class ReservoirClassifier(MerlinModule):
         # normalization statistics learned during fit_reservoir().
         self._require_fitted()
 
+        fingerprint = self._fingerprint(X_np)
+        if (
+            (self._quantum_mean is None or self._quantum_std is None)
+            and fingerprint != self._fit_fingerprint
+        ):
+            raise RuntimeError(
+                "ReservoirClassifier with cache=False must initialize quantum "
+                "normalization on the fitted training data before transforming "
+                "new inputs."
+            )
+
         if self.cache and self._fit_quantum_cache is not None:
             # Cache hit path: if X matches the fitted training set, reuse the
             # stored quantum embeddings instead of running the reservoir again.
-            fingerprint = self._fingerprint(X_np)
             if fingerprint == self._fit_fingerprint:
                 quantum = self._fit_quantum_cache.clone()
             else:
                 # Cache miss path: transform and encode the new inputs.
-                reduced = self._transform_reduction(X_np)
-                reduced_normalized = self._normalize_min_max(
-                    reduced,
-                    self._input_min,
-                    self._input_max,
-                )
+                reduced_normalized = self._transform_and_normalize_input(X_np)
                 quantum = self._encode_quantum(reduced_normalized, processor=processor)
         else:
             # No cache available: always go through reduction + normalization +
             # reservoir encoding.
-            reduced = self._transform_reduction(X_np)
-            reduced_normalized = self._normalize_min_max(
-                reduced,
-                self._input_min,
-                self._input_max,
-            )
+            reduced_normalized = self._transform_and_normalize_input(X_np)
             quantum = self._encode_quantum(reduced_normalized, processor=processor)
 
         mean = self._quantum_mean
         std = self._quantum_std
         if mean is None or std is None:
-            raise RuntimeError(
-                "ReservoirClassifier must be fitted with fit_reservoir() before use."
-            )
+            mean = quantum.mean(dim=0).detach().cpu()
+            std = quantum.std(dim=0, unbiased=False).detach().cpu()
+            self._quantum_mean = mean
+            self._quantum_std = std
+            if self.cache:
+                self._fit_quantum_cache = quantum.detach().cpu()
         # Standardize the quantum features with the statistics learned on the
         # training set so train and inference use the same feature scale.
         return self._normalize_standard(
@@ -685,6 +715,43 @@ class ReservoirClassifier(MerlinModule):
 
         raw_tensor = torch.as_tensor(X_np, dtype=self.dtype, device=self.device)
         return torch.cat((raw_tensor, quantum_features), dim=1)
+
+    def transform_reservoir(
+        self,
+        X: np.ndarray | torch.Tensor | list[Any],
+        *,
+        processor: Any | None = None,
+    ) -> torch.Tensor:
+        """Transform raw inputs into standardized reservoir embeddings.
+
+        Parameters
+        ----------
+        X : numpy.ndarray|torch.Tensor|list[Any]
+            Two-dimensional feature matrix to transform through the fitted
+            reservoir preprocessing and frozen quantum layer.
+        processor : merlin.core.merlin_processor.MerlinProcessor|None
+            Optional processor used to evaluate the frozen quantum reservoir.
+            If omitted, ``reservoir.layer.processor`` is used when configured.
+            If both are set, this argument wins and emits a ``UserWarning``. If
+            neither is set, the quantum layer is executed locally.
+
+        Returns
+        -------
+        torch.Tensor
+            Standardized quantum reservoir embeddings on CPU. The returned
+            tensor does not include raw input features, even when
+            ``concatenate=True``.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`fit_reservoir` was not called first, if ``X`` does not
+            have the expected shape, or if ``cache=False`` and quantum
+            normalization has not yet been initialized from the fitted training
+            data.
+        """
+        X_np = self._coerce_input(X)
+        return self._compute_quantum_features(X_np, processor=processor).detach().cpu()
 
     def make_dataset(
         self,

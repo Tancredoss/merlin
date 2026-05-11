@@ -69,6 +69,29 @@ def test_constructor_hides_layer_configuration_from_public_api():
     assert "noise_model" not in signature.parameters
 
 
+@pytest.mark.parametrize(
+    ("parameter", "value"),
+    [
+        ("in_features", 3.2),
+        ("out_features", 2.5),
+        ("n_photons", 4.5),
+        ("in_features", "3"),
+        ("n_photons", True),
+        ("out_features", 0),
+    ],
+)
+def test_constructor_rejects_non_positive_integer_dimensions(parameter, value):
+    kwargs = {
+        "in_features": 4,
+        "out_features": 2,
+        "n_photons": 1,
+    }
+    kwargs[parameter] = value
+
+    with pytest.raises(ValueError, match=f"{parameter} must be a positive integer"):
+        ReservoirClassifier(**kwargs)
+
+
 def test_accepts_fastica_reduction():
     X, y = _toy_data()
     model = ReservoirClassifier(
@@ -243,7 +266,6 @@ def test_cache_false_always_encodes(monkeypatch):
         reduction=PCA(n_components=2),
         cache=False,
     )
-    model.fit_reservoir(X)
 
     calls = {"count": 0}
     original = model._encode_quantum
@@ -253,11 +275,57 @@ def test_cache_false_always_encodes(monkeypatch):
         return original(*args, **kwargs)
 
     monkeypatch.setattr(model, "_encode_quantum", _count)
+    model.fit_reservoir(X)
+    assert calls["count"] == 0
+    assert model._quantum_mean is None
+    assert model._quantum_std is None
+
     model.make_dataset(X, y)
     assert calls["count"] == 1
+    assert model._quantum_mean is not None
+    assert model._quantum_std is not None
+
+    model.make_dataset(X, y)
+    assert calls["count"] == 2
 
 
-def test_processor_is_used_in_fit_and_predict():
+def test_cache_false_requires_training_transform_before_new_inputs():
+    X, _ = _toy_data()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=2),
+        cache=False,
+    )
+
+    model.fit_reservoir(X)
+
+    with pytest.raises(RuntimeError, match="training data"):
+        model.transform_reservoir(X + 0.05)
+
+
+def test_transform_reservoir_returns_quantum_embeddings_only():
+    X, _ = _toy_data()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=2),
+        concatenate=True,
+        cache=True,
+    )
+
+    model.fit_reservoir(X)
+    embeddings = model.transform_reservoir(X)
+    features = model._make_feature_tensor(X)
+
+    assert embeddings.shape == (len(X), model.layer.output_size)
+    assert features.shape == (len(X), model.in_features + model.layer.output_size)
+    assert torch.allclose(embeddings, features[:, model.in_features :].cpu())
+
+
+def test_processor_is_used_for_cache_false_transform_and_predict():
     X, _ = _toy_data()
     processor = DummyProcessor()
     model = ReservoirClassifier(
@@ -269,11 +337,12 @@ def test_processor_is_used_in_fit_and_predict():
     )
 
     model.fit_reservoir(X, processor=processor)
+    model.transform_reservoir(X, processor=processor)
     _ = model.predict(X + 0.05, processor=processor)
     assert processor.calls == 2
 
 
-def test_layer_processor_is_used_in_fit_and_predict():
+def test_layer_processor_is_used_for_cache_false_transform_and_predict():
     X, _ = _toy_data()
     processor = DummyProcessor()
     model = ReservoirClassifier(
@@ -286,6 +355,7 @@ def test_layer_processor_is_used_in_fit_and_predict():
 
     model.layer.processor = processor
     model.fit_reservoir(X)
+    model.transform_reservoir(X)
     _ = model.predict(X + 0.05)
 
     assert processor.calls == 2
@@ -304,8 +374,12 @@ def test_processor_argument_overrides_layer_processor_with_warning():
     )
     model.layer.processor = layer_processor
 
+    model.fit_reservoir(X, processor=argument_processor)
+    assert argument_processor.calls == 0
+    assert layer_processor.calls == 0
+
     with pytest.warns(UserWarning, match="processor argument"):
-        model.fit_reservoir(X, processor=argument_processor)
+        model.transform_reservoir(X, processor=argument_processor)
     with pytest.warns(UserWarning, match="processor argument"):
         _ = model.predict(X + 0.05, processor=argument_processor)
 
