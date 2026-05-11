@@ -19,8 +19,9 @@ Recommended .env format:
 
 import os
 from pathlib import Path
-
 from dotenv import load_dotenv
+
+# You can install it with: pip install python-dotenv
 
 # Paths to search for a .env file, tried in order.
 _ENV_SEARCH_PATHS = [
