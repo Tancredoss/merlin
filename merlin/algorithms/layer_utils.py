@@ -167,17 +167,20 @@ class NoiseGroups:
 
     Parameters
     ----------
-    source : dict[str, float | bool | None]
-        Source noises e.g. {"indistinguishability": 0.9, "g2": 0.05, "g2_distinguishable": True}
-    circuit : dict[str, float | bool | None]
-        Circuit noises e.g. {"phase_error": 0.05, "phase_imprecision": 0.1}
-    post_measurement : dict[str, float | bool | None]
-        Post measurement noises e.g. {"brightness": 0.3, "transmittance": 0.9}
+    source : dict[str, float | bool | None] | None
+        Source noises e.g. {"indistinguishability": 0.9, "g2": 0.05, "g2_distinguishable": True},
+        or ``None`` when no source noise is present.
+    circuit : dict[str, float | None] | None
+        Circuit noises e.g. {"phase_error": 0.05, "phase_imprecision": 0.1},
+        or ``None`` when no circuit noise is present.
+    post_measurement : dict[str, float | None] | None
+        Post measurement noises e.g. {"brightness": 0.3, "transmittance": 0.9},
+        or ``None`` when no post-measurement noise is present.
     """
 
-    source: dict[str, float | bool | None]
-    circuit: dict[str, float | None]
-    post_measurement: dict[str, float | None]
+    source: dict[str, float | bool | None] | None
+    circuit: dict[str, float | None] | None
+    post_measurement: dict[str, float | None] | None
 
 
 @dataclass(frozen=True)
@@ -612,11 +615,15 @@ def resolve_circuit(
             raise RuntimeError("Builder must be provided for builder source type.")
         circuit = circuit_source.builder.to_pcvl_circuit(pcvl_module)
         experiment = pcvl_module.Experiment(circuit)
+        if noise_model is not None:
+            experiment.noise = noise_model
     elif circuit_source.source_type == "circuit":
         if circuit_source.circuit is None:
             raise RuntimeError("Circuit must be provided for circuit source type.")
         circuit = circuit_source.circuit
         experiment = pcvl_module.Experiment(circuit)
+        if noise_model is not None:
+            experiment.noise = noise_model
     elif circuit_source.source_type == "experiment":
         if circuit_source.experiment is None:
             raise RuntimeError(
@@ -1013,10 +1020,6 @@ def classify_noise_model(noise_model: pcvl.NoiseModel | None) -> NoiseGroups | N
         circuit = None
 
     # Post-measurement noise
-    post_measurement = {
-        "transmittance": noise_model.transmittance,
-        "brightness": noise_model.brightness,
-    }
     post_measurement = {}
     # transmittance
     if noise_model.transmittance is None:
@@ -1104,7 +1107,7 @@ def normalize_noise_model(
     ----------
     layer_noise_model: pcvl.NoiseModel | None
         The noise model declared in the noise_model argument of the QuantumLayer.
-    layer_noise_model: pcvl.NoiseModel | None
+    experiment_noise_model: pcvl.NoiseModel | None
         The noise model declared in the experiment given to the QuantumLayer.
 
     Returns
