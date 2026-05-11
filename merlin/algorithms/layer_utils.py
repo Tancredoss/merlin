@@ -1103,7 +1103,7 @@ def normalize_noise_model(
     Parameters
     ----------
     layer_noise_model: pcvl.NoiseModel | None
-        The noise model declared in the noise_model argument in the QuantumLayer.
+        The noise model declared in the noise_model argument of the QuantumLayer.
     layer_noise_model: pcvl.NoiseModel | None
         The noise model declared in the experiment given to the QuantumLayer.
 
