@@ -28,6 +28,13 @@
     "tags": ["Sedrakyan and Salavrakos", "2025", "In Progress"]
   },
   {
+    "title": "Hybrid Quantum PINN",
+    "summary": "Physics-informed high-speed-flow benchmarks with classical, PennyLane, and MerLin photonic branches.",
+    "image": "_static/reproduced_papers/HQPINN.png",
+    "doc": "reproduced_papers/reproductions/hqpinn",
+    "tags": ["Leong et al.", "2025", "In Progress", "PINN"]
+  },
+  {
     "title": "Quantum Transfer Learning",
     "summary": "Hybrid transfer learning with frozen classical feature extractors and trainable quantum heads.",
     "image": "_static/reproduced_papers/TransferLearning.png",
