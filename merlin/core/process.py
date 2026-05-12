@@ -33,7 +33,6 @@ import torch
 from ..pcvl_pytorch import (
     CircuitConverter,
     build_slos_distribution_computegraph,
-    NoisySLOSComputeGraph,
 )
 from merlin.pcvl_pytorch.noisy_slos import (
     build_noisy_slos_distribution_computegraph,
@@ -620,7 +619,7 @@ class ComputationProcessFactory:
         )
 
 
-class NoisyComputationProcess(ComputationProcess):
+class NoisyComputationProcess:
     """Handle quantum circuit computation and state evolution with noisy circuits.
 
     Parameters
@@ -735,7 +734,6 @@ class NoisyComputationProcess(ComputationProcess):
         if isinstance(self.input_state, torch.Tensor):
             state_tensor: torch.Tensor = self.input_state
             self._validate_superposition_state_shape(state_tensor)
-        self.noisy_slos = NoisySLOSComputeGraph()
 
     def _setup_computation_graphs(self):
         """Setup unitary and simulation computation graphs."""
@@ -783,3 +781,74 @@ class NoisyComputationProcess(ComputationProcess):
 
         keys, amplitudes = self.simulation_graph.compute_probs(unitary, input_state)
         return amplitudes
+
+    def compute_with_keys(self, parameters: list[torch.Tensor]):
+        """Compute output amplitudes and return them with basis keys.
+
+        Parameters
+        ----------
+        parameters : list[torch.Tensor]
+            Circuit parameters passed to the converter.
+
+        Returns
+        -------
+        tuple[Any, torch.Tensor]
+            Simulation-graph keys and corresponding amplitudes.
+        """
+        unitary = self.converter.to_tensor(*parameters)
+        self.unitary = unitary
+        # Compute output distribution using the input state
+        if isinstance(self.input_state, torch.Tensor):
+            input_state = [1] * self.n_photons + [0] * (self.m - self.n_photons)
+        else:
+            input_state = self.input_state
+
+        keys, amplitudes = self.simulation_graph.compute_probs(unitary, input_state)
+        return keys, amplitudes
+
+
+class NoisyComputationProcessFactory:
+    """Factory for creating computation processes."""
+
+    @staticmethod
+    def create(
+        noise_groups: None,
+        circuit: pcvl.Circuit,
+        input_state: list[int] | torch.Tensor,
+        trainable_parameters: list[str],
+        input_parameters: list[str],
+        computation_space: ComputationSpace | None = None,
+        **kwargs,
+    ) -> ComputationProcess:
+        """Create a computation process.
+
+        Parameters
+        ----------
+        circuit : pcvl.Circuit
+            Circuit used to build the process.
+        input_state : list[int] | torch.Tensor
+            Input Fock state or superposition tensor.
+        trainable_parameters : list[str]
+            Prefixes of trainable circuit parameters.
+        input_parameters : list[str]
+            Prefixes of input-driven circuit parameters.
+        computation_space : ComputationSpace | None
+            Computation space used for basis enumeration.
+        **kwargs
+            Additional keyword arguments forwarded to
+            :class:`ComputationProcess`.
+
+        Returns
+        -------
+        ComputationProcess
+            Created computation process.
+        """
+        return NoisyComputationProcess(
+            noise_groups=noise_groups,
+            circuit=circuit,
+            input_state=input_state,
+            trainable_parameters=trainable_parameters,
+            input_parameters=input_parameters,
+            computation_space=computation_space,
+            **kwargs,
+        )

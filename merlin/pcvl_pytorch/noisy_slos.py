@@ -1,6 +1,7 @@
 from functools import reduce
 from itertools import combinations
 from _collections_abc import Callable
+import warnings
 import torch
 from .slos_torchscript import build_slos_distribution_computegraph as build_slos_graph
 from .slos_torchscript import SLOSComputeGraph
@@ -9,9 +10,10 @@ from merlin.utils.combinadics import Combinadics
 from torch import Tensor
 from merlin.utils.deprecations import raise_no_bunching_deprecated
 import os
+from merlin.pcvl_pytorch.slos_torchscript import _get_complex_dtype_for_float
 
 
-class NoisySLOSComputeGraph(SLOSComputeGraph):
+class NoisySLOSComputeGraph:
     """
     Equivalent to merlin.pcvl_pytorch.SLOSGraph but with partial
     distinguishability using the Orthogonal Bad Bits model.
@@ -38,31 +40,47 @@ class NoisySLOSComputeGraph(SLOSComputeGraph):
         keep_keys,
         device,
         dtype,
-        index_photons,
     ):
-        super().__init__(
-            m,
-            n_photons,
-            output_map_func,
-            computation_space,
-            keep_keys,
-            device,
-            dtype,
-            index_photons,
-        )
-
         self.indistinguishability = noise_groups["source"].get(
             "indistinguishability", None
         )
         self.g2_distinguishable = noise_groups["source"].get("g2_distinguishable", None)
         self._slos_graph_per_input = {}
 
+        self.m = m
+        self.n_photons = n_photons
+        self.output_map_func = output_map_func
+        if computation_space is ComputationSpace.DUAL_RAIL:
+            if m % 2 != 0:
+                raise ValueError("dual_rail compute space requires even m")
+            if n_photons != m // 2:
+                raise ValueError("dual_rail compute space requires n_photons = m // 2")
+
+        self.computation_space = computation_space
+        # TODO Change with post-selection if it applies
+        self.computation_space = ComputationSpace.FOCK
+        warnings.warn(
+            "Noisy SLOS simulations currently use ComputationSpace.FOCK. "
+            "Other computation spaces are not yet supported for noise models.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+        self.keep_keys = keep_keys
+        self.device = device
+        self.device = device
+        self.dtype = dtype
+
     def compute_probs(self, unitary, input_state: list):
         input_state = tuple(input_state)
 
         if input_state not in self._slos_graph_per_input:
             slos_graph = _InputStateNoisySLOSComputeGraph(
-                input_state, self.indistinguishability, self.computation_space
+                input_state,
+                self.indistinguishability,
+                self.computation_space,
+                self.device,
+                self.dtype,
             )
             self.computation_space = slos_graph.computation_space
             self._slos_graph_per_input[input_state] = slos_graph
@@ -82,6 +100,8 @@ class _InputStateNoisySLOSComputeGraph:
         input_state: list,
         indistinguishability: float,
         computation_space: ComputationSpace,
+        device,
+        dtype,
     ):
         self.input_state = input_state
         self.indistinguishability = torch.as_tensor(indistinguishability, dtype=float)
@@ -94,8 +114,17 @@ class _InputStateNoisySLOSComputeGraph:
         if indistinguishability < 0 or indistinguishability > 1:
             raise ValueError("Indistinguishability must be in range (0, 1).")
 
+        self.device = device
+        self.dtype = dtype
+
         self._slos_graphs = [
-            build_slos_graph(self.m, n_i, computation_space=computation_space)
+            build_slos_graph(
+                self.m,
+                n_i,
+                computation_space=computation_space,
+                device=device,
+                dtype=dtype,
+            )
             for n_i in range(1, self.n_photons + 1)
         ]
 
@@ -370,7 +399,6 @@ def build_noisy_slos_distribution_computegraph(
     keep_keys: bool = True,
     device=None,
     dtype: torch.dtype = torch.float,
-    index_photons: list[tuple[int, ...]] | None = None,
     noise_groups: None = None,
 ) -> NoisySLOSComputeGraph:
     """Construct a reusable SLOS computation graph.
@@ -421,7 +449,6 @@ def build_noisy_slos_distribution_computegraph(
         keep_keys,
         device,
         dtype,
-        index_photons,
     )
 
     # Add save method to the returned object
@@ -449,33 +476,6 @@ def build_noisy_slos_distribution_computegraph(
             "dtype_str": str(compute_graph.dtype),
             "has_output_map_func": output_map_func is not None,
         }
-
-        # Save TorchScript layer functions if possible
-        # For serializable components only
-        torch.save(
-            {
-                "metadata": metadata,
-                "vectorized_operations": compute_graph.vectorized_operations,
-                "final_keys": compute_graph.final_keys,
-                "mapped_keys": compute_graph.mapped_keys,
-                "mapped_indices": (
-                    compute_graph.mapped_indices
-                    if hasattr(compute_graph, "mapped_indices")
-                    else None
-                ),
-                "total_mapped_keys": (
-                    compute_graph.total_mapped_keys
-                    if hasattr(compute_graph, "total_mapped_keys")
-                    else None
-                ),
-                "target_indices": (
-                    compute_graph.target_indices
-                    if hasattr(compute_graph, "target_indices")
-                    else None
-                ),
-            },
-            path,
-        )
 
     # Attach the save method to the compute_graph
     compute_graph.save = save  # type: ignore[attr-defined]
@@ -531,13 +531,9 @@ def load_noisy_slos_distribution_computegraph(path):
         dtype = torch.float32
 
     # Create basic graph (without output_map_func for now)
-    graph = SLOSComputeGraph(
-        m, n_photons, None, computation_space, keep_keys, dtype=dtype
+    graph = NoisySLOSComputeGraph(
+        noise_groups, m, n_photons, None, computation_space, keep_keys, dtype=dtype
     )
-    # Restore saved attributes
-    graph.vectorized_operations = saved_data["vectorized_operations"]
-    graph.final_keys = saved_data["final_keys"]
-    graph.mapped_keys = saved_data["mapped_keys"]
 
     # Restore mapping information if it was used
     if metadata.get("has_output_map_func", False):
