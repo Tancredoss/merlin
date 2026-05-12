@@ -8,6 +8,7 @@ from merlin.algorithms.layer_utils import (
     classify_noise_model,
     normalize_noise_model,
 )
+import torch
 
 
 @pytest.fixture
@@ -346,6 +347,9 @@ def test_normalise_noise():
     output = normalize_noise_model(None, noise)
     assert output == noise
 
+    output = normalize_noise_model(None, None)
+    assert output == None
+
     with pytest.raises(
         ValueError,
         match="Conflicting noise models: specify via noise_model= or experiment.noise, not both",
@@ -479,3 +483,18 @@ def test_return_object_with_noise_model_fails_fast():
             noise_model=pcvl.NoiseModel(brightness=0.3),
             return_object=True,
         )
+
+
+def test_no_noise():
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=4,
+        builder=_builder(),
+    )
+    assert layer.noise_model is None
+    assert layer._noise_groups is None
+    assert not layer.has_custom_noise_model
+    assert not layer.has_custom_detectors
+
+    # No errors should raise
+    layer(torch.rand(4))
