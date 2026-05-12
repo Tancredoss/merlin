@@ -1,10 +1,10 @@
-import math
 from functools import reduce
 from itertools import combinations
 
 import torch
-from exqalibur import FSArray
 from .slos_torchscript import build_slos_distribution_computegraph as build_slos_graph
+from merlin.core.computation_space import ComputationSpace
+from merlin.utils.combinadics import Combinadics
 from torch import Tensor
 
 
@@ -25,16 +25,17 @@ class NoisySLOSComputeGraph:
     [(2, 0), (1, 1), (0, 2)] tensor([[0.3750, 0.2500, 0.3750]])
     """
 
-    def __init__(self, indistinguishability: float):
+    def __init__(self, indistinguishability: float, computation_space):
         self.indistinguishability = indistinguishability
         self._slos_graph_per_input = {}
+        self.computation_space = computation_space
 
     def compute_probs(self, unitary, input_state: list):
         input_state = tuple(input_state)
 
         if input_state not in self._slos_graph_per_input:
             slos_graph = _InputStateNoisySLOSComputeGraph(
-                input_state, self.indistinguishability
+                input_state, self.indistinguishability, self.computation_space
             )
             self._slos_graph_per_input[input_state] = slos_graph
         else:
@@ -46,18 +47,26 @@ class NoisySLOSComputeGraph:
 
 
 class _InputStateNoisySLOSComputeGraph:
-    def __init__(self, input_state: list, indistinguishability):
+    def __init__(
+        self,
+        input_state: list,
+        indistinguishability: float,
+        computation_space: ComputationSpace,
+    ):
         self.input_state = input_state
-        self.switch_to_Fock_space = max(input_state) > 1
         self.indistinguishability = torch.as_tensor(indistinguishability, dtype=float)
         self.m = len(input_state)
         self.n_photons = sum(input_state)
+        self.computation_space = computation_space
+        if (computation_space is not ComputationSpace.FOCK) and (max(input_state) > 1):
+            self.computation_space = ComputationSpace.FOCK
 
         if indistinguishability < 0 or indistinguishability > 1:
             raise ValueError("Indistinguishability must be in range (0, 1).")
 
         self._slos_graphs = [
-            build_slos_graph(self.m, n_i) for n_i in range(1, self.n_photons + 1)
+            build_slos_graph(self.m, n_i, computation_space=computation_space)
+            for n_i in range(1, self.n_photons + 1)
         ]
 
         # Weights of good & bad bits respectively
@@ -80,7 +89,7 @@ class _InputStateNoisySLOSComputeGraph:
 
         # All fock states associated with each photon number n
         self._fock_states_per_n = {
-            i: torch.tensor([list(s) for s in FSArray(self.m, i)])
+            i: torch.tensor(Combinadics("fock", n=i, m=self.m).enumerate_states())
             for i in range(1, self.n_photons + 1)
         }
 
@@ -209,7 +218,7 @@ class _InputStateNoisySLOSComputeGraph:
             for j in remove_index:
                 base[i, j] = base[i, j] - 1  # remove chosen ones
 
-        # TODO Change missing and from here
+        # Should work, create the one hot vectors to convolve that were removed in the good state. So there is order one hot states per combination
         missing = torch.zeros((n_comb, order, input_state_len), dtype=torch.int32)
         rows = torch.arange(n_comb).unsqueeze(1)
         cols = torch.arange(order).unsqueeze(0)
@@ -222,7 +231,6 @@ class _InputStateNoisySLOSComputeGraph:
             mask = result.any(dim=2)
             result = result[mask]
             result = result.unsqueeze(0)
-
         return result
 
     def _generate_obb_states(self, input_state, order):

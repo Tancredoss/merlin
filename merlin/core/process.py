@@ -30,7 +30,11 @@ from typing import Literal, overload
 import perceval as pcvl
 import torch
 
-from ..pcvl_pytorch import CircuitConverter, build_slos_distribution_computegraph
+from ..pcvl_pytorch import (
+    CircuitConverter,
+    build_slos_distribution_computegraph,
+    NoisySLOSComputeGraph,
+)
 from ..utils.combinadics import Combinadics
 from ..utils.deprecations import raise_no_bunching_deprecated
 from .base import AbstractComputationProcess
@@ -613,5 +617,130 @@ class ComputationProcessFactory:
 
 
 class NoisyComputationProcess(ComputationProcess):
-    def __init__(self):
+    """Handle quantum circuit computation and state evolution with noisy circuits.
+
+    Parameters
+    ----------
+    circuit : pcvl.Circuit
+        Circuit used to build the unitary and simulation graphs.
+    input_state : list[int] | torch.Tensor
+        Input Fock state or superposition tensor.
+    trainable_parameters : list[str]
+        Prefixes of trainable circuit parameters.
+    input_parameters : list[str]
+        Prefixes of input-driven circuit parameters.
+    n_photons : int | None
+        Number of photons represented by the process.
+    dtype : torch.dtype
+        Real dtype used for internal tensor conversions.
+    device : torch.device | None
+        Device on which computation graphs are materialized.
+    computation_space : ComputationSpace | None
+        Computation space used for basis enumeration.
+    noise_groups : Noise
+    no_bunching : bool | None
+        Deprecated legacy parameter.
+    output_map_func : Any
+        Optional output mapping function.
+    """
+
+    def __init__(
+        self,
+        circuit: pcvl.Circuit,
+        input_state: list[int] | torch.Tensor,
+        trainable_parameters: list[str],
+        input_parameters: list[str],
+        n_photons: int = None,
+        dtype: torch.dtype = torch.float32,
+        device: torch.device | None = None,
+        computation_space: ComputationSpace | None = None,
+        no_bunching: bool | None = None,
+        output_map_func=None,
+    ):
+        """Initialize a computation process.
+
+        Parameters
+        ----------
+        circuit : pcvl.Circuit
+            Circuit used to build the unitary and simulation graphs.
+        input_state : list[int] | torch.Tensor
+            Input Fock state or superposition tensor.
+        trainable_parameters : list[str]
+            Prefixes of trainable circuit parameters.
+        input_parameters : list[str]
+            Prefixes of input-driven circuit parameters.
+        n_photons : int | None
+            Number of photons represented by the process.
+        dtype : torch.dtype
+            Real dtype used for internal tensor conversions.
+        device : torch.device | None
+            Device on which computation graphs are materialized.
+        computation_space : ComputationSpace | None
+            Computation space used for basis enumeration.
+        no_bunching : bool | None
+            Deprecated legacy parameter.
+        output_map_func : Any
+            Optional output mapping function.
+        """
+        self.circuit = circuit
+        self.input_state = input_state
+        self.n_photons = n_photons
+        self.trainable_parameters = trainable_parameters
+        self.input_parameters = input_parameters
+        self.dtype = dtype
+        self.device = device
+
+        if no_bunching is not None:
+            raise_no_bunching_deprecated(stacklevel=2)
+
+        if computation_space is None:
+            computation_space = ComputationSpace.UNBUNCHED
+
+        self.computation_space = computation_space
+        self.output_map_func = output_map_func
+
+        # Extract circuit parameters for graph building
+
+        self.m = circuit.m  # Number of modes
+        if n_photons is None:
+            if type(input_state) is list:
+                self.n_photons = sum(input_state)  # Total number of photons
+            else:
+                raise ValueError("The number of photons should be provided")
+        else:
+            self.n_photons = n_photons
+        # Build computation graphs
+        self._setup_computation_graphs()
+
+        # validate initial input state shape when provided as tensor
+        if isinstance(self.input_state, torch.Tensor):
+            state_tensor: torch.Tensor = self.input_state
+            self._validate_superposition_state_shape(state_tensor)
         super.__init__(self)
+        self.noisy_slos = NoisySLOSComputeGraph()
+
+    def compute(self, parameters: list[torch.Tensor]) -> torch.Tensor:
+        """Compute output amplitudes for the configured input state.
+
+        Parameters
+        ----------
+        parameters : list[torch.Tensor]
+            Circuit parameters passed to the converter.
+
+        Returns
+        -------
+        torch.Tensor
+            Output amplitudes produced by the simulation graph.
+        """
+        # Generate unitary matrix from parameters
+
+        unitary = self.converter.to_tensor(*parameters)
+        self.unitary = unitary
+        # Compute output distribution using the input state
+        if isinstance(self.input_state, torch.Tensor):
+            input_state = [1] * self.n_photons + [0] * (self.m - self.n_photons)
+        else:
+            input_state = self.input_state
+
+        keys, amplitudes = self.simulation_graph.compute(unitary, input_state)
+        return amplitudes
