@@ -17,7 +17,7 @@ Hybrid Quantum Physics-Informed Neural Network for High-Speed Flows
 
    **Paper URL**: `arXiv:2503.02202 <https://arxiv.org/abs/2503.02202>`_
 
-   **Reproduction Status**: ✅ Completed
+   **Reproduction Status**: ✅ Complete
 
    **Reproducer**: Jérôme Ricciardi (jerome.ricciardi@quandela.com)
 
@@ -96,15 +96,6 @@ MerLin photonic variants:
    * - ``qq-mp``
      - DHO-only quantum-quantum model with manual Perceval/MerLin branches.
 
-MerLin integration is centralized in ``lib/layer_merlin.py``:
-
-* ``make_interf_qlayer(n_photons)`` builds the generic interferometer-style
-  MerLin ``QuantumLayer`` used by the ``hy-m`` and ``qq-m`` configurations.
-* ``make_perceval_qlayer()`` builds the DHO-only Perceval circuit used by
-  ``hy-mp`` and ``qq-mp``.
-* ``BranchMerlin`` wraps the quantum layer as a PyTorch module.
-* ``make_merlin_processor(backend)`` builds the optional processor used by
-  remote inference.
 
 How ``QuantumLayer`` Fits This Reproduction
 ===========================================
@@ -143,23 +134,21 @@ remote mode is only used after a matching checkpoint exists in ``models/``.
 Key Contributions Reproduced
 ============================
 
+Our reproduction focuses on the following contributions from the paper:
+
 **Benchmark implementation**
-  * Implemented the four benchmark families: ``DHO``, ``SEE``, ``DEE``, and
-    ``TAF``.
-  * Preserved the paper's ``cc``, ``hy``, and ``qq`` architecture split.
-  * Added config-driven execution through the repository shared runtime.
+
+* Implemented the four benchmark families: ``DHO``, ``SEE``, ``DEE``, and
+  ``TAF``.
+* Preserved the paper's ``cc``, ``hy``, and ``qq`` architecture split.
+* Added config-driven execution through the repository shared runtime.
 
 **Photonic branch implementation**
-  * Added MerLin photonic branches for hybrid and quantum-quantum PINNs.
-  * Added DHO-only manual Perceval/MerLin circuits for closer circuit-level
-    control.
-  * Kept PennyLane variants for comparison where local runtime is practical.
 
-**Result curation**
-  * Added lightweight committed classical baseline artifacts for ``DHO``,
-    ``SEE``, and ``DEE``.
-  * Added named JSON configs for train and inference workflows.
-  * Added smoke-test configs for runtime discovery and output routing.
+* Added MerLin photonic branches for hybrid and quantum-quantum PINNs.
+* Added DHO-only manual Perceval/MerLin circuits for closer circuit-level
+  control.
+* Kept PennyLane variants for comparison where local runtime is practical.
 
 Experimental Results
 ====================
@@ -169,23 +158,19 @@ documentation snapshot. They are not the full paper matrix.
 
 .. list-table:: Committed Baseline Results
    :header-rows: 1
-   :widths: 16 30 24 30
+   :widths: 16 30 30
 
    * - Benchmark
      - Config
-     - Run ID
      - Main metric
    * - ``DHO``
      - ``configs/dho_cc_train.json``
-     - ``20260504-163330``
      - Relative L2 error ``4.161749e-01``.
    * - ``SEE``
      - ``configs/see_cc_train_10-4.json``
-     - ``20260504-163400``
      - Density error ``4.158964e-03``; pressure error ``2.587267e-04``.
    * - ``DEE``
      - ``configs/dee_cc_train_10-4.json``
-     - ``20260504-163726``
      - Density error ``3.934973e-02``; pressure error ``5.138812e-05``.
 
 Current qualitative status:
@@ -218,9 +203,8 @@ Other known deviations:
 Interactive Exploration
 =======================
 
-The paper folder includes ``notebook.ipynb`` and ``notebook_dho_helpers.py`` for
-interactive DHO exploration and helper utilities. Dedicated notebook pages are
-not yet published under ``docs/source/notebooks/reproduced_papers``.
+The paper folder includes a `notebook <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/HQPINN/notebook.ipynb>`_ 
+for interactive DHO exploration and helper utilities.
 
 Extensions and Future Work
 ==========================

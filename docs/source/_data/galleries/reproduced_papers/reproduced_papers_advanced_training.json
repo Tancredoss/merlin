@@ -32,7 +32,7 @@
     "summary": "Physics-informed high-speed-flow benchmarks with classical, PennyLane, and MerLin photonic branches.",
     "image": "_static/reproduced_papers/HQPINN.png",
     "doc": "reproduced_papers/reproductions/hqpinn",
-    "tags": ["Leong et al.", "2025", "In Progress", "PINN"]
+    "tags": ["Leong et al.", "2025", "Complete", "PINN", "CFD"]
   },
   {
     "title": "Quantum Transfer Learning",
