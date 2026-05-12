@@ -325,6 +325,124 @@ def test_transform_reservoir_returns_quantum_embeddings_only():
     assert torch.allclose(embeddings, features[:, model.in_features :].cpu())
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_encode_quantum_computes_features_on_cuda():
+    device = torch.device("cuda")
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=1),
+        device=device,
+    )
+    reduced_normalized = np.array([[0.0], [1.0]], dtype=np.float32)
+
+    quantum_features = model._encode_quantum(reduced_normalized)
+
+    assert model.device.type == "cuda"
+    assert model.layer.device.type == "cuda"
+    assert next(model.readout.parameters()).device.type == "cuda"
+    assert quantum_features.device.type == "cuda"
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_fit_reservoir_uses_cuda_then_keeps_cache_on_cpu(monkeypatch):
+    X, y = _toy_data()
+    device = torch.device("cuda")
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=1),
+        device=device,
+        cache=True,
+    )
+    original_forward = model._quantum_layer.forward
+    calls = {"count": 0}
+
+    def _assert_cuda_forward(*input_parameters, **kwargs):
+        calls["count"] += 1
+        assert input_parameters[0].device.type == "cuda"
+        output = original_forward(*input_parameters, **kwargs)
+        assert output.device.type == "cuda"
+        return output
+
+    monkeypatch.setattr(model._quantum_layer, "forward", _assert_cuda_forward)
+
+    model.fit_reservoir(X)
+    embeddings = model.transform_reservoir(X)
+    dataset = model.make_dataset(X, y)
+    features, targets = dataset.tensors
+
+    assert calls["count"] == 1
+    assert model._fit_quantum_cache is not None
+    assert model._fit_quantum_cache.device.type == "cpu"
+    assert model._quantum_mean is not None
+    assert model._quantum_mean.device.type == "cpu"
+    assert model._quantum_std is not None
+    assert model._quantum_std.device.type == "cpu"
+    assert embeddings.device.type == "cpu"
+    assert features.device.type == "cpu"
+    assert targets.device.type == "cpu"
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_predict_uses_cuda_reservoir_and_returns_cpu_logits(monkeypatch):
+    X, _ = _toy_data()
+    device = torch.device("cuda")
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=1),
+        device=device,
+        cache=False,
+    )
+    model.fit_reservoir(X)
+    _ = model.transform_reservoir(X)
+
+    original_forward = model._quantum_layer.forward
+    calls = {"count": 0}
+
+    def _assert_cuda_forward(*input_parameters, **kwargs):
+        calls["count"] += 1
+        assert input_parameters[0].device.type == "cuda"
+        output = original_forward(*input_parameters, **kwargs)
+        assert output.device.type == "cuda"
+        return output
+
+    monkeypatch.setattr(model._quantum_layer, "forward", _assert_cuda_forward)
+
+    logits = model.predict(X + 0.05)
+
+    assert calls["count"] == 1
+    assert logits.device.type == "cpu"
+    assert next(model.readout.parameters()).device.type == "cuda"
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_load_device_override_restores_reservoir_on_cuda(tmp_path):
+    X, _ = _toy_data()
+    device = torch.device("cuda")
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=1),
+    )
+    model.fit_reservoir(X)
+
+    path = tmp_path / "reservoir_cpu.pt"
+    model.save(path)
+    restored = ReservoirClassifier.load(path, device=device)
+    logits = restored.predict(X)
+
+    assert restored.device.type == "cuda"
+    assert restored.layer.device.type == "cuda"
+    assert next(restored.readout.parameters()).device.type == "cuda"
+    assert logits.device.type == "cpu"
+
+
 def test_processor_is_used_for_cache_false_transform_and_predict():
     X, _ = _toy_data()
     processor = DummyProcessor()
