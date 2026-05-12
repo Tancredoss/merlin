@@ -30,7 +30,7 @@
   {
     "title": "Neural Quantum Embedding",
     "summary": "Training the quantum embedding with a classical model to optimize its performance.",
-    "image": "_static/reproduced_papers/nqe.png",
+    "image": "_static/reproduced_papers/nqe/phase_1_paper.png",
     "doc": "reproduced_papers/reproductions/nqe",
     "tags": ["Hur et al.", "2024", "Complete"]
   }
