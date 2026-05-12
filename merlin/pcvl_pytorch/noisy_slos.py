@@ -3,12 +3,13 @@ from itertools import combinations
 
 import torch
 from .slos_torchscript import build_slos_distribution_computegraph as build_slos_graph
+from .slos_torchscript import SLOSComputeGraph
 from merlin.core.computation_space import ComputationSpace
 from merlin.utils.combinadics import Combinadics
 from torch import Tensor
 
 
-class NoisySLOSComputeGraph:
+class NoisySLOSComputeGraph(SLOSComputeGraph):
     """
     Equivalent to merlin.pcvl_pytorch.SLOSGraph but with partial
     distinguishability using the Orthogonal Bad Bits model.
@@ -25,10 +26,34 @@ class NoisySLOSComputeGraph:
     [(2, 0), (1, 1), (0, 2)] tensor([[0.3750, 0.2500, 0.3750]])
     """
 
-    def __init__(self, indistinguishability: float, computation_space):
-        self.indistinguishability = indistinguishability
+    def __init__(
+        self,
+        noise_groups: None,
+        m,
+        n_photons,
+        output_map_func,
+        computation_space: ComputationSpace,
+        keep_keys,
+        device,
+        dtype,
+        index_photons,
+    ):
+        super().__init__(
+            m,
+            n_photons,
+            output_map_func,
+            computation_space,
+            keep_keys,
+            device,
+            dtype,
+            index_photons,
+        )
+
+        self.indistinguishability = noise_groups["source"].get(
+            "indistinguishability", None
+        )
+        self.g2_distinguishable = noise_groups["source"].get("g2_distinguishable", None)
         self._slos_graph_per_input = {}
-        self.computation_space = computation_space
 
     def compute_probs(self, unitary, input_state: list):
         input_state = tuple(input_state)
@@ -37,13 +62,16 @@ class NoisySLOSComputeGraph:
             slos_graph = _InputStateNoisySLOSComputeGraph(
                 input_state, self.indistinguishability, self.computation_space
             )
+            self.computation_space = slos_graph.computation_space
             self._slos_graph_per_input[input_state] = slos_graph
         else:
             slos_graph = self._slos_graph_per_input[input_state]
 
         keys, probs = slos_graph.compute_probs(unitary)
 
-        return keys, probs
+        if self.keep_keys:
+            return keys, probs
+        return probs
 
 
 class _InputStateNoisySLOSComputeGraph:
@@ -203,7 +231,6 @@ class _InputStateNoisySLOSComputeGraph:
         # Create a 1D tensor with position of each photon
         positions = torch.arange(len(input_state), dtype=torch.long)
         photon_positions = torch.repeat_interleave(positions, input_state)
-        print(photon_positions)
 
         # All combinations of photons to remove
         remove_indices = list(combinations(photon_positions.tolist(), order))

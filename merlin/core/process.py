@@ -637,7 +637,8 @@ class NoisyComputationProcess(ComputationProcess):
         Device on which computation graphs are materialized.
     computation_space : ComputationSpace | None
         Computation space used for basis enumeration.
-    noise_groups : Noise
+    noise_groups : NoiseGroups|None=None
+        The noise groups defined in the creation of the QuantumLayer. Default is None (no noise).
     no_bunching : bool | None
         Deprecated legacy parameter.
     output_map_func : Any
@@ -655,6 +656,7 @@ class NoisyComputationProcess(ComputationProcess):
         device: torch.device | None = None,
         computation_space: ComputationSpace | None = None,
         no_bunching: bool | None = None,
+        noise_groups: None = None,
         output_map_func=None,
     ):
         """Initialize a computation process.
@@ -679,6 +681,8 @@ class NoisyComputationProcess(ComputationProcess):
             Computation space used for basis enumeration.
         no_bunching : bool | None
             Deprecated legacy parameter.
+        noise_groups : NoiseGroups|None=None
+            The noise groups defined in the creation of the QuantumLayer. Default is None (no noise).
         output_map_func : Any
             Optional output mapping function.
         """
@@ -689,6 +693,16 @@ class NoisyComputationProcess(ComputationProcess):
         self.input_parameters = input_parameters
         self.dtype = dtype
         self.device = device
+        self.noise_groups = noise_groups
+
+        if (
+            self.noise_groups is None
+            or (self.noise_groups["source"] is None)
+            or (self.noise_groups["source"].get("indistinguishability", None))
+        ):
+            raise RuntimeError(
+                f"The NoisyComputationProcess should only be used if there is a indistinguishability factor that is not 1.0."
+            )
 
         if no_bunching is not None:
             raise_no_bunching_deprecated(stacklevel=2)
@@ -716,8 +730,27 @@ class NoisyComputationProcess(ComputationProcess):
         if isinstance(self.input_state, torch.Tensor):
             state_tensor: torch.Tensor = self.input_state
             self._validate_superposition_state_shape(state_tensor)
-        super.__init__(self)
         self.noisy_slos = NoisySLOSComputeGraph()
+
+    def _setup_computation_graphs(self):
+        """Setup unitary and simulation computation graphs."""
+        # Determine parameter specs
+        parameter_specs = self.trainable_parameters + self.input_parameters
+
+        # Build unitary graph
+        self.converter = CircuitConverter(
+            self.circuit, parameter_specs, dtype=self.dtype, device=self.device
+        )
+
+        # Build simulation graph with correct parameters
+        self.simulation_graph = build_slos_distribution_computegraph(
+            m=self.m,  # Number of modes
+            n_photons=self.n_photons,  # Total number of photons
+            computation_space=self.computation_space,
+            keep_keys=True,  # Usually want to keep keys for output interpretation
+            device=self.device,
+            dtype=self.dtype,
+        )
 
     def compute(self, parameters: list[torch.Tensor]) -> torch.Tensor:
         """Compute output amplitudes for the configured input state.
