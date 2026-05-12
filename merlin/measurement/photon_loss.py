@@ -351,7 +351,7 @@ class PhotonLossTransform(torch.nn.Module):
 def resolve_photon_loss(
     noise_groups: NoiseGroups | None, n_modes: int
 ) -> tuple[list[float], bool]:
-    """Resolve photon loss from the experiment's noise model.
+    """Resolve photon loss from the layer's noise groups.
 
     Parameters
     ----------
@@ -367,42 +367,42 @@ def resolve_photon_loss(
         effective noise model was provided.
     """
     survival_probs = [1.0] * n_modes  # Default: no loss
-    empty_noise_model = True
+    empty_post_measurement = True
 
     if noise_groups is None:
-        return survival_probs, empty_noise_model
+        return survival_probs, empty_post_measurement
 
     if noise_groups.post_measurement is None:
         survival_probs = [1.0] * n_modes
-        empty_noise_model = True
+        empty_post_measurement = True
     else:
         if "brightness" not in noise_groups.post_measurement:
             survival_probs = [
                 float(noise_groups.post_measurement["transmittance"])
             ] * n_modes
-            empty_noise_model = False
+            empty_post_measurement = False
         elif "transmittance" not in noise_groups.post_measurement:
             survival_probs = [
                 float(noise_groups.post_measurement["brightness"])
             ] * n_modes
-            empty_noise_model = False
+            empty_post_measurement = False
         else:
             survival_probs = [
                 float(noise_groups.post_measurement["brightness"])
                 * float(noise_groups.post_measurement["transmittance"])
             ] * n_modes
-            empty_noise_model = False
+            empty_post_measurement = False
 
     if not all(0.0 <= prob <= 1.0 for prob in survival_probs):
         raise ValueError("Photon survival probabilities must be within [0, 1].")
-    if empty_noise_model and not all(
+    if empty_post_measurement and not all(
         math.isclose(prob, 1.0, rel_tol=1e-12, abs_tol=1e-12) for prob in survival_probs
     ):
         raise ValueError(
             "Inconsistent noise model: marked as empty but contains non-trivial loss parameters."
         )
 
-    return survival_probs, empty_noise_model
+    return survival_probs, empty_post_measurement
 
 
 def resolve_photon_loss_kernel(

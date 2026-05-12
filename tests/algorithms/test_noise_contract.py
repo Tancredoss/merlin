@@ -8,6 +8,7 @@ from merlin.algorithms.layer_utils import (
     classify_noise_model,
     normalize_noise_model,
 )
+import numpy as np
 import torch
 
 
@@ -407,6 +408,29 @@ def test_direct_noise_model_transmittance_feeds_photon_loss_transform():
     )
 
     assert layer._photon_survival_probs == pytest.approx([0.4, 0.4, 0.4, 0.4])
+
+
+def test_photon_survival_on_simple_circuits():
+    # Empty_circuit
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=pcvl.Circuit(m=4),
+        noise_model=pcvl.NoiseModel(transmittance=0.1, brightness=0.2),
+        n_photons=2,
+    )
+    assert np.allclose(layer._photon_survival_probs, [0.02, 0.02, 0.02, 0.02])
+
+    # HOM
+    circuit_hom = pcvl.Circuit(m=2).add([0, 1], pcvl.BS(convention=pcvl.BSConvention.H))
+    layer = ml.QuantumLayer(
+        circuit=circuit_hom,
+        noise_model=pcvl.NoiseModel(transmittance=0.1, brightness=0.2),
+        n_photons=2,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+    assert np.allclose(layer._photon_survival_probs, [0.02, 0.02])
 
 
 def test_noise_groups_are_passed_to_computation_process():

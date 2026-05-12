@@ -982,6 +982,13 @@ def classify_noise_model(noise_model: pcvl.NoiseModel | None) -> NoiseGroups | N
         The NoiseGroups object that contains the noise sources per category.
     """
 
+    # The classifying pipeline can be seen as following. For a specific noise source.
+    # 1. Is the noise value None. If it is, don't add anything to its category dictionary.
+    # 2. Is the value the default value (noiseless case). If it is, don't add anything to its category dictionary
+    # 3. Otherwise, add the noise value its corresponding category.
+    #
+    # If a category does not have any noises, it should be set to None.
+
     if noise_model is None:
         return None
     # Source noise
@@ -989,17 +996,19 @@ def classify_noise_model(noise_model: pcvl.NoiseModel | None) -> NoiseGroups | N
     # indistinguishability
     if noise_model.indistinguishability is None:
         pass
-    elif not noise_model.indistinguishability == 1.0:
+    elif (
+        not noise_model.indistinguishability == 1.0
+    ):  # indistinguishability's default value
         source["indistinguishability"] = noise_model.indistinguishability
     # g2_distinguishable
     if noise_model.g2_distinguishable is None:
         pass
-    elif not noise_model.g2_distinguishable:
+    elif not noise_model.g2_distinguishable:  # g2_distinguishable's default value
         source["g2_distinguishable"] = False
     # g2
     if noise_model.g2 is None:
         pass
-    elif not noise_model.g2 == 0.0:
+    elif not noise_model.g2 == 0.0:  # g2's default value
         source["g2"] = noise_model.g2
     if source == {}:
         source = None
@@ -1010,11 +1019,13 @@ def classify_noise_model(noise_model: pcvl.NoiseModel | None) -> NoiseGroups | N
     if noise_model.phase_imprecision is None:
         pass
     elif not noise_model.phase_imprecision == 0.0:
-        circuit["phase_imprecision"] = noise_model.phase_imprecision
+        circuit["phase_imprecision"] = (
+            noise_model.phase_imprecision
+        )  # phase_imprecision's default value
     # phase_error
     if noise_model.phase_error is None:
         pass
-    elif not noise_model.phase_error == 0.0:
+    elif not noise_model.phase_error == 0.0:  # phase_error's default value
         circuit["phase_error"] = noise_model.phase_error
     if circuit == {}:
         circuit = None
@@ -1024,12 +1035,12 @@ def classify_noise_model(noise_model: pcvl.NoiseModel | None) -> NoiseGroups | N
     # transmittance
     if noise_model.transmittance is None:
         pass
-    elif not noise_model.transmittance == 1.0:
+    elif not noise_model.transmittance == 1.0:  # transmittance's default value
         post_measurement["transmittance"] = noise_model.transmittance
     # brightness
     if noise_model.brightness is None:
         pass
-    elif not noise_model.brightness == 1.0:
+    elif not noise_model.brightness == 1.0:  # brightness's default value
         post_measurement["brightness"] = noise_model.brightness
 
     if post_measurement == {}:
