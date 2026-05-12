@@ -35,6 +35,10 @@ from ..pcvl_pytorch import (
     build_slos_distribution_computegraph,
     NoisySLOSComputeGraph,
 )
+from merlin.pcvl_pytorch.noisy_slos import (
+    build_noisy_slos_distribution_computegraph,
+    load_noisy_slos_distribution_computegraph,
+)
 from ..utils.combinadics import Combinadics
 from ..utils.deprecations import raise_no_bunching_deprecated
 from .base import AbstractComputationProcess
@@ -637,7 +641,7 @@ class NoisyComputationProcess(ComputationProcess):
         Device on which computation graphs are materialized.
     computation_space : ComputationSpace | None
         Computation space used for basis enumeration.
-    noise_groups : NoiseGroups|None=None
+    noise_groups : NoiseGroups|None
         The noise groups defined in the creation of the QuantumLayer. Default is None (no noise).
     no_bunching : bool | None
         Deprecated legacy parameter.
@@ -681,7 +685,7 @@ class NoisyComputationProcess(ComputationProcess):
             Computation space used for basis enumeration.
         no_bunching : bool | None
             Deprecated legacy parameter.
-        noise_groups : NoiseGroups|None=None
+        noise_groups : NoiseGroups|None
             The noise groups defined in the creation of the QuantumLayer. Default is None (no noise).
         output_map_func : Any
             Optional output mapping function.
@@ -723,6 +727,7 @@ class NoisyComputationProcess(ComputationProcess):
                 raise ValueError("The number of photons should be provided")
         else:
             self.n_photons = n_photons
+
         # Build computation graphs
         self._setup_computation_graphs()
 
@@ -743,13 +748,14 @@ class NoisyComputationProcess(ComputationProcess):
         )
 
         # Build simulation graph with correct parameters
-        self.simulation_graph = build_slos_distribution_computegraph(
+        self.simulation_graph = build_noisy_slos_distribution_computegraph(
             m=self.m,  # Number of modes
             n_photons=self.n_photons,  # Total number of photons
             computation_space=self.computation_space,
             keep_keys=True,  # Usually want to keep keys for output interpretation
             device=self.device,
             dtype=self.dtype,
+            noise_groups=self.noise_groups,
         )
 
     def compute(self, parameters: list[torch.Tensor]) -> torch.Tensor:
@@ -775,5 +781,5 @@ class NoisyComputationProcess(ComputationProcess):
         else:
             input_state = self.input_state
 
-        keys, amplitudes = self.simulation_graph.compute(unitary, input_state)
+        keys, amplitudes = self.simulation_graph.compute_probs(unitary, input_state)
         return amplitudes
