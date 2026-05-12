@@ -1781,6 +1781,7 @@ class TestQuantumLayer:
         )
         # Copy to check the memristor states are correclty moved
         ql_copy = deepcopy(ql)
+        ql_copy.reset(batch_size=5)
         ql = ql.to(torch.device("cuda"))
 
         # Initial metadata check
@@ -1789,13 +1790,13 @@ class TestQuantumLayer:
         assert "mem1" not in ql.input_parameters
 
         assert ql.memristive_history[0][0].device.type == torch.device("cuda").type
-        assert ql._memristive_state[0].device.type == torch.device("cuda").type
+        assert ql.memristive_state[0].device.type == torch.device("cuda").type
 
         assert torch.allclose(
-            ql.memristive_state[0], torch.Tensor([[1.2]]).to(torch.device("cuda"))
+            ql.memristive_state[0], torch.tensor([[1.2]], device=torch.device("cuda"))
         )
         assert torch.allclose(
-            ql.memristive_state[1], torch.Tensor([[0.01]]).to(torch.device("cuda"))
+            ql.memristive_state[1], torch.tensor([[0.01]], device=torch.device("cuda"))
         )
 
         assert ql.memristive_history[0][0] == ql.memristive_state[0]
@@ -1811,10 +1812,12 @@ class TestQuantumLayer:
         assert ql.input_size == 2
 
         assert torch.allclose(
-            ql.memristive_state[0], torch.Tensor([[1.2] * 5]).to(torch.device("cuda"))
+            ql.memristive_state[0],
+            torch.tensor([[1.2] * 5], device=torch.device("cuda")),
         )
         assert torch.allclose(
-            ql.memristive_state[1], torch.Tensor([[0.01] * 5]).to(torch.device("cuda"))
+            ql.memristive_state[1],
+            torch.tensor([[0.01] * 5], device=torch.device("cuda")),
         )
 
         assert torch.allclose(ql.memristive_history[0][0], ql.memristive_state[0])
@@ -1833,24 +1836,25 @@ class TestQuantumLayer:
         assert "mem1" not in ql.input_parameters
 
         assert ql.memristive_history[0][0].device.type == torch.device("cuda").type
-        assert ql._memristive_state[0].device.type == torch.device("cuda").type
+        assert ql.memristive_state[0].device.type == torch.device("cuda").type
 
         new_state_0_t1 = update_rule(
-            torch.Tensor([1.2] * 5), first_output.to(torch.device("cpu"))
-        ).to(torch.device("cuda"))
+            torch.tensor([1.2] * 5, device=torch.device("cuda")), first_output
+        )
         assert torch.allclose(ql.memristive_state[0], new_state_0_t1)
         new_state_1_t1 = update_rule_exp(
-            torch.Tensor([0.01] * 5), first_output.to(torch.device("cpu"))
-        ).to(torch.device("cuda"))
+            torch.tensor([0.01] * 5, device=torch.device("cuda")), first_output
+        )
+
         assert torch.allclose(ql.memristive_state[1], new_state_1_t1)
 
         assert torch.allclose(
-            ql.memristive_history[0][0],
-            torch.Tensor([[1.2] * 5]).to(torch.device("cuda")),
+            ql.memristive_history[0][0].to(torch.device("cuda")),
+            torch.tensor([[1.2] * 5], device=torch.device("cuda")),
         )
         assert torch.allclose(
             ql.memristive_history[1][0],
-            torch.Tensor([[0.01] * 5]).to(torch.device("cuda")),
+            torch.tensor([[0.01] * 5], device=torch.device("cuda")),
         )
         assert torch.allclose(ql.memristive_history[0][1], ql.memristive_state[0])
         assert torch.allclose(ql.memristive_history[1][1], ql.memristive_state[1])
@@ -1868,24 +1872,24 @@ class TestQuantumLayer:
         assert "mem1" not in ql.input_parameters
 
         assert ql.memristive_history[0][0].device.type == torch.device("cuda").type
-        assert ql._memristive_state[0].device.type == torch.device("cuda").type
+        assert ql.memristive_state[0].device.type == torch.device("cuda").type
 
         new_state_0_t2 = update_rule(
-            new_state_0_t1, second_output.to(torch.device("cpu"))
-        ).to(torch.device("cuda"))
+            new_state_0_t1.to(torch.device("cuda")), second_output
+        )
         assert torch.allclose(ql.memristive_state[0], new_state_0_t2)
         new_state_1_t2 = update_rule_exp(
-            new_state_1_t1, second_output.to(torch.device("cpu"))
-        ).to(torch.device("cuda"))
+            new_state_1_t1.to(torch.device("cuda")), second_output
+        )
         assert torch.allclose(ql.memristive_state[1], new_state_1_t2)
 
         assert torch.allclose(
             ql.memristive_history[0][0],
-            torch.Tensor([[1.2] * 5]).to(torch.device("cuda")),
+            torch.tensor([[1.2] * 5], device=torch.device("cuda")),
         )
         assert torch.allclose(
             ql.memristive_history[1][0],
-            torch.Tensor([[0.01] * 5]).to(torch.device("cuda")),
+            torch.tensor([[0.01] * 5], device=torch.device("cuda")),
         )
         assert torch.allclose(ql.memristive_history[0][1], new_state_0_t1)
         assert torch.allclose(ql.memristive_history[1][1], new_state_1_t1)
@@ -1905,23 +1909,23 @@ class TestQuantumLayer:
         assert "mem1" not in ql.input_parameters
 
         assert ql.memristive_history[0][0].device.type == torch.device("cuda").type
-        assert ql._memristive_state[0].device.type == torch.device("cuda").type
+        assert ql.memristive_state[0].device.type == torch.device("cuda").type
         new_state_0_t3 = update_rule(
-            new_state_0_t2[:3], third_output.to(torch.device("cpu"))
-        ).to(torch.device("cuda"))
+            new_state_0_t2[:3].to(torch.device("cuda")), third_output
+        )
         assert torch.allclose(ql.memristive_state[0], new_state_0_t3)
         new_state_1_t3 = update_rule_exp(
-            new_state_1_t2[:3], third_output.to(torch.device("cpu"))
-        ).to(torch.device("cuda"))
+            new_state_1_t2[:3].to(torch.device("cuda")), third_output
+        )
         assert torch.allclose(ql.memristive_state[1], new_state_1_t3)
 
         assert torch.allclose(
             ql.memristive_history[0][0],
-            torch.Tensor([[1.2] * 5]).to(torch.device("cuda")),
+            torch.tensor([[1.2] * 5], device=torch.device("cuda")),
         )
         assert torch.allclose(
             ql.memristive_history[1][0],
-            torch.Tensor([[0.01] * 5]).to(torch.device("cuda")),
+            torch.tensor([[0.01] * 5], device=torch.device("cuda")),
         )
         assert torch.allclose(ql.memristive_history[0][1], new_state_0_t1)
         assert torch.allclose(ql.memristive_history[1][1], new_state_1_t1)
@@ -1944,13 +1948,13 @@ class TestQuantumLayer:
         assert "mem1" not in ql.input_parameters
 
         assert ql.memristive_history[0][0].device.type == torch.device("cuda").type
-        assert ql._memristive_state[0].device.type == torch.device("cuda").type
+        assert ql.memristive_state[0].device.type == torch.device("cuda").type
 
         assert torch.allclose(
-            ql.memristive_state[0], torch.Tensor([[1.2]]).to(torch.device("cuda"))
+            ql.memristive_state[0], torch.tensor([[1.2]], device=torch.device("cuda"))
         )
         assert torch.allclose(
-            ql.memristive_state[1], torch.Tensor([[0.01]]).to(torch.device("cuda"))
+            ql.memristive_state[1], torch.tensor([[0.01]], device=torch.device("cuda"))
         )
 
         assert ql.memristive_history[0][0] == ql.memristive_state[0]
@@ -1964,7 +1968,7 @@ class TestQuantumLayer:
 
         # Running again after a reset
         try:
-            ql(torch.Tensor([[0, 0]]).to(torch.device("cuda")))
+            ql(torch.tensor([[0, 0]], device=torch.device("cuda")))
         except Exception as e:
             pytest.fail(f"Unexpected exception raised: {e}")
 
@@ -1975,18 +1979,18 @@ class TestQuantumLayer:
         ql_copy.to(torch.device("cuda"))
 
         assert ql_copy.memristive_history[0][0].device.type == torch.device("cuda").type
-        assert ql_copy._memristive_state[0].device.type == torch.device("cuda").type
+        assert ql_copy.memristive_state[0].device.type == torch.device("cuda").type
         assert ql_copy.input_size == 2
         assert "mem0" not in ql_copy.input_parameters
         assert "mem1" not in ql_copy.input_parameters
 
         assert torch.allclose(
             ql_copy.memristive_history[0][0],
-            torch.Tensor([[1.2] * 5]).to(torch.device("cuda")),
+            torch.tensor([[1.2] * 5], device=torch.device("cuda")),
         )
         assert torch.allclose(
             ql_copy.memristive_history[1][0],
-            torch.Tensor([[0.01] * 5]).to(torch.device("cuda")),
+            torch.tensor([[0.01] * 5], device=torch.device("cuda")),
         )
         assert torch.allclose(ql_copy.memristive_history[0][1], new_state_0_t1)
         assert torch.allclose(ql_copy.memristive_history[1][1], new_state_1_t1)
@@ -2012,7 +2016,7 @@ class TestQuantumLayer:
         # Moving the data back
         ql_copy.to(torch.device("cpu"))
         assert ql_copy.memristive_history[0][0].device.type == torch.device("cpu").type
-        assert ql_copy._memristive_state[0].device.type == torch.device("cpu").type
+        assert ql_copy.memristive_state[0].device.type == torch.device("cpu").type
 
 
 def _identity_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
