@@ -153,7 +153,7 @@ class _InputStateNoisySLOSComputeGraph:
 
         # List of partitions of cells of states.
         self._partitions = [
-            self._new_generate_obb_partition(input_state, num_bad_photons)
+            self._generate_obb_partition(input_state, num_bad_photons)
             for num_bad_photons in range(0, self.n_photons + 1)
         ]
         # Extract all input states from self._partitions
@@ -225,53 +225,6 @@ class _InputStateNoisySLOSComputeGraph:
         if order == 0:
             return input_state.unsqueeze(0).unsqueeze(0)
 
-        # Find positions of ones
-        one_positions = torch.where(input_state == 1)[0]
-
-        # All combinations of ones to remove
-        remove_indices = list(combinations(one_positions.tolist(), order))
-        remove_indices = torch.tensor(remove_indices, dtype=torch.long)
-
-        n_comb = remove_indices.shape[0]
-        input_state_len = input_state.size(0)
-
-        # Base matrix: original vector repeated for each combination
-        base = input_state.unsqueeze(0).repeat(n_comb, 1)
-        row_indices = torch.arange(n_comb).unsqueeze(1)
-        base[row_indices, remove_indices] = 0  # remove chosen ones
-
-        missing = torch.zeros((n_comb, order, input_state_len), dtype=torch.int32)
-        rows = torch.arange(n_comb).unsqueeze(1)
-        cols = torch.arange(order).unsqueeze(0)
-        missing[rows, cols, remove_indices] = 1
-
-        result = torch.cat([base.unsqueeze(1), missing], dim=1)
-
-        # Remove empty states vectors
-        if order == torch.sum(input_state).item():
-            mask = result.any(dim=2)
-            result = result[mask]
-            result = result.unsqueeze(0)
-
-        return result
-
-    @staticmethod
-    def _new_generate_obb_partition(input_state, order):
-        """Generates list of cells for a particular partition and OBB
-        "order" or number of "bad" photons.
-        """
-        if order > sum(input_state):
-            raise ValueError("OBB order cannot exceed the number of photons")
-
-        # Convert to tensor if not already
-        if not isinstance(input_state, Tensor):
-            input_state = torch.tensor(list(input_state), dtype=torch.int32)
-        else:
-            input_state = input_state.int()
-
-        if order == 0:
-            return input_state.unsqueeze(0).unsqueeze(0)
-
         # Create a 1D tensor with position of each photon
         positions = torch.arange(len(input_state), dtype=torch.long)
         photon_positions = torch.repeat_interleave(positions, input_state)
@@ -296,6 +249,7 @@ class _InputStateNoisySLOSComputeGraph:
         missing[rows, cols, remove_indices] = 1
 
         result = torch.cat([base.unsqueeze(1), missing], dim=1)
+        # result = torch.unique(result, return_counts=True)
 
         # Remove empty states vectors
         if order == torch.sum(input_state).item():
@@ -317,7 +271,7 @@ class _InputStateNoisySLOSComputeGraph:
         total_obb_states = input_state.unsqueeze(0)
 
         for num_bad_photons in range(1, order + 1):
-            obb_states = self._new_generate_obb_partition(input_state, num_bad_photons)
+            obb_states = self._generate_obb_partition(input_state, num_bad_photons)
             obb_states = obb_states.reshape(-1, obb_states.shape[2])
             total_obb_states = torch.vstack((total_obb_states, obb_states))
 

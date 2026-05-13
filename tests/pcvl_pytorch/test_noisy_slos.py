@@ -146,6 +146,9 @@ def test_against_perceval(entangling_circuit):
 
 
 def test_deduplication():
+    """
+    Bunched input partitions are not double-counted (compare with manual weight)
+    """
     assert False
 
 
