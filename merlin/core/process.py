@@ -30,6 +30,7 @@ from typing import Literal, overload
 import perceval as pcvl
 import torch
 
+from ..algorithms.layer_utils import NoiseGroups
 from ..pcvl_pytorch import CircuitConverter, build_slos_distribution_computegraph
 from ..utils.combinadics import Combinadics
 from ..utils.deprecations import raise_no_bunching_deprecated
@@ -62,6 +63,8 @@ class ComputationProcess(AbstractComputationProcess):
         Deprecated legacy parameter.
     output_map_func : Any
         Optional output mapping function.
+    noise_groups: NoiseGroups | None
+            The noise groups applied to the circuit to be ran.
     """
 
     def __init__(
@@ -76,6 +79,7 @@ class ComputationProcess(AbstractComputationProcess):
         computation_space: ComputationSpace | None = None,
         no_bunching: bool | None = None,
         output_map_func=None,
+        noise_groups: NoiseGroups | None = None,
     ):
         """Initialize a computation process.
 
@@ -101,6 +105,8 @@ class ComputationProcess(AbstractComputationProcess):
             Deprecated legacy parameter.
         output_map_func : Any
             Optional output mapping function.
+        noise_groups: NoiseGroups | None
+                The noise groups applied to the circuit to be ran.
         """
         self.circuit = circuit
         self.input_state = input_state
@@ -109,6 +115,7 @@ class ComputationProcess(AbstractComputationProcess):
         self.input_parameters = input_parameters
         self.dtype = dtype
         self.device = device
+        self.noise_groups = noise_groups
 
         if no_bunching is not None:
             raise_no_bunching_deprecated(stacklevel=2)
@@ -577,6 +584,7 @@ class ComputationProcessFactory:
         trainable_parameters: list[str],
         input_parameters: list[str],
         computation_space: ComputationSpace | None = None,
+        noise_groups: NoiseGroups | None = None,
         **kwargs,
     ) -> ComputationProcess:
         """Create a computation process.
@@ -593,6 +601,8 @@ class ComputationProcessFactory:
             Prefixes of input-driven circuit parameters.
         computation_space : ComputationSpace | None
             Computation space used for basis enumeration.
+        noise_groups: NoiseGroups | None
+            The noise groups applied to the circuit to be ran.
         **kwargs
             Additional keyword arguments forwarded to
             :class:`ComputationProcess`.
@@ -608,5 +618,6 @@ class ComputationProcessFactory:
             trainable_parameters=trainable_parameters,
             input_parameters=input_parameters,
             computation_space=computation_space,
+            noise_groups=noise_groups,
             **kwargs,
         )

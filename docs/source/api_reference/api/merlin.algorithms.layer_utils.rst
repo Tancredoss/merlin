@@ -28,6 +28,10 @@ merlin.algorithms.layer_utils module
    :members:
    :undoc-members:
 
+.. autoclass:: NoiseGroups
+   :members:
+   :undoc-members:
+
 .. autoclass:: InitializationContext
    :members:
    :undoc-members:
@@ -53,3 +57,9 @@ merlin.algorithms.layer_utils module
 .. autofunction:: feature_count_for_prefix
 
 .. autofunction:: normalize_output_key
+
+.. autofunction:: classify_noise_model
+
+.. autofunction:: validate_noisy_measurement_strategy
+
+.. autofunction:: normalize_noise_model
