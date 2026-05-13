@@ -149,7 +149,33 @@ def test_deduplication():
     """
     Bunched input partitions are not double-counted (compare with manual weight)
     """
-    assert False
+    test = _InputStateNoisySLOSComputeGraph(
+        input_state=[3, 0, 2, 1, 0],
+        indistinguishability=0.5,
+        computation_space=ComputationSpace.FOCK,
+    )
+    partitions = test._generate_obb_partition(input_state=test.input_state, order=1)
+    assert torch.allclose(
+        torch.unique(partitions[0], return_counts=True, dim=0)[1],
+        torch.ones_like(partitions[1]),
+    )
+    assert torch.allclose(
+        partitions[0],
+        torch.tensor(
+            [
+                [[2, 0, 2, 1, 0], [1, 0, 0, 0, 0]],
+                [[3, 0, 1, 1, 0], [0, 0, 1, 0, 0]],
+                [[3, 0, 2, 0, 0], [0, 0, 0, 1, 0]],
+            ],
+            dtype=torch.int32,
+        ),
+    )
+    assert torch.allclose(
+        partitions[1],
+        torch.tensor(
+            [3, 2, 1],
+        ),
+    )
 
 
 def test_gradient_flows_through_hom():

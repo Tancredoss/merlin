@@ -112,9 +112,9 @@ class _InputStateNoisySLOSComputeGraph:
         self,
         input_state: list,
         indistinguishability: float,
-        computation_space: ComputationSpace,
-        device,
-        dtype,
+        computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
+        device=None,  # Optional device parameter
+        dtype: torch.dtype = torch.float,
     ):
         self.input_state = input_state
         self.indistinguishability = torch.as_tensor(indistinguishability, dtype=float)
@@ -153,11 +153,13 @@ class _InputStateNoisySLOSComputeGraph:
 
         # List of partitions of cells of states.
         self._partitions = [
-            self._generate_obb_partition(input_state, num_bad_photons)
+            self._generate_obb_partition(input_state, num_bad_photons, device=device)
             for num_bad_photons in range(0, self.n_photons + 1)
         ]
         # Extract all input states from self._partitions
-        self._obb_input_states = self._generate_obb_states(input_state, self.n_photons)
+        self._obb_input_states = self._generate_obb_states(
+            input_state, self.n_photons, device=device
+        )
 
         # All fock states associated with each photon number n
         self._fock_states_per_n = {
@@ -192,7 +194,7 @@ class _InputStateNoisySLOSComputeGraph:
         for i, partition in enumerate(self._partitions):
             bit_weight = self._weights[i]
 
-            for cell in partition:
+            for cell, count in zip(partition[0], partition[1]):
                 cell_distributions = [
                     probs_per_obb_state[tuple(state.tolist())] for state in cell
                 ]
@@ -203,13 +205,17 @@ class _InputStateNoisySLOSComputeGraph:
                     fock_states,
                     *cell_distributions,
                 )
-                output_probs += bit_weight * convolution
+                output_probs += bit_weight * convolution * count.item()
 
         output_probs = output_probs / output_probs.sum(dim=1).unsqueeze(1)
         return output_keys, output_probs
 
     @staticmethod
-    def _generate_obb_partition(input_state, order):
+    def _generate_obb_partition(
+        input_state,
+        order,
+        device=None,  # Optional device parameter
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Generates list of cells for a particular partition and OBB
         "order" or number of "bad" photons.
         """
@@ -223,11 +229,13 @@ class _InputStateNoisySLOSComputeGraph:
             input_state = input_state.int()
 
         if order == 0:
-            return input_state.unsqueeze(0).unsqueeze(0)
+            return input_state.unsqueeze(0).unsqueeze(0).to(device), torch.tensor(
+                [1]
+            ).to(device)
 
         # Create a 1D tensor with position of each photon
-        positions = torch.arange(len(input_state), dtype=torch.long)
-        photon_positions = torch.repeat_interleave(positions, input_state)
+        positions = torch.arange(len(input_state), dtype=torch.long).to(device)
+        photon_positions = torch.repeat_interleave(positions, input_state).to(device)
 
         # All combinations of photons to remove
         remove_indices = list(combinations(photon_positions.tolist(), order))
@@ -243,22 +251,30 @@ class _InputStateNoisySLOSComputeGraph:
                 base[i, j] = base[i, j] - 1  # remove chosen ones
 
         # Should work, create the one hot vectors to convolve that were removed in the good state. So there is order one hot states per combination
-        missing = torch.zeros((n_comb, order, input_state_len), dtype=torch.int32)
+        missing = torch.zeros((n_comb, order, input_state_len), dtype=torch.int32).to(
+            device
+        )
         rows = torch.arange(n_comb).unsqueeze(1)
         cols = torch.arange(order).unsqueeze(0)
         missing[rows, cols, remove_indices] = 1
 
         result = torch.cat([base.unsqueeze(1), missing], dim=1)
-        # result = torch.unique(result, return_counts=True)
 
         # Remove empty states vectors
         if order == torch.sum(input_state).item():
             mask = result.any(dim=2)
             result = result[mask]
             result = result.unsqueeze(0)
-        return result
 
-    def _generate_obb_states(self, input_state, order):
+        result, counts = torch.unique(result, return_counts=True, dim=0)
+        return [result.to(device), counts.to(device)]
+
+    def _generate_obb_states(
+        self,
+        input_state,
+        order,
+        device=None,  # Optional device parameter
+    ):
         """Generates all possible input states for a given OBB order."""
         if not isinstance(input_state, Tensor):
             input_state = torch.tensor(list(input_state), dtype=torch.int32)
@@ -271,12 +287,14 @@ class _InputStateNoisySLOSComputeGraph:
         total_obb_states = input_state.unsqueeze(0)
 
         for num_bad_photons in range(1, order + 1):
-            obb_states = self._generate_obb_partition(input_state, num_bad_photons)
+            obb_states = self._generate_obb_partition(
+                input_state, num_bad_photons, device=device
+            )[0]
             obb_states = obb_states.reshape(-1, obb_states.shape[2])
             total_obb_states = torch.vstack((total_obb_states, obb_states))
 
         # Remove duplicate rows
-        total_obb_states = torch.unique(total_obb_states, dim=0)
+        total_obb_states = torch.unique(total_obb_states, dim=0).to(device)
 
         # Sort by decreasing number of photons
         photon_sums = torch.sum(total_obb_states, dim=1)
