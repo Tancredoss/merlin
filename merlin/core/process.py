@@ -671,7 +671,7 @@ class NoisyComputationProcess:
         device: torch.device | None = None,
         computation_space: ComputationSpace | None = None,
         no_bunching: bool | None = None,
-        noise_groups: None = None,
+        noise_groups: NoiseGroups | None = None,
         output_map_func=None,
     ):
         """Initialize a computation process.
@@ -710,11 +710,15 @@ class NoisyComputationProcess:
         self.device = device
         self.noise_groups = noise_groups
 
-        if (
-            self.noise_groups is None
-            or (self.noise_groups["source"] is None)
-            or (self.noise_groups["source"].get("indistinguishability", None))
-        ):
+        if noise_groups is None:
+            raise RuntimeError(
+                f"The NoisyComputationProcess should only be used if there is a indistinguishability factor that is not 1.0."
+            )
+        if noise_groups.source is None:
+            raise RuntimeError(
+                f"The NoisyComputationProcess should only be used if there is a indistinguishability factor that is not 1.0."
+            )
+        if self.noise_groups.source.get("indistinguishability", None) is None:
             raise RuntimeError(
                 f"The NoisyComputationProcess should only be used if there is a indistinguishability factor that is not 1.0."
             )
@@ -824,7 +828,7 @@ class NoisyComputationProcessFactory:
 
     @staticmethod
     def create(
-        noise_groups: None,
+        noise_groups: NoiseGroups | None,
         circuit: pcvl.Circuit,
         input_state: list[int] | torch.Tensor,
         trainable_parameters: list[str],

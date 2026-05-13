@@ -3,6 +3,7 @@ from itertools import combinations
 from _collections_abc import Callable
 import warnings
 import torch
+from merlin.algorithms.layer_utils import NoiseGroups
 from .slos_torchscript import build_slos_distribution_computegraph as build_slos_graph
 from .slos_torchscript import SLOSComputeGraph
 from merlin.core.computation_space import ComputationSpace
@@ -10,7 +11,6 @@ from merlin.utils.combinadics import Combinadics
 from torch import Tensor
 from merlin.utils.deprecations import raise_no_bunching_deprecated
 import os
-from merlin.pcvl_pytorch.slos_torchscript import _get_complex_dtype_for_float
 
 
 class NoisySLOSComputeGraph:
@@ -32,24 +32,36 @@ class NoisySLOSComputeGraph:
 
     def __init__(
         self,
-        noise_groups: None,
+        noise_groups: NoiseGroups | None,
         m,
         n_photons,
-        output_map_func,
-        computation_space: ComputationSpace,
-        keep_keys,
-        device,
-        dtype,
+        computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
+        keep_keys: bool = True,
+        device=None,  # Optional device parameter
+        dtype: torch.dtype = torch.float,  # Optional dtype parameter
     ):
-        self.indistinguishability = noise_groups["source"].get(
+        if noise_groups is None:
+            raise RuntimeError(
+                f"The NoisyComputationProcess should only be used if there is a indistinguishability factor that is not 1.0."
+            )
+        if noise_groups.source is None:
+            raise RuntimeError(
+                f"The NoisyComputationProcess should only be used if there is a indistinguishability factor that is not 1.0."
+            )
+
+        self.indistinguishability = noise_groups.source.get(
             "indistinguishability", None
         )
-        self.g2_distinguishable = noise_groups["source"].get("g2_distinguishable", None)
+        if self.indistinguishability is None:
+            raise RuntimeError(
+                f"The NoisyComputationProcess should only be used if there is a indistinguishability factor that is not 1.0."
+            )
+
+        self.g2_distinguishable = noise_groups.source.get("g2_distinguishable", None)
         self._slos_graph_per_input = {}
 
         self.m = m
         self.n_photons = n_photons
-        self.output_map_func = output_map_func
         if computation_space is ComputationSpace.DUAL_RAIL:
             if m % 2 != 0:
                 raise ValueError("dual_rail compute space requires even m")
@@ -58,13 +70,14 @@ class NoisySLOSComputeGraph:
 
         self.computation_space = computation_space
         # TODO Change with post-selection if it applies
-        self.computation_space = ComputationSpace.FOCK
-        warnings.warn(
-            "Noisy SLOS simulations currently use ComputationSpace.FOCK. "
-            "Other computation spaces are not yet supported for noise models.",
-            UserWarning,
-            stacklevel=2,
-        )
+        if not self.computation_space == ComputationSpace.FOCK:
+            warnings.warn(
+                "Noisy SLOS simulations currently use ComputationSpace.FOCK. "
+                "Other computation spaces are not yet supported for noise models.",
+                UserWarning,
+                stacklevel=2,
+            )
+            self.computation_space = ComputationSpace.FOCK
 
         self.keep_keys = keep_keys
         self.device = device
@@ -393,7 +406,6 @@ def convolve_distributions(keys: list[Tensor], *probs: Tensor):
 def build_noisy_slos_distribution_computegraph(
     m,
     n_photons,
-    output_map_func: Callable[[tuple[int, ...]], tuple[int, ...] | None] | None = None,
     computation_space: ComputationSpace | None = None,
     no_bunching: bool | None = None,
     keep_keys: bool = True,
@@ -409,8 +421,6 @@ def build_noisy_slos_distribution_computegraph(
         Number of modes in the circuit.
     n_photons : int
         Total number of photons injected in the circuit.
-    output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None
-        Mapping applied to each output Fock state, allowing post-processing.
     computation_space : ComputationSpace | None
         Logical computation subspace used to build the basis and transitions.
         When omitted, defaults to ``ComputationSpace.UNBUNCHED``.
@@ -444,7 +454,6 @@ def build_noisy_slos_distribution_computegraph(
         noise_groups,
         m,
         n_photons,
-        output_map_func,
         computation_space,
         keep_keys,
         device,
@@ -474,7 +483,6 @@ def build_noisy_slos_distribution_computegraph(
             "computation_space": compute_graph.computation_space.value,
             "keep_keys": compute_graph.keep_keys,
             "dtype_str": str(compute_graph.dtype),
-            "has_output_map_func": output_map_func is not None,
         }
 
     # Attach the save method to the compute_graph
@@ -540,14 +548,6 @@ def load_noisy_slos_distribution_computegraph(path):
         graph.mapped_indices = saved_data["mapped_indices"]
         graph.total_mapped_keys = saved_data["total_mapped_keys"]
         graph.target_indices = saved_data["target_indices"]
-
-        # We need to recreate a dummy output_map_func that uses the saved mapping
-        def restored_output_map_func(state):
-            # This function just serves as a placeholder to indicate mapping is used
-            # The actual mapping is handled by the restored mapped_indices
-            return state
-
-        graph.output_map_func = restored_output_map_func
 
     # Recreate the TorchScript modules
     graph._create_torchscript_modules()
