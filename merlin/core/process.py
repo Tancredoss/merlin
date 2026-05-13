@@ -418,15 +418,18 @@ class ComputationProcess(AbstractComputationProcess):
         Returns
         -------
         tuple[Any, torch.Tensor]
-            Simulation-graph keys and corresponding amplitudes.
+            Simulation-graph keys and corresponding probabilities if it is a noisy simulation and amplitude otherwise.
         """
         # Generate unitary matrix from parameters
         unitary = self.converter.to_tensor(*parameters)
 
         # Compute output distribution using the input state
-        keys, amplitudes = self.simulation_graph.compute(unitary, self.input_state)
-
-        return keys, amplitudes
+        if self.noisy_simulation:
+            keys, probs = self.simulation_graph.compute_probs(unitary, self.input_state)
+            return keys, probs
+        else:
+            keys, amplitudes = self.simulation_graph.compute(unitary, self.input_state)
+            return keys, amplitudes
 
     def _expected_superposition_size(self) -> int:
         """Expected number of Fock states given current computation space."""
