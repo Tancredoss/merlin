@@ -516,8 +516,8 @@ def test_entangling_layer_models_on_gpu(model):
     logits = layer(x)
     # Output probabilities are normalized (sum == 1 per batch element in UNBUNCHED
     # space), so logits.sum() is a constant equal to batch_size and has zero
-    # gradient everywhere.  Select a single output mode instead so the loss
-    # varies non-trivially with the circuit parameters.
+    # gradient everywhere.
+    # We define a loss that varies non-trivially with the circuit parameters.
     # This loss does not make sense but the gradients is not null and allows to check that the backward pass runs without error on GPU.
     loss = ((x - logits) ** 2).sum()
     loss.backward()
