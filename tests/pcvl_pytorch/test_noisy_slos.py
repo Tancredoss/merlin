@@ -179,4 +179,43 @@ def test_deduplication():
 
 
 def test_gradient_flows_through_hom():
-    assert False
+    # 2-mode 50/50 beamsplitter
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+    unitary = CircuitConverter(circuit).to_tensor([]).to(torch.complex128)
+
+    input_state = [1, 1]
+
+    def f(hom: torch.Tensor) -> torch.Tensor:
+        noise_groups = NoiseGroups(
+            source={"indistinguishability": hom},
+            circuit=None,
+            post_measurement=None,
+        )
+
+        graph = NoisySLOSComputeGraph(
+            noise_groups,
+            m=2,
+            n_photons=2,
+            computation_space=ComputationSpace.FOCK,
+            keep_keys=True,
+            device=None,
+            dtype=torch.float64,
+        )
+
+        keys, probs = graph.compute_probs(unitary, input_state)
+        key_to_idx = {k: i for i, k in enumerate(keys)}
+
+        # Use coincidence probability as scalar objective
+        return probs[0, key_to_idx[(1, 1)]]
+
+    hom = torch.tensor(0.37, dtype=torch.double, requires_grad=True)
+
+    assert torch.autograd.gradcheck(
+        f,
+        (hom,),
+        eps=1e-4,
+        atol=1e-3,
+        rtol=1e-2,
+        fast_mode=True,
+    )
