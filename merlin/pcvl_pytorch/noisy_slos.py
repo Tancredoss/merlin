@@ -1,14 +1,12 @@
 from functools import reduce
 from itertools import combinations
-from _collections_abc import Callable
 import warnings
 import torch
 from merlin.algorithms.layer_utils import NoiseGroups
 from merlin.core.computation_space import ComputationSpace
 from merlin.utils.combinadics import Combinadics
 from torch import Tensor
-from merlin.utils.deprecations import raise_no_bunching_deprecated
-import os
+from merlin.utils.dtypes import resolve_float_complex
 
 
 class NoisySLOSComputeGraph:
@@ -81,6 +79,7 @@ class NoisySLOSComputeGraph:
         self.device = device
         self.device = device
         self.dtype = dtype
+        self.cdtype = resolve_float_complex(dtype)[1]
 
         self.mapped_keys = [
             tuple(state)
@@ -89,8 +88,30 @@ class NoisySLOSComputeGraph:
             ).enumerate_states()
         ]
 
-    def compute_probs(self, unitary, input_state: list):
+    def compute_probs(self, unitary: torch.Tensor, input_state: list):
+
+        if len(unitary.shape) == 2:
+            unitary = unitary.unsqueeze(0)  # Add batch dimension [1 x m x m]
+        else:
+            pass
+
+        batch_size, m, m2 = unitary.shape
+        if m != m2 or m != self.m:
+            raise ValueError(
+                f"Unitary matrix must be square with dimension {self.m}x{self.m}"
+            )
+
+        if unitary.dtype != self.cdtype:
+            # Raise an error instead of just warning and converting
+            raise ValueError(
+                f"Unitary dtype {unitary.dtype} doesn't match the expected complex dtype {self.cdtype} "
+                f"for the graph built with dtype {self.dtype}. Please provide a unitary with the correct dtype "
+                f"or rebuild the graph with a compatible dtype."
+            )
+
         input_state = tuple(input_state)
+        if any(n < 0 for n in input_state) or sum(input_state) == 0:
+            raise ValueError("Photon numbers cannot be negative or all zeros")
 
         if input_state not in self._slos_graph_per_input:
             slos_graph = _InputStateNoisySLOSComputeGraph(
@@ -105,11 +126,16 @@ class NoisySLOSComputeGraph:
         else:
             slos_graph = self._slos_graph_per_input[input_state]
 
-        keys, probs = slos_graph.compute_probs(unitary)
+        output = torch.empty(
+            (batch_size, len(self.mapped_keys)), dtype=self.dtype, device=unitary.device
+        )
+        for i in range(batch_size):
+            keys, probs = slos_graph.compute_probs(unitary[i])
+            output[i] = probs.squeeze(0)
 
         if self.keep_keys:
-            return keys, probs
-        return probs
+            return keys, output
+        return output
 
     def to(self, device: str | torch.device) -> "NoisySLOSComputeGraph":
         """Move cached tensors and subgraphs to a specific device.

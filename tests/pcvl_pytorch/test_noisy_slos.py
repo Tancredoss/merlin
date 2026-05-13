@@ -146,6 +146,69 @@ def test_against_perceval(entangling_circuit):
                 )
 
 
+def test_against_perceval_batched_unitary(entangling_circuit):
+    circuit_a = entangling_circuit
+    circuit_b = pcvl.Circuit(5, name="5-Mode Alternate Entangled Circuit")
+    circuit_b.add((0, 1), pcvl.BS.H())
+    circuit_b.add((2, 3), pcvl.BS.H())
+    circuit_b.add(0, pcvl.PS(phi=0.5))
+    circuit_b.add(1, pcvl.PS(phi=1.2))
+    circuit_b.add(3, pcvl.PS(phi=0.4))
+    circuit_b.add((1, 2), pcvl.BS.H())
+    circuit_b.add((3, 4), pcvl.BS.H())
+    circuit_b.add(2, pcvl.PS(phi=2.1))
+    circuit_b.add(4, pcvl.PS(phi=0.8))
+    circuit_b.add((0, 1), pcvl.BS.H())
+    circuit_b.add((1, 2), pcvl.BS.H())
+    circuit_b.add((2, 3), pcvl.BS.H())
+
+    unitary_a = CircuitConverter(circuit_a).to_tensor([])
+    unitary_b = CircuitConverter(circuit_b).to_tensor([])
+    unitary_batch = torch.stack((unitary_a, unitary_b), dim=0)
+
+    noise_model = pcvl.NoiseModel(indistinguishability=0.4)
+    groups = classify_noise_model(noise_model)
+    noisy_slos = NoisySLOSComputeGraph(
+        groups, m=5, n_photons=3, computation_space=ComputationSpace.FOCK
+    )
+
+    source_1 = pcvl.Source.from_noise_model(noise_model)
+    source_2 = pcvl.Source.from_noise_model(noise_model)
+    backend_1 = pcvl.BackendFactory.get_backend("SLOS")
+    backend_2 = pcvl.BackendFactory.get_backend("SLOS")
+    sim_a = pcvl.Simulator(backend_1)
+    sim_b = pcvl.Simulator(backend_2)
+    sim_a.set_circuit(circuit_a)
+    sim_b.set_circuit(circuit_b)
+
+    for state in Combinadics(scheme="fock", n=3, m=5).enumerate_states():
+        noisy_keys, noisy_probs = noisy_slos.compute_probs(unitary_batch, state)
+
+        # Batched call should return one probability row per input unitary.
+        assert noisy_probs.shape[0] == 2
+        assert not torch.allclose(noisy_probs[0], noisy_probs[1], atol=1e-6)
+
+        input_state = pcvl.BasicState(state)
+        perceval_probs_a = sim_a.probs_svd((source_1, input_state))
+        perceval_probs_b = sim_b.probs_svd((source_2, input_state))
+        perceval_vec_a = torch.tensor(
+            [
+                perceval_probs_a["results"][pcvl.FockState(out_state)]
+                for out_state in noisy_keys
+            ],
+            dtype=noisy_probs.dtype,
+        )
+        perceval_vec_b = torch.tensor(
+            [
+                perceval_probs_b["results"][pcvl.FockState(out_state)]
+                for out_state in noisy_keys
+            ],
+            dtype=noisy_probs.dtype,
+        )
+        assert torch.allclose(noisy_probs[0], perceval_vec_a, atol=1e-4)
+        assert torch.allclose(noisy_probs[1], perceval_vec_b, atol=1e-4)
+
+
 def test_deduplication():
     """
     Bunched input partitions are not double-counted (compare with manual weight)

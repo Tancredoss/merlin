@@ -40,6 +40,7 @@ from ..utils.combinadics import Combinadics
 from ..utils.deprecations import raise_no_bunching_deprecated
 from .base import AbstractComputationProcess
 from .computation_space import ComputationSpace
+from merlin.pcvl_pytorch.noisy_slos import NoisySLOSComputeGraph
 
 
 class ComputationProcess(AbstractComputationProcess):
@@ -170,6 +171,7 @@ class ComputationProcess(AbstractComputationProcess):
             device=self.device,
             dtype=self.dtype,
         )
+        self.noisy_simulation = isinstance(self.simulation_graph, NoisySLOSComputeGraph)
 
     def compute(self, parameters: list[torch.Tensor]) -> torch.Tensor:
         """Compute output amplitudes for the configured input state.
@@ -182,7 +184,7 @@ class ComputationProcess(AbstractComputationProcess):
         Returns
         -------
         torch.Tensor
-            Output amplitudes produced by the simulation graph.
+            Output probabilities if the simulation is noisy and amplitudes otherwise produced by the simulation graph.
         """
         # Generate unitary matrix from parameters
 
@@ -193,9 +195,12 @@ class ComputationProcess(AbstractComputationProcess):
             input_state = [1] * self.n_photons + [0] * (self.m - self.n_photons)
         else:
             input_state = self.input_state
-
-        keys, amplitudes = self.simulation_graph.compute(unitary, input_state)
-        return amplitudes
+        if self.noisy_simulation:
+            keys, probs = self.simulation_graph.compute_probs(unitary, input_state)
+            return probs
+        else:
+            keys, amplitudes = self.simulation_graph.compute(unitary, input_state)
+            return amplitudes
 
     @overload
     def compute_superposition_state(
