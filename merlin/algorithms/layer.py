@@ -65,6 +65,7 @@ from .layer_utils import (
     InitializationContext,
     apply_angle_encoding,
     feature_count_for_prefix,
+    normalize_noise_model,
     prepare_input_encoding,
     prepare_input_state,
     resolve_circuit,
@@ -115,6 +116,7 @@ class QuantumLayer(MerlinModule):
         computation_space: ComputationSpace | str | None = None,
         measurement_strategy: MeasurementStrategyLike | None = None,
         return_object: bool = False,
+        noise_model: pcvl.NoiseModel | None = None,
         # device and dtype
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
@@ -188,6 +190,9 @@ class QuantumLayer(MerlinModule):
             - ``MeasurementKind.PROBABILITIES`` returns a ``ProbabilityDistribution``
             - ``MeasurementKind.PARTIAL`` returns a ``PartialMeasurement``.
             - ``MeasurementKind.MODE_EXPECTATIONS`` returns a ``torch.Tensor``.
+        noise_model: pcvl.NoiseModel | None
+            The noise model used in the simulation. Default is None where no `noise` is
+            applied.
         device : torch.device | None
             Target device for internal tensors (e.g., ``torch.device("cuda")``).
         dtype : torch.dtype | None
@@ -245,6 +250,11 @@ class QuantumLayer(MerlinModule):
         circuit_source = validate_and_resolve_circuit_source(
             builder, circuit, experiment, trainable_parameters, input_parameters
         )
+        # Phase 3.5 normalization of the noise
+        self.noise_model = normalize_noise_model(
+            noise_model, experiment.noise if experiment is not None else None
+        )
+
         # Phase 4: encoding validation (post-resolution)
         encoding_config = validate_encoding_mode(
             amplitude_encoding,
@@ -256,9 +266,10 @@ class QuantumLayer(MerlinModule):
         # Phase 6: experiment vetting (if provided)
         if experiment is not None:
             vet_experiment(experiment)
+            experiment.noise = self.noise_model
 
         # Phase 7: circuit resolution
-        resolved_circuit = resolve_circuit(circuit_source, pcvl)
+        resolved_circuit = resolve_circuit(circuit_source, pcvl, self.noise_model)
         # Phase 8: input state normalization
         input_state, resolved_n_photons = prepare_input_state(
             input_state,
@@ -271,11 +282,15 @@ class QuantumLayer(MerlinModule):
             amplitude_encoding=amplitude_encoding,
         )
         # Phase 9: noise + detector setup
+        self.backend = None  # TODO Change when implemented
         noise_and_detectors = setup_noise_and_detectors(
             resolved_circuit.experiment,
             resolved_circuit.circuit,
             computation_space,
             measurement_strategy,
+            backend=self.backend,
+            noise_model=self.noise_model,
+            return_object=return_object,
         )
 
         # Phase 10: build initialization context
@@ -301,6 +316,7 @@ class QuantumLayer(MerlinModule):
             measurement_strategy=measurement_strategy,
             warnings=noise_and_detectors.detector_warnings,
             return_object=return_object,
+            noise_groups=noise_and_detectors.noise_groups,
         )
 
         # Phase 11: assign context to self + warnings
@@ -342,6 +358,7 @@ class QuantumLayer(MerlinModule):
         self._output_size = 0
         self._current_params: dict[str, Any] = {}
         self.return_object = context.return_object
+        self._noise_groups = context.noise_groups
 
         for warning_msg in context.warnings:
             warnings.warn(warning_msg, UserWarning, stacklevel=3)
@@ -412,6 +429,7 @@ class QuantumLayer(MerlinModule):
             device=self.device,
             dtype=self.dtype,
             computation_space=self.computation_space,
+            noise_groups=self._noise_groups,
         )
 
         # If input_state was a StateVector, set the actual tensor now (after init to bypass validation)
