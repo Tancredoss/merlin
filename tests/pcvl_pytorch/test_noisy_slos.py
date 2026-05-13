@@ -75,6 +75,7 @@ def test_identify_hom_one(entangling_circuit):
         assert (
             noisy_output[0] == Combinadics(scheme="fock", n=2, m=5).enumerate_states()
         )
+        assert noisy_output[0] == noisy_slos.mapped_keys
 
         assert torch.allclose(noisy_output[1], clean_output[1])
 
@@ -219,3 +220,47 @@ def test_gradient_flows_through_hom():
         rtol=1e-2,
         fast_mode=True,
     )
+
+
+def test_noisy_slos_to_moves_cached_graph_and_preserves_probs():
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+    unitary = CircuitConverter(circuit).to_tensor([])
+
+    noise_groups = NoiseGroups(
+        source={"indistinguishability": 0.35},
+        circuit=None,
+        post_measurement=None,
+    )
+    noisy_slos = NoisySLOSComputeGraph(
+        noise_groups,
+        m=2,
+        n_photons=2,
+        computation_space=ComputationSpace.FOCK,
+        keep_keys=True,
+        device=None,
+        dtype=torch.float32,
+    )
+
+    keys_before, probs_before = noisy_slos.compute_probs(unitary, [1, 1])
+    cached_graph = noisy_slos._slos_graph_per_input[(1, 1)]
+
+    moved_graph = noisy_slos.to("cpu")
+
+    assert moved_graph is noisy_slos
+    assert noisy_slos.device == torch.device("cpu")
+    assert cached_graph.device == torch.device("cpu")
+    assert cached_graph._obb_input_states.device.type == "cpu"
+    assert all(weight.device.type == "cpu" for weight in cached_graph._weights)
+    assert all(
+        partition[0].device.type == "cpu" and partition[1].device.type == "cpu"
+        for partition in cached_graph._partitions
+    )
+    assert all(
+        states.device.type == "cpu"
+        for states in cached_graph._fock_states_per_n.values()
+    )
+
+    keys_after, probs_after = noisy_slos.compute_probs(unitary, [1, 1])
+    assert keys_after == keys_before
+    assert torch.allclose(probs_after, probs_before, atol=1e-6)

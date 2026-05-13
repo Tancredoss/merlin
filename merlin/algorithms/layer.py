@@ -571,7 +571,13 @@ class QuantumLayer(MerlinModule):
             raise TypeError(f"Unknown measurement_strategy: {measurement_strategy}")
 
         # Create measurement mapping
-        if kind == MeasurementKind.PARTIAL:
+
+        # Check if there is source noise, if so, it directly returns probabilities and should stay probabilities
+        source_noise = False if self._noise_groups is None else True
+        if source_noise and (self._noise_groups.source is None):
+            source_noise = False
+
+        if kind == MeasurementKind.PARTIAL or source_noise:
             self.measurement_mapping = nn.Identity()
         else:
             self.measurement_mapping = OutputMapper.create_mapping(

@@ -7,6 +7,8 @@ import torch
 from perceval.components import BS
 
 from merlin.core.computation_space import ComputationSpace
+from merlin.algorithms.layer_utils import NoiseGroups
+from merlin.pcvl_pytorch.noisy_slos import NoisySLOSComputeGraph
 from merlin.pcvl_pytorch.slos_torchscript import (
     build_slos_distribution_computegraph,
     compute_slos_distribution,
@@ -104,26 +106,55 @@ def test_slos_save_load_computation_graph(get_tmp_file):
     # Test for vectorized_operations
     assert len(graph.vectorized_operations) == len(
         loaded_graph.vectorized_operations
-    ), sDoesntMatch + "vectorized_operations (length mismatch)"
+    ), (sDoesntMatch + "vectorized_operations (length mismatch)")
 
     for i, (tuple1, tuple2) in enumerate(
         zip(
             graph.vectorized_operations, loaded_graph.vectorized_operations, strict=True
         )
     ):
-        assert len(tuple1) == len(tuple2), (
-            f"{sDoesntMatch}vectorized_operations (tuple {i} length mismatch)"
-        )
+        assert len(tuple1) == len(
+            tuple2
+        ), f"{sDoesntMatch}vectorized_operations (tuple {i} length mismatch)"
         for j, (tensor1, tensor2) in enumerate(zip(tuple1, tuple2, strict=True)):
-            assert torch.equal(tensor1, tensor2), (
-                f"{sDoesntMatch}vectorized_operations (tuple {i}, tensor {j})"
-            )
+            assert torch.equal(
+                tensor1, tensor2
+            ), f"{sDoesntMatch}vectorized_operations (tuple {i}, tensor {j})"
 
     assert graph.final_keys == loaded_graph.final_keys, sDoesntMatch + "final_keys"
     assert graph.mapped_keys == loaded_graph.mapped_keys, sDoesntMatch + "mapped_keys"
     assert graph.total_mapped_keys == loaded_graph.total_mapped_keys, (
         sDoesntMatch + "total_mapped_keys"
     )
+
+
+def test_slos_save_load_noisy_computation_graph(get_tmp_file):
+    noise_groups = NoiseGroups(
+        source={"indistinguishability": 0.35},
+        circuit=None,
+        post_measurement=None,
+    )
+
+    graph = build_slos_distribution_computegraph(
+        m=2,
+        n_photons=2,
+        computation_space=ComputationSpace.FOCK,
+        noise_groups=noise_groups,
+        keep_keys=True,
+        dtype=torch.float,
+    )
+
+    unitary = torch.tensor(BS().compute_unitary(), dtype=torch.complex64).unsqueeze(0)
+    keys_before, probs_before = graph.compute_probs(unitary, [1, 1])
+
+    graph.save(get_tmp_file)
+    loaded_graph = load_slos_distribution_computegraph(get_tmp_file)
+
+    assert isinstance(loaded_graph, NoisySLOSComputeGraph)
+
+    keys_after, probs_after = loaded_graph.compute_probs(unitary, [1, 1])
+    assert keys_after == keys_before
+    assert torch.allclose(probs_after, probs_before, atol=1e-6)
 
 
 def test_slos_compute_slos_distribution_with_output_map_function():
@@ -178,9 +209,9 @@ def test_slos_compute_slos_distribution_with_output_map_function():
         (0, 0, 1, 1),
         (0, 0, 0, 2),
     ]
-    assert keys == expected_keys, (
-        f"Keys do not match : expected {expected_keys}, calculated {keys}"
-    )
+    assert (
+        keys == expected_keys
+    ), f"Keys do not match : expected {expected_keys}, calculated {keys}"
 
     expected_amplitudes = torch.tensor(
         [
