@@ -17,7 +17,7 @@ import warnings
 from collections.abc import Sequence
 from functools import reduce
 from itertools import combinations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import torch
 from torch import Tensor
@@ -122,16 +122,19 @@ class NoisySLOSComputeGraph:
             build_slos_distribution_computegraph as build_slos_graph,
         )
 
-        self._slos_graphs = [
-            build_slos_graph(
-                self.m,
-                n_i,
-                computation_space=computation_space,
-                device=device,
-                dtype=dtype,
-            )
-            for n_i in range(1, self.n_photons + 1)
-        ]
+        self._slos_graphs: list["SLOSComputeGraph"] = cast(
+            list["SLOSComputeGraph"],
+            [
+                build_slos_graph(
+                    self.m,
+                    n_i,
+                    computation_space=computation_space,
+                    device=device,
+                    dtype=dtype,
+                )
+                for n_i in range(1, self.n_photons + 1)
+            ],
+        )
 
     def compute_probs(
         self,
