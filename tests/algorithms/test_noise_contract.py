@@ -732,3 +732,51 @@ def test_no_noise():
 
     # No errors should raise
     layer(torch.rand(4))
+
+
+def test_computation_space_changed():
+    noise_model = pcvl.NoiseModel(indistinguishability=0.2)
+    builder = ml.CircuitBuilder(n_modes=5)
+
+    with pytest.raises(
+        UserWarning,
+        match="Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
+    ):
+        layer = ml.QuantumLayer(
+            builder=builder,
+            noise_model=noise_model,
+            n_photons=2,
+            computation_space=ml.ComputationSpace.UNBUNCHED,
+        )
+        assert layer.computation_space == ml.ComputationSpace.FOCK
+        assert layer.output_size == 15
+        assert layer().size(0) == 15
+
+    with pytest.raises(
+        UserWarning,
+        match="Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
+    ):
+        layer = ml.QuantumLayer(
+            builder=builder,
+            noise_model=noise_model,
+            n_photons=2,
+            computation_space=ml.ComputationSpace.DUAL_RAIL,
+        )
+        assert layer.computation_space == ml.ComputationSpace.FOCK
+        assert layer.output_size == 15
+        assert layer().size(0) == 15
+    with pytest.raises(
+        UserWarning,
+        match="Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
+    ):
+        layer = ml.QuantumLayer(
+            builder=builder,
+            noise_model=noise_model,
+            n_photons=2,
+            computation_space=ml.ComputationSpace.UNBUNCHED,
+            amplitude_encoding=True,
+        )
+        assert layer.computation_space == ml.ComputationSpace.FOCK
+        assert layer.output_size == 15
+        assert layer.input_size == 15
+        assert layer(torch.ones(15)).size(0) == 15

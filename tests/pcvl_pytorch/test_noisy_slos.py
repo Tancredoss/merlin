@@ -339,7 +339,7 @@ def test_computation_space_and_indistinguishability_default_value():
 
     with pytest.raises(
         UserWarning,
-        match="Noisy SLOS simulations currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
+        match="Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
     ):
         noisy_slos = NoisySLOSComputeGraph(
             groups, m=5, n_photons=3, computation_space=ComputationSpace.UNBUNCHED
