@@ -29,18 +29,17 @@ from typing import Literal, overload
 
 import perceval as pcvl
 import torch
+from merlin.pcvl_pytorch.noisy_slos import NoisySLOSComputeGraph
 
+from ..algorithms.layer_utils import NoiseGroups
 from ..pcvl_pytorch import (
     CircuitConverter,
     build_slos_distribution_computegraph,
 )
-from ..algorithms.layer_utils import NoiseGroups
-from ..pcvl_pytorch import CircuitConverter, build_slos_distribution_computegraph
 from ..utils.combinadics import Combinadics
 from ..utils.deprecations import raise_no_bunching_deprecated
 from .base import AbstractComputationProcess
 from .computation_space import ComputationSpace
-from merlin.pcvl_pytorch.noisy_slos import NoisySLOSComputeGraph
 
 
 class ComputationProcess(AbstractComputationProcess):
@@ -186,7 +185,7 @@ class ComputationProcess(AbstractComputationProcess):
             Circuit parameters passed to the converter.
         amplitude_encoding : bool
             If True and input_state is a tensor in noisy mode, normalize and mix probs
-            over Fock basis states weighted by |c_i|^2. Default is False.
+                over Fock basis states weighted by :math:`|c_i|^2`. Default is False.
 
         Returns
         -------

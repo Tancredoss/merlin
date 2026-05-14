@@ -1,48 +1,82 @@
+"""Noisy SLOS probability graphs for source-indistinguishability models.
+
+This module implements a probability-only simulation backend for source noise
+in Merlin's SLOS pipeline. The main entry point,
+``NoisySLOSComputeGraph``, caches one noisy subgraph per input Fock state in
+``_slos_graph_per_input`` and reuses those cached subgraphs across repeated
+evaluations.
+
+The implementation follows the Orthogonal Bad Bits model: each input state is
+expanded into partitions of fully indistinguishable and distinguishable photon
+subsets, and the corresponding probability distributions are convolved back
+together to obtain the final noisy output distribution.
+"""
+
+import warnings
+
 from functools import reduce
 from itertools import combinations
-import warnings
+
 import torch
+from torch import Tensor
+
 from merlin.algorithms.layer_utils import NoiseGroups
 from merlin.core.computation_space import ComputationSpace
 from merlin.utils.combinadics import Combinadics
-from torch import Tensor
 from merlin.utils.dtypes import resolve_float_complex
 
 
 class NoisySLOSComputeGraph:
-    """
-    Equivalent to merlin.pcvl_pytorch.SLOSGraph but with partial
-    distinguishability using the Orthogonal Bad Bits model.
+    """Probability-only SLOS graph with source noise.
 
-    Args:
-        input_state (list): Input state into circuit.
-        indistinguishability (float).
+    The graph caches one :class:`_InputStateNoisySLOSComputeGraph` per input
+    Fock state. Each cached graph expands that input according to the
+    Orthogonal Bad Bits model and returns an output probability distribution in
+    Fock space.
 
-    >>> beamsplitter = 1 / math.sqrt(2) * torch.tensor([[1., 1j], [1j, 1.]])
-    >>> noisy_slos_graph = NoisySLOSComputeGraph(indistinguishability=0.0)
-    >>>
-    >>> keys, probs = noisy_slos_graph.compute_probs(beamsplitter, [1, 1])
-    >>> print(keys, probs)
-    [(2, 0), (1, 1), (0, 2)] tensor([[0.3750, 0.2500, 0.3750]])
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Noise configuration extracted from the layer or experiment. Source noise
+        must be present.
+    m : int
+        Number of optical modes.
+    n_photons : int
+        Total photon number represented by the graph.
+    computation_space : ComputationSpace
+        Requested computation space. Source-noise simulations currently operate
+        in Fock space only. Default is ``ComputationSpace.FOCK``.
+    keep_keys : bool
+        If True, return output basis keys together with probabilities. Default
+        is True.
+    device : str | torch.device | None
+        Target device for cached tensors and subgraphs. Default is None.
+    dtype : torch.dtype
+        Real dtype used by the probability graph. Default is ``torch.float``.
+
+    Raises
+    ------
+    RuntimeError
+        If ``noise_groups`` is missing or does not contain source noise.
     """
 
     def __init__(
         self,
         noise_groups: NoiseGroups | None,
-        m,
-        n_photons,
+        m: int,
+        n_photons: int,
         computation_space: ComputationSpace = ComputationSpace.FOCK,
         keep_keys: bool = True,
-        device=None,  # Optional device parameter
-        dtype: torch.dtype = torch.float,  # Optional dtype parameter
-    ):
+        device: str | torch.device | None = None,
+        dtype: torch.dtype = torch.float,
+    ) -> None:
         if noise_groups is None:
             raise RuntimeError(
-                f"The NoisySLOSComputeGraph should only be used if there is source noise in the circuit."
+                "The NoisySLOSComputeGraph should only be used if there is source noise in the circuit."
             )
         if noise_groups.source is None:
             raise RuntimeError(
-                f"The NoisySLOSComputeGraph should only be used if there is source noise in the circuit."
+                "The NoisySLOSComputeGraph should only be used if there is source noise in the circuit."
             )
 
         self.indistinguishability = noise_groups.source.get("indistinguishability", 1.0)
@@ -78,8 +112,32 @@ class NoisySLOSComputeGraph:
     def compute_probs(
         self,
         unitary: torch.Tensor,
-        input_state: list,
-    ):
+        input_state: list[int] | tuple[int, ...],
+    ) -> tuple[list[tuple[int, ...]], torch.Tensor] | torch.Tensor:
+        """Compute noisy output probabilities for one input Fock state.
+
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Circuit unitary with shape ``[m, m]`` or batched shape
+            ``[batch_size, m, m]``. Its dtype must match the complex dtype
+            associated with ``self.dtype``.
+        input_state : list[int] | tuple[int, ...]
+            Input Fock occupation numbers.
+
+        Returns
+        -------
+        tuple[list[tuple[int, ...]], torch.Tensor] | torch.Tensor
+            If ``keep_keys`` is True, returns the Fock output keys and a tensor
+            of probabilities with shape ``[batch_size, n_output_states]``.
+            Otherwise returns the probability tensor directly.
+
+        Raises
+        ------
+        ValueError
+            If the unitary shape is invalid, the dtype is incompatible, or the
+            input state contains negative occupations or no photons.
+        """
 
         if len(unitary.shape) == 2:
             unitary = unitary.unsqueeze(0)  # Add batch dimension [1 x m x m]
@@ -179,14 +237,43 @@ class NoisySLOSComputeGraph:
 
 
 class _InputStateNoisySLOSComputeGraph:
+    """Noisy SLOS graph specialized to one fixed input Fock state.
+
+    This helper precomputes the Orthogonal Bad Bits partitions and the SLOS
+    subgraphs needed to evaluate all distinguishability sectors derived from
+    one input state.
+    """
+
     def __init__(
         self,
-        input_state: list,
+        input_state: list[int] | tuple[int, ...],
         indistinguishability: float,
         computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
-        device=None,  # Optional device parameter
+        device: str | torch.device | None = None,
         dtype: torch.dtype = torch.float,
-    ):
+    ) -> None:
+        """Initialize the cached noisy graph for one input state.
+
+        Parameters
+        ----------
+        input_state : list[int] | tuple[int, ...]
+            Fixed input Fock state for which all noisy partitions are built.
+        indistinguishability : float
+            Source indistinguishability parameter in the interval ``[0, 1]``.
+        computation_space : ComputationSpace
+            Requested computation space for the SLOS subgraphs. Default is
+            ``ComputationSpace.UNBUNCHED``.
+        device : str | torch.device | None
+            Target device for cached tensors. Default is None.
+        dtype : torch.dtype
+            Real dtype for internal probability tensors. Default is
+            ``torch.float``.
+
+        Raises
+        ------
+        ValueError
+            If ``indistinguishability`` lies outside ``[0, 1]``.
+        """
         from .slos_torchscript import (
             build_slos_distribution_computegraph as build_slos_graph,
         )
@@ -242,7 +329,23 @@ class _InputStateNoisySLOSComputeGraph:
             for i in range(1, self.n_photons + 1)
         }
 
-    def compute_probs(self, unitary):
+    def compute_probs(
+        self, unitary: torch.Tensor
+    ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
+        """Compute noisy probabilities for the cached input state.
+
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Circuit unitary with shape ``[m, m]`` or batched shape
+            ``[batch_size, m, m]``.
+
+        Returns
+        -------
+        tuple[list[tuple[int, ...]], torch.Tensor]
+            Output Fock keys and the corresponding probabilities with shape
+            ``[batch_size, n_output_states]``.
+        """
         if unitary.size(0) == unitary.size(1) and unitary.ndim == 2:
             unitary = unitary.unsqueeze(0)
 
@@ -269,7 +372,7 @@ class _InputStateNoisySLOSComputeGraph:
         for i, partition in enumerate(self._partitions):
             bit_weight = self._weights[i]
 
-            for cell, count in zip(partition[0], partition[1]):
+            for cell, count in zip(partition[0], partition[1], strict=True):
                 cell_distributions = [
                     probs_per_obb_state[tuple(state.tolist())] for state in cell
                 ]
@@ -287,12 +390,35 @@ class _InputStateNoisySLOSComputeGraph:
 
     @staticmethod
     def _generate_obb_partition(
-        input_state,
-        order,
-        device=None,  # Optional device parameter
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Generates list of cells for a particular partition and OBB
-        "order" or number of "bad" photons.
+        input_state: list[int] | tuple[int, ...] | torch.Tensor,
+        order: int,
+        device: str | torch.device | None = None,
+    ) -> list[torch.Tensor]:
+        """Generate one Orthogonal Bad Bits partition.
+
+        Parameters
+        ----------
+        input_state : list[int] | tuple[int, ...] | torch.Tensor
+            Input Fock state to partition.
+        order : int
+            Number of distinguishable, or "bad", photons to extract from the
+            input state.
+        device : str | torch.device | None
+            Device on which the returned tensors are allocated. Default is
+            None.
+
+        Returns
+        -------
+        list[torch.Tensor]
+            Two-element list containing the partition cells and their
+            multiplicities. The first tensor has shape
+            ``[n_cells, cell_size, m]`` and the second tensor stores the count
+            for each cell.
+
+        Raises
+        ------
+        ValueError
+            If ``order`` exceeds the total number of photons.
         """
         if order > sum(input_state):
             raise ValueError("OBB order cannot exceed the number of photons")
@@ -346,11 +472,31 @@ class _InputStateNoisySLOSComputeGraph:
 
     def _generate_obb_states(
         self,
-        input_state,
-        order,
-        device=None,  # Optional device parameter
-    ):
-        """Generates all possible input states for a given OBB order."""
+        input_state: list[int] | tuple[int, ...] | torch.Tensor,
+        order: int,
+        device: str | torch.device | None = None,
+    ) -> torch.Tensor:
+        """Generate all OBB-derived input states up to a given order.
+
+        Parameters
+        ----------
+        input_state : list[int] | tuple[int, ...] | torch.Tensor
+            Reference input Fock state.
+        order : int
+            Maximum number of bad photons to include.
+        device : str | torch.device | None
+            Device on which the returned tensor is allocated. Default is None.
+
+        Returns
+        -------
+        torch.Tensor
+            Tensor of unique OBB states sorted by decreasing photon number.
+
+        Raises
+        ------
+        ValueError
+            If ``order`` exceeds the total number of photons.
+        """
         if not isinstance(input_state, Tensor):
             input_state = torch.tensor(list(input_state), dtype=torch.int32)
         else:
@@ -379,24 +525,32 @@ class _InputStateNoisySLOSComputeGraph:
         return total_obb_states
 
 
-def convolve_distributions(keys: list[Tensor], *probs: Tensor):
-    """
-    Performs convolution on two probability distributions. Based on
-    `perceval.utils.statevector.BSDistribution.list_tensor_product` with
-    `merge_modes = True`.
+def convolve_distributions(
+    keys: list[Tensor | list[tuple[int, ...]]], *probs: Tensor
+) -> tuple[Tensor | list[tuple[int, ...]], Tensor]:
+    """Convolve one or more probability distributions over Fock states.
 
-    Args:
-        keys: Stack of states
-        probs: Input probability distributions.
-    Returns:
-        Tuple of new keys and new corresponding probabilities. If keys
-        are given as Tensor, then a Tensor is returned instead.
+    This helper performs the same mode-merging tensor product used by Perceval
+    when combining independent distributions over mode occupations.
 
-    >>> keys1, probs1 = [(1, 0), (0, 1)], torch.tensor([0.5, 0.5])
-    >>> keys2, probs2 = [(1, 0)], torch.tensor([1.0])
+    Parameters
+    ----------
+    keys : list[torch.Tensor | list[tuple[int, ...]]]
+        Sequence of state lists matching the input distributions.
+    *probs : torch.Tensor
+        Input probability distributions. Each tensor is either one-dimensional
+        or batched on its leading axis.
 
-    >>> print(convolve_distributions([keys1, keys2], probs1, probs2))
-    [(2, 0), (1, 1)], tensor([0.5000, 0.5000])
+    Returns
+    -------
+    tuple[torch.Tensor | list[tuple[int, ...]], torch.Tensor]
+        Combined keys and the corresponding convolved probabilities.
+
+    Raises
+    ------
+    ValueError
+        If the number of key sets does not match the number of probability
+        tensors.
     """
     if len(probs[0].shape) == 1:
         probs = reduce(lambda acc, x: acc + (x.unsqueeze(0),), probs, ())
