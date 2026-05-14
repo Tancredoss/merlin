@@ -429,9 +429,8 @@ class _InputStateNoisySLOSComputeGraph:
             input_state = input_state.int()
 
         if order == 0:
-            return input_state.unsqueeze(0).unsqueeze(0).to(device), torch.tensor(
-                [1]
-            ).to(device)
+            counts = torch.tensor([1]).to(device)
+            return input_state.unsqueeze(0).unsqueeze(0).to(device), counts
 
         # Create a 1D tensor with position of each photon
         positions = torch.arange(len(input_state), dtype=torch.long).to(device)
