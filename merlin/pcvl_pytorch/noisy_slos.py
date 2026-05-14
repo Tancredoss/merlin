@@ -13,7 +13,6 @@ together to obtain the final noisy output distribution.
 """
 
 import warnings
-
 from functools import reduce
 from itertools import combinations
 
@@ -29,7 +28,7 @@ from merlin.utils.dtypes import resolve_float_complex
 class NoisySLOSComputeGraph:
     """Probability-only SLOS graph with source noise.
 
-    The graph caches one :class:`_InputStateNoisySLOSComputeGraph` per input
+    The graph caches one ``_InputStateNoisySLOSComputeGraph`` per input
     Fock state. Each cached graph expands that input according to the
     Orthogonal Bad Bits model and returns an output probability distribution in
     Fock space.
