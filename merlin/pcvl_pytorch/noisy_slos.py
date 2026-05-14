@@ -13,6 +13,7 @@ together to obtain the final noisy output distribution.
 """
 
 import warnings
+from collections.abc import Sequence
 from functools import reduce
 from itertools import combinations
 
@@ -81,7 +82,9 @@ class NoisySLOSComputeGraph:
         self.indistinguishability = noise_groups.source.get("indistinguishability", 1.0)
 
         self.g2_distinguishable = noise_groups.source.get("g2_distinguishable", None)
-        self._slos_graph_per_input = {}
+        self._slos_graph_per_input: dict[
+            tuple[int, ...], _InputStateNoisySLOSComputeGraph
+        ] = {}
 
         self.m = m
         self.n_photons = n_photons
@@ -278,7 +281,9 @@ class _InputStateNoisySLOSComputeGraph:
         )
 
         self.input_state = input_state
-        self.indistinguishability = torch.as_tensor(indistinguishability, dtype=float)
+        self.indistinguishability = torch.as_tensor(
+            indistinguishability, dtype=torch.float64
+        )
         self.m = len(input_state)
         self.n_photons = sum(input_state)
         self.computation_space = computation_space
@@ -363,8 +368,8 @@ class _InputStateNoisySLOSComputeGraph:
         self._probs_per_obb_state = probs_per_obb_state
 
         b = len(unitary)
-        output_keys = self._fock_states_per_n[self.n_photons]
-        output_keys = [tuple(row) for row in output_keys.tolist()]
+        output_keys_tensor = self._fock_states_per_n[self.n_photons]
+        output_keys = [tuple(row) for row in output_keys_tensor.tolist()]
 
         output_probs = torch.zeros(b, len(output_keys))
 
@@ -419,32 +424,39 @@ class _InputStateNoisySLOSComputeGraph:
         ValueError
             If ``order`` exceeds the total number of photons.
         """
-        if order > sum(input_state):
+        total_photons = (
+            int(torch.sum(input_state).item())
+            if isinstance(input_state, Tensor)
+            else sum(input_state)
+        )
+        if order > total_photons:
             raise ValueError("OBB order cannot exceed the number of photons")
 
         # Convert to tensor if not already
         if not isinstance(input_state, Tensor):
-            input_state = torch.tensor(list(input_state), dtype=torch.int32)
+            input_state_tensor = torch.tensor(list(input_state), dtype=torch.int32)
         else:
-            input_state = input_state.int()
+            input_state_tensor = input_state.int()
 
         if order == 0:
-            counts = torch.tensor([1]).to(device)
-            return input_state.unsqueeze(0).unsqueeze(0).to(device), counts
+            counts = torch.tensor([1], dtype=torch.int64, device=device)
+            return [input_state_tensor.unsqueeze(0).unsqueeze(0).to(device), counts]
 
         # Create a 1D tensor with position of each photon
-        positions = torch.arange(len(input_state), dtype=torch.long).to(device)
-        photon_positions = torch.repeat_interleave(positions, input_state).to(device)
+        positions = torch.arange(len(input_state_tensor), dtype=torch.long).to(device)
+        photon_positions = torch.repeat_interleave(positions, input_state_tensor).to(
+            device
+        )
 
         # All combinations of photons to remove
         remove_indices = list(combinations(photon_positions.tolist(), order))
         remove_indices = torch.tensor(remove_indices, dtype=torch.long)
 
         n_comb = remove_indices.shape[0]
-        input_state_len = input_state.size(0)
+        input_state_len = input_state_tensor.size(0)
 
         # Base matrix: original vector repeated for each combination
-        base = input_state.unsqueeze(0).repeat(n_comb, 1)
+        base = input_state_tensor.unsqueeze(0).repeat(n_comb, 1)
         for i, remove_index in enumerate(remove_indices):
             for j in remove_index:
                 base[i, j] = base[i, j] - 1  # remove chosen ones
@@ -460,7 +472,7 @@ class _InputStateNoisySLOSComputeGraph:
         result = torch.cat([base.unsqueeze(1), missing], dim=1)
 
         # Remove empty states vectors
-        if order == torch.sum(input_state).item():
+        if order == torch.sum(input_state_tensor).item():
             mask = result.any(dim=2)
             result = result[mask]
             result = result.unsqueeze(0)
@@ -524,7 +536,7 @@ class _InputStateNoisySLOSComputeGraph:
 
 
 def convolve_distributions(
-    keys: list[Tensor | list[tuple[int, ...]]], *probs: Tensor
+    keys: Sequence[Tensor | Sequence[tuple[int, ...]]], *probs: Tensor
 ) -> tuple[Tensor | list[tuple[int, ...]], Tensor]:
     """Convolve one or more probability distributions over Fock states.
 

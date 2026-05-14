@@ -1031,14 +1031,14 @@ class SLOSComputeGraph:
 
 
 def build_slos_distribution_computegraph(
-    m,
-    n_photons,
+    m: int,
+    n_photons: int,
     output_map_func: Callable[[tuple[int, ...]], tuple[int, ...] | None] | None = None,
     computation_space: ComputationSpace | None = None,
     no_bunching: bool | None = None,
     keep_keys: bool = True,
     noise_groups: NoiseGroups | None = None,
-    device=None,
+    device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float,
     index_photons: list[tuple[int, ...]] | None = None,
 ) -> SLOSComputeGraph | NoisySLOSComputeGraph:
@@ -1080,6 +1080,8 @@ def build_slos_distribution_computegraph(
 
     if computation_space is None:
         computation_space = ComputationSpace.UNBUNCHED
+
+    compute_graph: SLOSComputeGraph | NoisySLOSComputeGraph
 
     if noise_groups is None:
         compute_graph = SLOSComputeGraph(
@@ -1337,6 +1339,11 @@ def compute_slos_distribution(
         dtype=dtype,
         index_photons=index_photons,
     )
+    if isinstance(graph, NoisySLOSComputeGraph):
+        raise RuntimeError(
+            "compute_slos_distribution does not support source-noise graphs; "
+            "build a noisy graph explicitly and use compute_probs instead."
+        )
     return graph.compute(unitary, input_state)
 
 
@@ -1366,6 +1373,11 @@ if __name__ == "__main__":
         start_time = time.time()
         graph = build_slos_distribution_computegraph(m, n_photons, dtype=dtype)
         build_time = time.time() - start_time
+
+        if isinstance(graph, NoisySLOSComputeGraph):
+            raise RuntimeError(
+                "Example expected a non-noisy SLOSComputeGraph, but a noisy graph was built."
+            )
 
         # Compute probabilities
         start_time = time.time()

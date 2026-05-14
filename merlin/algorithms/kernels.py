@@ -821,7 +821,11 @@ class FidelityKernel(MerlinModule):
             dtype=self.dtype,
         )
         # Resolve raw simulation keys and photon loss transform
-        raw_keys = [tuple(int(v) for v in key) for key in self._slos_graph.final_keys]
+        if hasattr(self._slos_graph, "final_keys"):
+            basis_keys = self._slos_graph.final_keys
+        else:
+            basis_keys = self._slos_graph.mapped_keys
+        raw_keys = [tuple(int(v) for v in key) for key in basis_keys]
         self._raw_output_keys = raw_keys
         try:
             self._input_state_index = raw_keys.index(tuple(input_state))
