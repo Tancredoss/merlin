@@ -52,9 +52,16 @@ class TestFeatureMap:
         assert feature_map.trainable_parameters == ["theta"]
         assert "theta" in feature_map._training_dict
 
+    def test_compute_unitary_emits_deprecation_warning(self):
+        x = torch.tensor([0.5, 1.0])
+
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            self.feature_map.compute_unitary(x)
+
     def test_compute_unitary_single_datapoint(self):
         x = torch.tensor([0.5, 1.0])
-        unitary = self.feature_map.compute_unitary(x)
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            unitary = self.feature_map.compute_unitary(x)
 
         assert isinstance(unitary, torch.Tensor)
         assert unitary.shape == (2, 2)
@@ -65,7 +72,8 @@ class TestFeatureMap:
 
     def test_compute_unitary_dataset(self):
         X = torch.tensor([[0.5, 1.0], [1.5, 0.5], [0.0, 2.0]])
-        unitaries = [self.feature_map.compute_unitary(x) for x in X]
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            unitaries = [self.feature_map.compute_unitary(x) for x in X]
 
         assert len(unitaries) == 3
         for unitary in unitaries:
@@ -169,13 +177,15 @@ class TestFidelityKernel:
     def test_kernel_scalar_computation(self):
         x1 = torch.tensor([0.5, 1.0])
         x2 = torch.tensor([1.0, 0.5])
-        kernel_value = self.quantum_kernel(x1, x2)
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            kernel_value = self.quantum_kernel(x1, x2)
         assert isinstance(kernel_value, float)
         assert 0.0 <= kernel_value <= 1.0
 
     def test_kernel_matrix_symmetric(self):
         X = torch.tensor([[0.5, 1.0], [1.5, 0.5], [0.0, 2.0]])
-        K = self.quantum_kernel(X)
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            K = self.quantum_kernel(X)
 
         assert K.shape == (3, 3)
         # Relax tolerance slightly for GPU numeric differences
@@ -188,7 +198,8 @@ class TestFidelityKernel:
         X_train = torch.tensor([[0.5, 1.0], [1.5, 0.5]])
         X_test = torch.tensor([[0.0, 2.0], [1.0, 1.0], [2.0, 0.0]])
 
-        K = self.quantum_kernel(X_test, X_train)
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            K = self.quantum_kernel(X_test, X_train)
 
         assert K.shape == (3, 2)
         assert torch.all(K >= 0)
@@ -196,7 +207,8 @@ class TestFidelityKernel:
 
     def test_kernel_with_numpy_input(self):
         X = np.array([[0.5, 1.0], [1.5, 0.5], [0.0, 2.0]])
-        K = self.quantum_kernel(X)
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            K = self.quantum_kernel(X)
 
         assert K.shape == (3, 3)
         assert np.allclose(K, K.T, atol=1e-6)
@@ -211,7 +223,8 @@ class TestFidelityKernel:
         )
 
         X = torch.tensor([[0.5, 1.0], [1.5, 0.5]])
-        K = kernel(X)
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            K = kernel(X)
 
         assert K.shape == (2, 2)
         assert torch.allclose(torch.diag(K), torch.ones(2), atol=0.1)
@@ -318,11 +331,13 @@ class TestFidelityKernel:
         X1 = rng.random(input_size)
         X2 = rng.random(input_size)
 
-        merlin_pnr = float(quantum_kernel(X1, X2))
-        merlin_thr = float(unbunching_kernel(X1, X2))
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            merlin_pnr = float(quantum_kernel(X1, X2))
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            merlin_thr = float(unbunching_kernel(X1, X2))
 
-        print(f"MerLin quantum kernel (PNR) {quantum_kernel(X1, X2)}")
-        print(f"MerLin quantum kernel (THR) {unbunching_kernel(X1, X2)} \n")
+        print(f"MerLin quantum kernel (PNR) {merlin_pnr}")
+        print(f"MerLin quantum kernel (THR) {merlin_thr} \n")
         # --- Compute kernel circuit unitary using Perceval ---
         circuit_forward = GenericInterferometer(len(input_state), circ_func)
         for i, p in enumerate(circuit_forward.get_parameters()):
@@ -331,13 +346,14 @@ class TestFidelityKernel:
             circuit_forward.compute_unitary(), dtype=np.complex128
         )
 
-        feature_forward = (
-            feature_map
-            .compute_unitary(torch.as_tensor(X1, dtype=feature_map.dtype))
-            .detach()
-            .cpu()
-            .numpy()
-        )
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            feature_forward = (
+                feature_map
+                .compute_unitary(torch.as_tensor(X1, dtype=feature_map.dtype))
+                .detach()
+                .cpu()
+                .numpy()
+            )
         assert np.allclose(feature_forward, forward_unitary, atol=1e-6)
 
         circuit_backward = GenericInterferometer(len(input_state), circ_func)
@@ -347,13 +363,14 @@ class TestFidelityKernel:
             circuit_backward.compute_unitary(), dtype=np.complex128
         )
 
-        feature_backward = (
-            feature_map
-            .compute_unitary(torch.as_tensor(X2, dtype=feature_map.dtype))
-            .detach()
-            .cpu()
-            .numpy()
-        )
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            feature_backward = (
+                feature_map
+                .compute_unitary(torch.as_tensor(X2, dtype=feature_map.dtype))
+                .detach()
+                .cpu()
+                .numpy()
+            )
         assert np.allclose(feature_backward, backward_unitary, atol=1e-6)
 
         circ_unitary = forward_unitary @ backward_unitary.conj().T
@@ -799,7 +816,8 @@ class TestKernelCircuitBuilder:
         )
 
         x = torch.rand(3, 4)
-        K = kernel(x)
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            K = kernel(x)
 
         assert K.shape == (3, 3)
         assert torch.isfinite(K).all()
@@ -898,7 +916,10 @@ class TestKernelConstructionConsistency:
 
         X = torch.tensor([[0.1, 0.2]], dtype=torch.float32)
         for kernel in (k_manual, k_simple, k_builder):
-            result = kernel(X)
+            with pytest.warns(
+                DeprecationWarning, match="compute_unitary is deprecated"
+            ):
+                result = kernel(X)
             assert result.shape == (1, 1)
             assert torch.isfinite(result).all()
 
@@ -927,8 +948,10 @@ class TestKernelIntegration:
         )
 
         # Compute kernel matrices
-        K_train = quantum_kernel(X_train).detach().numpy()
-        K_test = quantum_kernel(X_test, X_train).detach().numpy()
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            K_train = quantum_kernel(X_train).detach().numpy()
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            K_test = quantum_kernel(X_test, X_train).detach().numpy()
 
         # Train with sklearn
         svc = SVC(kernel="precomputed")
@@ -975,7 +998,10 @@ class TestKernelIntegration:
         for epoch in range(5):
             optimizer.zero_grad()
 
-            K = quantum_kernel(X)
+            with pytest.warns(
+                DeprecationWarning, match="compute_unitary is deprecated"
+            ):
+                K = quantum_kernel(X)
             loss = loss_fn(K, y)
 
             if epoch == 0:
@@ -1073,8 +1099,10 @@ def test_iris_dataset_quantum_kernel():
     kernel = get_quantum_kernel(input_size=4, modes=10, photons=4)
 
     # Compute kernel matrices
-    K_train = kernel(X_train_tensor).detach().numpy()
-    K_test = kernel(X_test_tensor, X_train_tensor).detach().numpy()
+    with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+        K_train = kernel(X_train_tensor).detach().numpy()
+    with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+        K_test = kernel(X_test_tensor, X_train_tensor).detach().numpy()
 
     # Verify kernel properties
     assert K_train.shape == (len(X_train), len(X_train))
@@ -1145,7 +1173,8 @@ def test_iris_dataset_kernel_training_with_nka():
     for epoch in range(3):  # Short training for test
         optimizer.zero_grad()
 
-        K_train = kernel(X_train_tensor)
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            K_train = kernel(X_train_tensor)
         loss = loss_fn(K_train, y_train_tensor)
 
         if epoch == 0:
@@ -1157,8 +1186,10 @@ def test_iris_dataset_kernel_training_with_nka():
         optimizer.step()
 
     # Test with trained kernel
-    K_train_final = kernel(X_train_tensor).detach().numpy()
-    K_test_final = kernel(X_test_tensor, X_train_tensor).detach().numpy()
+    with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+        K_train_final = kernel(X_train_tensor).detach().numpy()
+    with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+        K_test_final = kernel(X_test_tensor, X_train_tensor).detach().numpy()
 
     # Train SVM
     svc = SVC(kernel="precomputed", random_state=42)
@@ -1419,9 +1450,11 @@ def _test_kernel_classification(kernel, X_train, X_test, y_train, y_test, method
     """Helper function to test kernel classification and return accuracy or status."""
     try:
         # Compute kernel matrices
-        K_train = kernel(X_train)
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            K_train = kernel(X_train)
         print(f"K_train = {K_train}")
-        K_test = kernel(X_test, X_train)
+        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+            K_test = kernel(X_test, X_train)
 
         # Verify kernel properties
         assert K_train.shape == (len(X_train), len(X_train))

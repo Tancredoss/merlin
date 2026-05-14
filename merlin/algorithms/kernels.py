@@ -320,6 +320,7 @@ class FeatureMap:
 
         return torch.stack(encoded_vals, dim=0)
 
+    @sanitize_parameters
     def compute_unitary(
         self, x: torch.Tensor | np.ndarray | float, *training_parameters: torch.Tensor
     ) -> torch.Tensor:

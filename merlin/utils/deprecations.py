@@ -174,6 +174,12 @@ DEPRECATION_REGISTRY: dict[
         False,
         _remove_FeatureMap_simple_trainable,
     ),
+    "FeatureMap.compute_unitary": (
+        "compute_unitary is deprecated and will be removed in a future release. "
+        "Use FidelityKernel directly for kernel computations.",
+        False,
+        None,
+    ),
     # FidelityKernel.simple deprecations
     "FidelityKernel.simple.n_photons": (
         "Since merlin >= 0.3, the number of photons is automatically inferred from input dimensionality. Manual control of photons is deprecated.",
