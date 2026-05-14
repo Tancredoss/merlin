@@ -29,6 +29,7 @@ from typing import Literal, overload
 
 import perceval as pcvl
 import torch
+
 from merlin.pcvl_pytorch.noisy_slos import NoisySLOSComputeGraph
 
 from ..algorithms.layer_utils import NoiseGroups

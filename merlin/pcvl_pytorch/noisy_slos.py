@@ -12,10 +12,9 @@ subsets, and the corresponding probability distributions are convolved back
 together to obtain the final noisy output distribution.
 """
 
-import warnings
-
 from functools import reduce
 from itertools import combinations
+import warnings
 
 import torch
 from torch import Tensor
