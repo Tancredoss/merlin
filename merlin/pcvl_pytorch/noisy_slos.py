@@ -12,6 +12,7 @@ subsets, and the corresponding probability distributions are convolved back
 together to obtain the final noisy output distribution.
 """
 
+import os
 import warnings
 from collections.abc import Sequence
 from functools import reduce
@@ -79,6 +80,7 @@ class NoisySLOSComputeGraph:
                 "The NoisySLOSComputeGraph should only be used if there is source noise in the circuit."
             )
 
+        self.noise_groups = noise_groups
         self.indistinguishability = noise_groups.source.get("indistinguishability", 1.0)
 
         self.g2_distinguishable = noise_groups.source.get("g2_distinguishable", None)
@@ -391,6 +393,30 @@ class _InputStateNoisySLOSComputeGraph:
 
         output_probs = output_probs / output_probs.sum(dim=1).unsqueeze(1)
         return output_keys, output_probs
+
+    def save(self, path: str | os.PathLike[str]) -> None:
+        """Save the noisy SLOS graph configuration to disk.
+
+        Parameters
+        ----------
+        path : str | os.PathLike[str]
+            Destination path for the serialized graph metadata.
+        """
+        dir_path = os.path.dirname(path)
+        if dir_path and not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        metadata = {
+            "noise_groups": self.noise_groups,
+            "m": self.m,
+            "n_photons": self.n_photons,
+            "computation_space": self.computation_space.value,
+            "keep_keys": self.keep_keys,
+            "dtype_str": str(self.dtype),
+            "has_output_map_func": False,
+        }
+
+        torch.save({"metadata": metadata}, path)
 
     @staticmethod
     def _generate_obb_partition(

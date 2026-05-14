@@ -1029,6 +1029,48 @@ class SLOSComputeGraph:
 
         return keys, probabilities
 
+    def save(self, path: str | os.PathLike[str]) -> None:
+        """Save the SLOS computation graph to disk.
+
+        Parameters
+        ----------
+        path : str | os.PathLike[str]
+            Destination path for the serialized graph.
+        """
+        dir_path = os.path.dirname(path)
+        if dir_path and not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        metadata = {
+            "m": self.m,
+            "n_photons": self.n_photons,
+            "computation_space": self.computation_space.value,
+            "keep_keys": self.keep_keys,
+            "dtype_str": str(self.dtype),
+            "has_output_map_func": self.output_map_func is not None,
+        }
+
+        torch.save(
+            {
+                "metadata": metadata,
+                "vectorized_operations": self.vectorized_operations,
+                "final_keys": self.final_keys,
+                "mapped_keys": self.mapped_keys,
+                "mapped_indices": (
+                    self.mapped_indices if hasattr(self, "mapped_indices") else None
+                ),
+                "total_mapped_keys": (
+                    self.total_mapped_keys
+                    if hasattr(self, "total_mapped_keys")
+                    else None
+                ),
+                "target_indices": (
+                    self.target_indices if hasattr(self, "target_indices") else None
+                ),
+            },
+            path,
+        )
+
 
 def build_slos_distribution_computegraph(
     m: int,
@@ -1116,81 +1158,6 @@ def build_slos_distribution_computegraph(
             dtype,
         )
 
-    # Add save method to the returned object
-    def save(path):
-        """
-        Save the SLOS computation graph to a file.
-
-        Parameters
-        ----------
-        path : str | os.PathLike[str]
-            Destination path.
-        """
-        # Create directory if it doesn't exist
-        dir_path = os.path.dirname(path)
-        if dir_path and not os.path.exists(dir_path):
-            os.makedirs(dir_path)
-
-        # Save metadata
-        if noise_groups is not None and noise_groups.source is not None:
-            metadata = {
-                "noise_groups": noise_groups,
-                "m": compute_graph.m,
-                "n_photons": compute_graph.n_photons,
-                "computation_space": compute_graph.computation_space.value,
-                "keep_keys": compute_graph.keep_keys,
-                "dtype_str": str(compute_graph.dtype),
-                "has_output_map_func": output_map_func is not None,
-            }
-
-            # Save TorchScript layer functions if possible
-            # For serializable components only
-            torch.save(
-                {
-                    "metadata": metadata,
-                },
-                path,
-            )
-        else:
-            metadata = {
-                "m": compute_graph.m,
-                "n_photons": compute_graph.n_photons,
-                "computation_space": compute_graph.computation_space.value,
-                "keep_keys": compute_graph.keep_keys,
-                "dtype_str": str(compute_graph.dtype),
-                "has_output_map_func": output_map_func is not None,
-            }
-
-            # Save TorchScript layer functions if possible
-            # For serializable components only
-            torch.save(
-                {
-                    "metadata": metadata,
-                    "vectorized_operations": compute_graph.vectorized_operations,
-                    "final_keys": compute_graph.final_keys,
-                    "mapped_keys": compute_graph.mapped_keys,
-                    "mapped_indices": (
-                        compute_graph.mapped_indices
-                        if hasattr(compute_graph, "mapped_indices")
-                        else None
-                    ),
-                    "total_mapped_keys": (
-                        compute_graph.total_mapped_keys
-                        if hasattr(compute_graph, "total_mapped_keys")
-                        else None
-                    ),
-                    "target_indices": (
-                        compute_graph.target_indices
-                        if hasattr(compute_graph, "target_indices")
-                        else None
-                    ),
-                },
-                path,
-            )
-
-    # Attach the save method to the compute_graph
-    compute_graph.save = save
-
     return compute_graph
 
 
@@ -1276,9 +1243,6 @@ def load_slos_distribution_computegraph(path):
 
         # Recreate the TorchScript modules
         graph._create_torchscript_modules()
-
-    # Add save method to the loaded graph
-    graph.save = lambda p: torch.save(saved_data, p)
 
     return graph
 
