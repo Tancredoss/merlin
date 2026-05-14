@@ -431,6 +431,8 @@ class QuantumLayer(MerlinModule):
             computation_space=self.computation_space,
             noise_groups=self._noise_groups,
         )
+        # Adapt the computation space if a noisy simulation is done
+        self.computation_space = self.computation_process.computation_space
 
         # If input_state was a StateVector, set the actual tensor now (after init to bypass validation)
         if statevector_input is not None:
@@ -944,15 +946,23 @@ class QuantumLayer(MerlinModule):
             needs_gradient, apply_sampling, requested_shots
         )
 
-        # Phase 5: Convert and normalize amplitudes
-        if isinstance(amplitudes, tuple):
-            amplitudes = amplitudes[1]
-        elif not isinstance(amplitudes, torch.Tensor):
-            raise TypeError(f"Unexpected amplitudes type: {type(amplitudes)}")
+        # Phase 5: Convert and normalize amplitudes if it is a non noisy simulation. If it is noisy, they are already normalized
+        source_noise = False if self._noise_groups is None else True
+        if source_noise:
+            source_noise = False if self._noise_groups.source is None else True
 
-        distribution, amplitudes = self._renormalize_distribution_and_amplitudes(
-            amplitudes
-        )
+        if not source_noise:
+            if isinstance(amplitudes, tuple):
+                amplitudes = amplitudes[1]
+            elif not isinstance(amplitudes, torch.Tensor):
+                raise TypeError(f"Unexpected amplitudes type: {type(amplitudes)}")
+
+            distribution, amplitudes = self._renormalize_distribution_and_amplitudes(
+                amplitudes
+            )
+        else:
+            # The `amplitudes` are already probabilities in the noisy case
+            distribution = amplitudes
 
         # Phase 6: Measurement strategy dispatch and output mapping
         strategy = resolve_measurement_strategy(self.measurement_strategy)
@@ -1014,27 +1024,36 @@ class QuantumLayer(MerlinModule):
         simultaneous_processes: int | None,
     ) -> torch.Tensor:
         """Select the computation path based on the encoding mode and input state."""
-        if self.amplitude_encoding:
-            if inferred_state is None:
-                raise TypeError(
-                    "Amplitude encoding requires the computation process input_state to be a tensor."
+        # Checking if there is source noise
+        source_noise = False if self._noise_groups is None else True
+        if source_noise:
+            source_noise = False if self._noise_groups.source is None else True
+
+        if not source_noise:
+            if self.amplitude_encoding:
+                if inferred_state is None:
+                    raise TypeError(
+                        "Amplitude encoding requires the computation process input_state to be a tensor."
+                    )
+                batch_size = (
+                    simultaneous_processes
+                    if simultaneous_processes is not None
+                    else (1 if inferred_state.dim() == 1 else inferred_state.shape[0])
                 )
-            batch_size = (
-                simultaneous_processes
-                if simultaneous_processes is not None
-                else (1 if inferred_state.dim() == 1 else inferred_state.shape[0])
-            )
-            return self.computation_process.compute_ebs_simultaneously(
-                params, simultaneous_processes=batch_size
-            )
-        if isinstance(inferred_state, torch.Tensor):
-            if parameter_batch_dim:
-                chunk = simultaneous_processes or inferred_state.shape[-1]
                 return self.computation_process.compute_ebs_simultaneously(
-                    params, simultaneous_processes=chunk
+                    params, simultaneous_processes=batch_size
                 )
-            return self.computation_process.compute_superposition_state(params)
-        return self.computation_process.compute(params)
+            if isinstance(inferred_state, torch.Tensor):
+                if parameter_batch_dim:
+                    chunk = simultaneous_processes or inferred_state.shape[-1]
+                    return self.computation_process.compute_ebs_simultaneously(
+                        params, simultaneous_processes=chunk
+                    )
+                return self.computation_process.compute_superposition_state(params)
+        # If there is source noise, we just compute the probabilities
+        return self.computation_process.compute(
+            params, self.amplitude_encoding, inferred_state
+        )
 
     def _renormalize_distribution_and_amplitudes(
         self, amplitudes: torch.Tensor

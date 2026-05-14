@@ -173,13 +173,22 @@ class ComputationProcess(AbstractComputationProcess):
         )
         self.noisy_simulation = isinstance(self.simulation_graph, NoisySLOSComputeGraph)
 
-    def compute(self, parameters: list[torch.Tensor]) -> torch.Tensor:
+    def compute(
+        self,
+        parameters: list[torch.Tensor],
+        amplitude_encoding: bool = False,
+        infered_state: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Compute output amplitudes for the configured input state.
 
         Parameters
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
+        amplitude_encoding: bool
+            For noisy computation, if there is amplitude encoding used.
+        infered_state: torch.Tensor | None
+            For noisy computation with amplitude encoding, the amplitudes to run.
 
         Returns
         -------
@@ -196,7 +205,18 @@ class ComputationProcess(AbstractComputationProcess):
         else:
             input_state = self.input_state
         if self.noisy_simulation:
-            keys, probs = self.simulation_graph.compute_probs(unitary, input_state)
+            if amplitude_encoding:
+                keys, probs = self.simulation_graph.compute_probs(
+                    unitary,
+                    input_state,
+                    amplitude_encoding=amplitude_encoding,
+                    amplitudes=infered_state,
+                )
+            else:
+                keys, probs = self.simulation_graph.compute_probs(
+                    unitary,
+                    input_state,
+                )
             return probs
         else:
             keys, amplitudes = self.simulation_graph.compute(unitary, input_state)
@@ -215,6 +235,10 @@ class ComputationProcess(AbstractComputationProcess):
     def compute_superposition_state(
         self, parameters: list[torch.Tensor], *, return_keys: bool = False
     ) -> torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
+        if self.noisy_simulation:
+            raise RuntimeError(
+                "Noisy simulations with source noise can only call the `compute` and `compute_with_keys` methods to compute probabilities"
+            )
         prepared_state = self._prepare_superposition_tensor()
         unitary = self.converter.to_tensor(*parameters)
         changed_unitary = True
@@ -339,6 +363,10 @@ class ComputationProcess(AbstractComputationProcess):
               they already occupy, so callers should ensure ``parameters`` and
               ``self.input_state`` live on the same device.
         """
+        if self.noisy_simulation:
+            raise RuntimeError(
+                "Noisy simulations with source noise can only call the `compute` and `compute_with_keys` methods to compute probabilities"
+            )
 
         # input state was validated by _prepare_superposition_tensor, ie: renormalized, typed, and converted from logical basis to fock basis (if shape did not match)
         # we don't want anymore the logical basis but normalization and typing cannot hurt even if it is a small overhead
@@ -407,13 +435,17 @@ class ComputationProcess(AbstractComputationProcess):
 
         return final_amplitudes
 
-    def compute_with_keys(self, parameters: list[torch.Tensor]):
+    def compute_with_keys(
+        self, parameters: list[torch.Tensor], amplitude_encoding: bool = False
+    ):
         """Compute output amplitudes and return them with basis keys.
 
         Parameters
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
+        amplitude_encoding: bool
+            For noisy computation, if there is amplitude encoding used.
 
         Returns
         -------
@@ -425,7 +457,12 @@ class ComputationProcess(AbstractComputationProcess):
 
         # Compute output distribution using the input state
         if self.noisy_simulation:
-            keys, probs = self.simulation_graph.compute_probs(unitary, self.input_state)
+            keys, probs = self.simulation_graph.compute_probs(
+                unitary,
+                self.input_state,
+                amplitude_encoding=amplitude_encoding,
+                amplitudes=parameters,
+            )
             return keys, probs
         else:
             keys, amplitudes = self.simulation_graph.compute(unitary, self.input_state)

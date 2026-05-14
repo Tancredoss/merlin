@@ -10,6 +10,7 @@ from merlin.algorithms.layer_utils import (
 )
 import numpy as np
 import torch
+from copy import deepcopy
 
 
 @pytest.fixture
@@ -205,7 +206,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
     with pytest.raises(
         NotImplementedError,
         match=re.escape(
-            "The following noises are not implemented yet for the QuantumLayer. Source noises: ['indistinguishability']."
+            "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
         ),
     ):
         _ = ml.QuantumLayer(
@@ -213,7 +214,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             input_size=5,
             builder=circ,
             noise_model=pcvl.NoiseModel(
-                indistinguishability=0.2,
+                g2=0.2,
             ),
         )
     with pytest.raises(
@@ -233,7 +234,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
     with pytest.raises(
         NotImplementedError,
         match=re.escape(
-            "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2_distinguishable', 'indistinguishability']."
+            "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2_distinguishable']."
         ),
     ):
         _ = ml.QuantumLayer(
@@ -507,6 +508,207 @@ def test_return_object_with_noise_model_fails_fast():
             noise_model=pcvl.NoiseModel(brightness=0.3),
             return_object=True,
         )
+
+
+def test_indistinguishability_noise_model_no_longer_raises_not_implemented():
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=4,
+        builder=_builder(),
+        noise_model=pcvl.NoiseModel(indistinguishability=0.9),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    out = layer(torch.rand(1, 4))
+    assert out.shape[0] == 1
+
+
+def test_brightness_noise_model_with_return_object_still_raises_not_implemented():
+    with pytest.raises(
+        NotImplementedError,
+        match="The noise computation with the return_object feature set at True is not yet implemented.",
+    ):
+        ml.QuantumLayer(
+            n_photons=2,
+            input_size=4,
+            builder=_builder(),
+            noise_model=pcvl.NoiseModel(brightness=0.8),
+            return_object=True,
+        )
+
+
+def test_indistinguishability_noise_backward_populates_thetas_grad():
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=4,
+        builder=_builder(),
+        noise_model=pcvl.NoiseModel(indistinguishability=0.9),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    loss = ((layer(torch.rand(1, 4)) - torch.rand(1, 10)) ** 2).sum()
+    loss.backward()
+
+    grads = [p.grad for p in layer.parameters() if p.requires_grad]
+    assert any(g is not None for g in grads)
+    assert any(g.grad is not None for g in layer.thetas)
+    assert len(layer.thetas) > 0
+
+
+def test_indistinguishability_with_bunched_input_state_no_longer_raises():
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=4,
+        builder=_builder(),
+        input_state=[2, 0, 0, 0],
+        noise_model=pcvl.NoiseModel(indistinguishability=0.9),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    out = layer(torch.rand(1, 4))
+    assert out.shape[0] == 1
+
+
+def test_noisy_quantumlayer_batched_forward_matches_single_forwards():
+    layer = ml.QuantumLayer(
+        n_photons=3,
+        input_size=5,
+        builder=_builder(n_modes=5),
+        noise_model=pcvl.NoiseModel(indistinguishability=0.4),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    x_batch = torch.tensor(
+        [[0.0, 0.0, 0.0, 0.0, 0.0], [1.57, 1.57, 1.57, 1.57, 1.57]],
+        dtype=torch.float64,
+    )
+
+    batched = layer(x_batch)
+    single_0 = layer(x_batch[0].unsqueeze(0))
+    single_1 = layer(x_batch[1].unsqueeze(0))
+
+    assert batched.shape[0] == 2
+    assert torch.allclose(batched[0], single_0[0], atol=1e-6)
+    assert torch.allclose(batched[1], single_1[0], atol=1e-6)
+    assert torch.allclose(
+        batched.sum(dim=1),
+        torch.ones(2, dtype=batched.dtype, device=batched.device),
+        atol=1e-6,
+    )
+
+
+def test_indistiguishable_layer_against_perceval_unitary():
+    """Validate QuantumLayer with indistinguishability matches Perceval reference."""
+    # Create a simple 2-mode circuit for testing
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+
+    noise_model = pcvl.NoiseModel(indistinguishability=0.5)
+    source = pcvl.Source.from_noise_model(noise_model)
+    backend = pcvl.BackendFactory.get_backend("SLOS")
+    sim = pcvl.Simulator(backend)
+    sim.set_circuit(deepcopy(circuit))
+
+    # Create QuantumLayer with equivalent circuit
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        circuit=circuit,
+        noise_model=noise_model,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        amplitude_encoding=True,
+        dtype=torch.float64,
+    )
+
+    # Test input states: enumerate Fock states for 2 photons in 2 modes.
+    test_states_perceval = [[2, 0], [1, 1], [0, 2]]
+    test_states_merlin = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    batched_input = torch.tensor(test_states_merlin, dtype=torch.float32)
+
+    # Single batched call for all three input states.
+    layer_output = layer(batched_input)
+    all_output_states = ml.Combinadics(scheme="fock", n=2, m=2).enumerate_states()
+
+    for batch_idx, input_state_tuple_perceval in enumerate(test_states_perceval):
+        input_state = pcvl.BasicState(input_state_tuple_perceval)
+        layer_probs = layer_output[batch_idx].detach().cpu().numpy()
+        perceval_probs = sim.probs_svd((source, input_state))["results"]
+
+        # Compare each probability between QuantumLayer and Perceval.
+        for i, output_state in enumerate(all_output_states):
+            state = pcvl.FockState(output_state)
+            assert np.isclose(
+                layer_probs[i],
+                perceval_probs[state],
+                atol=1e-4,
+            ), (
+                f"Probability mismatch for input {tuple(input_state_tuple_perceval)}, "
+                f"output {tuple(output_state)}: "
+                f"QuantumLayer={layer_probs[i]}, Perceval={perceval_probs[state]}"
+            )
+
+        assert np.isclose(layer_probs.sum(), 1.0, atol=1e-6)
+        assert np.isclose(sum(perceval_probs.values()), 1.0, atol=1e-6)
+
+
+def test_indistiguishable_layer_against_perceval_unitary_no_amplitude_encoding():
+    """Validate QuantumLayer (non-amplitude path) against Perceval under indistinguishability noise."""
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+
+    noise_model = pcvl.NoiseModel(indistinguishability=0.5)
+    source = pcvl.Source.from_noise_model(noise_model)
+    backend = pcvl.BackendFactory.get_backend("SLOS")
+    sim = pcvl.Simulator(backend)
+    sim.set_circuit(deepcopy(circuit))
+
+    input_states = [[2, 0], [1, 1], [0, 2]]
+    output_states = ml.Combinadics(scheme="fock", n=2, m=2).enumerate_states()
+
+    for input_state_tuple in input_states:
+        layer = ml.QuantumLayer(
+            n_photons=2,
+            circuit=deepcopy(circuit),
+            input_state=input_state_tuple,
+            noise_model=noise_model,
+            measurement_strategy=ml.MeasurementStrategy.probs(
+                computation_space=ml.ComputationSpace.FOCK
+            ),
+            dtype=torch.float64,
+        )
+
+        # Non-amplitude path: fixed constructor input_state, no amplitude_encoding input.
+        layer_output = layer()
+        layer_probs = layer_output[0].detach().cpu().numpy()
+
+        perceval_probs = sim.probs_svd((source, pcvl.BasicState(input_state_tuple)))[
+            "results"
+        ]
+
+        for i, output_state in enumerate(output_states):
+            state = pcvl.FockState(output_state)
+            assert np.isclose(
+                layer_probs[i],
+                perceval_probs[state],
+                atol=1e-4,
+            ), (
+                f"Probability mismatch for input {tuple(input_state_tuple)}, "
+                f"output {tuple(output_state)}: "
+                f"QuantumLayer={layer_probs[i]}, Perceval={perceval_probs[state]}"
+            )
+
+        assert np.isclose(layer_probs.sum(), 1.0, atol=1e-6)
+        assert np.isclose(sum(perceval_probs.values()), 1.0, atol=1e-6)
 
 
 def test_no_noise():

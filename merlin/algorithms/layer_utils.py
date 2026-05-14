@@ -723,9 +723,6 @@ def setup_noise_and_detectors(
             if "g2_distinguishable" in noise_groups.source:
                 noises_not_implemented_source.append("g2_distinguishable")
 
-            if "indistinguishability" in noise_groups.source:
-                noises_not_implemented_source.append("indistinguishability")
-
             if "g2" in noise_groups.source:
                 noises_not_implemented_source.append("g2")
 
