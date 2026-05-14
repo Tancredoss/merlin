@@ -449,8 +449,8 @@ class _InputStateNoisySLOSComputeGraph:
         )
 
         # All combinations of photons to remove
-        remove_indices = list(combinations(photon_positions.tolist(), order))
-        remove_indices = torch.tensor(remove_indices, dtype=torch.long)
+        remove_indices_list = list(combinations(photon_positions.tolist(), order))
+        remove_indices = torch.tensor(remove_indices_list, dtype=torch.long)
 
         n_comb = remove_indices.shape[0]
         input_state_len = input_state_tensor.size(0)
@@ -537,7 +537,7 @@ class _InputStateNoisySLOSComputeGraph:
 
 def convolve_distributions(
     keys: Sequence[Tensor | Sequence[tuple[int, ...]]], *probs: Tensor
-) -> tuple[Tensor | list[tuple[int, ...]], Tensor]:
+) -> tuple[Tensor | Sequence[tuple[int, ...]], Tensor]:
     """Convolve one or more probability distributions over Fock states.
 
     This helper performs the same mode-merging tensor product used by Perceval
