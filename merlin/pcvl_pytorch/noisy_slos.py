@@ -122,7 +122,7 @@ class NoisySLOSComputeGraph:
             build_slos_distribution_computegraph as build_slos_graph,
         )
 
-        self._slos_graphs: list["SLOSComputeGraph"] = cast(
+        self._slos_graphs: list[SLOSComputeGraph] = cast(
             list["SLOSComputeGraph"],
             [
                 build_slos_graph(
