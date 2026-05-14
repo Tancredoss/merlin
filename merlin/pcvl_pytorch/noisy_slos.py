@@ -52,17 +52,11 @@ class NoisySLOSComputeGraph:
 
         self.m = m
         self.n_photons = n_photons
-        if computation_space is ComputationSpace.DUAL_RAIL:
-            if m % 2 != 0:
-                raise ValueError("dual_rail compute space requires even m")
-            if n_photons != m // 2:
-                raise ValueError("dual_rail compute space requires n_photons = m // 2")
-
         self.computation_space = computation_space
         # TODO Change with post-selection if it applies
         if not self.computation_space == ComputationSpace.FOCK:
             warnings.warn(
-                "Noisy SLOS simulations currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
+                "Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -85,8 +79,6 @@ class NoisySLOSComputeGraph:
         self,
         unitary: torch.Tensor,
         input_state: list,
-        amplitude_encoding: bool = False,
-        amplitudes: torch.Tensor | None = None,
     ):
 
         if len(unitary.shape) == 2:
@@ -107,63 +99,32 @@ class NoisySLOSComputeGraph:
                 f"for the graph built with dtype {self.dtype}. Please provide a unitary with the correct dtype "
                 f"or rebuild the graph with a compatible dtype."
             )
-        if amplitude_encoding:
-            if amplitudes is None:
-                raise ValueError(
-                    "The amplitudes must be given if amplitude encoding is None"
-                )
-            batch_size = amplitudes.size(0)
-            output = torch.empty(
-                (batch_size, len(self.mapped_keys)),
-                dtype=self.dtype,
-                device=unitary.device,
+
+        input_state = tuple(input_state)
+        if any(n < 0 for n in input_state) or sum(input_state) == 0:
+            raise ValueError("Photon numbers cannot be negative or all zeros")
+
+        if input_state not in self._slos_graph_per_input:
+            slos_graph = _InputStateNoisySLOSComputeGraph(
+                input_state,
+                self.indistinguishability,
+                self.computation_space,
+                self.device,
+                self.dtype,
             )
-            for i in range(batch_size):
-                input_state = tuple(amplitudes[i])
-                if any(n < 0 for n in input_state) or sum(input_state) == 0:
-                    raise ValueError("Photon numbers cannot be negative or all zeros")
-
-                if input_state not in self._slos_graph_per_input:
-                    slos_graph = _InputStateNoisySLOSComputeGraph(
-                        input_state,
-                        self.indistinguishability,
-                        self.computation_space,
-                        self.device,
-                        self.dtype,
-                    )
-                    self.computation_space = slos_graph.computation_space
-                    self._slos_graph_per_input[input_state] = slos_graph
-                else:
-                    slos_graph = self._slos_graph_per_input[input_state]
-
-                keys, probs = slos_graph.compute_probs(unitary[0])
-                output[i] = probs.squeeze(0)
+            self.computation_space = slos_graph.computation_space
+            self._slos_graph_per_input[input_state] = slos_graph
         else:
-            input_state = tuple(input_state)
-            if any(n < 0 for n in input_state) or sum(input_state) == 0:
-                raise ValueError("Photon numbers cannot be negative or all zeros")
+            slos_graph = self._slos_graph_per_input[input_state]
 
-            if input_state not in self._slos_graph_per_input:
-                slos_graph = _InputStateNoisySLOSComputeGraph(
-                    input_state,
-                    self.indistinguishability,
-                    self.computation_space,
-                    self.device,
-                    self.dtype,
-                )
-                self.computation_space = slos_graph.computation_space
-                self._slos_graph_per_input[input_state] = slos_graph
-            else:
-                slos_graph = self._slos_graph_per_input[input_state]
-
-            output = torch.empty(
-                (batch_size, len(self.mapped_keys)),
-                dtype=self.dtype,
-                device=unitary.device,
-            )
-            for i in range(batch_size):
-                keys, probs = slos_graph.compute_probs(unitary[i])
-                output[i] = probs.squeeze(0)
+        output = torch.empty(
+            (batch_size, len(self.mapped_keys)),
+            dtype=self.dtype,
+            device=unitary.device,
+        )
+        for i in range(batch_size):
+            keys, probs = slos_graph.compute_probs(unitary[i])
+            output[i] = probs.squeeze(0)
 
         if self.keep_keys:
             return keys, output

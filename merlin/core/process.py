@@ -177,7 +177,6 @@ class ComputationProcess(AbstractComputationProcess):
         self,
         parameters: list[torch.Tensor],
         amplitude_encoding: bool = False,
-        infered_state: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Compute output amplitudes for the configured input state.
 
@@ -185,10 +184,9 @@ class ComputationProcess(AbstractComputationProcess):
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
-        amplitude_encoding: bool
-            For noisy computation, if there is amplitude encoding used.
-        infered_state: torch.Tensor | None
-            For noisy computation with amplitude encoding, the amplitudes to run.
+        amplitude_encoding : bool
+            If True and input_state is a tensor in noisy mode, normalize and mix probs
+            over Fock basis states weighted by |c_i|^2. Default is False.
 
         Returns
         -------
@@ -199,26 +197,56 @@ class ComputationProcess(AbstractComputationProcess):
 
         unitary = self.converter.to_tensor(*parameters)
         self.unitary = unitary
-        # Compute output distribution using the input state
-        if isinstance(self.input_state, torch.Tensor):
-            input_state = [1] * self.n_photons + [0] * (self.m - self.n_photons)
-        else:
-            input_state = self.input_state
+
         if self.noisy_simulation:
-            if amplitude_encoding:
-                keys, probs = self.simulation_graph.compute_probs(
-                    unitary,
-                    input_state,
-                    amplitude_encoding=amplitude_encoding,
-                    amplitudes=infered_state,
+            if isinstance(self.input_state, torch.Tensor) and amplitude_encoding:
+                # Amplitude-encoded input: treat each row as a probability distribution
+                # over Fock basis states and produce a weighted mixture of noisy output
+                # probabilities.  The mixture weight for each basis state is |c_i|^2.
+                prepared_state = self._prepare_superposition_tensor()
+                weights = prepared_state.abs().pow(2)  # [input_batch, n_fock_states]
+
+                active_indices = [
+                    i
+                    for i in range(weights.shape[1])
+                    if torch.any(weights[:, i] >= 1e-13).item()
+                ]
+
+                probs_per_state = []
+                for idx in active_indices:
+                    input_fock_state = self.simulation_graph.mapped_keys[idx]
+                    _, probs = self.simulation_graph.compute_probs(
+                        unitary, input_fock_state
+                    )
+                    if probs.ndim == 1:
+                        probs = probs.unsqueeze(0)
+                    probs_per_state.append(probs)
+
+                # probs_stacked: [n_active, unitary_batch, n_output_states]
+                probs_stacked = torch.stack(probs_per_state, dim=0)
+                # selected_weights: [input_batch, n_active]
+                selected_weights = weights[:, active_indices].to(probs_stacked.dtype)
+                # mixed_probs: [input_batch, unitary_batch, n_output_states]
+                mixed_probs = torch.einsum(
+                    "is,sbo->ibo", selected_weights, probs_stacked
                 )
+
+                if mixed_probs.shape[1] == 1:
+                    mixed_probs = mixed_probs.squeeze(
+                        1
+                    )  # [input_batch, n_output_states]
+
+                return mixed_probs
             else:
                 keys, probs = self.simulation_graph.compute_probs(
-                    unitary,
-                    input_state,
+                    unitary, self.input_state
                 )
-            return probs
+                return probs
         else:
+            if isinstance(self.input_state, torch.Tensor):
+                input_state = [1] * self.n_photons + [0] * (self.m - self.n_photons)
+            else:
+                input_state = self.input_state
             keys, amplitudes = self.simulation_graph.compute(unitary, input_state)
             return amplitudes
 
@@ -435,34 +463,23 @@ class ComputationProcess(AbstractComputationProcess):
 
         return final_amplitudes
 
-    def compute_with_keys(
-        self, parameters: list[torch.Tensor], amplitude_encoding: bool = False
-    ):
+    def compute_with_keys(self, parameters: list[torch.Tensor]):
         """Compute output amplitudes and return them with basis keys.
 
         Parameters
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
-        amplitude_encoding: bool
-            For noisy computation, if there is amplitude encoding used.
 
         Returns
         -------
         tuple[Any, torch.Tensor]
             Simulation-graph keys and corresponding probabilities if it is a noisy simulation and amplitude otherwise.
         """
-        # Generate unitary matrix from parameters
         unitary = self.converter.to_tensor(*parameters)
 
-        # Compute output distribution using the input state
         if self.noisy_simulation:
-            keys, probs = self.simulation_graph.compute_probs(
-                unitary,
-                self.input_state,
-                amplitude_encoding=amplitude_encoding,
-                amplitudes=parameters,
-            )
+            keys, probs = self.simulation_graph.compute_probs(unitary, self.input_state)
             return keys, probs
         else:
             keys, amplitudes = self.simulation_graph.compute(unitary, self.input_state)

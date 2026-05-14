@@ -293,6 +293,21 @@ class QuantumLayer(MerlinModule):
             return_object=return_object,
         )
 
+        # Adapt the computation space if a noisy simulation with source noise is done
+        source_noise = False if noise_and_detectors.noise_groups is None else True
+        if source_noise:
+            source_noise = (
+                False if noise_and_detectors.noise_groups.source is None else True
+            )
+
+        if source_noise and (not computation_space == ComputationSpace.FOCK):
+            warnings.warn(
+                "Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
+                UserWarning,
+                stacklevel=2,
+            )
+            computation_space = ComputationSpace.FOCK
+
         # Phase 10: build initialization context
         context = InitializationContext(
             device=device,
@@ -431,8 +446,6 @@ class QuantumLayer(MerlinModule):
             computation_space=self.computation_space,
             noise_groups=self._noise_groups,
         )
-        # Adapt the computation space if a noisy simulation is done
-        self.computation_space = self.computation_process.computation_space
 
         # If input_state was a StateVector, set the actual tensor now (after init to bypass validation)
         if statevector_input is not None:
@@ -1052,7 +1065,7 @@ class QuantumLayer(MerlinModule):
                 return self.computation_process.compute_superposition_state(params)
         # If there is source noise, we just compute the probabilities
         return self.computation_process.compute(
-            params, self.amplitude_encoding, inferred_state
+            params, amplitude_encoding=self.amplitude_encoding
         )
 
     def _renormalize_distribution_and_amplitudes(

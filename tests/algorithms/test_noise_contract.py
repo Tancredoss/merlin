@@ -101,6 +101,7 @@ def test_noisy_layer_with_amplitudes_strategy_raises_value_error():
                 phase_imprecision=0.5,
                 phase_error=0.6,
             ),
+            computation_space=ml.ComputationSpace.FOCK,
             measurement_strategy=ml.MeasurementStrategy.AMPLITUDES,
         )
     with pytest.raises(
@@ -188,6 +189,7 @@ def test_noisy_layer_with_mode_expectations_strategy_raises_value_error():
                 phase_error=0.6,
             ),
             measurement_strategy=ml.MeasurementStrategy.MODE_EXPECTATIONS,
+            computation_space=ml.ComputationSpace.FOCK,
         )
     # No error: amplitudes with no noise model
     _ = ml.QuantumLayer(
@@ -216,6 +218,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             noise_model=pcvl.NoiseModel(
                 g2=0.2,
             ),
+            computation_space=ml.ComputationSpace.FOCK,
         )
     with pytest.raises(
         NotImplementedError,
@@ -230,6 +233,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             noise_model=pcvl.NoiseModel(
                 g2=0.3,
             ),
+            computation_space=ml.ComputationSpace.FOCK,
         )
     with pytest.raises(
         NotImplementedError,
@@ -245,6 +249,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
                 indistinguishability=0.3,
                 g2_distinguishable=False,
             ),
+            computation_space=ml.ComputationSpace.FOCK,
         )
     with pytest.raises(
         NotImplementedError,
@@ -303,6 +308,7 @@ def test_noise_via_experiment_raises_not_implemented():
             input_size=5,
             experiment=experiment,
             input_state=[1, 0, 0, 0, 0],
+            computation_space=ml.ComputationSpace.FOCK,
         )
 
 
@@ -327,6 +333,7 @@ def test_noise_via_direct_parameter_raises_not_implemented():
                 phase_imprecision=0.5,
                 phase_error=0.6,
             ),
+            computation_space=ml.ComputationSpace.FOCK,
         )
 
 
@@ -474,6 +481,7 @@ def test_not_implemented_error_lists_classified_groups():
             input_size=4,
             builder=_builder(),
             noise_model=pcvl.NoiseModel(g2=0.05, phase_error=0.1),
+            computation_space=ml.ComputationSpace.FOCK,
         )
 
     message = str(exc_info.value)
