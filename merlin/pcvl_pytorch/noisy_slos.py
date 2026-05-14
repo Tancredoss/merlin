@@ -407,13 +407,11 @@ class _InputStateNoisySLOSComputeGraph:
             os.makedirs(dir_path)
 
         metadata = {
-            "noise_groups": self.noise_groups,
             "m": self.m,
             "n_photons": self.n_photons,
             "computation_space": self.computation_space.value,
-            "keep_keys": self.keep_keys,
             "dtype_str": str(self.dtype),
-            "has_output_map_func": False,
+            "indistinguishability": float(self.indistinguishability.item()),
         }
 
         torch.save({"metadata": metadata}, path)
