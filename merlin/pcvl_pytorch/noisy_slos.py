@@ -17,6 +17,7 @@ import warnings
 from collections.abc import Sequence
 from functools import reduce
 from itertools import combinations
+from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
@@ -26,14 +27,18 @@ from merlin.core.computation_space import ComputationSpace
 from merlin.utils.combinadics import Combinadics
 from merlin.utils.dtypes import resolve_float_complex
 
+if TYPE_CHECKING:
+    from merlin.pcvl_pytorch.slos_torchscript import SLOSComputeGraph
+
 
 class NoisySLOSComputeGraph:
     """Probability-only SLOS graph with source noise.
 
     The graph caches one ``_InputStateNoisySLOSComputeGraph`` per input
-    Fock state. Each cached graph expands that input according to the
-    Orthogonal Bad Bits model and returns an output probability distribution in
-    Fock space.
+    Fock state and one shared list of noiseless SLOS subgraphs in
+    ``_slos_graphs`` indexed by photon number. Each cached input-state helper
+    expands its input according to the Orthogonal Bad Bits model and uses the
+    shared subgraphs to produce the final noisy distribution in Fock space.
 
     Parameters
     ----------
@@ -113,6 +118,21 @@ class NoisySLOSComputeGraph:
             ).enumerate_states()
         ]
 
+        from .slos_torchscript import (
+            build_slos_distribution_computegraph as build_slos_graph,
+        )
+
+        self._slos_graphs = [
+            build_slos_graph(
+                self.m,
+                n_i,
+                computation_space=computation_space,
+                device=device,
+                dtype=dtype,
+            )
+            for n_i in range(1, self.n_photons + 1)
+        ]
+
     def compute_probs(
         self,
         unitary: torch.Tensor,
@@ -185,7 +205,7 @@ class NoisySLOSComputeGraph:
             device=unitary.device,
         )
         for i in range(batch_size):
-            keys, probs = slos_graph.compute_probs(unitary[i])
+            keys, probs = slos_graph.compute_probs(unitary[i], self._slos_graphs)
             output[i] = probs.squeeze(0)
 
         if self.keep_keys:
@@ -234,18 +254,42 @@ class NoisySLOSComputeGraph:
                 for n, states in slos_graph._fock_states_per_n.items()
             }
 
-            for graph in slos_graph._slos_graphs:
-                graph.to(self.device)
+        for graph in self._slos_graphs:
+            graph.to(self.device)
 
         return self
+
+    def save(self, path: str | os.PathLike[str]) -> None:
+        """Save the noisy SLOS graph configuration to disk.
+
+        Parameters
+        ----------
+        path : str | os.PathLike[str]
+            Destination path for the serialized graph metadata.
+        """
+        dir_path = os.path.dirname(path)
+        if dir_path and not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        metadata = {
+            "noise_groups": self.noise_groups,
+            "m": self.m,
+            "n_photons": self.n_photons,
+            "computation_space": self.computation_space.value,
+            "keep_keys": self.keep_keys,
+            "dtype_str": str(self.dtype),
+            "has_output_map_func": False,
+        }
+
+        torch.save({"metadata": metadata}, path)
 
 
 class _InputStateNoisySLOSComputeGraph:
     """Noisy SLOS graph specialized to one fixed input Fock state.
 
-    This helper precomputes the Orthogonal Bad Bits partitions and the SLOS
-    subgraphs needed to evaluate all distinguishability sectors derived from
-    one input state.
+    This helper precomputes the Orthogonal Bad Bits partitions for one fixed
+    input state. It does not own SLOS subgraphs; instead, the caller provides
+    the shared SLOS subgraph list when computing probabilities.
     """
 
     def __init__(
@@ -278,9 +322,6 @@ class _InputStateNoisySLOSComputeGraph:
         ValueError
             If ``indistinguishability`` lies outside ``[0, 1]``.
         """
-        from .slos_torchscript import (
-            build_slos_distribution_computegraph as build_slos_graph,
-        )
 
         self.input_state = input_state
         self.indistinguishability = torch.as_tensor(
@@ -297,17 +338,6 @@ class _InputStateNoisySLOSComputeGraph:
 
         self.device = device
         self.dtype = dtype
-
-        self._slos_graphs = [
-            build_slos_graph(
-                self.m,
-                n_i,
-                computation_space=computation_space,
-                device=device,
-                dtype=dtype,
-            )
-            for n_i in range(1, self.n_photons + 1)
-        ]
 
         # Weights of good & bad bits respectively
         self.g = torch.sqrt(self.indistinguishability)
@@ -336,7 +366,7 @@ class _InputStateNoisySLOSComputeGraph:
         }
 
     def compute_probs(
-        self, unitary: torch.Tensor
+        self, unitary: torch.Tensor, slos_graphs: list["SLOSComputeGraph"]
     ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
         """Compute noisy probabilities for the cached input state.
 
@@ -345,6 +375,9 @@ class _InputStateNoisySLOSComputeGraph:
         unitary : torch.Tensor
             Circuit unitary with shape ``[m, m]`` or batched shape
             ``[batch_size, m, m]``.
+        slos_graphs : list[SLOSComputeGraph]
+            Shared list of noiseless SLOS graphs owned by
+            ``NoisySLOSComputeGraph`` and indexed by photon number ``n-1``.
 
         Returns
         -------
@@ -360,7 +393,7 @@ class _InputStateNoisySLOSComputeGraph:
             key = tuple(state.tolist())
             n = sum(key)
 
-            _, probs = self._slos_graphs[n - 1].compute_probs(unitary, state)
+            _, probs = slos_graphs[n - 1].compute_probs(unitary, state)
 
             if probs.ndim == 1:
                 probs = probs.unsqueeze(0)

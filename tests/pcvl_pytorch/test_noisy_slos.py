@@ -323,6 +323,7 @@ def test_noisy_slos_to_moves_cached_graph_and_preserves_probs():
         states.device.type == "cpu"
         for states in cached_graph._fock_states_per_n.values()
     )
+    assert all(graph.device == torch.device("cpu") for graph in noisy_slos._slos_graphs)
 
     keys_after, probs_after = noisy_slos.compute_probs(unitary, [1, 1])
     assert keys_after == keys_before
