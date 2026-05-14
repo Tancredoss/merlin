@@ -1189,7 +1189,7 @@ def build_slos_distribution_computegraph(
             )
 
     # Attach the save method to the compute_graph
-    setattr(compute_graph, "save", save)
+    compute_graph.save = save
 
     return compute_graph
 
@@ -1278,7 +1278,7 @@ def load_slos_distribution_computegraph(path):
         graph._create_torchscript_modules()
 
     # Add save method to the loaded graph
-    setattr(graph, "save", lambda p: torch.save(saved_data, p))
+    graph.save = lambda p: torch.save(saved_data, p)
 
     return graph
 
