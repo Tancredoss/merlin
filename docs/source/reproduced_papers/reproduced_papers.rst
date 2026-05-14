@@ -38,6 +38,7 @@ For a Better Understanding of Photonic QML Theory
    reproductions/hqnn-myth
    reproductions/data_reuploading
    reproductions/amplitude_limitations
+   reproductions/nqe
 
 .. merlin-gallery::
    :data: _data/galleries/reproduced_papers/reproduced_papers_variational_methods.json
