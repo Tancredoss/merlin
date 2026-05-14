@@ -34,14 +34,13 @@ from ..builder.circuit_builder import ANGLE_ENCODING_MODE_ERROR, CircuitBuilder
 from ..core.computation_space import ComputationSpace
 from ..core.state import StatePattern, generate_state
 from ..measurement.autodiff import AutoDiffProcess
-from ..measurement.detectors import DetectorTransform, resolve_detectors
-from ..measurement.photon_loss import PhotonLossTransform, resolve_photon_loss
+from ..measurement.detectors import resolve_detectors
+from ..measurement.photon_loss import resolve_photon_loss
+from ..measurement.strategies import MeasurementStrategy
 from ..pcvl_pytorch.locirc_to_tensor import CircuitConverter
-from ..pcvl_pytorch.slos_torchscript import (
-    build_slos_distribution_computegraph as build_slos_graph,
-)
 from ..utils.deprecations import sanitize_parameters
 from ..utils.dtypes import to_torch_dtype
+from .layer import QuantumLayer
 from .module import MerlinModule
 
 
@@ -326,6 +325,10 @@ class FeatureMap:
     ) -> torch.Tensor:
         """Generate the circuit unitary after encoding `x` and applying trainables.
 
+        .. deprecated::
+            ``compute_unitary`` is deprecated and will be removed in a future release.
+            Use :class:`FidelityKernel` directly for kernel computations.
+
         Parameters
         ----------
         x : torch.Tensor | numpy.ndarray | float
@@ -339,6 +342,12 @@ class FeatureMap:
         torch.Tensor
             Complex unitary matrix representing the prepared circuit.
         """
+        warnings.warn(
+            "compute_unitary is deprecated and will be removed in a future release. "
+            "Use FidelityKernel directly for kernel computations.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # Normalize input to tensor on correct device/dtype
         if isinstance(x, torch.Tensor):
             x = x.to(dtype=self.dtype, device=self.device)
@@ -492,6 +501,56 @@ class FeatureMap:
             dtype=dtype,
             device=device,
         )
+
+
+class _KernelPairConverterProxy:
+    """Wrap a converter to build a kernel pair unitary.
+
+    Parameters
+    ----------
+    base : CircuitConverter
+        Converter used to build each feature-map unitary.
+    x1_enc : torch.Tensor
+        Encoded first datapoint appended after trainable parameters.
+    x2_enc : torch.Tensor
+        Encoded second datapoint appended after trainable parameters.
+    """
+
+    def __init__(self, base: CircuitConverter, x1_enc: Tensor, x2_enc: Tensor) -> None:
+        self._base = base
+        self._x1_enc = x1_enc
+        self._x2_enc = x2_enc
+
+    @property
+    def spec_mappings(self) -> dict[str, list[str]]:
+        """Return the wrapped converter parameter mappings.
+
+        Returns
+        -------
+        dict[str, list[str]]
+            Mapping from parameter prefixes to concrete circuit parameter
+            names.
+        """
+        return self._base.spec_mappings
+
+    def to_tensor(self, *params: Tensor, batch_size: int | None = None) -> Tensor:
+        """Return the pair unitary ``U(x1) @ U(x2).conj().mT``.
+
+        Parameters
+        ----------
+        params : torch.Tensor
+            Trainable tensors passed before the encoded datapoint.
+        batch_size : int | None
+            Optional batch size forwarded to the wrapped converter.
+
+        Returns
+        -------
+        torch.Tensor
+            Pair unitary tensor.
+        """
+        u1 = self._base.to_tensor(*params, self._x1_enc, batch_size=batch_size)
+        u2 = self._base.to_tensor(*params, self._x2_enc, batch_size=batch_size)
+        return u1 @ u2.conj().mT
 
 
 class KernelCircuitBuilder:
@@ -662,6 +721,265 @@ class KernelCircuitBuilder:
         )
 
 
+class CCInvQuantumLayer(QuantumLayer):
+    """Internal QuantumLayer subclass used as the computation backend for FidelityKernel.
+
+    This layer owns encoding, unitary computation, SLOS simulation, photon
+    loss, and detector transforms for the fidelity quantum kernel.
+    ``FidelityKernel`` constructs one instance and delegates all circuit-level
+    computation to it.
+
+    Parameters
+    ----------
+    experiment : pcvl.Experiment
+        Unitary Perceval experiment produced by the FeatureMap descriptor.
+    input_state : list[int]
+        Input Fock state occupation list.
+    input_size : int
+        Dimension of the classical input vector.
+    input_parameters : list[str]
+        Perceval parameter prefix(es) used for angle encoding.
+    trainable_parameters : list[str]
+        Perceval parameter prefixes exposed as trainable ``nn.Parameter``s.
+    computation_space : ComputationSpace
+        Computation space used for basis enumeration.
+    dtype : torch.dtype
+        Real dtype for internal tensors.
+    device : torch.device
+        Device on which computation graphs are placed.
+
+    Notes
+    -----
+    ``_compute_unitary`` calls ``computation_process.converter.to_tensor``
+    directly. This is safe for single-threaded use but will race under
+    ``DataLoader(num_workers>0)`` because the converter holds shared mutable
+    state. Use ``num_workers=0`` when the kernel module is in a DataLoader worker.
+    """
+
+    def __init__(
+        self,
+        experiment: pcvl.Experiment,
+        input_state: list[int],
+        input_size: int,
+        input_parameters: list[str],
+        trainable_parameters: list[str],
+        computation_space: ComputationSpace,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> None:
+        super().__init__(
+            experiment=experiment,
+            input_state=input_state,
+            input_size=input_size,
+            input_parameters=input_parameters,
+            trainable_parameters=trainable_parameters,
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=computation_space,
+            ),
+            dtype=dtype,
+            device=device,
+        )
+
+        raw_keys = self._raw_output_keys
+        try:
+            self._input_state_index: int = raw_keys.index(tuple(input_state))
+        except ValueError as exc:
+            raise ValueError(
+                "Input state is not present in the simulation basis produced by the circuit."
+            ) from exc
+
+        # Build the detection weight vector: track which output bin the input
+        # state maps to after photon loss and detector transforms.
+        weight_device = self.device or torch.device("cpu")
+        one_hot = torch.zeros(len(raw_keys), dtype=self.dtype, device=weight_device)
+        one_hot[self._input_state_index] = 1.0
+        loss_vector = self._apply_photon_loss_transform(one_hot)
+        if loss_vector.ndim > 1:
+            loss_vector = loss_vector.squeeze(0)
+        detection_vector = self._apply_detector_transform(loss_vector)
+        if detection_vector.ndim > 1:
+            detection_vector = detection_vector.squeeze(0)
+        detection_vector = detection_vector.to(dtype=self.dtype, device=weight_device)
+
+        nonzero = torch.nonzero(detection_vector > 1e-8, as_tuple=True)[0]
+        self._input_detection_index: int | None = None
+        if nonzero.numel() == 1 and torch.isclose(
+            detection_vector[nonzero[0]],
+            torch.tensor(
+                1.0, dtype=detection_vector.dtype, device=detection_vector.device
+            ),
+            atol=1e-6,
+        ):
+            self._input_detection_index = int(nonzero[0].item())
+        self.register_buffer("_input_detection_weights", detection_vector)
+        self._kernel_autodiff_process = AutoDiffProcess()
+
+    def _encode_single(self, x: Tensor) -> Tensor:
+        """Encode one datapoint to the circuit's input parameter shape.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Flat feature tensor of length ``input_size``.
+
+        Returns
+        -------
+        torch.Tensor
+            Encoded tensor matching the number of circuit input parameters.
+        """
+        x = x.to(dtype=self.dtype, device=self.device).reshape(-1)
+        prefix = self.input_parameters[0] if self.input_parameters else None
+
+        # Angle encoding specs (from CircuitBuilder) take priority.
+        if prefix and self.angle_encoding_specs:
+            spec = self.angle_encoding_specs.get(prefix)
+            if spec:
+                return self._prepare_input_encoding(x, prefix)
+
+        # Fall back to direct pass-through or subset-sum expansion for raw circuits.
+        spec_mappings = self.computation_process.converter.spec_mappings
+        px_len = len(spec_mappings.get(prefix, [])) if prefix else x.numel()
+
+        if x.numel() == px_len or px_len == 0:
+            return x
+        if x.numel() < px_len:
+            return self._subset_sum_expand(x, px_len)
+        return x[:px_len]
+
+    @staticmethod
+    def _subset_sum_expand(x: Tensor, k: int) -> Tensor:
+        """Expand a vector into deterministic subset sums up to length ``k``.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            One-dimensional input tensor.
+        k : int
+            Target output length.
+
+        Returns
+        -------
+        torch.Tensor
+            Tensor of length ``k`` containing subset sums, padded with zeros
+            when fewer than ``k`` sums are available.
+        """
+        d = x.shape[0]
+        vals: list[Tensor] = []
+        for r in range(1, d + 1):
+            for idxs in itertools.combinations(range(d), r):
+                vals.append(x[list(idxs)].sum())
+                if len(vals) == k:
+                    return torch.stack(vals, dim=0)
+        if len(vals) == 0:
+            return torch.zeros(k, dtype=x.dtype, device=x.device)
+        pad = k - len(vals)
+        return torch.cat(
+            [
+                torch.stack(vals, dim=0),
+                torch.zeros(pad, dtype=x.dtype, device=x.device),
+            ],
+            dim=0,
+        )
+
+    def _compute_unitary(self, x_enc: Tensor) -> Tensor:
+        """Evaluate the circuit unitary for an already-encoded input.
+
+        Parameters
+        ----------
+        x_enc : torch.Tensor
+            Encoded input tensor produced by :meth:`_encode_single`.
+
+        Returns
+        -------
+        torch.Tensor
+            Complex unitary matrix of shape ``(m, m)``.
+        """
+        return self.computation_process.converter.to_tensor(*self.thetas, x_enc)
+
+    def _compute_kernel_unitary(self, x1: Tensor, x2: Tensor) -> Tensor:
+        """Compute the combined kernel unitary ``U(x1) @ U†(x2)``.
+
+        Parameters
+        ----------
+        x1 : torch.Tensor
+            First raw feature tensor.
+        x2 : torch.Tensor
+            Second raw feature tensor.
+
+        Returns
+        -------
+        torch.Tensor
+            Combined kernel unitary of shape ``(m, m)``.
+        """
+        U1 = self._compute_unitary(self._encode_single(x1))
+        U2 = self._compute_unitary(self._encode_single(x2))
+        return U1 @ U2.conj().mT
+
+    def _compute_unitary_batch(self, x_batch: Tensor) -> Tensor:
+        """Compute a batch of circuit unitaries.
+
+        Parameters
+        ----------
+        x_batch : torch.Tensor
+            Batch of feature tensors with shape ``(N, input_size)``.
+
+        Returns
+        -------
+        torch.Tensor
+            Stacked unitary tensor of shape ``(N, m, m)``.
+        """
+        return torch.stack([
+            self._compute_unitary(self._encode_single(x)) for x in x_batch
+        ])
+
+    def _compute_transition_probs(
+        self,
+        all_circuits: Tensor,
+        input_state: list[int],
+        shots: int,
+        sampling_method: str,
+    ) -> Tensor:
+        """Run SLOS and transforms on a batch of combined kernel unitaries.
+
+        Parameters
+        ----------
+        all_circuits : torch.Tensor
+            Batch of combined kernel unitaries with shape ``(P, m, m)``.
+        input_state : list[int]
+            Input Fock occupation list.
+        shots : int
+            Number of pseudo-sampling shots; 0 for exact probabilities.
+        sampling_method : str
+            Sampling method; one of ``"multinomial"``, ``"binomial"``,
+            ``"gaussian"``.
+
+        Returns
+        -------
+        torch.Tensor
+            Transition probability for each circuit, shape ``(P,)``.
+        """
+        _, probabilities = self.computation_process.simulation_graph.compute_probs(
+            all_circuits, input_state
+        )
+        if probabilities.ndim == 1:
+            probabilities = probabilities.unsqueeze(0)
+        probabilities = probabilities.to(dtype=self.dtype)
+        loss_probs = self._apply_photon_loss_transform(probabilities)
+        detection_probs = self._apply_detector_transform(loss_probs)
+
+        if shots > 0:
+            detection_probs = self._kernel_autodiff_process.sampling_noise.pcvl_sampler(
+                detection_probs, shots, sampling_method
+            )
+
+        if self._input_detection_index is not None:
+            return detection_probs[:, self._input_detection_index]
+        weights = self._input_detection_weights.to(
+            dtype=detection_probs.dtype, device=detection_probs.device
+        )
+        return detection_probs @ weights
+
+
 class FidelityKernel(MerlinModule):
     r"""
     Fidelity Quantum Kernel
@@ -769,11 +1087,6 @@ class FidelityKernel(MerlinModule):
         if self.feature_map.circuit.m != len(input_state):
             raise ValueError("Input state length does not match circuit size.")
 
-        self.is_trainable = feature_map.is_trainable
-        if self.is_trainable:
-            for param_name, param in feature_map._training_dict.items():
-                self.register_parameter(param_name, param)
-
         experiment = getattr(self.feature_map, "experiment", None)
         if experiment is None:
             experiment = pcvl.Experiment(self.feature_map.circuit)
@@ -801,100 +1114,42 @@ class FidelityKernel(MerlinModule):
                 "for an input state with a photon in all modes."
             )
 
-        m, n = len(input_state), sum(input_state)
-        self._detectors, self._empty_detectors = resolve_detectors(self.experiment, m)
+        m = len(input_state)
+        _detectors, _empty_detectors = resolve_detectors(self.experiment, m)
 
-        # Verify that no Detector was defined in experiment if using non-FOCK space:
-        if (
-            not self._empty_detectors
-            and self.computation_space is not ComputationSpace.FOCK
-        ):
+        # Verify that no Detector was defined in experiment if using non-FOCK space.
+        if not _empty_detectors and self.computation_space is not ComputationSpace.FOCK:
             raise RuntimeError(
                 "computation_space must be FOCK if Experiment contains at least one Detector."
             )
 
-        self._slos_graph = build_slos_graph(
-            m=m,
-            n_photons=n,
-            computation_space=self.computation_space,
-            keep_keys=True,
-            device=device,
-            dtype=self.dtype,
-        )
-        # Resolve raw simulation keys and photon loss transform
-        raw_keys = [tuple(int(v) for v in key) for key in self._slos_graph.final_keys]
-        self._raw_output_keys = raw_keys
-        try:
-            self._input_state_index = raw_keys.index(tuple(input_state))
-        except ValueError as exc:  # pragma: no cover - defensive guard
-            raise ValueError(
-                "Input state is not present in the simulation basis produced by the circuit."
-            ) from exc
-
-        self._photon_survival_probs, empty_noise_model = resolve_photon_loss(
-            self.experiment, m
-        )
+        # Resolve noise model presence from the experiment before building the backend.
+        _, empty_noise_model = resolve_photon_loss(self.experiment, m)
         self.has_custom_noise_model = not empty_noise_model
 
-        self._photon_loss_transform = PhotonLossTransform(
-            raw_keys,
-            self._photon_survival_probs,
+        _layer = CCInvQuantumLayer(
+            experiment=self.experiment,
+            input_state=input_state,
+            input_size=self.input_size,
+            input_parameters=[self.feature_map.input_parameters],
+            trainable_parameters=self.feature_map.trainable_parameters,
+            computation_space=self.computation_space,
             dtype=self.dtype,
             device=self.device,
         )
-        self._photon_loss_is_identity = self._photon_loss_transform.is_identity
-        self._photon_loss_keys = self._photon_loss_transform.output_keys
-        try:
-            self._photon_loss_input_index = self._photon_loss_keys.index(
-                tuple(input_state)
-            )
-        except ValueError as exc:  # pragma: no cover - defensive guard
-            raise RuntimeError(
-                "Photon loss transform did not preserve the original input Fock state."
-            ) from exc
+        # Store as a plain Python attribute — bypasses nn.Module.__setattr__ so
+        # _quantum_layer is not registered as a sub-module.  Its parameters are
+        # re-registered below with their original flat names, which preserves
+        # the public named_parameters() / state_dict() API.
+        object.__setattr__(self, "_quantum_layer", _layer)
 
-        self._detector_transform = DetectorTransform(
-            self._photon_loss_keys,
-            self._detectors,
-            dtype=self.dtype,
-            device=self.device,
-        )
-        self._detector_is_identity = self._detector_transform.is_identity
-        weight_device = self.device or torch.device("cpu")
-        one_hot = torch.zeros(
-            len(self._raw_output_keys), dtype=self.dtype, device=weight_device
-        )
-        one_hot[self._input_state_index] = 1.0
-        loss_vector = self._apply_photon_loss_transform(one_hot)
-        if loss_vector.ndim > 1:
-            loss_vector = loss_vector.squeeze(0)
-        detection_vector = (
-            loss_vector
-            if self._detector_is_identity
-            else self._detector_transform(loss_vector)
-        )
-        if detection_vector.ndim > 1:
-            detection_vector = detection_vector.squeeze(0)
-        detection_vector = detection_vector.to(dtype=self.dtype, device=weight_device)
-        nonzero = torch.nonzero(detection_vector > 1e-8, as_tuple=True)[0]
-        self._input_detection_index = None
-        if nonzero.numel() == 1 and torch.isclose(
-            detection_vector[nonzero[0]],
-            torch.tensor(
-                1.0, dtype=detection_vector.dtype, device=detection_vector.device
-            ),
-            atol=1e-6,
-        ):
-            self._input_detection_index = int(nonzero[0].item())
-        self.register_buffer("_input_detection_weights", detection_vector)
-        # For sampling
-        self._autodiff_process = AutoDiffProcess()
-
-    def _apply_photon_loss_transform(self, distribution: Tensor) -> Tensor:
-        """Apply photon loss transform when a noise model is defined."""
-        if self._photon_loss_is_identity:
-            return distribution
-        return self._photon_loss_transform(distribution)
+        self.is_trainable = feature_map.is_trainable
+        if self.is_trainable:
+            # Re-register each backend parameter directly on FidelityKernel so
+            # that named_parameters() returns flat names ("theta", not
+            # "_quantum_layer.theta"), matching the pre-refactor public API.
+            for name, param in _layer.named_parameters():
+                self.register_parameter(name, param)
 
     def forward(
         self,
@@ -943,44 +1198,26 @@ class FidelityKernel(MerlinModule):
             x1 = x1.reshape(-1, self.input_size)
             x2 = x2.reshape(-1, self.input_size) if x2 is not None else None
         else:
-            raise (TypeError("x2 is not None nor torch.Tensor"))
+            raise TypeError("x2 is not None nor torch.Tensor")
 
-        # Check if we are constructing training matrix
         equal_inputs = self._check_equal_inputs(x1, x2)
-        U_forward = torch.stack([
-            self.feature_map.compute_unitary(x).to(x1.device) for x in x1
-        ])
+        U_forward = self._quantum_layer._compute_unitary_batch(x1).to(x1.device)
 
         len_x1 = len(x1)
         if x2 is not None:
-            x2_tensor = (
-                x2
-                if isinstance(x2, torch.Tensor)
-                else torch.as_tensor(x2, dtype=self.dtype, device=self.device)
+            U_adjoint = (
+                self._quantum_layer
+                ._compute_unitary_batch(x2)
+                .conj()
+                .transpose(1, 2)
+                .to(x1.device)
             )
-            U_adjoint = torch.stack([
-                self.feature_map.compute_unitary(x).transpose(0, 1).conj().to(x1.device)
-                for x in x2_tensor
-            ])
-            if isinstance(x2, torch.Tensor):
-                U_adjoint = torch.stack([
-                    self.feature_map
-                    .compute_unitary(x)
-                    .transpose(0, 1)
-                    .conj()
-                    .to(x1.device)
-                    for x in x2
-                ])
-            else:
-                raise (TypeError("x2 is not None nor torch.Tensor"))
-
-            # Calculate circuit unitary for every pair of datapoints
+            # All (len_x1 × len_x2) pair unitaries
             all_circuits = U_forward.unsqueeze(1) @ U_adjoint.unsqueeze(0)
             all_circuits = all_circuits.view(-1, *all_circuits.shape[2:])
         else:
             U_adjoint = U_forward.conj().transpose(1, 2)
-
-            # Take circuit unitaries for upper diagonal of kernel matrix only
+            # Upper-triangle pairs only to exploit symmetry
             upper_idx = torch.triu_indices(
                 len_x1,
                 len_x1,
@@ -989,36 +1226,14 @@ class FidelityKernel(MerlinModule):
             )
             all_circuits = U_forward[upper_idx[0]] @ U_adjoint[upper_idx[1]]
 
-        # Distribution for every evaluated circuit
-        _, probabilities = self._slos_graph.compute_probs(
-            all_circuits, self.input_state
+        transition_probs = self._quantum_layer._compute_transition_probs(
+            all_circuits, self.input_state, self.shots, self.sampling_method
         )
 
-        if probabilities.ndim == 1:
-            probabilities = probabilities.unsqueeze(0)
-        probabilities = probabilities.to(dtype=self.dtype)
-        loss_probs = self._apply_photon_loss_transform(probabilities)
-        detection_probs = self._detector_transform(loss_probs)
-
-        if self.shots > 0:
-            detection_probs = self._autodiff_process.sampling_noise.pcvl_sampler(
-                detection_probs, self.shots, self.sampling_method
-            )
-
-        if self._input_detection_index is not None:
-            transition_probs = detection_probs[:, self._input_detection_index]
-        else:
-            weights = self._input_detection_weights.to(
-                dtype=detection_probs.dtype, device=detection_probs.device
-            )
-            transition_probs = detection_probs @ weights
-
         if x2 is None:
-            # Copy transition probs to upper & lower diagonal
             kernel_matrix = torch.zeros(
                 len_x1, len_x1, dtype=self.dtype, device=x1.device
             )
-
             upper_idx = upper_idx.to(x1.device)
             transition_probs = transition_probs.to(dtype=self.dtype, device=x1.device)
             kernel_matrix[upper_idx[0], upper_idx[1]] = transition_probs
@@ -1027,25 +1242,11 @@ class FidelityKernel(MerlinModule):
 
             if self.force_psd:
                 kernel_matrix = self._project_psd(kernel_matrix)
-
         else:
-            x2_tensor = (
-                x2
-                if isinstance(x2, torch.Tensor)
-                else torch.as_tensor(x2, dtype=self.dtype, device=self.device)
-            )
             transition_probs = transition_probs.to(dtype=self.dtype, device=x1.device)
-            kernel_matrix = transition_probs.reshape(len_x1, len(x2_tensor))
-            if isinstance(x2, torch.Tensor):
-                transition_probs = transition_probs.to(
-                    dtype=self.dtype, device=x1.device
-                )
-                kernel_matrix = transition_probs.reshape(len_x1, len(x2))
-            else:
-                raise (TypeError("x2 is not None nor torch.Tensor"))
+            kernel_matrix = transition_probs.reshape(len_x1, len(x2))
 
             if self.force_psd and equal_inputs:
-                # Symmetrize the matrix
                 kernel_matrix = 0.5 * (kernel_matrix + kernel_matrix.T)
                 kernel_matrix = self._project_psd(kernel_matrix)
 
@@ -1056,16 +1257,28 @@ class FidelityKernel(MerlinModule):
         x1: Tensor | np.ndarray | float | int,
         x2: Tensor | np.ndarray | float | int,
     ) -> float:
-        """Returns scalar kernel value for input datapoints"""
-        # Normalize to torch.Tensor on correct device/dtype
+        """Return the scalar kernel value for a single pair of datapoints.
+
+        Parameters
+        ----------
+        x1 : torch.Tensor | numpy.ndarray | float | int
+            First datapoint.
+        x2 : torch.Tensor | numpy.ndarray | float | int
+            Second datapoint.
+
+        Returns
+        -------
+        float
+            Scalar kernel value.
+        """
         if isinstance(x1, np.ndarray):
-            x1_t = torch.from_numpy(x1)
+            x1_t: Tensor = torch.from_numpy(x1)
         elif isinstance(x1, (float, int)):
             x1_t = torch.tensor([x1])
         else:
             x1_t = x1
         if isinstance(x2, np.ndarray):
-            x2_t = torch.from_numpy(x2)
+            x2_t: Tensor = torch.from_numpy(x2)
         elif isinstance(x2, (float, int)):
             x2_t = torch.tensor([x2])
         else:
@@ -1078,35 +1291,14 @@ class FidelityKernel(MerlinModule):
             self.input_size
         )
 
-        U = self.feature_map.compute_unitary(x1_t)
-        U_adjoint = self.feature_map.compute_unitary(x2_t)
-        U_adjoint = U_adjoint.conj().T
-
-        kernel_unitary = U @ U_adjoint
-        _, probabilities = self._slos_graph.compute_probs(
-            kernel_unitary, self.input_state
+        kernel_unitary = self._quantum_layer._compute_kernel_unitary(x1_t, x2_t)
+        transition_probs = self._quantum_layer._compute_transition_probs(
+            kernel_unitary.unsqueeze(0),
+            self.input_state,
+            self.shots,
+            self.sampling_method,
         )
-        if probabilities.ndim == 1:
-            probabilities = probabilities.unsqueeze(0)
-        probabilities = probabilities.to(dtype=self.dtype, device=self.device)
-
-        loss_probs = self._apply_photon_loss_transform(probabilities)
-        detection_probs = self._detector_transform(loss_probs)
-
-        if self.shots > 0:
-            detection_probs = self._autodiff_process.sampling_noise.pcvl_sampler(
-                detection_probs, self.shots, self.sampling_method
-            )
-
-        if self._input_detection_index is not None:
-            value = detection_probs[0, self._input_detection_index]
-        else:
-            weights = self._input_detection_weights.to(
-                dtype=detection_probs.dtype, device=detection_probs.device
-            )
-            value = (detection_probs @ weights)[0]
-
-        return value.item()
+        return transition_probs[0].item()
 
     @classmethod
     @sanitize_parameters
@@ -1185,13 +1377,9 @@ class FidelityKernel(MerlinModule):
     @staticmethod
     def _project_psd(matrix: Tensor) -> Tensor:
         """Projects a symmetric matrix to closest positive semi-definite"""
-        # Perform spectral decomposition and set negative eigenvalues to 0
         eigenvals, eigenvecs = torch.linalg.eigh(matrix)
         eigenvals = torch.diag(torch.where(eigenvals > 0, eigenvals, 0))
-
-        matrix_psd = eigenvecs @ eigenvals @ eigenvecs.T
-
-        return matrix_psd
+        return eigenvecs @ eigenvals @ eigenvecs.T
 
     @staticmethod
     def _check_equal_inputs(x1, x2) -> bool:

@@ -7,10 +7,16 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.svm import SVC
 
-from merlin.algorithms.kernels import FeatureMap, FidelityKernel, KernelCircuitBuilder
+from merlin.algorithms.kernels import (
+    FeatureMap,
+    FidelityKernel,
+    KernelCircuitBuilder,
+    _KernelPairConverterProxy,
+)
 from merlin.algorithms.loss import NKernelAlignment
 from merlin.builder import CircuitBuilder
 from merlin.core.computation_space import ComputationSpace
+from merlin.pcvl_pytorch.locirc_to_tensor import CircuitConverter
 
 
 class TestFeatureMap:
@@ -101,6 +107,42 @@ class TestFeatureMap:
             )
 
 
+class TestKernelPairConverterProxy:
+    def setup_method(self):
+        x1 = pcvl.P("x1")
+        x2 = pcvl.P("x2")
+        theta = pcvl.P("theta")
+        self.circuit = (
+            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS(theta) // pcvl.PS(x2)
+        )
+        self.base = CircuitConverter(
+            self.circuit,
+            ["theta", "x"],
+            dtype=torch.float64,
+            device=torch.device("cpu"),
+        )
+
+    def test_to_tensor_matches_explicit_pair_unitary(self):
+        theta = torch.tensor([0.3], dtype=torch.float64)
+        x1 = torch.tensor([0.5, 1.0], dtype=torch.float64)
+        x2 = torch.tensor([1.5, 0.25], dtype=torch.float64)
+        proxy = _KernelPairConverterProxy(self.base, x1, x2)
+
+        expected = self.base.to_tensor(theta, x1) @ self.base.to_tensor(
+            theta, x2
+        ).conj().mT
+        actual = proxy.to_tensor(theta)
+
+        assert torch.allclose(actual, expected, atol=1e-12)
+
+    def test_spec_mappings_are_forwarded(self):
+        x1 = torch.tensor([0.5, 1.0], dtype=torch.float64)
+        x2 = torch.tensor([1.5, 0.25], dtype=torch.float64)
+        proxy = _KernelPairConverterProxy(self.base, x1, x2)
+
+        assert proxy.spec_mappings is self.base.spec_mappings
+
+
 class TestFidelityKernel:
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
@@ -177,15 +219,13 @@ class TestFidelityKernel:
     def test_kernel_scalar_computation(self):
         x1 = torch.tensor([0.5, 1.0])
         x2 = torch.tensor([1.0, 0.5])
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            kernel_value = self.quantum_kernel(x1, x2)
+        kernel_value = self.quantum_kernel(x1, x2)
         assert isinstance(kernel_value, float)
         assert 0.0 <= kernel_value <= 1.0
 
     def test_kernel_matrix_symmetric(self):
         X = torch.tensor([[0.5, 1.0], [1.5, 0.5], [0.0, 2.0]])
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            K = self.quantum_kernel(X)
+        K = self.quantum_kernel(X)
 
         assert K.shape == (3, 3)
         # Relax tolerance slightly for GPU numeric differences
@@ -198,8 +238,7 @@ class TestFidelityKernel:
         X_train = torch.tensor([[0.5, 1.0], [1.5, 0.5]])
         X_test = torch.tensor([[0.0, 2.0], [1.0, 1.0], [2.0, 0.0]])
 
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            K = self.quantum_kernel(X_test, X_train)
+        K = self.quantum_kernel(X_test, X_train)
 
         assert K.shape == (3, 2)
         assert torch.all(K >= 0)
@@ -207,8 +246,7 @@ class TestFidelityKernel:
 
     def test_kernel_with_numpy_input(self):
         X = np.array([[0.5, 1.0], [1.5, 0.5], [0.0, 2.0]])
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            K = self.quantum_kernel(X)
+        K = self.quantum_kernel(X)
 
         assert K.shape == (3, 3)
         assert np.allclose(K, K.T, atol=1e-6)
@@ -223,8 +261,7 @@ class TestFidelityKernel:
         )
 
         X = torch.tensor([[0.5, 1.0], [1.5, 0.5]])
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            K = kernel(X)
+        K = kernel(X)
 
         assert K.shape == (2, 2)
         assert torch.allclose(torch.diag(K), torch.ones(2), atol=0.1)
@@ -331,10 +368,8 @@ class TestFidelityKernel:
         X1 = rng.random(input_size)
         X2 = rng.random(input_size)
 
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            merlin_pnr = float(quantum_kernel(X1, X2))
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            merlin_thr = float(unbunching_kernel(X1, X2))
+        merlin_pnr = float(quantum_kernel(X1, X2))
+        merlin_thr = float(unbunching_kernel(X1, X2))
 
         print(f"MerLin quantum kernel (PNR) {merlin_pnr}")
         print(f"MerLin quantum kernel (THR) {merlin_thr} \n")
@@ -816,8 +851,7 @@ class TestKernelCircuitBuilder:
         )
 
         x = torch.rand(3, 4)
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            K = kernel(x)
+        K = kernel(x)
 
         assert K.shape == (3, 3)
         assert torch.isfinite(K).all()
@@ -916,10 +950,7 @@ class TestKernelConstructionConsistency:
 
         X = torch.tensor([[0.1, 0.2]], dtype=torch.float32)
         for kernel in (k_manual, k_simple, k_builder):
-            with pytest.warns(
-                DeprecationWarning, match="compute_unitary is deprecated"
-            ):
-                result = kernel(X)
+            result = kernel(X)
             assert result.shape == (1, 1)
             assert torch.isfinite(result).all()
 
@@ -948,10 +979,8 @@ class TestKernelIntegration:
         )
 
         # Compute kernel matrices
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            K_train = quantum_kernel(X_train).detach().numpy()
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            K_test = quantum_kernel(X_test, X_train).detach().numpy()
+        K_train = quantum_kernel(X_train).detach().numpy()
+        K_test = quantum_kernel(X_test, X_train).detach().numpy()
 
         # Train with sklearn
         svc = SVC(kernel="precomputed")
@@ -998,10 +1027,7 @@ class TestKernelIntegration:
         for epoch in range(5):
             optimizer.zero_grad()
 
-            with pytest.warns(
-                DeprecationWarning, match="compute_unitary is deprecated"
-            ):
-                K = quantum_kernel(X)
+            K = quantum_kernel(X)
             loss = loss_fn(K, y)
 
             if epoch == 0:
@@ -1099,10 +1125,8 @@ def test_iris_dataset_quantum_kernel():
     kernel = get_quantum_kernel(input_size=4, modes=10, photons=4)
 
     # Compute kernel matrices
-    with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-        K_train = kernel(X_train_tensor).detach().numpy()
-    with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-        K_test = kernel(X_test_tensor, X_train_tensor).detach().numpy()
+    K_train = kernel(X_train_tensor).detach().numpy()
+    K_test = kernel(X_test_tensor, X_train_tensor).detach().numpy()
 
     # Verify kernel properties
     assert K_train.shape == (len(X_train), len(X_train))
@@ -1173,8 +1197,7 @@ def test_iris_dataset_kernel_training_with_nka():
     for epoch in range(3):  # Short training for test
         optimizer.zero_grad()
 
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            K_train = kernel(X_train_tensor)
+        K_train = kernel(X_train_tensor)
         loss = loss_fn(K_train, y_train_tensor)
 
         if epoch == 0:
@@ -1186,10 +1209,8 @@ def test_iris_dataset_kernel_training_with_nka():
         optimizer.step()
 
     # Test with trained kernel
-    with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-        K_train_final = kernel(X_train_tensor).detach().numpy()
-    with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-        K_test_final = kernel(X_test_tensor, X_train_tensor).detach().numpy()
+    K_train_final = kernel(X_train_tensor).detach().numpy()
+    K_test_final = kernel(X_test_tensor, X_train_tensor).detach().numpy()
 
     # Train SVM
     svc = SVC(kernel="precomputed", random_state=42)
@@ -1450,11 +1471,9 @@ def _test_kernel_classification(kernel, X_train, X_test, y_train, y_test, method
     """Helper function to test kernel classification and return accuracy or status."""
     try:
         # Compute kernel matrices
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            K_train = kernel(X_train)
+        K_train = kernel(X_train)
         print(f"K_train = {K_train}")
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            K_test = kernel(X_test, X_train)
+        K_test = kernel(X_test, X_train)
 
         # Verify kernel properties
         assert K_train.shape == (len(X_train), len(X_train))
