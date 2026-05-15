@@ -21,6 +21,20 @@ merlin.algorithms.kernels module
    :undoc-members:
    :show-inheritance:
 
+Deprecations
+------------
+
+.. warning:: *Deprecated since version 0.3:*
+   The ``no_bunching`` flag accepted by legacy kernel constructors is removed
+   since version 0.3.0. Use the ``computation_space`` parameter instead.
+   See :doc:`/user_guide/migration_guide`.
+
+.. warning:: *Deprecated since version 0.4:*
+   Direct unitary construction through :meth:`FeatureMap.compute_unitary` is a
+   legacy path. It still owns compiler state for backwards compatibility, but
+   :class:`FidelityKernel` no longer uses it. Use :class:`FidelityKernel` for
+   kernel computations.
+
 .. note::
 
    :class:`~merlin.algorithms.kernels.FeatureMap` is the descriptor used by
@@ -29,11 +43,6 @@ merlin.algorithms.kernels module
    :class:`~merlin.algorithms.kernels.FidelityKernel` uses the internal
    ``CCInvQuantumLayer`` adapter, and ``CCInvQuantumLayer`` uses the
    :class:`~merlin.algorithms.layer.QuantumLayer` backend. 
-
-   This new path does not use :meth:`FeatureMap.compute_unitary` anymore. Direct 
-   unitary construction through :meth:`FeatureMap.compute_unitary` is a
-   legacy path. It still owns compiler state for backwards compatibility, but
-   it is deprecated and will be removed in a future release.
 
 .. note::
 
