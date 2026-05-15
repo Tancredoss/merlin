@@ -42,7 +42,7 @@ Deprecations
    experiment, input size, parameter prefixes, dtype, and device.
    :class:`~merlin.algorithms.kernels.FidelityKernel` uses the internal
    ``CCInvQuantumLayer`` adapter, and ``CCInvQuantumLayer`` uses the
-   :class:`~merlin.algorithms.layer.QuantumLayer` backend. 
+   :class:`~merlin.algorithms.layer.QuantumLayer` backend.
 
 .. note::
 
@@ -91,9 +91,10 @@ Custom experiment with FeatureMap
     import perceval as pcvl
     from merlin.algorithms.kernels import FeatureMap, FidelityKernel
 
-    # Define a photonic circuit
+    # Define a photonic circuit with two input parameters
     circuit = pcvl.Circuit(6)
-    # Add whatever to the circuit...
+    circuit.add(0, pcvl.PS(pcvl.P("x0")))
+    circuit.add(1, pcvl.PS(pcvl.P("x1")))
 
     # Define the Experiment
     experiment = pcvl.Experiment(circuit)
@@ -102,20 +103,21 @@ Custom experiment with FeatureMap
     experiment.detectors[0] = pcvl.Detector.threshold()
     experiment.detectors[5] = pcvl.Detector.ppnr(n_wires=3)
 
-    # Use the experiment to create a FeatureMap automatically
-    feature_map = FeatureMap.from_photonic_backend(
-        input_size=0,
+    # Use the experiment to create a FeatureMap
+    feature_map = FeatureMap(
         experiment=experiment,
+        input_size=2,
+        input_parameters="x",
     )
 
     # Build the kernel with a specific input state
     kernel = FidelityKernel(
         feature_map=feature_map,
         input_state=[2, 0, 2, 0, 2, 0],
-        computation_space=ComputationSpace.FOCK, 
+        computation_space=ComputationSpace.FOCK,
     )
 
-    X = torch.rand(8, 3)
+    X = torch.rand(8, 2)
     K = kernel(X)  # (8, 8)
 
 Use with scikit-learn (precomputed kernel)

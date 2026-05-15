@@ -52,7 +52,8 @@ class FeatureMap:
 
     ``FidelityKernel`` treats this object as a descriptor. It passes the stored
     experiment, parameter prefixes, input size, dtype, and device to
-    ``_CCInvQuantumLayer``, the internal adapter over the :class:`QuantumLayer`
+    ``_CCInvQuantumLayer``, the internal adapter over the
+    :class:`~merlin.algorithms.layer.QuantumLayer`
     backend. Legacy unitary-building state remains on ``FeatureMap`` only to
     support deprecated direct calls to :meth:`compute_unitary`.
 
@@ -93,7 +94,45 @@ class FeatureMap:
         dtype: str | torch.dtype = torch.float32,
         device: torch.device | None = None,
         encoder: Callable[[Tensor], Tensor] | None = None,  # was: callable | None
-    ):
+    ) -> None:
+        """Initialize a feature-map descriptor.
+
+        Parameters
+        ----------
+        circuit : pcvl.Circuit | None
+            Pre-compiled Perceval circuit used to encode features.
+        input_size : int | None
+            Dimension of incoming classical data. Required.
+        builder : CircuitBuilder | None
+            Optional builder used to compile a circuit declaratively.
+        experiment : pcvl.Experiment | None
+            Optional experiment providing both the circuit and detector
+            configuration. Exactly one of ``circuit``, ``builder``, or
+            ``experiment`` must be supplied.
+        input_parameters : str | list[str] | None
+            Parameter prefix or single-item prefix list hosting the classical
+            data.
+        trainable_parameters : list[str] | None
+            Optional trainable parameter prefixes.
+        dtype : str | torch.dtype
+            Torch dtype used when constructing the unitary. Default is
+            ``torch.float32``.
+        device : torch.device | None
+            Torch device on which unitaries are evaluated. If omitted, CPU is
+            used.
+        encoder : Callable[[torch.Tensor], torch.Tensor] | None
+            Optional custom encoder used by the deprecated
+            :meth:`compute_unitary` path when the raw input shape does not
+            match the circuit parameter layout.
+
+        Raises
+        ------
+        TypeError
+            If ``input_size`` is omitted.
+        ValueError
+            If the circuit source, experiment configuration, or input parameter
+            declaration is invalid.
+        """
         builder_trainable: list[str] = []
         builder_input: list[str] = []
 
@@ -184,7 +223,8 @@ class FeatureMap:
         .. warning:: *Deprecated since version 0.4:*
             This helper belongs to the legacy ``FeatureMap.compute_unitary``
             path. ``FidelityKernel`` uses ``_CCInvQuantumLayer`` over the
-            :class:`QuantumLayer` backend and does not rely on this method.
+            :class:`~merlin.algorithms.layer.QuantumLayer` backend and does
+            not rely on this method.
 
         Returns
         -------
@@ -199,7 +239,8 @@ class FeatureMap:
         .. warning:: *Deprecated since version 0.4:*
             This helper belongs to the legacy ``FeatureMap.compute_unitary``
             path. ``FidelityKernel`` uses ``_CCInvQuantumLayer`` over the
-            :class:`QuantumLayer` backend and does not rely on this method.
+            :class:`~merlin.algorithms.layer.QuantumLayer` backend and does
+            not rely on this method.
 
         Parameters
         ----------
@@ -240,7 +281,8 @@ class FeatureMap:
         .. warning:: *Deprecated since version 0.4:*
             This helper belongs to the legacy ``FeatureMap.compute_unitary``
             path. ``FidelityKernel`` uses ``_CCInvQuantumLayer`` over the
-            :class:`QuantumLayer` backend and does not rely on this method.
+            :class:`~merlin.algorithms.layer.QuantumLayer` backend and does
+            not rely on this method.
 
         Preference order:
 
@@ -302,7 +344,8 @@ class FeatureMap:
         .. warning:: *Deprecated since version 0.4:*
             This helper belongs to the legacy ``FeatureMap.compute_unitary``
             path. ``FidelityKernel`` uses ``_CCInvQuantumLayer`` over the
-            :class:`QuantumLayer` backend and does not rely on this method.
+            :class:`~merlin.algorithms.layer.QuantumLayer` backend and does
+            not rely on this method.
 
         Parameters
         ----------
@@ -355,7 +398,9 @@ class FeatureMap:
 
     @sanitize_parameters
     def compute_unitary(
-        self, x: torch.Tensor | np.ndarray | float, *training_parameters: torch.Tensor
+        self,
+        x: torch.Tensor | np.ndarray | float | int,
+        *training_parameters: torch.Tensor,
     ) -> torch.Tensor:
         """Generate the circuit unitary after encoding `x` and applying trainables.
 
@@ -363,13 +408,14 @@ class FeatureMap:
             ``compute_unitary`` is deprecated and will be removed in a future release.
             It uses legacy compiler state stored on ``FeatureMap``. Use
             :class:`FidelityKernel` for kernel computations; ``FidelityKernel``
-            uses ``_CCInvQuantumLayer`` over the :class:`QuantumLayer` backend
+            uses ``_CCInvQuantumLayer`` over the
+            :class:`~merlin.algorithms.layer.QuantumLayer` backend
             and treats ``FeatureMap`` as a descriptor without relying on this
             method.
 
         Parameters
         ----------
-        x : torch.Tensor | numpy.ndarray | float
+        x : torch.Tensor | numpy.ndarray | float | int
             Single datapoint to embed; accepts scalars, NumPy arrays, or
             tensors.
         training_parameters : torch.Tensor
@@ -379,6 +425,13 @@ class FeatureMap:
         -------
         torch.Tensor
             Complex unitary matrix representing the prepared circuit.
+
+        Raises
+        ------
+        TypeError
+            If ``x`` has an unsupported type.
+        ValueError
+            If angle encoding metadata is inconsistent with ``x``.
         """
         # Normalize input to tensor on correct device/dtype
         if isinstance(x, torch.Tensor):
@@ -419,6 +472,12 @@ class FeatureMap:
         -------
         bool
             ``True`` when ``x`` corresponds to a single datapoint.
+
+        Raises
+        ------
+        ValueError
+            If ``x`` cannot be reshaped into samples of size
+            ``input_size``.
         """
         if isinstance(x, (float, int)):
             if self.input_size == 1:
@@ -466,7 +525,7 @@ class FeatureMap:
         dtype: str | torch.dtype = torch.float32,
         device: torch.device | None = None,
         angle_encoding_scale: float = 1.0,
-        n_modes: int = None,
+        n_modes: int | None = None,
     ) -> "FeatureMap":
         """Simple factory method to create a FeatureMap with minimal configuration.
 
@@ -488,6 +547,11 @@ class FeatureMap:
         -------
         FeatureMap
             Configured feature-map instance.
+
+        Raises
+        ------
+        ValueError
+            If ``input_size`` or ``n_modes`` is outside the supported range.
         """
         if n_modes is None:
             n_modes = input_size + 1
@@ -553,17 +617,50 @@ class KernelCircuitBuilder:
         self._trainable_prefix: str = "phi"
 
     def input_size(self, size: int) -> "KernelCircuitBuilder":
-        """Set the input dimensionality."""
+        """Set the input dimensionality.
+
+        Parameters
+        ----------
+        size : int
+            Number of classical features encoded by the kernel circuit.
+
+        Returns
+        -------
+        KernelCircuitBuilder
+            Builder instance for method chaining.
+        """
         self._input_size = size
         return self
 
     def n_modes(self, modes: int) -> "KernelCircuitBuilder":
-        """Set the number of modes in the circuit."""
+        """Set the number of modes in the circuit.
+
+        Parameters
+        ----------
+        modes : int
+            Number of photonic modes in the generated circuit.
+
+        Returns
+        -------
+        KernelCircuitBuilder
+            Builder instance for method chaining.
+        """
         self._n_modes = modes
         return self
 
     def n_photons(self, photons: int) -> "KernelCircuitBuilder":
-        """Set the number of photons."""
+        """Set the number of photons.
+
+        Parameters
+        ----------
+        photons : int
+            Number of photons used when generating a default input state.
+
+        Returns
+        -------
+        KernelCircuitBuilder
+            Builder instance for method chaining.
+        """
         self._n_photons = photons
         return self
 
@@ -573,19 +670,56 @@ class KernelCircuitBuilder:
         *,
         prefix: str = "phi",
     ) -> "KernelCircuitBuilder":
-        """Enable or disable trainable rotations generated by the helper."""
+        """Enable or disable trainable rotations generated by the helper.
+
+        Parameters
+        ----------
+        enabled : bool
+            Whether trainable rotations are added to generated feature maps.
+            Default is ``True``.
+        prefix : str
+            Parameter prefix used for trainable rotations when ``enabled`` is
+            ``True``. Default is ``"phi"``.
+
+        Returns
+        -------
+        KernelCircuitBuilder
+            Builder instance for method chaining.
+        """
         self._trainable = enabled
         if enabled:
             self._trainable_prefix = prefix
         return self
 
     def dtype(self, dtype: str | torch.dtype) -> "KernelCircuitBuilder":
-        """Set the data type for computations."""
+        """Set the data type for computations.
+
+        Parameters
+        ----------
+        dtype : str | torch.dtype
+            Real dtype used by generated feature maps and kernels.
+
+        Returns
+        -------
+        KernelCircuitBuilder
+            Builder instance for method chaining.
+        """
         self._dtype = dtype
         return self
 
     def device(self, device: torch.device) -> "KernelCircuitBuilder":
-        """Set the computation device."""
+        """Set the computation device.
+
+        Parameters
+        ----------
+        device : torch.device
+            Device on which generated kernels evaluate tensors.
+
+        Returns
+        -------
+        KernelCircuitBuilder
+            Builder instance for method chaining.
+        """
         self._device = device
         return self
 
@@ -594,7 +728,19 @@ class KernelCircuitBuilder:
         *,
         scale: float = 1.0,
     ) -> "KernelCircuitBuilder":
-        """Configure the angle encoding scale."""
+        """Configure the angle encoding scale.
+
+        Parameters
+        ----------
+        scale : float
+            Multiplicative scale applied to angle encoding features. Default is
+            ``1.0``.
+
+        Returns
+        -------
+        KernelCircuitBuilder
+            Builder instance for method chaining.
+        """
         self._angle_encoding_scale = scale
         return self
 
@@ -1008,8 +1154,8 @@ class FidelityKernel(MerlinModule):
     - ``FeatureMap._subset_sum_expand``
 
     ``FidelityKernel`` does not use these methods. It delegates kernel
-    computation to ``_CCInvQuantumLayer``, which uses the :class:`QuantumLayer`
-    backend.
+    computation to ``_CCInvQuantumLayer``, which uses the
+    :class:`~merlin.algorithms.layer.QuantumLayer` backend.
 
     For a given input Fock state, :math:`|s \rangle` and feature map,
     :math:`U`, the fidelity quantum kernel estimates the following inner
@@ -1092,7 +1238,44 @@ class FidelityKernel(MerlinModule):
         force_psd: bool = True,
         device: torch.device | None = None,
         dtype: str | torch.dtype | None = None,
-    ):
+    ) -> None:
+        """Initialize a fidelity quantum kernel.
+
+        Parameters
+        ----------
+        feature_map : FeatureMap
+            Feature-map descriptor that provides the circuit or experiment,
+            parameter prefixes, input size, dtype, and device.
+        input_state : list[int]
+            Input Fock state occupation list.
+        shots : int | None
+            Number of pseudo-sampling shots. If omitted or ``None``, exact
+            probabilities are used. Default is ``None``.
+        sampling_method : str
+            Pseudo-sampling method used when ``shots`` is positive. Default is
+            ``"multinomial"``.
+        computation_space : ComputationSpace | str | None
+            Logical computation subspace. If omitted, ``ComputationSpace.FOCK``
+            is used.
+        force_psd : bool
+            Whether training kernel matrices are projected to the nearest
+            positive semi-definite matrix. Default is ``True``.
+        device : torch.device | None
+            Device on which the kernel backend evaluates tensors. If omitted,
+            the feature map device is used.
+        dtype : str | torch.dtype | None
+            Real dtype used by the kernel backend. If omitted, the feature map
+            dtype is used.
+
+        Raises
+        ------
+        ValueError
+            If the input state, experiment, circuit size, or computation space
+            is incompatible with fidelity-kernel evaluation.
+        RuntimeError
+            If detector transforms are combined with a non-FOCK computation
+            space.
+        """
         super().__init__()
         if computation_space is None:
             computation_space = ComputationSpace.FOCK
@@ -1178,7 +1361,7 @@ class FidelityKernel(MerlinModule):
         self,
         x1: float | np.ndarray | torch.Tensor,
         x2: float | np.ndarray | torch.Tensor | None = None,
-    ):
+    ) -> float | Tensor:
         """Calculate the quantum kernel for input data ``x1`` and ``x2``.
 
         If ``x1`` and ``x2`` are datapoints, a scalar value is returned. For
@@ -1194,8 +1377,17 @@ class FidelityKernel(MerlinModule):
 
         Returns
         -------
-        torch.Tensor
-            Scalar kernel value for datapoints, or a kernel matrix for datasets.
+        float | torch.Tensor
+            Scalar kernel value for datapoints, or a kernel matrix for
+            datasets.
+
+        Raises
+        ------
+        TypeError
+            If ``x2`` cannot be converted to a tensor when provided.
+        ValueError
+            If scalar datapoints are passed without ``x2`` or if input shapes
+            are incompatible with the feature-map input size.
         """
         # Convert inputs to tensors and ensure they are on the correct device
         if not isinstance(x1, torch.Tensor):
@@ -1336,7 +1528,7 @@ class FidelityKernel(MerlinModule):
         dtype: str | torch.dtype = torch.float32,
         device: torch.device | None = None,
         angle_encoding_scale: float = 1.0,
-        n_modes: int = None,
+        n_modes: int | None = None,
     ) -> "FidelityKernel":
         """Create a simple fidelity kernel with minimal configuration.
 
@@ -1367,6 +1559,15 @@ class FidelityKernel(MerlinModule):
         -------
         FidelityKernel
             Configured fidelity kernel.
+
+        Raises
+        ------
+        ValueError
+            If the generated feature map or input state is incompatible with
+            fidelity-kernel evaluation.
+        RuntimeError
+            If the generated experiment configuration is incompatible with the
+            requested computation space.
         """
         feature_map = FeatureMap.simple(
             input_size=input_size,

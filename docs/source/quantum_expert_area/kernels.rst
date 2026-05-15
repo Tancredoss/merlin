@@ -72,7 +72,7 @@ The encoding follows a two-step preference order:
 	 subset‑sum expansion that enumerates and sums non‑empty feature subsets in
 	 lexicographic order.
 
-.. deprecated::
+.. deprecated:: 0.4
 
 	 The ``encoder`` callable accepted by :class:`~merlin.algorithms.kernels.FeatureMap`
 	 is **only** consulted by the legacy :meth:`~merlin.algorithms.kernels.FeatureMap.compute_unitary`
