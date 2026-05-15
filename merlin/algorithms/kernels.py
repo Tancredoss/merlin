@@ -506,6 +506,10 @@ class FeatureMap:
 class _KernelPairConverterProxy:
     """Wrap a converter to build a kernel pair unitary.
 
+    The wrapped converter is expected to receive trainable tensors first and
+    one encoded input tensor last. The proxy keeps that order and substitutes
+    the stored encoded datapoints to produce ``U(x1) @ U(x2).conj().mT``.
+
     Parameters
     ----------
     base : CircuitConverter
@@ -548,9 +552,13 @@ class _KernelPairConverterProxy:
         torch.Tensor
             Pair unitary tensor.
         """
-        u1 = self._base.to_tensor(*params, self._x1_enc, batch_size=batch_size)
-        u2 = self._base.to_tensor(*params, self._x2_enc, batch_size=batch_size)
-        return u1 @ u2.conj().mT
+        first_unitary = self._base.to_tensor(
+            *params, self._x1_enc, batch_size=batch_size
+        )
+        second_unitary = self._base.to_tensor(
+            *params, self._x2_enc, batch_size=batch_size
+        )
+        return first_unitary @ second_unitary.conj().mT
 
 
 class KernelCircuitBuilder:
