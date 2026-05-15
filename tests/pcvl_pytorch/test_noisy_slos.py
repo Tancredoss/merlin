@@ -112,7 +112,7 @@ def test_against_perceval(entangling_circuit):
     circuit_to_analyze = entangling_circuit
     unitary = CircuitConverter(circuit_to_analyze).to_tensor([])
 
-    for ind in torch.arange(0.1, 1.0, 9):
+    for ind in torch.linspace(0.1, 0.99, 9):
         noise_model = pcvl.NoiseModel(indistinguishability=ind.item())
         groups = classify_noise_model(noise_model)
         noisy_slos = NoisySLOSComputeGraph(

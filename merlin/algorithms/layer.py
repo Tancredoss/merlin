@@ -1064,8 +1064,11 @@ class QuantumLayer(MerlinModule):
                     )
                 return self.computation_process.compute_superposition_state(params)
         # If there is source noise, we just compute the probabilities
+        should_use_amplitude_encoding = self.amplitude_encoding or isinstance(
+            inferred_state, torch.Tensor
+        )
         return self.computation_process.compute(
-            params, amplitude_encoding=self.amplitude_encoding
+            params, amplitude_encoding=should_use_amplitude_encoding
         )
 
     def _renormalize_distribution_and_amplitudes(

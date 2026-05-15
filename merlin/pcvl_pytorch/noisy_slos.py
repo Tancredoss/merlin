@@ -107,7 +107,6 @@ class NoisySLOSComputeGraph:
 
         self.keep_keys = keep_keys
         self.device = device
-        self.device = device
         self.dtype = dtype
         self.cdtype = resolve_float_complex(dtype)[1]
 
@@ -128,7 +127,7 @@ class NoisySLOSComputeGraph:
                 build_slos_graph(
                     self.m,
                     n_i,
-                    computation_space=computation_space,
+                    computation_space=self.computation_space,
                     device=device,
                     dtype=dtype,
                 )
@@ -343,12 +342,12 @@ class _InputStateNoisySLOSComputeGraph:
         self.dtype = dtype
 
         # Weights of good & bad bits respectively
-        self.g = torch.sqrt(self.indistinguishability)
-        self.b = 1 - self.g
+        self.g = torch.sqrt(self.indistinguishability).to(device)
+        self.b = (1 - self.g).to(device)
 
         # Weights associated with each cell in each partition
         self._weights = [
-            self.g ** (self.n_photons - i) * self.b**i
+            (self.g ** (self.n_photons - i) * self.b**i).to(device)
             for i in range(self.n_photons + 1)
         ]
 
@@ -364,7 +363,9 @@ class _InputStateNoisySLOSComputeGraph:
 
         # All fock states associated with each photon number n
         self._fock_states_per_n = {
-            i: torch.tensor(Combinadics("fock", n=i, m=self.m).enumerate_states())
+            i: torch.tensor(Combinadics("fock", n=i, m=self.m).enumerate_states()).to(
+                device
+            )
             for i in range(1, self.n_photons + 1)
         }
 
@@ -409,7 +410,9 @@ class _InputStateNoisySLOSComputeGraph:
         output_keys_tensor = self._fock_states_per_n[self.n_photons]
         output_keys = [tuple(row) for row in output_keys_tensor.tolist()]
 
-        output_probs = torch.zeros(b, len(output_keys))
+        output_probs = torch.zeros(
+            b, len(output_keys), device=unitary.device, dtype=self.dtype
+        )
 
         for i, partition in enumerate(self._partitions):
             bit_weight = self._weights[i]

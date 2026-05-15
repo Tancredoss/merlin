@@ -143,7 +143,7 @@ class ComputationProcess(AbstractComputationProcess):
             self.n_photons = n_photons
         # Build computation graphs
         self._setup_computation_graphs()
-        # Updatinf the computation space if the simulation is noisy
+        # Updating the computation space if the simulation is noisy
         self.computation_space = self.simulation_graph.computation_space
 
         # validate initial input state shape when provided as tensor

@@ -4,6 +4,7 @@ import perceval as pcvl
 import pytest
 
 import merlin as ml
+from merlin.core import StateVector
 from merlin.algorithms.layer_utils import (
     classify_noise_model,
     normalize_noise_model,
@@ -661,6 +662,132 @@ def test_indistiguishable_layer_against_perceval_unitary():
                 atol=1e-4,
             ), (
                 f"Probability mismatch for input {tuple(input_state_tuple_perceval)}, "
+                f"output {tuple(output_state)}: "
+                f"QuantumLayer={layer_probs[i]}, Perceval={perceval_probs[state]}"
+            )
+
+        assert np.isclose(layer_probs.sum(), 1.0, atol=1e-6)
+        assert np.isclose(sum(perceval_probs.values()), 1.0, atol=1e-6)
+
+
+def test_indistiguishable_layer_against_perceval_unitary_statevector_input():
+    """Validate QuantumLayer with StateVector input against Perceval under indistinguishability noise."""
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+
+    noise_model = pcvl.NoiseModel(indistinguishability=0.5)
+    source = pcvl.Source.from_noise_model(noise_model)
+    backend = pcvl.BackendFactory.get_backend("SLOS")
+    sim = pcvl.Simulator(backend)
+    sim.set_circuit(deepcopy(circuit))
+
+    # Create layer without amplitude_encoding flag, without fixed input_state
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        circuit=deepcopy(circuit),
+        noise_model=noise_model,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    # Test with StateVector inputs
+    test_states_perceval = [[2, 0], [1, 1], [0, 2]]
+    output_states = ml.Combinadics(scheme="fock", n=2, m=2).enumerate_states()
+
+    for input_state_tuple in test_states_perceval:
+        # Create StateVector from basic state
+        sv = StateVector.from_basic_state(
+            input_state_tuple,
+            device=layer.device,
+            dtype=layer.complex_dtype,
+        )
+
+        # Forward pass with StateVector
+        layer_output = layer(sv)
+        layer_probs = layer_output[0].detach().cpu().numpy()
+
+        # Compare against Perceval
+        perceval_probs = sim.probs_svd((source, pcvl.BasicState(input_state_tuple)))[
+            "results"
+        ]
+
+        for i, output_state in enumerate(output_states):
+            state = pcvl.FockState(output_state)
+            assert np.isclose(
+                layer_probs[i],
+                perceval_probs[state],
+                atol=1e-4,
+            ), (
+                f"Probability mismatch for StateVector input {tuple(input_state_tuple)}, "
+                f"output {tuple(output_state)}: "
+                f"QuantumLayer={layer_probs[i]}, Perceval={perceval_probs[state]}"
+            )
+
+        assert np.isclose(layer_probs.sum(), 1.0, atol=1e-6)
+        assert np.isclose(sum(perceval_probs.values()), 1.0, atol=1e-6)
+
+
+def test_indistiguishable_layer_against_perceval_unitary_complex_tensor_input():
+    """Validate QuantumLayer with complex tensor input against Perceval under indistinguishability noise."""
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+
+    noise_model = pcvl.NoiseModel(indistinguishability=0.5)
+    source = pcvl.Source.from_noise_model(noise_model)
+    backend = pcvl.BackendFactory.get_backend("SLOS")
+    sim = pcvl.Simulator(backend)
+    sim.set_circuit(deepcopy(circuit))
+
+    # Create layer without amplitude_encoding flag, without fixed input_state
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        circuit=deepcopy(circuit),
+        noise_model=noise_model,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    # Test with complex tensor inputs (one-hot encoded basis states)
+    test_states_perceval = [[2, 0], [1, 1], [0, 2]]
+    output_states = ml.Combinadics(scheme="fock", n=2, m=2).enumerate_states()
+
+    # Get mapping of Fock states to their index in the layer's output space
+    all_fock_states = ml.Combinadics(scheme="fock", n=2, m=2).enumerate_states()
+
+    for input_state_tuple in test_states_perceval:
+        # Find the index of this input state in the Fock basis
+        input_idx = next(
+            i
+            for i, state in enumerate(all_fock_states)
+            if tuple(state) == tuple(input_state_tuple)
+        )
+
+        # Create one-hot complex tensor
+        num_fock_states = len(all_fock_states)
+        complex_tensor = torch.zeros(num_fock_states, dtype=torch.complex128)
+        complex_tensor[input_idx] = 1.0 + 0.0j
+
+        # Forward pass with complex tensor
+        layer_output = layer(complex_tensor)
+        layer_probs = layer_output[0].detach().cpu().numpy()
+
+        # Compare against Perceval
+        perceval_probs = sim.probs_svd((source, pcvl.BasicState(input_state_tuple)))[
+            "results"
+        ]
+
+        for i, output_state in enumerate(output_states):
+            state = pcvl.FockState(output_state)
+            assert np.isclose(
+                layer_probs[i],
+                perceval_probs[state],
+                atol=1e-4,
+            ), (
+                f"Probability mismatch for complex tensor input {tuple(input_state_tuple)}, "
                 f"output {tuple(output_state)}: "
                 f"QuantumLayer={layer_probs[i]}, Perceval={perceval_probs[state]}"
             )
