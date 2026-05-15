@@ -201,11 +201,6 @@ class NoisySLOSComputeGraph:
         else:
             slos_graph = self._slos_graph_per_input[input_state]
 
-        output = torch.empty(
-            (batch_size, len(self.mapped_keys)),
-            dtype=self.dtype,
-            device=unitary.device,
-        )
         keys, probs = slos_graph.compute_probs(unitary, self._slos_graphs)
 
         if self.keep_keys:
