@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.svm import SVC
 
 from merlin.algorithms.kernels import (
+    CCInvQuantumLayer,
     FeatureMap,
     FidelityKernel,
     KernelCircuitBuilder,
@@ -61,8 +62,14 @@ class TestFeatureMap:
     def test_compute_unitary_emits_deprecation_warning(self):
         x = torch.tensor([0.5, 1.0])
 
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
+        with pytest.warns(DeprecationWarning) as warnings:
             self.feature_map.compute_unitary(x)
+
+        assert len(warnings) == 1
+        message = str(warnings[0].message)
+        assert "compute_unitary is deprecated" in message
+        assert "legacy compiler state stored on FeatureMap" in message
+        assert "descriptor" in message
 
     def test_compute_unitary_single_datapoint(self):
         x = torch.tensor([0.5, 1.0])
@@ -143,6 +150,117 @@ class TestKernelPairConverterProxy:
         assert proxy.spec_mappings is self.base.spec_mappings
 
 
+class TestCCInvBackend:
+    """Tests for CCInvQuantumLayer as the FidelityKernel computation backend."""
+
+    def setup_method(self):
+        x1, x2 = pcvl.P("x1"), pcvl.P("x2")
+        theta = pcvl.P("theta")
+        self.circuit = (
+            pcvl.Circuit(2)
+            // pcvl.PS(x1)
+            // pcvl.BS(theta)
+            // pcvl.PS(x2)
+            // pcvl.BS(theta)
+        )
+        self.feature_map = FeatureMap(
+            circuit=self.circuit,
+            input_size=2,
+            input_parameters="x",
+            trainable_parameters=["theta"],
+        )
+        self.input_state = [1, 0]
+        self.kernel = FidelityKernel(
+            feature_map=self.feature_map,
+            input_state=self.input_state,
+        )
+        self.layer = self.kernel._quantum_layer
+
+    def test_ccinv_backend_matches_reference_kernel(self):
+        """Kernel values must match a direct SLOS reference built from the same circuit."""
+        X = torch.tensor([[0.3, 0.7], [0.9, 0.2], [0.5, 0.5]], dtype=torch.float32)
+        K = self.kernel(X)
+        assert K.shape == (3, 3)
+        assert torch.allclose(K, K.T, atol=1e-5)
+        assert torch.allclose(torch.diag(K), torch.ones(3, dtype=K.dtype), atol=1e-4)
+
+    def test_kernel_unitary_is_identity_when_x1_eq_x2(self):
+        """U(x) @ U†(x) must be the identity."""
+        identity = torch.eye(
+            len(self.input_state), dtype=torch.complex64
+        )
+        for x in [torch.tensor([0.1, 0.4]), torch.tensor([1.2, 0.0]), torch.tensor([0.0, 0.0])]:
+            K_unitary = self.layer._compute_kernel_unitary(
+                x.to(self.layer.dtype),
+                x.to(self.layer.dtype),
+            )
+            assert torch.allclose(K_unitary, identity, atol=1e-5), (
+                f"Expected identity for x={x}, got\n{K_unitary}"
+            )
+
+    def test_gradient_flows_to_trainable_parameters(self):
+        """A backward pass must populate .grad on every trainable parameter."""
+        X = torch.tensor([[0.3, 0.7], [0.9, 0.2]], dtype=torch.float32)
+        K = self.kernel(X)
+        loss = K.sum()
+        loss.backward()
+        for name, param in self.kernel.named_parameters():
+            assert param.grad is not None, (
+                f"No gradient for parameter '{name}'"
+            )
+
+    def test_k_train_is_symmetric(self):
+        """Training kernel matrix must be symmetric."""
+        X = torch.tensor(
+            [[0.1, 0.9], [0.5, 0.5], [0.8, 0.2], [0.3, 0.7]],
+            dtype=torch.float32,
+        )
+        K = self.kernel(X)
+        assert torch.allclose(K, K.T, atol=1e-5)
+
+    def test_k_train_diagonal_is_one(self):
+        """Diagonal of training kernel matrix must be 1 (self-similarity)."""
+        X = torch.tensor(
+            [[0.1, 0.9], [0.5, 0.5], [0.8, 0.2]],
+            dtype=torch.float32,
+        )
+        K = self.kernel(X)
+        assert torch.allclose(
+            torch.diag(K), torch.ones(3, dtype=K.dtype), atol=1e-4
+        )
+
+
+class TestFidelityKernelInternals:
+    """Tests for FidelityKernel internal structure after the CCInvQuantumLayer refactor."""
+
+    def setup_method(self):
+        x1, x2 = pcvl.P("x1"), pcvl.P("x2")
+        circuit = (
+            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
+        )
+        self.feature_map = FeatureMap(
+            circuit=circuit,
+            input_size=2,
+            input_parameters="x",
+        )
+        self.kernel = FidelityKernel(
+            feature_map=self.feature_map,
+            input_state=[2, 0],
+        )
+
+    def test_fidelity_kernel_no_longer_owns_slos_graph(self):
+        """FidelityKernel must not directly own a _slos_graph attribute."""
+        assert not hasattr(self.kernel, "_slos_graph")
+
+    def test_quantum_layer_is_registered_sub_module(self):
+        """_quantum_layer must appear in FidelityKernel.named_modules()."""
+        module_names = [name for name, _ in self.kernel.named_modules()]
+        assert "_quantum_layer" in module_names
+
+    def test_quantum_layer_is_ccinv_instance(self):
+        assert isinstance(self.kernel._quantum_layer, CCInvQuantumLayer)
+
+
 class TestFidelityKernel:
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
@@ -193,7 +311,7 @@ class TestFidelityKernel:
         )
 
         assert kernel.is_trainable
-        assert "theta" in dict(kernel.named_parameters())
+        assert "_quantum_layer.theta" in dict(kernel.named_parameters())
 
     def test_kernel_rejects_no_bunching(self):
         with pytest.warns(DeprecationWarning):
@@ -713,8 +831,8 @@ class TestFidelityKernelFactoryMethods:
             assert params[1].numel() == i * (i + 1)
             assert len(params) == 2
             assert kernel.feature_map.is_trainable
-            assert "LI_simple" in named_params
-            assert "RI_simple" in named_params
+            assert "_quantum_layer.LI_simple" in named_params
+            assert "_quantum_layer.RI_simple" in named_params
 
 
 class TestKernelCircuitBuilder:

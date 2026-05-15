@@ -23,6 +23,20 @@ merlin.algorithms.kernels module
 
 .. note::
 
+   :class:`~merlin.algorithms.kernels.FeatureMap` is the descriptor used by
+   :class:`~merlin.algorithms.kernels.FidelityKernel`: it stores the circuit or
+   experiment, input size, parameter prefixes, dtype, and device.
+   :class:`~merlin.algorithms.kernels.FidelityKernel` uses the internal
+   ``CCInvQuantumLayer`` adapter, and ``CCInvQuantumLayer`` uses the
+   :class:`~merlin.algorithms.layer.QuantumLayer` backend. 
+
+   This new path does not use :meth:`FeatureMap.compute_unitary` anymore. Direct 
+   unitary construction through :meth:`FeatureMap.compute_unitary` is a
+   legacy path. It still owns compiler state for backwards compatibility, but
+   it is deprecated and will be removed in a future release.
+
+.. note::
+
    When the wrapped :class:`~merlin.algorithms.kernels.FeatureMap` exposes a
    :class:`pcvl.Experiment`, fidelity kernels compose the attached
    :class:`pcvl.NoiseModel` (photon loss) before applying any detector

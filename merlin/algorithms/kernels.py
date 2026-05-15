@@ -47,8 +47,14 @@ from .module import MerlinModule
 class FeatureMap:
     """Quantum feature map.
 
-    FeatureMap embeds a datapoint within a quantum circuit and computes the
-    associated unitary for quantum kernel methods.
+    FeatureMap describes how classical data is embedded in a photonic circuit
+    for quantum kernel methods.
+
+    ``FidelityKernel`` treats this object as a descriptor. It passes the stored
+    experiment, parameter prefixes, input size, dtype, and device to
+    ``CCInvQuantumLayer``, the internal adapter over the :class:`QuantumLayer`
+    backend. Legacy unitary-building state remains on ``FeatureMap`` only to
+    support deprecated direct calls to :meth:`compute_unitary`.
 
     Parameters
     ----------
@@ -163,7 +169,8 @@ class FeatureMap:
             dtype=self.dtype,
             device=self.device,
         )
-        # Set training parameters as torch parameters
+        # Legacy compiler state kept only for deprecated compute_unitary.
+        # FidelityKernel does not read this converter or training dictionary.
         self._training_dict: dict[str, torch.nn.Parameter] = {}
         for param_name in self.trainable_parameters:
             param_length = len(self._circuit_graph.spec_mappings[param_name])
@@ -172,7 +179,7 @@ class FeatureMap:
             self._training_dict[param_name] = torch.nn.Parameter(p)
 
     def _px_len(self) -> int:
-        """Return how many angle-encoding slots the underlying circuit expects."""
+        """Return how many angle-encoding slots the deprecated converter expects."""
         return len(self._circuit_graph.spec_mappings.get(self.input_parameters, []))
 
     def _subset_sum_expand(self, x: Tensor, k: int) -> Tensor:
@@ -212,7 +219,7 @@ class FeatureMap:
         )
 
     def _encode_x(self, x: Tensor) -> Tensor:
-        """Map raw features to the circuit's required parameter shape.
+        """Map raw features to the deprecated converter's parameter shape.
 
         Preference order:
         1. Builder-provided combination metadata (from :class:`CircuitBuilder`).
@@ -327,7 +334,11 @@ class FeatureMap:
 
         .. deprecated::
             ``compute_unitary`` is deprecated and will be removed in a future release.
-            Use :class:`FidelityKernel` directly for kernel computations.
+            It uses legacy compiler state stored on ``FeatureMap``. Use
+            :class:`FidelityKernel` for kernel computations; ``FidelityKernel``
+            uses ``CCInvQuantumLayer`` over the :class:`QuantumLayer` backend
+            and treats ``FeatureMap`` as a descriptor without relying on this
+            method.
 
         Parameters
         ----------
@@ -344,7 +355,10 @@ class FeatureMap:
         """
         warnings.warn(
             "compute_unitary is deprecated and will be removed in a future release. "
-            "Use FidelityKernel directly for kernel computations.",
+            "It uses legacy compiler state stored on FeatureMap. Use FidelityKernel "
+            "for kernel computations; FidelityKernel uses CCInvQuantumLayer over "
+            "the QuantumLayer backend and treats FeatureMap as a descriptor without "
+            "relying on compute_unitary.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -992,6 +1006,18 @@ class FidelityKernel(MerlinModule):
     r"""
     Fidelity Quantum Kernel
 
+    Next-release deprecations for the legacy ``FeatureMap`` unitary path:
+
+    - ``FeatureMap.compute_unitary``
+    - ``FeatureMap._px_len``
+    - ``FeatureMap._encode_x``
+    - ``FeatureMap._encode_with_specs``
+    - ``FeatureMap._subset_sum_expand``
+
+    ``FidelityKernel`` does not use these methods. It delegates kernel
+    computation to ``CCInvQuantumLayer``, which uses the :class:`QuantumLayer`
+    backend.
+
     For a given input Fock state, :math:`|s \rangle` and feature map,
     :math:`U`, the fidelity quantum kernel estimates the following inner
     product using SLOS:
@@ -1135,7 +1161,7 @@ class FidelityKernel(MerlinModule):
         _, empty_noise_model = resolve_photon_loss(self.experiment, m)
         self.has_custom_noise_model = not empty_noise_model
 
-        _layer = CCInvQuantumLayer(
+        self._quantum_layer = CCInvQuantumLayer(
             experiment=self.experiment,
             input_state=input_state,
             input_size=self.input_size,
@@ -1145,19 +1171,8 @@ class FidelityKernel(MerlinModule):
             dtype=self.dtype,
             device=self.device,
         )
-        # Store as a plain Python attribute — bypasses nn.Module.__setattr__ so
-        # _quantum_layer is not registered as a sub-module.  Its parameters are
-        # re-registered below with their original flat names, which preserves
-        # the public named_parameters() / state_dict() API.
-        object.__setattr__(self, "_quantum_layer", _layer)
 
         self.is_trainable = feature_map.is_trainable
-        if self.is_trainable:
-            # Re-register each backend parameter directly on FidelityKernel so
-            # that named_parameters() returns flat names ("theta", not
-            # "_quantum_layer.theta"), matching the pre-refactor public API.
-            for name, param in _layer.named_parameters():
-                self.register_parameter(name, param)
 
     def forward(
         self,
