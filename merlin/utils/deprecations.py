@@ -177,10 +177,10 @@ DEPRECATION_REGISTRY: dict[
     "FeatureMap.compute_unitary": (
         "compute_unitary is deprecated and will be removed in a future release. "
         "It uses legacy compiler state stored on FeatureMap. Use FidelityKernel "
-        "for kernel computations; FidelityKernel uses CCInvQuantumLayer over "
+        "for kernel computations; FidelityKernel uses _CCInvQuantumLayer over "
         "the QuantumLayer backend and treats FeatureMap as a descriptor without "
         "relying on compute_unitary.",
-        None,
+        False,
         None,
     ),
     # FidelityKernel.simple deprecations

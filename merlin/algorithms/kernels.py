@@ -52,7 +52,7 @@ class FeatureMap:
 
     ``FidelityKernel`` treats this object as a descriptor. It passes the stored
     experiment, parameter prefixes, input size, dtype, and device to
-    ``CCInvQuantumLayer``, the internal adapter over the :class:`QuantumLayer`
+    ``_CCInvQuantumLayer``, the internal adapter over the :class:`QuantumLayer`
     backend. Legacy unitary-building state remains on ``FeatureMap`` only to
     support deprecated direct calls to :meth:`compute_unitary`.
 
@@ -181,9 +181,9 @@ class FeatureMap:
     def _px_len(self) -> int:
         """Return how many angle-encoding slots the deprecated converter expects.
 
-        .. deprecated:: 0.4
+        .. warning:: *Deprecated since version 0.4:*
             This helper belongs to the legacy ``FeatureMap.compute_unitary``
-            path. ``FidelityKernel`` uses ``CCInvQuantumLayer`` over the
+            path. ``FidelityKernel`` uses ``_CCInvQuantumLayer`` over the
             :class:`QuantumLayer` backend and does not rely on this method.
 
         Returns
@@ -196,9 +196,9 @@ class FeatureMap:
     def _subset_sum_expand(self, x: Tensor, k: int) -> Tensor:
         """Expand an input vector into deterministic subset sums.
 
-        .. deprecated:: 0.4
+        .. warning:: *Deprecated since version 0.4:*
             This helper belongs to the legacy ``FeatureMap.compute_unitary``
-            path. ``FidelityKernel`` uses ``CCInvQuantumLayer`` over the
+            path. ``FidelityKernel`` uses ``_CCInvQuantumLayer`` over the
             :class:`QuantumLayer` backend and does not rely on this method.
 
         Parameters
@@ -237,12 +237,13 @@ class FeatureMap:
     def _encode_x(self, x: Tensor) -> Tensor:
         """Map raw features to the deprecated converter's parameter shape.
 
-        .. deprecated:: 0.4
+        .. warning:: *Deprecated since version 0.4:*
             This helper belongs to the legacy ``FeatureMap.compute_unitary``
-            path. ``FidelityKernel`` uses ``CCInvQuantumLayer`` over the
+            path. ``FidelityKernel`` uses ``_CCInvQuantumLayer`` over the
             :class:`QuantumLayer` backend and does not rely on this method.
 
         Preference order:
+
         1. Builder-provided combination metadata (from :class:`CircuitBuilder`).
         2. A user-supplied encoder callable.
         3. The deterministic subset-sum expansion used by legacy feature maps.
@@ -298,9 +299,9 @@ class FeatureMap:
     def _encode_with_specs(self, x: Tensor, spec: dict[str, object]) -> Tensor:
         """Encode input vector using builder-provided angle encoding metadata.
 
-        .. deprecated:: 0.4
+        .. warning:: *Deprecated since version 0.4:*
             This helper belongs to the legacy ``FeatureMap.compute_unitary``
-            path. ``FidelityKernel`` uses ``CCInvQuantumLayer`` over the
+            path. ``FidelityKernel`` uses ``_CCInvQuantumLayer`` over the
             :class:`QuantumLayer` backend and does not rely on this method.
 
         Parameters
@@ -358,11 +359,11 @@ class FeatureMap:
     ) -> torch.Tensor:
         """Generate the circuit unitary after encoding `x` and applying trainables.
 
-        .. deprecated:: 0.4
+        .. warning:: *Deprecated since version 0.4:*
             ``compute_unitary`` is deprecated and will be removed in a future release.
             It uses legacy compiler state stored on ``FeatureMap``. Use
             :class:`FidelityKernel` for kernel computations; ``FidelityKernel``
-            uses ``CCInvQuantumLayer`` over the :class:`QuantumLayer` backend
+            uses ``_CCInvQuantumLayer`` over the :class:`QuantumLayer` backend
             and treats ``FeatureMap`` as a descriptor without relying on this
             method.
 
@@ -379,15 +380,6 @@ class FeatureMap:
         torch.Tensor
             Complex unitary matrix representing the prepared circuit.
         """
-        warnings.warn(
-            "compute_unitary is deprecated and will be removed in a future release. "
-            "It uses legacy compiler state stored on FeatureMap. Use FidelityKernel "
-            "for kernel computations; FidelityKernel uses CCInvQuantumLayer over "
-            "the QuantumLayer backend and treats FeatureMap as a descriptor without "
-            "relying on compute_unitary.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
         # Normalize input to tensor on correct device/dtype
         if isinstance(x, torch.Tensor):
             x = x.to(dtype=self.dtype, device=self.device)
@@ -541,64 +533,6 @@ class FeatureMap:
             dtype=dtype,
             device=device,
         )
-
-
-class _KernelPairConverterProxy:
-    """Wrap a converter to build a kernel pair unitary.
-
-    The wrapped converter is expected to receive trainable tensors first and
-    one encoded input tensor last. The proxy keeps that order and substitutes
-    the stored encoded datapoints to produce ``U(x1) @ U(x2).conj().mT``.
-
-    Parameters
-    ----------
-    base : CircuitConverter
-        Converter used to build each feature-map unitary.
-    x1_enc : torch.Tensor
-        Encoded first datapoint appended after trainable parameters.
-    x2_enc : torch.Tensor
-        Encoded second datapoint appended after trainable parameters.
-    """
-
-    def __init__(self, base: CircuitConverter, x1_enc: Tensor, x2_enc: Tensor) -> None:
-        self._base = base
-        self._x1_enc = x1_enc
-        self._x2_enc = x2_enc
-
-    @property
-    def spec_mappings(self) -> dict[str, list[str]]:
-        """Return the wrapped converter parameter mappings.
-
-        Returns
-        -------
-        dict[str, list[str]]
-            Mapping from parameter prefixes to concrete circuit parameter
-            names.
-        """
-        return self._base.spec_mappings
-
-    def to_tensor(self, *params: Tensor, batch_size: int | None = None) -> Tensor:
-        """Return the pair unitary ``U(x1) @ U(x2).conj().mT``.
-
-        Parameters
-        ----------
-        params : torch.Tensor
-            Trainable tensors passed before the encoded datapoint.
-        batch_size : int | None
-            Optional batch size forwarded to the wrapped converter.
-
-        Returns
-        -------
-        torch.Tensor
-            Pair unitary tensor.
-        """
-        first_unitary = self._base.to_tensor(
-            *params, self._x1_enc, batch_size=batch_size
-        )
-        second_unitary = self._base.to_tensor(
-            *params, self._x2_enc, batch_size=batch_size
-        )
-        return first_unitary @ second_unitary.conj().mT
 
 
 class KernelCircuitBuilder:
@@ -769,8 +703,14 @@ class KernelCircuitBuilder:
         )
 
 
-class CCInvQuantumLayer(QuantumLayer):
-    """Internal QuantumLayer subclass used as the computation backend for FidelityKernel.
+class _CCInvQuantumLayer(QuantumLayer):
+    """Internal ``QuantumLayer`` subclass used as the computation backend for ``FidelityKernel``.
+
+    The name ``CCInv`` reflects two aspects of the computation: "CC" for
+    ``CircuitConverter``, the component used to build the unitary tensor from
+    the Perceval circuit; and "Inv" for the conjugate transpose (inverse)
+    applied to the second operand when forming the kernel unitary
+    ``U(x1) @ U†(x2)``.
 
     This layer owns encoding, unitary computation, SLOS simulation, photon
     loss, and detector transforms for the fidelity quantum kernel.
@@ -1042,7 +982,7 @@ class FidelityKernel(MerlinModule):
     - ``FeatureMap._subset_sum_expand``
 
     ``FidelityKernel`` does not use these methods. It delegates kernel
-    computation to ``CCInvQuantumLayer``, which uses the :class:`QuantumLayer`
+    computation to ``_CCInvQuantumLayer``, which uses the :class:`QuantumLayer`
     backend.
 
     For a given input Fock state, :math:`|s \rangle` and feature map,
@@ -1188,7 +1128,7 @@ class FidelityKernel(MerlinModule):
         _, empty_noise_model = resolve_photon_loss(self.experiment, m)
         self.has_custom_noise_model = not empty_noise_model
 
-        self._quantum_layer = CCInvQuantumLayer(
+        self._quantum_layer = _CCInvQuantumLayer(
             experiment=self.experiment,
             input_state=input_state,
             input_size=self.input_size,

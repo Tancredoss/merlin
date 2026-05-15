@@ -8,11 +8,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.svm import SVC
 
 from merlin.algorithms.kernels import (
-    CCInvQuantumLayer,
+    _CCInvQuantumLayer,
     FeatureMap,
     FidelityKernel,
     KernelCircuitBuilder,
-    _KernelPairConverterProxy,
 )
 from merlin.algorithms.loss import NKernelAlignment
 from merlin.builder import CircuitBuilder
@@ -20,44 +19,8 @@ from merlin.core.computation_space import ComputationSpace
 from merlin.pcvl_pytorch.locirc_to_tensor import CircuitConverter
 
 
-class TestKernelPairConverterProxy:
-    def setup_method(self):
-        x1 = pcvl.P("x1")
-        x2 = pcvl.P("x2")
-        theta = pcvl.P("theta")
-        self.circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS(theta) // pcvl.PS(x2)
-        )
-        self.base = CircuitConverter(
-            self.circuit,
-            ["theta", "x"],
-            dtype=torch.float64,
-            device=torch.device("cpu"),
-        )
-
-    def test_to_tensor_matches_explicit_pair_unitary(self):
-        theta = torch.tensor([0.3], dtype=torch.float64)
-        x1 = torch.tensor([0.5, 1.0], dtype=torch.float64)
-        x2 = torch.tensor([1.5, 0.25], dtype=torch.float64)
-        proxy = _KernelPairConverterProxy(self.base, x1, x2)
-
-        expected = self.base.to_tensor(theta, x1) @ self.base.to_tensor(
-            theta, x2
-        ).conj().mT
-        actual = proxy.to_tensor(theta)
-
-        assert torch.allclose(actual, expected, atol=1e-12)
-
-    def test_spec_mappings_are_forwarded(self):
-        x1 = torch.tensor([0.5, 1.0], dtype=torch.float64)
-        x2 = torch.tensor([1.5, 0.25], dtype=torch.float64)
-        proxy = _KernelPairConverterProxy(self.base, x1, x2)
-
-        assert proxy.spec_mappings is self.base.spec_mappings
-
-
 class TestCCInvBackend:
-    """Tests for CCInvQuantumLayer as the FidelityKernel computation backend."""
+    """Tests for _CCInvQuantumLayer as the FidelityKernel computation backend."""
 
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
@@ -281,7 +244,7 @@ class TestCCInvBackend:
 
 
 class TestFidelityKernelInternals:
-    """Tests for FidelityKernel internal structure after the CCInvQuantumLayer refactor."""
+    """Tests for FidelityKernel internal structure after the _CCInvQuantumLayer refactor."""
 
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
@@ -308,7 +271,7 @@ class TestFidelityKernelInternals:
         assert "_quantum_layer" in module_names
 
     def test_quantum_layer_is_ccinv_instance(self):
-        assert isinstance(self.kernel._quantum_layer, CCInvQuantumLayer)
+        assert isinstance(self.kernel._quantum_layer, _CCInvQuantumLayer)
 
 
 class TestFidelityKernel:
