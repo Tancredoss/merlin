@@ -206,11 +206,8 @@ class ComputationProcess(AbstractComputationProcess):
                 prepared_state = self._prepare_superposition_tensor()
                 weights = prepared_state.abs().pow(2)  # [input_batch, n_fock_states]
 
-                active_indices = [
-                    i
-                    for i in range(weights.shape[1])
-                    if torch.any(weights[:, i] >= 1e-13).item()
-                ]
+                active_mask = torch.any(weights >= 1e-13, dim=0)
+                active_indices = torch.nonzero(active_mask, as_tuple=True)[0].tolist()
 
                 probs_per_state = []
                 for idx in active_indices:

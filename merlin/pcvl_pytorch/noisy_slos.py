@@ -206,13 +206,11 @@ class NoisySLOSComputeGraph:
             dtype=self.dtype,
             device=unitary.device,
         )
-        for i in range(batch_size):
-            keys, probs = slos_graph.compute_probs(unitary[i], self._slos_graphs)
-            output[i] = probs.squeeze(0)
+        keys, probs = slos_graph.compute_probs(unitary, self._slos_graphs)
 
         if self.keep_keys:
-            return keys, output
-        return output
+            return keys, probs
+        return probs
 
     def to(self, device: str | torch.device) -> "NoisySLOSComputeGraph":
         """Move cached tensors and subgraphs to a specific device.
@@ -625,6 +623,7 @@ def convolve_distributions(
         If the number of key sets does not match the number of probability
         tensors.
     """
+    device = probs[0].device
     if len(probs[0].shape) == 1:
         probs = reduce(lambda acc, x: acc + (x.unsqueeze(0),), probs, ())
         batched_input = False
@@ -664,7 +663,7 @@ def convolve_distributions(
     new_keys, inverse_idx = torch.unique(new_keys, dim=0, return_inverse=True)
     inverse_idx = inverse_idx.unsqueeze(0).expand(num_batches, -1)
     new_probs = torch.zeros(
-        num_batches, len(new_keys), dtype=new_probs.dtype
+        num_batches, len(new_keys), dtype=new_probs.dtype, device=device
     ).scatter_add_(dim=1, index=inverse_idx, src=new_probs)
 
     # Correct the order of the keys & probs
