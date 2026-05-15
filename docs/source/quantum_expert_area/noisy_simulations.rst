@@ -1,0 +1,102 @@
+:github_url: https://github.com/merlinquantum/merlin
+
+==============================================
+Noisy Simulations
+==============================================
+
+Before running your QuantumLayer on hardware, which presents a lot of noise, you may want to test the performance of your algorithm 
+locally with simulated noise. This page will present the way to complete a noisy simulation as well as guidelines and limitations.
+
+Run a noisy simulation
+----------------------------------------------
+
+To add noise to your :class:`~merlin.algorithms.layer.QuantumLayer`, Perceval's :class:`pcvl.NoiseModel` must be used. Seven different types of noises can be defined. All of the values are floats going from 0 to 1, except for ``g2_distinguishable`` which is a bool.
+
+1. Circuit noise
+
+   a. ``phase_imprecision``: Maximum precision of the phase shifters (0 means infinite precision).
+   b. ``phase_error``: Maximum random noise on the phase shifters (in radian). The default value (noiseless case) is 0.
+
+2. Source noise
+
+   a. ``indistinguishability``: Chance two photons are indistinguishable. The default value (noiseless case) is 1.
+   b. ``g2``: :math:`g^2(0)` - second order intensity autocorrelation at zero time delay. This parameter is correlated with how often two photons are emitted by the source instead of a single one. The default value (noiseless case) is 0.
+   c. ``g2_distinguishable``: g2-generated photons indistinguishability. This parameter can not be False if ``indistinguishability=1.0``. The default value (noiseless case) is True.
+
+3. Post-measurement noise
+
+   a. ``brightness``: First lens brightness of a quantum dot. The default value (noiseless case) is 1.
+   b. ``transmittance``: System-wide transmittance (warning, can interfere with the brightness parameter). The default value (noiseless case) is 1.
+
+
+You can either add this noise model to a :class:`pcvl.Experiment` that is then used at the initialization of the :class:`~merlin.algorithms.layer.QuantumLayer` or you can directly pass this noise model to the :class:`~merlin.algorithms.layer.QuantumLayer`'s ``noise_model`` parameter in the constructor. Here are some usage examples:
+
+.. code-block:: python
+
+    import perceval as pcvl
+    import torch
+    import merlin as ML
+
+    noise_model=pcvl.NoiseModel(
+            brightness=0.1,
+            indistinguishability=0.2,
+            g2=0.3,
+            g2_distinguishable=False,
+            transmittance=0.4,
+            phase_imprecision=0.5,
+            phase_error=0.6,
+        ),
+
+    circuit = pcvl.Circuit(3)
+    circuit.add(0, pcvl.PS(pcvl.P("px")))
+    circuit.add((0, 1), pcvl.BS())
+    circuit.add((1, 2), pcvl.BS())
+    
+    # Option 1: define the noise model with an experiment
+    experiment = pcvl.Experiment(circuit, noise=noise_model)
+
+    layer = ML.QuantumLayer(
+        input_size=1,
+        experiment=experiment,
+        input_parameters=["px"],
+        input_state=[1, 1, 1],
+        computation_space=ML.ComputationSpace.FOCK  # Fock space used for noisy simulations
+    )
+
+    x = torch.rand(3, 1)
+    probs = layer(x)
+
+    # Option 2: define the noise model with the noise_model parameter
+    layer = ML.QuantumLayer(
+        input_size=1,
+        experiment=experiment,
+        input_parameters=["px"],
+        input_state=[1, 1, 1],
+        computation_space=ML.ComputationSpace.FOCK,  # Fock space used for noisy simulations
+        noise_model=noise_model
+    )
+
+    x = torch.rand(3, 1)
+    probs = layer(x)
+
+
+Noisy simulations guidelines
+----------------------------------------------
+
+For noisy simulations, there are a couple of rules that need to be followed:
+
+1. All noisy simulations must be run with the probabilities measurement strategy.
+2. Noisy simulations cannot use ``return_object=True``.
+3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning.
+
+
+Noisy simulations limitations
+----------------------------------------------
+
+Noisy simulations are significantly less efficient than ideal ones. You can profile the memory requirements of noisy simulations with source noise using the benchmark script: :file:`../../benchmarks/benchmark_noisy_slos_cache_memory.py`.
+
+Memory and computational complexity grow significantly with the number of modes and photons. For example, a 5-photon 2-mode circuit requires around 200 MB, while a 20-mode 3-photon experiment requires around 3 GB. To profile memory consumption in your specific use case, run the benchmark script with:
+
+.. code-block:: bash
+
+    python benchmarks/benchmark_noisy_slos_cache_memory.py --modes 6 7 8 9 --photons 1 2 3 4 5 --backward
