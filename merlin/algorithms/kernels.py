@@ -1022,7 +1022,8 @@ class CCInvQuantumLayer(QuantumLayer):
 
         if self._input_detection_index is not None:
             return detection_probs[:, self._input_detection_index]
-        weights = self._input_detection_weights.to(
+        input_detection_weights = cast(Tensor, self._input_detection_weights)
+        weights = input_detection_weights.to(
             dtype=detection_probs.dtype, device=detection_probs.device
         )
         return detection_probs @ weights
