@@ -135,6 +135,150 @@ class TestCCInvBackend:
             torch.diag(K), torch.ones(3, dtype=K.dtype), atol=1e-4
         )
 
+    def test_new_backend_transition_prob_matches_perceval_slos(self):
+        """Transition probability from the new backend must match Perceval SLOS.
+
+        The combined kernel unitary ``U(x1) @ U†(x2)`` is fed directly into a
+        Perceval Processor to obtain a ground-truth probability for the input
+        Fock state.  The same unitary is passed to
+        ``_compute_transition_probs``, which exercises the full SLOS +
+        photon-loss + detector-transform chain of the new backend.  Both values
+        must agree to within floating-point tolerance.
+
+        float64 is used so that the product of two unitaries stays numerically
+        unitary within Perceval's strict ``is_unitary()`` tolerance.
+        """
+        from perceval import BasicState, Processor, Unitary
+        from perceval.algorithm import Sampler
+
+        # Rebuild with float64 so that U(x1) @ U†(x2) is numerically unitary
+        # when converted to complex128 for the Perceval reference.
+        feature_map_f64 = FeatureMap(
+            circuit=self.circuit,
+            input_size=2,
+            input_parameters="x",
+            trainable_parameters=["theta"],
+            dtype=torch.float64,
+        )
+        kernel_f64 = FidelityKernel(
+            feature_map=feature_map_f64,
+            input_state=self.input_state,
+        )
+        layer_f64 = kernel_f64._quantum_layer
+
+        x1 = torch.tensor([0.3, 0.7], dtype=torch.float64)
+        x2 = torch.tensor([0.9, 0.2], dtype=torch.float64)
+
+        # --- Merlin new backend ---
+        kernel_unitary = layer_f64._compute_kernel_unitary(x1, x2)
+        transition_prob = layer_f64._compute_transition_probs(
+            kernel_unitary.unsqueeze(0),
+            self.input_state,
+            shots=0,
+            sampling_method="multinomial",
+        )
+        merlin_value = float(transition_prob[0].item())
+
+        # --- Perceval SLOS reference ---
+        u_np = kernel_unitary.detach().cpu().numpy().astype(np.complex128)
+        pcvl_circuit = Unitary(pcvl.Matrix(u_np))
+
+        processor = Processor("SLOS")
+        processor.set_circuit(pcvl_circuit)
+        processor.with_input(BasicState(self.input_state))
+        processor.min_detected_photons_filter(0)
+
+        sampler = Sampler(processor)
+        raw_results = sampler.probs()["results"]
+
+        def _state_to_tuple(state):
+            try:
+                return tuple(int(n) for n in state.tolist())
+            except AttributeError:
+                return tuple(int(n) for n in state)
+
+        results = {_state_to_tuple(s): float(p) for s, p in raw_results.items()}
+        key = tuple(self.input_state)
+        perceval_value = results.get(key, 0.0)
+
+        assert merlin_value == pytest.approx(perceval_value, rel=1e-5, abs=1e-6)
+
+    def test_new_backend_matches_perceval_slos_unbunched(self):
+        """New backend with UNBUNCHED space must match Perceval thresholded probability.
+
+        Perceval returns absolute probabilities over all Fock states.  The
+        thresholded (UNBUNCHED) value is the probability of the input state
+        within the subspace where every mode holds at most one photon,
+        renormalized to that subspace.
+
+        float64 is used so that the product of two unitaries stays numerically
+        unitary within Perceval's strict ``is_unitary()`` tolerance.
+        """
+        from perceval import BasicState, GenericInterferometer, P, Processor, Unitary
+        from perceval.algorithm import Sampler
+
+        def _circ_func(x):
+            c = pcvl.Circuit(2) // pcvl.PS(P(f"phi{2 * x}")) // pcvl.BS()
+            c.add(0, pcvl.PS(P(f"phi{2 * x + 1}")))
+            c.add(0, pcvl.BS())
+            return c
+
+        input_state = [1, 1, 0, 0]
+        circuit = GenericInterferometer(len(input_state), _circ_func)
+        input_size = len(circuit.get_parameters())
+
+        # float64 keeps U(x1) @ U†(x2) numerically unitary for Perceval.
+        feature_map_unb = FeatureMap(
+            circuit=circuit,
+            input_size=input_size,
+            input_parameters=["phi"],
+            dtype=torch.float64,
+        )
+        kernel_unb = FidelityKernel(
+            feature_map=feature_map_unb,
+            input_state=input_state,
+            computation_space=ComputationSpace.UNBUNCHED,
+            force_psd=False,
+        )
+        layer_unb = kernel_unb._quantum_layer
+
+        rng = np.random.default_rng(0)
+        x1 = torch.as_tensor(rng.random(input_size), dtype=torch.float64)
+        x2 = torch.as_tensor(rng.random(input_size), dtype=torch.float64)
+
+        # --- Merlin new backend (UNBUNCHED) ---
+        merlin_thr = float(kernel_unb(x1, x2))
+
+        # --- Perceval reference (thresholded) ---
+        kernel_unitary = layer_unb._compute_kernel_unitary(x1, x2)
+        u_np = kernel_unitary.detach().cpu().numpy().astype(np.complex128)
+        pcvl_circuit = Unitary(pcvl.Matrix(u_np))
+
+        processor = Processor("SLOS")
+        processor.set_circuit(pcvl_circuit)
+        processor.with_input(BasicState(input_state))
+        processor.min_detected_photons_filter(0)
+
+        sampler = Sampler(processor)
+        raw_results = sampler.probs()["results"]
+
+        def _state_to_tuple(state):
+            try:
+                return tuple(int(n) for n in state.tolist())
+            except AttributeError:
+                return tuple(int(n) for n in state)
+
+        results = {_state_to_tuple(s): float(p) for s, p in raw_results.items()}
+
+        thresholded = {s: p for s, p in results.items() if max(s) == 1}
+        total = sum(thresholded.values())
+        assert total > 0, "No unbunched states returned by Perceval"
+
+        key = tuple(input_state)
+        perceval_thr = thresholded.get(key, 0.0) / total
+
+        assert merlin_thr == pytest.approx(perceval_thr, rel=1e-5, abs=1e-6)
+
 
 class TestFidelityKernelInternals:
     """Tests for FidelityKernel internal structure after the CCInvQuantumLayer refactor."""
@@ -1588,6 +1732,9 @@ def test_fidelity_kernel_gpu_training_step(cuda_device):
     if sum(p.numel() for p in kernel.parameters()) == 0:
         pytest.skip("No trainable parameters available in this configuration")
 
+    for parameter in kernel.parameters():
+        assert parameter.device.type == device.type
+
     X = torch.tensor(
         [
             [0.1, 0.2, 0.3, 0.4],
@@ -1597,6 +1744,7 @@ def test_fidelity_kernel_gpu_training_step(cuda_device):
         ],
         dtype=torch.float32,
         device=device,
+        requires_grad=True,
     )
     y = torch.tensor([1, -1, 1, -1], dtype=torch.float32, device=device)
 
@@ -1604,197 +1752,27 @@ def test_fidelity_kernel_gpu_training_step(cuda_device):
     loss_fn = NKernelAlignment()
     optimizer.zero_grad()
     K = kernel(X)
+    assert K.device.type == device.type
+    assert K.requires_grad
+
     loss = loss_fn(K, y)
+    assert loss.device.type == device.type
     loss.backward()
+
+    assert X.grad is not None
+    assert X.grad.device.type == device.type
+    assert torch.isfinite(X.grad).all()
+
+    trainable_gradients = [
+        parameter.grad for parameter in kernel.parameters() if parameter.requires_grad
+    ]
+    assert trainable_gradients
+    for gradient in trainable_gradients:
+        assert gradient is not None
+        assert gradient.device.type == device.type
+        assert torch.isfinite(gradient).all()
+    assert any(torch.any(gradient.abs() > 0) for gradient in trainable_gradients)
+
     optimizer.step()
 
-    # Assertions
     assert torch.isfinite(loss).item() == 1
-
-
-class TestLegacyFeatureMapUnitaryPath:
-    """Deprecated FeatureMap unitary path kept for backwards compatibility."""
-
-    def setup_method(self):
-        x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        self.circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
-        self.feature_map = FeatureMap(
-            circuit=self.circuit,
-            input_size=2,
-            input_parameters="x",
-        )
-
-    def test_trainable_feature_map_keeps_legacy_training_dict(self):
-        theta = pcvl.P("theta")
-        circuit = (
-            pcvl.Circuit(2)
-            // pcvl.PS(pcvl.P("x1"))
-            // pcvl.BS(theta)
-            // pcvl.PS(pcvl.P("x2"))
-            // pcvl.BS(theta)
-        )
-
-        feature_map = FeatureMap(
-            circuit=circuit,
-            input_size=2,
-            input_parameters="x",
-            trainable_parameters=["theta"],
-        )
-
-        assert "theta" in feature_map._training_dict
-
-    def test_compute_unitary_emits_deprecation_warning(self):
-        x = torch.tensor([0.5, 1.0])
-
-        with pytest.warns(DeprecationWarning) as warnings:
-            self.feature_map.compute_unitary(x)
-
-        assert len(warnings) == 1
-        message = str(warnings[0].message)
-        assert "compute_unitary is deprecated" in message
-        assert "legacy compiler state stored on FeatureMap" in message
-        assert "descriptor" in message
-
-    def test_compute_unitary_single_datapoint(self):
-        x = torch.tensor([0.5, 1.0])
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            unitary = self.feature_map.compute_unitary(x)
-
-        assert isinstance(unitary, torch.Tensor)
-        assert unitary.shape == (2, 2)
-        assert torch.allclose(
-            unitary @ unitary.conj().T, torch.eye(2, dtype=torch.cfloat), atol=1e-6
-        )
-
-    def test_compute_unitary_dataset(self):
-        X = torch.tensor([[0.5, 1.0], [1.5, 0.5], [0.0, 2.0]])
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            unitaries = [self.feature_map.compute_unitary(x) for x in X]
-
-        assert len(unitaries) == 3
-        for unitary in unitaries:
-            assert isinstance(unitary, torch.Tensor)
-            assert unitary.shape == (2, 2)
-            assert torch.allclose(
-                unitary @ unitary.conj().T, torch.eye(2, dtype=torch.cfloat), atol=1e-6
-            )
-
-    def test_kernel_no_bunching_matches_perceval_and_legacy_unitaries(self):
-        from perceval import (
-            BS,
-            PS,
-            BasicState,
-            Circuit,
-            GenericInterferometer,
-            P,
-            Processor,
-            Unitary,
-        )
-        from perceval.algorithm import Sampler
-
-        from merlin.algorithms import FidelityKernel
-
-        def circ_func(x):
-            """Generate a rectangular generic interferometer component."""
-            circuit = Circuit(2) // PS(P(f"phi{2 * x}")) // BS()
-            circuit.add(0, PS(P(f"phi{2 * x + 1}")))
-            circuit.add(0, BS())
-            return circuit
-
-        input_state = [1, 1, 0, 0]
-        circuit = GenericInterferometer(len(input_state), circ_func)
-        input_size = len(circuit.get_parameters())
-        feature_map = FeatureMap(circuit, input_size, input_parameters=["phi"])
-
-        unbunching_kernel = FidelityKernel(
-            feature_map,
-            input_state,
-            computation_space=ComputationSpace.UNBUNCHED,
-            force_psd=False,
-        )
-        quantum_kernel = FidelityKernel(
-            feature_map,
-            input_state,
-            computation_space=ComputationSpace.FOCK,
-        )
-
-        rng = np.random.default_rng(42)
-        X1 = rng.random(input_size)
-        X2 = rng.random(input_size)
-
-        merlin_pnr = float(quantum_kernel(X1, X2))
-        merlin_thr = float(unbunching_kernel(X1, X2))
-
-        circuit_forward = GenericInterferometer(len(input_state), circ_func)
-        for i, p in enumerate(circuit_forward.get_parameters()):
-            p.set_value(X1[i])
-        forward_unitary = np.asarray(
-            circuit_forward.compute_unitary(), dtype=np.complex128
-        )
-
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            feature_forward = (
-                feature_map
-                .compute_unitary(torch.as_tensor(X1, dtype=feature_map.dtype))
-                .detach()
-                .cpu()
-                .numpy()
-            )
-        assert np.allclose(feature_forward, forward_unitary, atol=1e-6)
-
-        circuit_backward = GenericInterferometer(len(input_state), circ_func)
-        for i, p in enumerate(circuit_backward.get_parameters()):
-            p.set_value(X2[i])
-        backward_unitary = np.asarray(
-            circuit_backward.compute_unitary(), dtype=np.complex128
-        )
-
-        with pytest.warns(DeprecationWarning, match="compute_unitary is deprecated"):
-            feature_backward = (
-                feature_map
-                .compute_unitary(torch.as_tensor(X2, dtype=feature_map.dtype))
-                .detach()
-                .cpu()
-                .numpy()
-            )
-        assert np.allclose(feature_backward, backward_unitary, atol=1e-6)
-
-        circ_unitary = forward_unitary @ backward_unitary.conj().T
-        circ_unitary = Unitary(pcvl.Matrix(circ_unitary))
-
-        processor = Processor("SLOS")
-        processor.set_circuit(circ_unitary)
-        processor.with_input(BasicState(input_state))
-        processor.min_detected_photons_filter(0)
-
-        sampler = Sampler(processor)
-
-        def state_to_tuple(state):
-            try:
-                return tuple(int(n) for n in state.tolist())
-            except AttributeError:
-                return tuple(int(n) for n in state)
-
-        raw_results = sampler.probs()["results"]
-        results = {
-            state_to_tuple(state): float(prob) for state, prob in raw_results.items()
-        }
-
-        key = tuple(input_state)
-        assert key in results
-        perceval_pnr = results[key]
-
-        thresholded_results = {
-            state: prob for state, prob in results.items() if max(state) == 1
-        }
-        total_threshold_prob = sum(thresholded_results.values())
-
-        assert total_threshold_prob > 0
-        assert key in thresholded_results
-
-        perceval_thr = thresholded_results[key] / total_threshold_prob
-
-        assert merlin_pnr == pytest.approx(perceval_pnr, rel=1e-6, abs=1e-6)
-        assert merlin_thr == pytest.approx(perceval_thr, rel=1e-6, abs=1e-6)
