@@ -179,11 +179,27 @@ class FeatureMap:
             self._training_dict[param_name] = torch.nn.Parameter(p)
 
     def _px_len(self) -> int:
-        """Return how many angle-encoding slots the deprecated converter expects."""
+        """Return how many angle-encoding slots the deprecated converter expects.
+
+        .. deprecated:: 0.4
+            This helper belongs to the legacy ``FeatureMap.compute_unitary``
+            path. ``FidelityKernel`` uses ``CCInvQuantumLayer`` over the
+            :class:`QuantumLayer` backend and does not rely on this method.
+
+        Returns
+        -------
+        int
+            Number of angle-encoding slots expected by the legacy converter.
+        """
         return len(self._circuit_graph.spec_mappings.get(self.input_parameters, []))
 
     def _subset_sum_expand(self, x: Tensor, k: int) -> Tensor:
         """Expand an input vector into deterministic subset sums.
+
+        .. deprecated:: 0.4
+            This helper belongs to the legacy ``FeatureMap.compute_unitary``
+            path. ``FidelityKernel`` uses ``CCInvQuantumLayer`` over the
+            :class:`QuantumLayer` backend and does not rely on this method.
 
         Parameters
         ----------
@@ -220,6 +236,11 @@ class FeatureMap:
 
     def _encode_x(self, x: Tensor) -> Tensor:
         """Map raw features to the deprecated converter's parameter shape.
+
+        .. deprecated:: 0.4
+            This helper belongs to the legacy ``FeatureMap.compute_unitary``
+            path. ``FidelityKernel`` uses ``CCInvQuantumLayer`` over the
+            :class:`QuantumLayer` backend and does not rely on this method.
 
         Preference order:
         1. Builder-provided combination metadata (from :class:`CircuitBuilder`).
@@ -277,6 +298,11 @@ class FeatureMap:
     def _encode_with_specs(self, x: Tensor, spec: dict[str, object]) -> Tensor:
         """Encode input vector using builder-provided angle encoding metadata.
 
+        .. deprecated:: 0.4
+            This helper belongs to the legacy ``FeatureMap.compute_unitary``
+            path. ``FidelityKernel`` uses ``CCInvQuantumLayer`` over the
+            :class:`QuantumLayer` backend and does not rely on this method.
+
         Parameters
         ----------
         x : torch.Tensor
@@ -332,7 +358,7 @@ class FeatureMap:
     ) -> torch.Tensor:
         """Generate the circuit unitary after encoding `x` and applying trainables.
 
-        .. deprecated::
+        .. deprecated:: 0.4
             ``compute_unitary`` is deprecated and will be removed in a future release.
             It uses legacy compiler state stored on ``FeatureMap``. Use
             :class:`FidelityKernel` for kernel computations; ``FidelityKernel``
