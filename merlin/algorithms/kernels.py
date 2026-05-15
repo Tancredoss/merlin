@@ -781,12 +781,7 @@ class _CCInvQuantumLayer(QuantumLayer):
         weight_device = self.device or torch.device("cpu")
         one_hot = torch.zeros(len(raw_keys), dtype=self.dtype, device=weight_device)
         one_hot[self._input_state_index] = 1.0
-        loss_vector = self._apply_photon_loss_transform(one_hot)
-        if loss_vector.ndim > 1:
-            loss_vector = loss_vector.squeeze(0)
-        detection_vector = self._apply_detector_transform(loss_vector)
-        if detection_vector.ndim > 1:
-            detection_vector = detection_vector.squeeze(0)
+        detection_vector = self._apply_detection_pipeline(one_hot)
         detection_vector = detection_vector.to(dtype=self.dtype, device=weight_device)
 
         nonzero = torch.nonzero(detection_vector > 1e-8, as_tuple=True)[0]
@@ -824,7 +819,9 @@ class _CCInvQuantumLayer(QuantumLayer):
             if spec:
                 return self._prepare_input_encoding(x, prefix)
 
-        # Fall back to direct pass-through or subset-sum expansion for raw circuits.
+        # No CircuitBuilder metadata available: the circuit was constructed
+        # directly with pcvl.Circuit, so angle_encoding_specs is empty.
+        # Fall back to direct pass-through or subset-sum expansion.
         spec_mappings = self.computation_process.converter.spec_mappings
         px_len = len(spec_mappings.get(prefix, [])) if prefix else x.numel()
 
@@ -868,6 +865,34 @@ class _CCInvQuantumLayer(QuantumLayer):
             ],
             dim=0,
         )
+
+    def _apply_detection_pipeline(self, distribution: Tensor) -> Tensor:
+        """Apply photon-loss and detector transforms in sequence.
+
+        This is the single canonical place where the two-step detection
+        pipeline is applied. Both the detection-weight initialisation in
+        ``__init__`` and the per-batch path in ``_compute_transition_probs``
+        call this method so that adding a future step only requires one change.
+
+        Parameters
+        ----------
+        distribution : torch.Tensor
+            Probability distribution tensor; either 1-D (single output
+            vector) or 2-D ``(batch, bins)``.
+
+        Returns
+        -------
+        torch.Tensor
+            Distribution after photon-loss and detector transforms, with
+            any trailing batch dimension squeezed away if the input was 1-D.
+        """
+        result = self._apply_photon_loss_transform(distribution)
+        if result.ndim > 1 and distribution.ndim == 1:
+            result = result.squeeze(0)
+        result = self._apply_detector_transform(result)
+        if result.ndim > 1 and distribution.ndim == 1:
+            result = result.squeeze(0)
+        return result
 
     def _compute_unitary(self, x_enc: Tensor) -> Tensor:
         """Evaluate the circuit unitary for an already-encoded input.
@@ -916,6 +941,8 @@ class _CCInvQuantumLayer(QuantumLayer):
         torch.Tensor
             Stacked unitary tensor of shape ``(N, m, m)``.
         """
+        # Serial loop is intentional: CircuitConverter.to_tensor holds shared
+        # mutable state and is not safe to call concurrently.
         return torch.stack([
             self._compute_unitary(self._encode_single(x)) for x in x_batch
         ])
@@ -952,8 +979,7 @@ class _CCInvQuantumLayer(QuantumLayer):
         if probabilities.ndim == 1:
             probabilities = probabilities.unsqueeze(0)
         probabilities = probabilities.to(dtype=self.dtype)
-        loss_probs = self._apply_photon_loss_transform(probabilities)
-        detection_probs = self._apply_detector_transform(loss_probs)
+        detection_probs = self._apply_detection_pipeline(probabilities)
 
         if shots > 0:
             detection_probs = self._kernel_autodiff_process.sampling_noise.pcvl_sampler(
@@ -1045,6 +1071,13 @@ class FidelityKernel(MerlinModule):
         svc = SVC(kernel="precomputed")
         svc.fit(K_train, y_train)
         y_pred = svc.predict(K_test)
+
+    .. warning::
+        ``FidelityKernel`` is **not thread-safe**. The internal
+        ``CircuitConverter`` holds shared mutable state. Using this module
+        inside a ``DataLoader`` with ``num_workers > 0`` will produce a data
+        race. Always set ``num_workers=0`` when the kernel is used as part of
+        a DataLoader worker.
     """
 
     @sanitize_parameters
