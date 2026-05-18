@@ -167,3 +167,8 @@ def test_dual_rail_resolves_modes_per_photon_at_embed_time():
         (1, 1, 0),
         (1, 1, 1),
     )
+
+
+def test_dual_rail_rejects_dimensions_outside_two_modes_per_photon_contract():
+    with pytest.raises(ValueError, match="n_modes == 2 \\* n_photons"):
+        EncodingSpace.DUAL_RAIL.logical_basis_size(n_modes=5, n_photons=2)

@@ -150,11 +150,77 @@ def _normalize_tensor(tensor: torch.Tensor) -> torch.Tensor:
     return tensor / norm_safe
 
 
-def _ensure_last_dim(tensor: torch.Tensor, expected: int) -> None:
-    if tensor.shape[-1] != expected:
+def _infer_dual_rail_photon_count(logical_size: int) -> int:
+    """Infer a dual-rail photon count from a compact logical basis width.
+
+    Dual-rail has one binary choice per photon, so a valid logical tensor has a
+    final dimension of ``2 ** n_photons``. The zero-photon case is not inferred
+    because it would not determine a positive mode count.
+    """
+
+    if logical_size <= 1 or logical_size & (logical_size - 1):
         raise ValueError(
-            f"Tensor last dimension {tensor.shape[-1]} does not match basis size {expected}."
+            "dual_rail encoding requires tensor last dimension to be a power "
+            "of two greater than one when n_modes and n_photons are omitted."
         )
+    return logical_size.bit_length() - 1
+
+
+def _resolve_from_tensor_dimensions(
+    tensor: torch.Tensor,
+    *,
+    encoding: EncodingSpace,
+    n_modes: int | None,
+    n_photons: int | None,
+) -> tuple[int, int]:
+    """Resolve concrete Fock dimensions for ``StateVector.from_tensor``.
+
+    Structured encodings may infer their own dimensions, but explicit
+    dimensions are validation metadata rather than a request to stretch the
+    encoding layout.
+    """
+
+    if tensor.dim() == 0:
+        raise ValueError("Amplitude tensor must be at least one-dimensional.")
+
+    if encoding.kind == "dual_rail":
+        if n_modes is None and n_photons is None:
+            n_photons = _infer_dual_rail_photon_count(tensor.shape[-1])
+            n_modes = 2 * n_photons
+        elif n_modes is None:
+            if (
+                not isinstance(n_photons, int)
+                or isinstance(n_photons, bool)
+                or n_photons <= 0
+            ):
+                raise ValueError(
+                    "dual_rail encoding requires a positive n_photons value."
+                )
+            n_modes = 2 * n_photons
+        elif n_photons is None:
+            if (
+                not isinstance(n_modes, int)
+                or isinstance(n_modes, bool)
+                or n_modes <= 0
+            ):
+                raise ValueError("n_modes must be a strictly positive integer.")
+            if n_modes % 2 != 0:
+                raise ValueError("dual_rail requires an even n_modes value.")
+            n_photons = n_modes // 2
+        assert n_modes is not None
+        assert n_photons is not None
+        return n_modes, n_photons
+
+    if encoding.family == "partitioned" and encoding.modes_per_photon is not None:
+        resolved_modes = encoding.n_modes if n_modes is None else n_modes
+        resolved_photons = encoding.n_photons if n_photons is None else n_photons
+        assert resolved_modes is not None
+        assert resolved_photons is not None
+        return resolved_modes, resolved_photons
+
+    if n_modes is None or n_photons is None:
+        raise ValueError(f"{encoding.kind} encoding requires n_modes and n_photons.")
+    return n_modes, n_photons
 
 
 def _remap_last_dim(
@@ -484,6 +550,16 @@ class StateVector:
         ValueError
             If the stored encoding cannot resolve a basis for this state
             vector's ``n_modes`` and ``n_photons``.
+
+        Examples
+        --------
+        >>> import torch
+        >>> from merlin.core import EncodingSpace
+        >>> from merlin.core.state_vector import StateVector
+        >>> logical = torch.zeros(4, dtype=torch.complex64)
+        >>> sv = StateVector.from_tensor(logical, encoding=EncodingSpace.DUAL_RAIL)
+        >>> sv.logical_to_fock_map()
+        {(0, 0): 2, (0, 1): 3, (1, 0): 5, (1, 1): 6}
         """
 
         return self.encoding.logical_to_fock_indices(
@@ -774,8 +850,8 @@ class StateVector:
         cls,
         tensor: torch.Tensor,
         *,
-        n_modes: int,
-        n_photons: int,
+        n_modes: int | None = None,
+        n_photons: int | None = None,
         encoding: EncodingSpace | None = None,
         dtype: torch.dtype | None = None,
         device: torch.device | None = None,
@@ -786,17 +862,27 @@ class StateVector:
         ----------
         tensor : torch.Tensor
             Dense or sparse amplitude tensor.
-        n_modes : int
-            Number of modes.
-        n_photons : int
-            Total photons.
+        n_modes : int | None
+            Number of modes. Required for Fock and unbunched inputs. For
+            structured encodings, omitted values are inferred from the
+            encoding contract. If provided, the value must match that contract.
+            Default value is None.
+        n_photons : int | None
+            Total photons. Required for Fock and unbunched inputs. For
+            structured encodings, omitted values are inferred from the
+            encoding contract or, for dual rail, from the tensor's final
+            dimension. If provided, the value must match that contract. Default
+            value is None.
         encoding : EncodingSpace | None
             Logical input encoding. When omitted, the tensor is treated as
-            canonical Fock-space amplitudes and stored unchanged.
+            canonical Fock-space amplitudes and stored unchanged. Default value
+            is None.
         dtype : torch.dtype | None
-            Optional target dtype.
+            Target dtype. If omitted, complex inputs keep their dtype and real
+            inputs are promoted to ``torch.complex64``. Default value is None.
         device : torch.device | None
-            Optional target device.
+            Target device. If omitted, the input tensor's device is preserved.
+            Default value is None.
 
         Returns
         -------
@@ -806,15 +892,26 @@ class StateVector:
         Raises
         ------
         ValueError
-            If the last dimension does not match the basis size.
+            If the tensor is scalar, if required dimensions are missing, if
+            explicit dimensions do not match the encoding contract, or if the
+            last dimension does not match the resolved logical basis size.
         """
         resolved_encoding = encoding or EncodingSpace.FOCK
+        resolved_modes, resolved_photons = _resolve_from_tensor_dimensions(
+            tensor,
+            encoding=resolved_encoding,
+            n_modes=n_modes,
+            n_photons=n_photons,
+        )
         logical_basis_size = resolved_encoding.logical_basis_size(
-            n_modes=n_modes, n_photons=n_photons
+            n_modes=resolved_modes, n_photons=resolved_photons
         )
         if tensor.shape[-1] != logical_basis_size:
             if resolved_encoding.kind == "fock":
-                _ensure_last_dim(tensor, logical_basis_size)
+                raise ValueError(
+                    f"Tensor last dimension {tensor.shape[-1]} does not match "
+                    f"basis size {logical_basis_size}."
+                )
             raise ValueError(
                 "Tensor last dimension does not match the logical basis size "
                 f"for encoding '{resolved_encoding.kind}': got {tensor.shape[-1]}, "
@@ -823,12 +920,12 @@ class StateVector:
         normalized = _to_complex(tensor, dtype=dtype, device=device)
         if resolved_encoding.kind != "fock":
             normalized = resolved_encoding.embed(
-                normalized, n_modes=n_modes, n_photons=n_photons
+                normalized, n_modes=resolved_modes, n_photons=resolved_photons
             )
         return cls(
             normalized,
-            n_modes,
-            n_photons,
+            resolved_modes,
+            resolved_photons,
             encoding=resolved_encoding,
             _normalized=False,
         )

@@ -445,11 +445,24 @@ class EncodingSpace:
         resolved_photons = self._validate_photon_count(n_photons)
         if self.kind == "dual_rail":
             if resolved_modes is None and resolved_photons is not None:
+                if resolved_photons <= 0:
+                    raise ValueError(
+                        "dual_rail encoding requires a positive n_photons value."
+                    )
                 resolved_modes = 2 * resolved_photons
             if resolved_photons is None and resolved_modes is not None:
                 if resolved_modes % 2 != 0:
                     raise ValueError("dual_rail requires an even n_modes value.")
                 resolved_photons = resolved_modes // 2
+            if (
+                resolved_modes is not None
+                and resolved_photons is not None
+                and resolved_modes != 2 * resolved_photons
+            ):
+                raise ValueError(
+                    "dual_rail encoding requires n_modes == 2 * n_photons; "
+                    f"got n_modes={resolved_modes} and n_photons={resolved_photons}."
+                )
 
         if resolved_modes is None or resolved_photons is None:
             raise ValueError(f"{self.kind} encoding requires n_modes and n_photons.")

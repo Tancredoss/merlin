@@ -55,7 +55,9 @@ the Fock basis size :math:`\binom{n\_modes + n\_photons - 1}{n\_photons}`:
    assert sv_batch.shape == (32, 10)
 
 Pass ``encoding=...`` to provide compact logical amplitudes and embed them into
-the Fock basis immediately:
+the Fock basis immediately. Structured encodings can infer their physical
+metadata from the encoding contract. Explicit ``n_modes`` and ``n_photons`` are
+also accepted, but they validate the contract rather than stretching it:
 
 .. code-block:: python
 
@@ -67,12 +69,23 @@ the Fock basis immediately:
    logical[0] = 1.0
    sv = StateVector.from_tensor(
        logical,
-       n_modes=4,
-       n_photons=2,
        encoding=EncodingSpace.DUAL_RAIL,
    )
+   assert sv.n_modes == 4
+   assert sv.n_photons == 2
    assert sv.tensor.shape[-1] == 10
    assert sv.encoding is EncodingSpace.DUAL_RAIL
+
+   # QLOQ dimensions are inferred from the qubit groups.
+   qloq = EncodingSpace.qloq(qubit_groups=[2, 1])
+   sv_qloq = StateVector.from_tensor(torch.zeros(8), encoding=qloq)
+   assert sv_qloq.n_modes == 6
+   assert sv_qloq.n_photons == 2
+
+   # Add auxiliary vacuum modes after constructing the encoded state.
+   padded = sv @ [0]
+   assert padded.n_modes == 5
+   assert padded.n_photons == 2
 
 **from_perceval** — convert from a Perceval ``StateVector``:
 
@@ -128,8 +141,6 @@ the stored encoding:
 
    sv = StateVector.from_tensor(
        torch.zeros(4, dtype=torch.complex64),
-       n_modes=4,
-       n_photons=2,
        encoding=EncodingSpace.DUAL_RAIL,
    )
    sv.logical_to_fock_map()  # {(0, 0): 2, (0, 1): 3, (1, 0): 5, (1, 1): 6}

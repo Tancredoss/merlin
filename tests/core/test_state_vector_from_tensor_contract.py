@@ -82,6 +82,13 @@ def test_from_tensor_default_contract_rejects_basis_size_mismatch():
         StateVector.from_tensor(tensor, n_modes=4, n_photons=2)
 
 
+def test_from_tensor_default_contract_rejects_scalar_tensor():
+    tensor = torch.tensor(1.0)
+
+    with pytest.raises(ValueError, match="at least one-dimensional"):
+        StateVector.from_tensor(tensor, n_modes=1, n_photons=1)
+
+
 def test_from_tensor_default_contract_explicit_dtype_and_device_are_applied():
     tensor = torch.arange(1, 7, dtype=torch.float32)
 
@@ -133,6 +140,61 @@ def test_from_tensor_with_dual_rail_encoding_embeds_into_fock_space():
     assert torch.allclose(logical.grad, torch.ones_like(logical))
 
 
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"n_modes": 4},
+        {"n_photons": 2},
+    ],
+)
+def test_from_tensor_with_dual_rail_encoding_infers_dimensions(kwargs):
+    logical = torch.zeros(4, dtype=torch.complex64)
+
+    sv = StateVector.from_tensor(
+        logical,
+        encoding=EncodingSpace.DUAL_RAIL,
+        **kwargs,
+    )
+
+    assert sv.n_modes == 4
+    assert sv.n_photons == 2
+    assert sv.tensor.shape == (Combinadics("fock", 2, 4).compute_space_size(),)
+    assert sv.logical_to_fock_map() == EncodingSpace.DUAL_RAIL.logical_to_fock_indices(
+        n_modes=4,
+        n_photons=2,
+    )
+
+
+def test_from_tensor_with_dual_rail_encoding_rejects_non_power_of_two_inference():
+    logical = torch.zeros(3, dtype=torch.complex64)
+
+    with pytest.raises(ValueError, match="power of two"):
+        StateVector.from_tensor(logical, encoding=EncodingSpace.DUAL_RAIL)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"n_modes": 5}, "even n_modes"),
+        ({"n_modes": 5, "n_photons": 2}, "n_modes == 2 \\* n_photons"),
+        ({"n_modes": 6, "n_photons": 3}, "logical basis size"),
+    ],
+)
+def test_from_tensor_with_dual_rail_encoding_rejects_invalid_dimensions(
+    kwargs,
+    match,
+):
+    logical = torch.zeros(4, dtype=torch.complex64)
+
+    with pytest.raises(ValueError, match=match):
+        StateVector.from_tensor(
+            logical,
+            encoding=EncodingSpace.DUAL_RAIL,
+            **kwargs,
+        )
+
+
 def test_from_tensor_with_custom_partitioned_encoding_embeds_into_fock_space():
     encoding = EncodingSpace(modes_per_photon=[3, 2])
     logical = torch.arange(1, 7, dtype=torch.float32)
@@ -152,6 +214,46 @@ def test_from_tensor_with_custom_partitioned_encoding_embeds_into_fock_space():
     assert sv.encoding == encoding
     assert sv.tensor.shape == (fock_basis_size,)
     assert torch.allclose(sv.tensor, expected)
+
+
+def test_from_tensor_with_custom_partitioned_encoding_infers_dimensions():
+    encoding = EncodingSpace(modes_per_photon=[3, 2])
+    logical = torch.zeros(encoding.logical_basis_size(), dtype=torch.complex64)
+
+    sv = StateVector.from_tensor(logical, encoding=encoding)
+
+    assert sv.n_modes == 5
+    assert sv.n_photons == 2
+    assert sv.tensor.shape == (Combinadics("fock", 2, 5).compute_space_size(),)
+
+
+def test_from_tensor_with_qloq_encoding_infers_dimensions():
+    encoding = EncodingSpace.qloq(qubit_groups=[2, 1])
+    logical = torch.zeros(encoding.logical_basis_size(), dtype=torch.complex64)
+
+    sv = StateVector.from_tensor(logical, encoding=encoding)
+
+    assert sv.n_modes == 6
+    assert sv.n_photons == 2
+    assert sv.tensor.shape == (Combinadics("fock", 2, 6).compute_space_size(),)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"n_modes": 6}, "expects n_modes=5"),
+        ({"n_photons": 3}, "expects n_photons=2"),
+    ],
+)
+def test_from_tensor_with_partitioned_encoding_rejects_invalid_dimensions(
+    kwargs,
+    match,
+):
+    encoding = EncodingSpace(modes_per_photon=[3, 2])
+    logical = torch.zeros(encoding.logical_basis_size(), dtype=torch.complex64)
+
+    with pytest.raises(ValueError, match=match):
+        StateVector.from_tensor(logical, encoding=encoding, **kwargs)
 
 
 def test_from_tensor_with_batched_encoding_preserves_batch_and_autograd():
