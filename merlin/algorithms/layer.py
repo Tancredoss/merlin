@@ -283,7 +283,7 @@ class QuantumLayer(MerlinModule):
         )
         # Phase 9: noise + detector setup
         self.backend = None  # TODO Change when implemented
-        noise_and_detectors = setup_noise_and_detectors(
+        self.noise, noise_and_detectors = setup_noise_and_detectors(
             resolved_circuit.experiment,
             resolved_circuit.circuit,
             computation_space,
@@ -292,6 +292,8 @@ class QuantumLayer(MerlinModule):
             noise_model=self.noise,
             return_object=return_object,
         )
+        if experiment is not None:
+            experiment.noise = self.noise
 
         # Adapt the computation space if a noisy simulation with source noise is done
         source_noise = False if noise_and_detectors.noise_groups is None else True

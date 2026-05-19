@@ -202,12 +202,13 @@ def test_setup_noise_and_detectors_computation_space_overrides():
     result = validate_and_resolve_circuit_source(None, None, experiment, None, None)
     resolved = resolve_circuit(result, pcvl)
 
-    config = setup_noise_and_detectors(
+    noise_model, config = setup_noise_and_detectors(
         resolved.experiment,
         resolved.circuit,
         ComputationSpace.UNBUNCHED,
         MeasurementStrategy.probs(computation_space=ComputationSpace.UNBUNCHED),
     )
+    assert noise_model is None
     assert config.has_custom_detectors is True
     assert len(config.detectors) == 2
     assert config.detector_warnings

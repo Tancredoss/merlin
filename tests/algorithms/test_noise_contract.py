@@ -206,36 +206,44 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
     circ.add_entangling_layer()
     circ.add_angle_encoding()
 
-    with pytest.raises(
-        NotImplementedError,
-        match=re.escape(
-            "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
-        ),
+    with pytest.warns(
+        UserWarning,
+        match="g2_distinguishable must be False since indistinguishable photons cannot be distinguished",
     ):
-        _ = ml.QuantumLayer(
-            n_photons=2,
-            input_size=5,
-            builder=circ,
-            noise=pcvl.NoiseModel(
-                g2=0.2,
+        with pytest.raises(
+            NotImplementedError,
+            match=re.escape(
+                "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
             ),
-            computation_space=ml.ComputationSpace.FOCK,
-        )
-    with pytest.raises(
-        NotImplementedError,
-        match=re.escape(
-            "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
-        ),
+        ):
+            _ = ml.QuantumLayer(
+                n_photons=2,
+                input_size=5,
+                builder=circ,
+                noise=pcvl.NoiseModel(
+                    g2=0.2,
+                ),
+                computation_space=ml.ComputationSpace.FOCK,
+            )
+    with pytest.warns(
+        UserWarning,
+        match="g2_distinguishable must be False since indistinguishable photons cannot be distinguished",
     ):
-        _ = ml.QuantumLayer(
-            n_photons=2,
-            input_size=5,
-            builder=circ,
-            noise=pcvl.NoiseModel(
-                g2=0.3,
+        with pytest.raises(
+            NotImplementedError,
+            match=re.escape(
+                "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
             ),
-            computation_space=ml.ComputationSpace.FOCK,
-        )
+        ):
+            _ = ml.QuantumLayer(
+                n_photons=2,
+                input_size=5,
+                builder=circ,
+                noise=pcvl.NoiseModel(
+                    g2=0.3,
+                ),
+                computation_space=ml.ComputationSpace.FOCK,
+            )
     with pytest.raises(
         NotImplementedError,
         match=re.escape(
@@ -375,11 +383,22 @@ def test_impossible_noise():
 
     noise = pcvl.NoiseModel(indistinguishability=1.0, g2_distinguishable=True, g2=0.2)
 
-    with pytest.raises(
-        ValueError,
-        match="g2_distinguishable noise can not be True",
+    # When indistinguishability is 1.0 and g2_distinguishable is True with g2 noise,
+    # a warning should be emitted and g2_distinguishable auto-corrected to False
+    with pytest.warns(
+        UserWarning,
+        match="g2_distinguishable must be False since indistinguishable photons cannot be distinguished",
     ):
-        _ = ml.QuantumLayer(n_photons=2, input_size=5, builder=circ, noise=noise)
+        with pytest.raises(
+            NotImplementedError,
+            match=re.escape(
+                "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
+            ),
+        ):
+            _ = ml.QuantumLayer(n_photons=2, input_size=5, builder=circ, noise=noise)
+
+    # Verify that g2_distinguishable was auto-corrected
+    assert noise.g2_distinguishable is False
 
 
 def _builder(n_modes: int = 4) -> ml.CircuitBuilder:
@@ -473,14 +492,18 @@ def test_brightness_only_classification_has_no_source_or_circuit_groups():
 
 
 def test_not_implemented_error_lists_classified_groups():
-    with pytest.raises(NotImplementedError) as exc_info:
-        ml.QuantumLayer(
-            n_photons=2,
-            input_size=4,
-            builder=_builder(),
-            noise=pcvl.NoiseModel(g2=0.05, phase_error=0.1),
-            computation_space=ml.ComputationSpace.FOCK,
-        )
+    with pytest.warns(
+        UserWarning,
+        match="g2_distinguishable must be False since indistinguishable photons cannot be distinguished",
+    ):
+        with pytest.raises(NotImplementedError) as exc_info:
+            ml.QuantumLayer(
+                n_photons=2,
+                input_size=4,
+                builder=_builder(),
+                noise=pcvl.NoiseModel(g2=0.05, phase_error=0.1),
+                computation_space=ml.ComputationSpace.FOCK,
+            )
 
     message = str(exc_info.value)
     assert "Source" in message

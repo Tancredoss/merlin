@@ -650,10 +650,10 @@ def setup_noise_and_detectors(
     circuit: pcvl.Circuit,
     computation_space: ComputationSpace,
     measurement_strategy: MeasurementStrategyLike,
-    backend: str = None,
+    backend: str | None = None,
     noise_model: pcvl.NoiseModel | None = None,
     return_object: bool = False,
-) -> NoiseAndDetectorConfig:
+) -> tuple[pcvl.NoiseModel | None, NoiseAndDetectorConfig]:
     """Extract and validate photon-loss and detector configuration.
 
     Parameters
@@ -666,13 +666,23 @@ def setup_noise_and_detectors(
         Logical computation space requested by the layer.
     measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
         Measurement strategy used to validate detector and noise compatibility.
+    backend : str | None
+        Backend identifier used when validating supported noisy measurement
+        configurations. If omitted, no backend-specific validation is applied.
+        Default value is None.
+    noise_model : pcvl.NoiseModel | None
+        Noise model to validate and classify. If omitted, the simulation is
+        treated as noise-free unless detector configuration requires validation.
+        Default value is None.
     return_object : bool
-        Whether the layer returns structured objects instead of tensors. Default is False
+        Whether the layer returns structured objects instead of tensors.
+        Default value is False.
 
     Returns
     -------
-    NoiseAndDetectorConfig
-        Extracted and validated noise/detector configuration.
+    tuple[pcvl.NoiseModel | None, NoiseAndDetectorConfig]
+        Normalized noise model paired with the extracted and validated
+        noise/detector configuration.
 
     Raises
     ------
@@ -700,7 +710,7 @@ def setup_noise_and_detectors(
         )
 
     # Validating and sorting the noise model
-    validate_noisy_measurement_strategy(
+    noise_model = validate_noisy_measurement_strategy(
         backend,
         output=measurement_kind.name.lower(),
         noise_model=noise_model,
@@ -748,7 +758,7 @@ def setup_noise_and_detectors(
             )
 
     # Creating the noise config object
-    return NoiseAndDetectorConfig(
+    return noise_model, NoiseAndDetectorConfig(
         photon_survival_probs=photon_survival_probs,
         has_custom_noise=has_post_measurement_noise,
         detectors=detectors,
@@ -1059,24 +1069,46 @@ def validate_noisy_measurement_strategy(
     noise_model: pcvl.NoiseModel | None = None,
     empty_detectors: bool = False,
     return_object: bool = False,
-) -> None:
+) -> pcvl.NoiseModel | None:
     """Validate the noise model and QuantumLayer configurations so that they match.
+
+    Validates that the noise model, measurement strategy, backend, and output
+    configuration are compatible. Automatically corrects incompatible noise
+    configurations (e.g., indistinguishable photons with g2_distinguishable=True).
 
     Parameters
     ----------
     strategy : str | None
-        The simulation backend used.
+        The simulation backend used (e.g., "slos"). If provided and not "slos",
+        raises NotImplementedError. Default is None.
     output : str
-        The measurement strategy used.
-    noise_model: pcvl.NoiseModel | None
-        The noise model to use. By default it is None (no noise).
-    empty_detectors: bool
-        If there is no pcvl.Detectors used in the circuit.
+        The measurement strategy output type (e.g., "amplitudes", "probabilities",
+        "mode_expectations"). Must be "probabilities" when noise is present.
+    noise_model : pcvl.NoiseModel | None
+        The noise model to validate. If provided, the function checks for
+        incompatibilities and auto-corrects certain configurations. Default is None.
+    empty_detectors : bool
+        Whether the circuit has no custom detectors. Used to determine early returns
+        when there is no noise. Default is False.
     return_object : bool
         Whether the layer returns structured objects instead of tensors.
+        Cannot be True when noise_model is not None. Default is False.
 
     Returns
     -------
+    pcvl.NoiseModel | None
+        The (potentially modified) noise model. If indistinguishability is 1.0
+        and g2 noise is present with g2_distinguishable=True, the function
+        automatically sets g2_distinguishable=False and emits a warning.
+
+    Raises
+    ------
+    NotImplementedError
+        If return_object=True and noise_model is not None, or if the backend
+        strategy is not "slos".
+    ValueError
+        If output measurement strategy is incompatible with noisy simulation
+        (e.g., "amplitudes" or "mode_expectations" with noise).
     """
     if noise_model is None and empty_detectors:
         return
@@ -1098,13 +1130,20 @@ def validate_noisy_measurement_strategy(
             "Only 'slos' is currently available."
         )
     if noise_model is not None:
-        if (noise_model.g2_distinguishable is True) and (
-            noise_model.indistinguishability == 1.0 and (not noise_model.g2 == 0.0)
+        if (
+            noise_model.indistinguishability == 1.0
+            and (not noise_model.g2 == 0.0)
+            and noise_model.g2_distinguishable
         ):
-            raise ValueError(
-                "The g2_distinguishable noise can not be True if photons are completely indistinguishable (indistinguishability=1.0) while running an experiment with a non trivial g2."
+            warnings.warn(
+                "When indistinguishability is 1.0 (fully indistinguishable photons) and g2 noise is present, "
+                "g2_distinguishable must be False since indistinguishable photons cannot be distinguished. "
+                "Setting g2_distinguishable=False automatically.",
+                UserWarning,
+                stacklevel=2,
             )
-    return
+            noise_model.g2_distinguishable = False
+    return noise_model
 
 
 def normalize_noise_model(
