@@ -1115,7 +1115,7 @@ def validate_noisy_measurement_strategy(
         (e.g., "amplitudes" or "mode_expectations" with noise).
     """
     if noise_model is None and empty_detectors:
-        return
+        return noise_model
     if (noise_model is not None) and return_object:
         raise NotImplementedError(
             "The noise computation with the return_object feature set at True is not yet implemented."
