@@ -205,7 +205,6 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
     circ = ml.CircuitBuilder(n_modes=5)
     circ.add_entangling_layer()
     circ.add_angle_encoding()
-
     with pytest.warns(
         UserWarning,
         match="g2_distinguishable must be False since indistinguishable photons cannot be distinguished",
@@ -244,10 +243,11 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
                 ),
                 computation_space=ml.ComputationSpace.FOCK,
             )
+
     with pytest.raises(
         NotImplementedError,
         match=re.escape(
-            "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2_distinguishable']."
+            "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2_distinguishable', 'g2']."
         ),
     ):
         _ = ml.QuantumLayer(
@@ -256,6 +256,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             builder=circ,
             noise=pcvl.NoiseModel(
                 indistinguishability=0.3,
+                g2=0.3,
                 g2_distinguishable=True,
             ),
             computation_space=ml.ComputationSpace.FOCK,
@@ -347,6 +348,7 @@ def test_noise_via_direct_parameter_raises_not_implemented():
 
 
 def test_normalise_noise():
+
     noise = pcvl.NoiseModel(
         brightness=0.1,
         indistinguishability=0.2,
@@ -473,7 +475,8 @@ def test_noise_groups_are_passed_to_computation_process():
 
 
 def test_empty_noise_model_has_no_active_groups():
-    groups = classify_noise_model(pcvl.NoiseModel())
+    # Normalizing for the non-trivial g2_distinguishable handling in Perceval
+    groups = classify_noise_model(normalize_noise_model(pcvl.NoiseModel(), None))
 
     assert groups is None or (
         _is_empty_group(groups.source)
@@ -483,7 +486,9 @@ def test_empty_noise_model_has_no_active_groups():
 
 
 def test_brightness_only_classification_has_no_source_or_circuit_groups():
-    groups = classify_noise_model(pcvl.NoiseModel(brightness=0.3))
+    groups = classify_noise_model(
+        normalize_noise_model(pcvl.NoiseModel(brightness=0.3), None)
+    )
 
     assert groups is not None
     assert _is_empty_group(groups.source)

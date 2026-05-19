@@ -653,7 +653,7 @@ def setup_noise_and_detectors(
     backend: str | None = None,
     noise_model: pcvl.NoiseModel | None = None,
     return_object: bool = False,
-) -> tuple[pcvl.NoiseModel | None, NoiseAndDetectorConfig]:
+) -> NoiseAndDetectorConfig:
     """Extract and validate photon-loss and detector configuration.
 
     Parameters
@@ -680,15 +680,21 @@ def setup_noise_and_detectors(
 
     Returns
     -------
-    tuple[pcvl.NoiseModel | None, NoiseAndDetectorConfig]
-        Normalized noise model paired with the extracted and validated
-        noise/detector configuration.
+    NoiseAndDetectorConfig
+        Extracted and validated noise/detector configuration including photon
+        survival probabilities, detector settings, and classified noise groups.
 
     Raises
     ------
     RuntimeError
-        If amplitude readout is requested together with incompatible noise or
-        detector settings.
+        If amplitude readout is requested together with custom detectors, or if
+        amplitude readout or object return is incompatible with the noise model.
+    NotImplementedError
+        If unsupported noise types (g2_distinguishable, g2, phase_imprecision,
+        phase_error) are detected in the noise model, or if a non-SLOS backend
+        is specified.
+    ValueError
+        If measurement strategy is incompatible with noisy simulation.
     """
     # Measurement resolution
     measurement_kind = _resolve_measurement_kind(measurement_strategy)
@@ -710,7 +716,7 @@ def setup_noise_and_detectors(
         )
 
     # Validating and sorting the noise model
-    noise_model = validate_noisy_measurement_strategy(
+    validate_noisy_measurement_strategy(
         backend,
         output=measurement_kind.name.lower(),
         noise_model=noise_model,
@@ -758,7 +764,7 @@ def setup_noise_and_detectors(
             )
 
     # Creating the noise config object
-    return noise_model, NoiseAndDetectorConfig(
+    return NoiseAndDetectorConfig(
         photon_survival_probs=photon_survival_probs,
         has_custom_noise=has_post_measurement_noise,
         detectors=detectors,
@@ -1011,9 +1017,7 @@ def classify_noise_model(noise_model: pcvl.NoiseModel | None) -> NoiseGroups | N
     if noise_model.g2_distinguishable is None:
         pass
     elif noise_model.g2_distinguishable:  # g2_distinguishable's default value
-        if noise_model.g2 is not None:
-            if not noise_model.g2 == 0.0:
-                source["g2_distinguishable"] = True
+        source["g2_distinguishable"] = True
     # g2
     if noise_model.g2 is None:
         pass
@@ -1129,49 +1133,80 @@ def validate_noisy_measurement_strategy(
             f"Backend '{strategy}' is not supported. "
             "Only 'slos' is currently available."
         )
-    if noise_model is not None:
-        if (
-            noise_model.indistinguishability == 1.0
-            and (not noise_model.g2 == 0.0)
-            and noise_model.g2_distinguishable
-        ):
-            warnings.warn(
-                "When indistinguishability is 1.0 (fully indistinguishable photons) and g2 noise is present, "
-                "g2_distinguishable must be False since indistinguishable photons cannot be distinguished. "
-                "Setting g2_distinguishable=False automatically.",
-                UserWarning,
-                stacklevel=2,
-            )
-            noise_model.g2_distinguishable = False
     return noise_model
 
 
 def normalize_noise_model(
     layer_noise_model: pcvl.NoiseModel | None,
     experiment_noise_model: pcvl.NoiseModel | None,
-) -> pcvl.NoiseModel | None:
-    """Normalize the NoiseModels from two different inputs in the QuantumLayer.
+) -> pcvl.NoiseModel:
+    """Normalize and resolve noise models from multiple QuantumLayer sources.
+
+    Resolves conflicting noise model sources and validates g2_distinguishable
+    settings for coherence consistency. When both sources provide a noise model,
+    they must be identical. Automatically corrects g2_distinguishable when
+    indistinguishability is 1.0 (fully indistinguishable photons).
 
     Parameters
     ----------
-    layer_noise_model: pcvl.NoiseModel | None
-        The noise model declared in the noise_model argument of the QuantumLayer.
-    experiment_noise_model: pcvl.NoiseModel | None
-        The noise model declared in the experiment given to the QuantumLayer.
+    layer_noise_model : pcvl.NoiseModel | None
+        The noise model declared via the noise argument of QuantumLayer.
+    experiment_noise_model : pcvl.NoiseModel | None
+        The noise model declared via experiment.noise in QuantumLayer.
 
     Returns
     -------
-    pcvl.NoiseModel | None
-        The declared noise model or None if the is none.
+    pcvl.NoiseModel
+        The resolved and validated noise model with corrected g2_distinguishable
+        and g2 settings as needed.
+
+    Raises
+    ------
+    ValueError
+        If both layer_noise_model and experiment_noise_model are None, or if both
+        are provided but not identical.
+
+    Warns
+    -----
+    UserWarning
+        When g2_distinguishable is automatically corrected from True to False due
+        to fully indistinguishable photons (indistinguishability == 1.0).
     """
+
+    output_nm = None
     if layer_noise_model is None:
-        return experiment_noise_model
+        output_nm = experiment_noise_model
+        # Both noise models are None
+        if output_nm is None:
+            return None
     else:
         if experiment_noise_model is None:
-            return layer_noise_model
+            output_nm = layer_noise_model
         else:
             if layer_noise_model == experiment_noise_model:
-                return layer_noise_model
-    raise ValueError(
-        "Conflicting noise models: specify via noise_model= or experiment.noise, not both"
-    )
+                output_nm = layer_noise_model
+
+    if output_nm is None:
+        raise ValueError(
+            "Conflicting noise models: specify via noise_model= or experiment.noise, not both"
+        )
+
+    # Warning if trying to use g2 distinguishable photons if the photons are completly indistiguishable
+    if (
+        output_nm.indistinguishability == 1.0
+        and (not output_nm.g2 == 0.0)
+        and output_nm.g2_distinguishable
+    ):
+        warnings.warn(
+            "When indistinguishability is 1.0 (fully indistinguishable photons) and g2 noise is present, "
+            "g2_distinguishable must be False since indistinguishable photons cannot be distinguished. "
+            "Setting g2_distinguishable=False automatically.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # If there is no application possible for g2_distinguishable (no g2 or indistiguishable photons), set it to False as it has no impact of the simulation
+    if output_nm.indistinguishability == 1.0 or output_nm.g2 == 0.0:
+        output_nm.g2_distinguishable = False
+
+    return output_nm
