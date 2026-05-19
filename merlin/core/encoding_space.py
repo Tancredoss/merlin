@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from itertools import product
 from typing import ClassVar
 
+import torch
+
 from merlin.utils.combinadics import Combinadics
 
 TupleInt = tuple[int, ...]
@@ -171,6 +173,119 @@ class EncodingSpace:
             return (2,) * resolved_photons
         return None
 
+    def logical_basis_size(
+        self, *, n_modes: int | None = None, n_photons: int | None = None
+    ) -> int:
+        """Return the logical tensor width expected before Fock embedding.
+
+        Parameters
+        ----------
+        n_modes : int | None
+            Number of photonic modes used to resolve built-in encodings. If
+            omitted, custom partitioned encodings use their own configured
+            mode count. Default value is None.
+        n_photons : int | None
+            Number of photons used to resolve built-in encodings. If omitted,
+            custom partitioned encodings use their own configured photon
+            count. Default value is None.
+
+        Returns
+        -------
+        int
+            Number of logical amplitude components expected for this encoding.
+
+        Raises
+        ------
+        ValueError
+            If the encoding cannot resolve ``n_modes`` and ``n_photons``.
+        """
+
+        return self.basis_size(n_modes=n_modes, n_photons=n_photons)
+
+    def embed(
+        self,
+        tensor: torch.Tensor,
+        *,
+        n_modes: int | None = None,
+        n_photons: int | None = None,
+    ) -> torch.Tensor:
+        """Embed a logical amplitude tensor into canonical full-Fock ordering.
+
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            Logical amplitude tensor. The final dimension stores amplitudes in
+            this encoding's logical basis order; all leading dimensions are
+            preserved as batch axes.
+        n_modes : int | None
+            Number of photonic modes used to resolve built-in encodings. If
+            omitted, custom partitioned encodings use their own configured
+            mode count. Default value is None.
+        n_photons : int | None
+            Number of photons used to resolve built-in encodings. If omitted,
+            custom partitioned encodings use their own configured photon
+            count. Default value is None.
+
+        Returns
+        -------
+        torch.Tensor
+            Amplitude tensor with the same leading dimensions as ``tensor`` and
+            final dimension equal to the full Fock basis size.
+
+        Raises
+        ------
+        ValueError
+            If ``tensor`` is scalar, if its final dimension does not match the
+            logical basis size, or if the encoding cannot resolve
+            ``n_modes`` and ``n_photons``.
+        """
+
+        if tensor.dim() == 0:
+            raise ValueError("Amplitude tensor must be at least one-dimensional.")
+
+        logical_size = self.logical_basis_size(n_modes=n_modes, n_photons=n_photons)
+        if tensor.shape[-1] != logical_size:
+            raise ValueError(
+                "Tensor last dimension does not match the logical basis size "
+                f"for encoding '{self.kind}': got {tensor.shape[-1]}, expected {logical_size}."
+            )
+
+        resolved_modes, resolved_photons = self._resolve_dimensions(
+            n_modes=n_modes, n_photons=n_photons
+        )
+        fock_size = Combinadics(
+            "fock", resolved_photons, resolved_modes
+        ).compute_space_size()
+        if self.kind == "fock":
+            return tensor
+
+        fock_indices = torch.tensor(
+            list(
+                self.logical_to_fock_indices(
+                    n_modes=n_modes, n_photons=n_photons
+                ).values()
+            ),
+            dtype=torch.long,
+            device=tensor.device,
+        )
+
+        if tensor.is_sparse:
+            coalesced = tensor.coalesce()
+            indices = coalesced.indices().clone()
+            indices[-1] = fock_indices[indices[-1]]
+            return torch.sparse_coo_tensor(
+                indices,
+                coalesced.values(),
+                tuple(coalesced.shape[:-1]) + (fock_size,),
+                dtype=coalesced.dtype,
+                device=coalesced.device,
+            ).coalesce()
+
+        flat = tensor.reshape(-1, logical_size)
+        embedded = tensor.new_zeros((flat.shape[0], fock_size))
+        embedded.index_copy_(1, fock_indices, flat)
+        return embedded.view(*tensor.shape[:-1], fock_size)
+
     def logical_basis_states(
         self,
         *,
@@ -330,11 +445,24 @@ class EncodingSpace:
         resolved_photons = self._validate_photon_count(n_photons)
         if self.kind == "dual_rail":
             if resolved_modes is None and resolved_photons is not None:
+                if resolved_photons <= 0:
+                    raise ValueError(
+                        "dual_rail encoding requires a positive n_photons value."
+                    )
                 resolved_modes = 2 * resolved_photons
             if resolved_photons is None and resolved_modes is not None:
                 if resolved_modes % 2 != 0:
                     raise ValueError("dual_rail requires an even n_modes value.")
                 resolved_photons = resolved_modes // 2
+            if (
+                resolved_modes is not None
+                and resolved_photons is not None
+                and resolved_modes != 2 * resolved_photons
+            ):
+                raise ValueError(
+                    "dual_rail encoding requires n_modes == 2 * n_photons; "
+                    f"got n_modes={resolved_modes} and n_photons={resolved_photons}."
+                )
 
         if resolved_modes is None or resolved_photons is None:
             raise ValueError(f"{self.kind} encoding requires n_modes and n_photons.")
