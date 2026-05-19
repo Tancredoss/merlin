@@ -21,7 +21,7 @@ To add noise to your :class:`~merlin.algorithms.layer.QuantumLayer`, Perceval's 
 
    a. ``indistinguishability``: Chance two photons are indistinguishable. The default value (noiseless case) is 1.
    b. ``g2``: :math:`g^2(0)` - second order intensity autocorrelation at zero time delay. This parameter is correlated with how often two photons are emitted by the source instead of a single one. The default value (noiseless case) is 0.
-   c. ``g2_distinguishable``: g2-generated photons indistinguishability. This parameter can not be False if ``indistinguishability=1.0``. The default value (noiseless case) is True.
+   c. ``g2_distinguishable``: g2-generated photons indistinguishability. This parameter can not be False if ``indistinguishability=1.0`` and ``g2>0.0``. The default value (noiseless case) is True.
 
 3. Post-measurement noise
 

@@ -1000,8 +1000,10 @@ def classify_noise_model(noise_model: pcvl.NoiseModel | None) -> NoiseGroups | N
     # g2_distinguishable
     if noise_model.g2_distinguishable is None:
         pass
-    elif not noise_model.g2_distinguishable:  # g2_distinguishable's default value
-        source["g2_distinguishable"] = False
+    elif noise_model.g2_distinguishable:  # g2_distinguishable's default value
+        if noise_model.g2 is not None:
+            if not noise_model.g2 == 0.0:
+                source["g2_distinguishable"] = True
     # g2
     if noise_model.g2 is None:
         pass
@@ -1096,11 +1098,11 @@ def validate_noisy_measurement_strategy(
             "Only 'slos' is currently available."
         )
     if noise_model is not None:
-        if (noise_model.g2_distinguishable is False) and (
-            noise_model.indistinguishability == 1.0
+        if (noise_model.g2_distinguishable is True) and (
+            noise_model.indistinguishability == 1.0 and (not noise_model.g2 == 0.0)
         ):
             raise ValueError(
-                "The g2_distinguishable noise can not be False if photons are completely indistinguishable (indistinguishability=1.0)"
+                "The g2_distinguishable noise can not be True if photons are completely indistinguishable (indistinguishability=1.0) while running an experiment with a non trivial g2."
             )
     return
 

@@ -21,7 +21,7 @@ def noise_groups() -> ml.QuantumLayer:
             brightness=0.1,
             indistinguishability=0.2,
             g2=0.3,
-            g2_distinguishable=False,
+            g2_distinguishable=True,
             transmittance=0.4,
             phase_imprecision=0.5,
             phase_error=0.6,
@@ -54,7 +54,7 @@ def test_indistinguishability_and_g2_distinguishable_classified_as_source(
     assert "indistinguishability" not in noise_groups.post_measurement.keys()
     assert "indistinguishability" not in noise_groups.circuit.keys()
 
-    assert not noise_groups.source["g2_distinguishable"]
+    assert noise_groups.source["g2_distinguishable"]
     assert "g2_distinguishable" not in noise_groups.post_measurement.keys()
     assert "g2_distinguishable" not in noise_groups.circuit.keys()
 
@@ -97,7 +97,7 @@ def test_noisy_layer_with_amplitudes_strategy_raises_value_error():
                 brightness=0.1,
                 indistinguishability=0.2,
                 g2=0.3,
-                g2_distinguishable=True,
+                g2_distinguishable=False,
                 transmittance=0.4,
                 phase_imprecision=0.5,
                 phase_error=0.6,
@@ -184,7 +184,7 @@ def test_noisy_layer_with_mode_expectations_strategy_raises_value_error():
                 brightness=0.1,
                 indistinguishability=0.2,
                 g2=0.3,
-                g2_distinguishable=True,
+                g2_distinguishable=False,
                 transmittance=0.4,
                 phase_imprecision=0.5,
                 phase_error=0.6,
@@ -248,7 +248,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             builder=circ,
             noise=pcvl.NoiseModel(
                 indistinguishability=0.3,
-                g2_distinguishable=False,
+                g2_distinguishable=True,
             ),
             computation_space=ml.ComputationSpace.FOCK,
         )
@@ -373,14 +373,11 @@ def test_impossible_noise():
     circ.add_entangling_layer()
     circ.add_angle_encoding()
 
-    noise = pcvl.NoiseModel(
-        indistinguishability=1.0,
-        g2_distinguishable=False,
-    )
+    noise = pcvl.NoiseModel(indistinguishability=1.0, g2_distinguishable=True, g2=0.2)
 
     with pytest.raises(
         ValueError,
-        match="g2_distinguishable noise can not be False",
+        match="g2_distinguishable noise can not be True",
     ):
         _ = ml.QuantumLayer(n_photons=2, input_size=5, builder=circ, noise=noise)
 
