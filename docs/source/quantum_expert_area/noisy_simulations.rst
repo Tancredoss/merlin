@@ -29,7 +29,7 @@ To add noise to your :class:`~merlin.algorithms.layer.QuantumLayer`, Perceval's 
    b. ``transmittance``: System-wide transmittance (warning, can interfere with the brightness parameter). The default value (noiseless case) is 1.
 
 
-You can either add this noise model to a :class:`pcvl.Experiment` that is then used at the initialization of the :class:`~merlin.algorithms.layer.QuantumLayer` or you can directly pass this noise model to the :class:`~merlin.algorithms.layer.QuantumLayer`'s ``noise_model`` parameter in the constructor. Here are some usage examples:
+You can either add this noise model to a :class:`pcvl.Experiment` that is then used at the initialization of the :class:`~merlin.algorithms.layer.QuantumLayer` or you can directly pass this noise model to the :class:`~merlin.algorithms.layer.QuantumLayer`'s ``noise`` parameter in the constructor. Here are some usage examples:
 
 .. code-block:: python
 
@@ -66,14 +66,14 @@ You can either add this noise model to a :class:`pcvl.Experiment` that is then u
     x = torch.rand(3, 1)
     probs = layer(x)
 
-    # Option 2: define the noise model with the noise_model parameter
+    # Option 2: define the noise model with the noise parameter
     layer = ML.QuantumLayer(
         input_size=1,
         experiment=experiment,
         input_parameters=["px"],
         input_state=[1, 1, 1],
         computation_space=ML.ComputationSpace.FOCK,  # Fock space used for noisy simulations
-        noise_model=noise_model
+        noise=noise_model
     )
 
     x = torch.rand(3, 1)

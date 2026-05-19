@@ -93,7 +93,7 @@ def test_noisy_layer_with_amplitudes_strategy_raises_value_error():
             n_photons=2,
             input_size=5,
             builder=circ,
-            noise_model=pcvl.NoiseModel(
+            noise=pcvl.NoiseModel(
                 brightness=0.1,
                 indistinguishability=0.2,
                 g2=0.3,
@@ -180,7 +180,7 @@ def test_noisy_layer_with_mode_expectations_strategy_raises_value_error():
             n_photons=2,
             input_size=5,
             builder=circ,
-            noise_model=pcvl.NoiseModel(
+            noise=pcvl.NoiseModel(
                 brightness=0.1,
                 indistinguishability=0.2,
                 g2=0.3,
@@ -216,7 +216,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             n_photons=2,
             input_size=5,
             builder=circ,
-            noise_model=pcvl.NoiseModel(
+            noise=pcvl.NoiseModel(
                 g2=0.2,
             ),
             computation_space=ml.ComputationSpace.FOCK,
@@ -231,7 +231,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             n_photons=2,
             input_size=5,
             builder=circ,
-            noise_model=pcvl.NoiseModel(
+            noise=pcvl.NoiseModel(
                 g2=0.3,
             ),
             computation_space=ml.ComputationSpace.FOCK,
@@ -246,7 +246,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             n_photons=2,
             input_size=5,
             builder=circ,
-            noise_model=pcvl.NoiseModel(
+            noise=pcvl.NoiseModel(
                 indistinguishability=0.3,
                 g2_distinguishable=False,
             ),
@@ -262,7 +262,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             n_photons=2,
             input_size=5,
             builder=circ,
-            noise_model=pcvl.NoiseModel(
+            noise=pcvl.NoiseModel(
                 phase_imprecision=0.5,
             ),
         )
@@ -277,7 +277,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             n_photons=2,
             input_size=5,
             builder=circ,
-            noise_model=pcvl.NoiseModel(
+            noise=pcvl.NoiseModel(
                 phase_error=0.6,
             ),
         )
@@ -325,7 +325,7 @@ def test_noise_via_direct_parameter_raises_not_implemented():
             n_photons=2,
             input_size=5,
             builder=circ,
-            noise_model=pcvl.NoiseModel(
+            noise=pcvl.NoiseModel(
                 brightness=0.1,
                 indistinguishability=0.2,
                 g2=0.3,
@@ -382,7 +382,7 @@ def test_impossible_noise():
         ValueError,
         match="g2_distinguishable noise can not be False",
     ):
-        _ = ml.QuantumLayer(n_photons=2, input_size=5, builder=circ, noise_model=noise)
+        _ = ml.QuantumLayer(n_photons=2, input_size=5, builder=circ, noise=noise)
 
 
 def _builder(n_modes: int = 4) -> ml.CircuitBuilder:
@@ -402,7 +402,7 @@ def test_direct_noise_model_brightness_feeds_photon_loss_transform():
         n_photons=2,
         input_size=4,
         builder=_builder(),
-        noise_model=pcvl.NoiseModel(brightness=0.3),
+        noise=pcvl.NoiseModel(brightness=0.3),
     )
 
     assert layer._photon_survival_probs == pytest.approx([0.3, 0.3, 0.3, 0.3])
@@ -413,7 +413,7 @@ def test_direct_noise_model_transmittance_feeds_photon_loss_transform():
         n_photons=2,
         input_size=4,
         builder=_builder(),
-        noise_model=pcvl.NoiseModel(transmittance=0.4),
+        noise=pcvl.NoiseModel(transmittance=0.4),
     )
 
     assert layer._photon_survival_probs == pytest.approx([0.4, 0.4, 0.4, 0.4])
@@ -424,7 +424,7 @@ def test_photon_survival_on_simple_circuits():
     layer = ml.QuantumLayer(
         input_size=0,
         circuit=pcvl.Circuit(m=4),
-        noise_model=pcvl.NoiseModel(transmittance=0.1, brightness=0.2),
+        noise=pcvl.NoiseModel(transmittance=0.1, brightness=0.2),
         n_photons=2,
     )
     assert np.allclose(layer._photon_survival_probs, [0.02, 0.02, 0.02, 0.02])
@@ -433,7 +433,7 @@ def test_photon_survival_on_simple_circuits():
     circuit_hom = pcvl.Circuit(m=2).add([0, 1], pcvl.BS(convention=pcvl.BSConvention.H))
     layer = ml.QuantumLayer(
         circuit=circuit_hom,
-        noise_model=pcvl.NoiseModel(transmittance=0.1, brightness=0.2),
+        noise=pcvl.NoiseModel(transmittance=0.1, brightness=0.2),
         n_photons=2,
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
@@ -447,7 +447,7 @@ def test_noise_groups_are_passed_to_computation_process():
         n_photons=2,
         input_size=4,
         builder=_builder(),
-        noise_model=pcvl.NoiseModel(brightness=0.3),
+        noise=pcvl.NoiseModel(brightness=0.3),
     )
 
     assert layer.computation_process.noise_groups is not None
@@ -481,7 +481,7 @@ def test_not_implemented_error_lists_classified_groups():
             n_photons=2,
             input_size=4,
             builder=_builder(),
-            noise_model=pcvl.NoiseModel(g2=0.05, phase_error=0.1),
+            noise=pcvl.NoiseModel(g2=0.05, phase_error=0.1),
             computation_space=ml.ComputationSpace.FOCK,
         )
 
@@ -514,17 +514,17 @@ def test_return_object_with_noise_model_fails_fast():
             n_photons=2,
             input_size=4,
             builder=_builder(),
-            noise_model=pcvl.NoiseModel(brightness=0.3),
+            noise=pcvl.NoiseModel(brightness=0.3),
             return_object=True,
         )
 
 
-def test_indistinguishability_noise_model_no_longer_raises_not_implemented():
+def test_indistinguishability_noise_no_longer_raises_not_implemented():
     layer = ml.QuantumLayer(
         n_photons=2,
         input_size=4,
         builder=_builder(),
-        noise_model=pcvl.NoiseModel(indistinguishability=0.9),
+        noise=pcvl.NoiseModel(indistinguishability=0.9),
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
@@ -534,7 +534,7 @@ def test_indistinguishability_noise_model_no_longer_raises_not_implemented():
     assert out.shape[0] == 1
 
 
-def test_brightness_noise_model_with_return_object_still_raises_not_implemented():
+def test_brightness_noise_with_return_object_still_raises_not_implemented():
     with pytest.raises(
         NotImplementedError,
         match="The noise computation with the return_object feature set at True is not yet implemented.",
@@ -543,7 +543,7 @@ def test_brightness_noise_model_with_return_object_still_raises_not_implemented(
             n_photons=2,
             input_size=4,
             builder=_builder(),
-            noise_model=pcvl.NoiseModel(brightness=0.8),
+            noise=pcvl.NoiseModel(brightness=0.8),
             return_object=True,
         )
 
@@ -553,7 +553,7 @@ def test_indistinguishability_noise_backward_populates_thetas_grad():
         n_photons=2,
         input_size=4,
         builder=_builder(),
-        noise_model=pcvl.NoiseModel(indistinguishability=0.9),
+        noise=pcvl.NoiseModel(indistinguishability=0.9),
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
@@ -574,7 +574,7 @@ def test_indistinguishability_with_bunched_input_state_no_longer_raises():
         input_size=4,
         builder=_builder(),
         input_state=[2, 0, 0, 0],
-        noise_model=pcvl.NoiseModel(indistinguishability=0.9),
+        noise=pcvl.NoiseModel(indistinguishability=0.9),
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
@@ -589,7 +589,7 @@ def test_noisy_quantumlayer_batched_forward_matches_single_forwards():
         n_photons=3,
         input_size=5,
         builder=_builder(n_modes=5),
-        noise_model=pcvl.NoiseModel(indistinguishability=0.4),
+        noise=pcvl.NoiseModel(indistinguishability=0.4),
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
@@ -621,8 +621,8 @@ def test_indistiguishable_layer_against_perceval_unitary():
     circuit = pcvl.Circuit(2)
     circuit.add((0, 1), pcvl.BS.H())
 
-    noise_model = pcvl.NoiseModel(indistinguishability=0.5)
-    source = pcvl.Source.from_noise_model(noise_model)
+    noise = pcvl.NoiseModel(indistinguishability=0.5)
+    source = pcvl.Source.from_noise_model(noise)
     backend = pcvl.BackendFactory.get_backend("SLOS")
     sim = pcvl.Simulator(backend)
     sim.set_circuit(deepcopy(circuit))
@@ -631,7 +631,7 @@ def test_indistiguishable_layer_against_perceval_unitary():
     layer = ml.QuantumLayer(
         n_photons=2,
         circuit=circuit,
-        noise_model=noise_model,
+        noise=noise,
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
@@ -685,7 +685,7 @@ def test_indistiguishable_layer_against_perceval_unitary_statevector_input():
     layer = ml.QuantumLayer(
         n_photons=2,
         circuit=deepcopy(circuit),
-        noise_model=noise_model,
+        noise=noise_model,
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
@@ -744,7 +744,7 @@ def test_indistiguishable_layer_against_perceval_unitary_complex_tensor_input():
     layer = ml.QuantumLayer(
         n_photons=2,
         circuit=deepcopy(circuit),
-        noise_model=noise_model,
+        noise=noise_model,
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
@@ -815,7 +815,7 @@ def test_indistiguishable_layer_against_perceval_unitary_no_amplitude_encoding()
             n_photons=2,
             circuit=deepcopy(circuit),
             input_state=input_state_tuple,
-            noise_model=noise_model,
+            noise=noise_model,
             measurement_strategy=ml.MeasurementStrategy.probs(
                 computation_space=ml.ComputationSpace.FOCK
             ),
@@ -852,7 +852,7 @@ def test_no_noise():
         input_size=4,
         builder=_builder(),
     )
-    assert layer.noise_model is None
+    assert layer.noise is None
     assert layer._noise_groups is None
     assert not layer.has_custom_noise_model
     assert not layer.has_custom_detectors
@@ -871,7 +871,7 @@ def test_computation_space_changed():
     ):
         layer = ml.QuantumLayer(
             builder=builder,
-            noise_model=noise_model,
+            noise=noise_model,
             n_photons=2,
             computation_space=ml.ComputationSpace.UNBUNCHED,
         )
@@ -885,7 +885,7 @@ def test_computation_space_changed():
     ):
         layer = ml.QuantumLayer(
             builder=builder,
-            noise_model=noise_model,
+            noise=noise_model,
             n_photons=2,
             computation_space=ml.ComputationSpace.DUAL_RAIL,
         )
@@ -898,7 +898,7 @@ def test_computation_space_changed():
     ):
         layer = ml.QuantumLayer(
             builder=builder,
-            noise_model=noise_model,
+            noise=noise_model,
             n_photons=2,
             computation_space=ml.ComputationSpace.UNBUNCHED,
             amplitude_encoding=True,

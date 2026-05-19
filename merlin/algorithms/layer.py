@@ -116,7 +116,7 @@ class QuantumLayer(MerlinModule):
         computation_space: ComputationSpace | str | None = None,
         measurement_strategy: MeasurementStrategyLike | None = None,
         return_object: bool = False,
-        noise_model: pcvl.NoiseModel | None = None,
+        noise: pcvl.NoiseModel | None = None,
         # device and dtype
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
@@ -190,7 +190,7 @@ class QuantumLayer(MerlinModule):
             - ``MeasurementKind.PROBABILITIES`` returns a ``ProbabilityDistribution``
             - ``MeasurementKind.PARTIAL`` returns a ``PartialMeasurement``.
             - ``MeasurementKind.MODE_EXPECTATIONS`` returns a ``torch.Tensor``.
-        noise_model: pcvl.NoiseModel | None
+        noise: pcvl.NoiseModel | None
             The noise model used in the simulation. Default is None where no `noise` is
             applied.
         device : torch.device | None
@@ -251,8 +251,8 @@ class QuantumLayer(MerlinModule):
             builder, circuit, experiment, trainable_parameters, input_parameters
         )
         # Phase 3.5 normalization of the noise
-        self.noise_model = normalize_noise_model(
-            noise_model, experiment.noise if experiment is not None else None
+        self.noise = normalize_noise_model(
+            noise, experiment.noise if experiment is not None else None
         )
 
         # Phase 4: encoding validation (post-resolution)
@@ -266,10 +266,10 @@ class QuantumLayer(MerlinModule):
         # Phase 6: experiment vetting (if provided)
         if experiment is not None:
             vet_experiment(experiment)
-            experiment.noise = self.noise_model
+            experiment.noise = self.noise
 
         # Phase 7: circuit resolution
-        resolved_circuit = resolve_circuit(circuit_source, pcvl, self.noise_model)
+        resolved_circuit = resolve_circuit(circuit_source, pcvl, self.noise)
         # Phase 8: input state normalization
         input_state, resolved_n_photons = prepare_input_state(
             input_state,
@@ -289,7 +289,7 @@ class QuantumLayer(MerlinModule):
             computation_space,
             measurement_strategy,
             backend=self.backend,
-            noise_model=self.noise_model,
+            noise_model=self.noise,
             return_object=return_object,
         )
 
@@ -351,7 +351,7 @@ class QuantumLayer(MerlinModule):
         self.input_size = context.input_size
         self.measurement_strategy = context.measurement_strategy
         self.experiment = context.experiment
-        self.noise_model = context.noise_model
+        self.noise = context.noise_model
         self.amplitude_encoding = context.amplitude_encoding
         self.computation_space = context.computation_space
         self.angle_encoding_specs = context.angle_encoding_specs
@@ -1331,7 +1331,7 @@ class QuantumLayer(MerlinModule):
             ),
             "trainable_parameters": list(self.trainable_parameters),
             "input_parameters": list(self.input_parameters),
-            "noise_model": self.noise_model,
+            "noise": self.noise,
             "input_param_order": [
                 name
                 for prefix in self.input_parameters
