@@ -116,7 +116,7 @@ def _make_perceval_layer_two_prefixes(prefixes: list[str], counts: list[int], m:
     c = pcvl.Circuit(m)
 
     mode = 0
-    for pref, n in zip(prefixes, counts):
+    for pref, n in zip(prefixes, counts, strict=True):
         for i in range(n):
             c.add(mode, pcvl.PS(pcvl.P(f"{pref}{i + 1}")))
             mode += 1
@@ -309,7 +309,7 @@ class TestBuilderDeclarative:
 
         # builder bookkeeping
         assert "px" in b2._angle_encoding_scales
-        assert b2._angle_encoding_scales["px"] == {i: 2.5 for i in range(10)}
+        assert b2._angle_encoding_scales["px"] == dict.fromkeys(range(10), 2.5)
 
 
 # ---------------------------------------------------------------------------
