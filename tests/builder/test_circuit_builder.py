@@ -577,7 +577,9 @@ def test_memristor_metadata():
     def sum_outputs(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
         return state + output[:, 2]
 
-    builder.add_memristive_ps(mode=0, update_rule=exponential_decay, initial_state=1)
+    builder.add_memristive_ps(
+        mode=0, update_rule=exponential_decay, initial_state=1, num_backprop_steps=3
+    )
     builder.add_memristive_ps(mode=1, update_rule=sum_outputs, initial_state=1000)
     builder.add_memristive_ps(mode=3, update_rule=sum_outputs, initial_state=2)
     builder.add_memristive_ps(mode=2, update_rule=exponential_decay, initial_state=67)
@@ -591,24 +593,28 @@ def test_memristor_metadata():
         "name": "mem1",
         "update_rule": exponential_decay,
         "initial_state": 1,
+        "num_backprop_steps": 3,
     }
     assert metadata[1] == {
         "target_mode": 1,
         "name": "mem2",
         "update_rule": sum_outputs,
         "initial_state": 1000,
+        "num_backprop_steps": 0,
     }
     assert metadata[2] == {
         "target_mode": 3,
         "name": "mem3",
         "update_rule": sum_outputs,
         "initial_state": 2,
+        "num_backprop_steps": 0,
     }
     assert metadata[3] == {
         "target_mode": 2,
         "name": "mem4",
         "update_rule": exponential_decay,
         "initial_state": 67,
+        "num_backprop_steps": 0,
     }
 
     builder.add_memristive_ps(
@@ -624,36 +630,42 @@ def test_memristor_metadata():
         "name": "mem1",
         "update_rule": exponential_decay,
         "initial_state": 1,
+        "num_backprop_steps": 3,
     }
     assert metadata[1] == {
         "target_mode": 1,
         "name": "mem2",
         "update_rule": sum_outputs,
         "initial_state": 1000,
+        "num_backprop_steps": 0,
     }
     assert metadata[2] == {
         "target_mode": 3,
         "name": "mem3",
         "update_rule": sum_outputs,
         "initial_state": 2,
+        "num_backprop_steps": 0,
     }
     assert metadata[3] == {
         "target_mode": 2,
         "name": "mem4",
         "update_rule": exponential_decay,
         "initial_state": 67,
+        "num_backprop_steps": 0,
     }
     assert metadata[5] == {
         "target_mode": 2,
         "name": "mem6",
         "update_rule": sum_outputs,
         "initial_state": 0.0,
+        "num_backprop_steps": 0,
     }
     assert metadata[4] == {
         "target_mode": 2,
         "name": "test5",
         "update_rule": sum_outputs,
         "initial_state": 0.0,
+        "num_backprop_steps": 0,
     }
 
 
@@ -740,10 +752,18 @@ def test_memristive_own_type_of_parameter():
     builder.add_superpositions()
     builder.add_entangling_layer()
 
-    builder.add_memristive_ps(mode=0, update_rule=exponential_decay, initial_state=1)
-    builder.add_memristive_ps(mode=1, update_rule=sum_outputs, initial_state=1000)
-    builder.add_memristive_ps(mode=3, update_rule=sum_outputs, initial_state=2)
-    builder.add_memristive_ps(mode=2, update_rule=exponential_decay, initial_state=67)
+    builder.add_memristive_ps(
+        mode=0, update_rule=exponential_decay, initial_state=1, num_backprop_steps=1
+    )
+    builder.add_memristive_ps(
+        mode=1, update_rule=sum_outputs, initial_state=1000, num_backprop_steps=4
+    )
+    builder.add_memristive_ps(
+        mode=3, update_rule=sum_outputs, initial_state=2, num_backprop_steps=0
+    )
+    builder.add_memristive_ps(
+        mode=2, update_rule=exponential_decay, initial_state=67, num_backprop_steps=15
+    )
 
     builder.add_angle_encoding()
     builder.add_rotations(trainable=True)
@@ -762,24 +782,28 @@ def test_memristive_own_type_of_parameter():
         "name": "mem1",
         "update_rule": exponential_decay,
         "initial_state": 1,
+        "num_backprop_steps": 1,
     }
     assert metadata[1] == {
         "target_mode": 1,
         "name": "mem2",
         "update_rule": sum_outputs,
         "initial_state": 1000,
+        "num_backprop_steps": 4,
     }
     assert metadata[2] == {
         "target_mode": 3,
         "name": "mem3",
         "update_rule": sum_outputs,
         "initial_state": 2,
+        "num_backprop_steps": 0,
     }
     assert metadata[3] == {
         "target_mode": 2,
         "name": "mem4",
         "update_rule": exponential_decay,
         "initial_state": 67,
+        "num_backprop_steps": 15,
     }
 
     assert not "mem" in builder.input_parameter_prefixes

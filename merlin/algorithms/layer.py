@@ -29,6 +29,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from contextlib import contextmanager
+import copy
 from typing import Any, cast
 
 import perceval as pcvl
@@ -39,7 +40,7 @@ from ..builder.circuit_builder import (
     CircuitBuilder,
 )
 from ..core.computation_space import ComputationSpace
-from ..core.partial_measurement import PartialMeasurement
+from ..core.partial_measurement import PartialMeasurement, PartialMeasurementBranch
 from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
 from ..core.state import StatePattern, generate_state
@@ -1041,19 +1042,33 @@ class QuantumLayer(MerlinModule):
 
         # Phase 7: memristive update
         if len(self.memristive_state) > 0:
-            # Detach output for memristive computation to prevent autograd graph retention.
-            # Return the original output untouched by detaching a separate copy.
+            # Create an independent copy of output for memristive computation without
+            # detaching gradients. This ensures memristive updates don't interfere with
+            # the autograd graph of the main output.
             output_for_memristive: (
                 torch.Tensor
                 | PartialMeasurement
                 | ProbabilityDistribution
                 | StateVector
             )
-            if isinstance(output, torch.Tensor):
-                output_for_memristive = output.detach()
+            if not isinstance(output, PartialMeasurement):
+                output_for_memristive = output.clone()
             else:
-                # StateVector, ProbabilityDistribution, and PartialMeasurement all have .detach()
-                output_for_memristive = output.detach()
+                branches = []
+                for branch in output.branches:
+                    branches.append(
+                        PartialMeasurementBranch(
+                            outcome=branch.outcome,
+                            probability=branch.probability.clone(),
+                            amplitudes=branch.amplitudes.clone(),
+                        )
+                    )
+                output_for_memristive = PartialMeasurement(
+                    branches=branches,
+                    measured_modes=output.measured_modes,
+                    unmeasured_modes=output.unmeasured_modes,
+                    grouping=output.grouping,
+                )
 
             self.memristive_state = compute_new_memristive_ps_angles(
                 memristive_metadata=self._memristive_metadata,
@@ -1073,6 +1088,21 @@ class QuantumLayer(MerlinModule):
                             Memristive phase-shifter analyzed: {self._memristive_metadata[i]}
                         """
                     )
+
+                # Detach history that is too long ago
+                # num_backprop steps +1 are kept since the last step is not used for computations yet
+                position_to_detach = (
+                    len(self.memristive_history[i])
+                    - self._memristive_metadata[i]["num_backprop_steps"]
+                    - 1
+                )
+                if position_to_detach >= 0:
+                    self.memristive_history[i][position_to_detach] = (
+                        self.memristive_history[i][position_to_detach].detach()
+                    )
+                    print(self.memristive_history[i])
+
+                # Add new state
                 self.memristive_history[i].append(self.memristive_state[i])
 
         return output
@@ -1733,4 +1763,6 @@ class QuantumLayer(MerlinModule):
                 dtype=self.dtype,
             )
             self.memristive_history[i] = [self.memristive_state[i]]
+            if self._memristive_metadata[i]["num_backprop_steps"] == 0:
+                self.memristive_history[i][0].detach()
         return

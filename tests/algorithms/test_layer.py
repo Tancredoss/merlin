@@ -1709,8 +1709,15 @@ class TestQuantumLayer:
 
         circ = ML.CircuitBuilder(n_modes=3)
         circ.add_entangling_layer()
-        circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
-        circ.add_memristive_ps(mode=0, update_rule=update_rule_exp, initial_state=0.01)
+        circ.add_memristive_ps(
+            mode=1, update_rule=update_rule, initial_state=1.2, num_backprop_steps=5
+        )
+        circ.add_memristive_ps(
+            mode=0,
+            update_rule=update_rule_exp,
+            initial_state=0.01,
+            num_backprop_steps=5,
+        )
         circ.add_entangling_layer()
 
         ql = ML.QuantumLayer(
@@ -2345,3 +2352,241 @@ def test_batch_size_mismatch_raises_before_first_memristive_update():
     assert [
         len(history) for history in layer.memristive_history
     ] == history_lengths_before
+
+
+def test_memristive_ps_back_propagation_sliding_window():
+    def update_rule(state: torch.Tensor, output: torch.Tensor):
+        return state + output[:, 0]
+
+    def update_rule_exp(state: torch.Tensor, output: torch.Tensor):
+        return torch.exp(state + output[:, 0])
+
+    builder = ML.CircuitBuilder(n_modes=3)
+    builder.add_entangling_layer()
+    builder.add_memristive_ps(
+        mode=1,
+        update_rule=update_rule,
+        initial_state=0.25,
+        name="memPS_a",
+        num_backprop_steps=2,
+    )
+    builder.add_memristive_ps(
+        mode=0,
+        update_rule=update_rule_exp,
+        initial_state=0.5,
+        name="memPS_b",
+        num_backprop_steps=3,
+    )
+    builder.add_angle_encoding(modes=[0, 2], name="input")
+
+    layer = _layer(builder, input_size=2)
+    layer.reset(batch_size=2)
+
+    # Perform 5 forward passes to build history
+    inputs = [torch.randn((2, 2)) for _ in range(5)]
+    outputs = []
+    for input_data in inputs:
+        output = layer(input_data)
+        outputs.append(output)
+
+    # Get metadata to verify num_backprop_steps values
+    metadata_a = layer._memristive_metadata[0]
+    metadata_b = layer._memristive_metadata[1]
+
+    assert metadata_a["num_backprop_steps"] == 2
+    assert metadata_b["num_backprop_steps"] == 3
+
+    # Compute loss from the last output
+    loss = outputs[-1].sum()
+    assert loss.requires_grad
+
+    # Perform backward pass to verify gradients flow correctly
+    loss.backward()
+
+    # Verify that the gradient computation completes without error
+    # and that the memristive state can participate in gradients
+    assert loss.grad_fn is not None
+
+    # Verify that only the last num_backprop_steps states in the history are attached
+    # to the computation graph (i.e., have requires_grad=True), while older states are
+    # detached and do not participate in backpropagation
+    num_backprop_steps_a = metadata_a["num_backprop_steps"]
+    num_backprop_steps_b = metadata_b["num_backprop_steps"]
+
+    # Check memPS_a history: only the last (num_backprop_steps + 1) should be attached
+    for i, state in enumerate(layer.memristive_history[0]):
+        distance_from_end = len(layer.memristive_history[0]) - 1 - i
+        should_be_attached = distance_from_end <= num_backprop_steps_a
+        assert state.requires_grad == should_be_attached, (
+            f"memPS_a history[{i}]: distance_from_end={distance_from_end}, "
+            f"num_backprop_steps={num_backprop_steps_a}, "
+            f"expected requires_grad={should_be_attached}, got {state.requires_grad}"
+        )
+
+    # Check memPS_b history: only the last (num_backprop_steps + 1) should be attached
+    for i, state in enumerate(layer.memristive_history[1]):
+        distance_from_end = len(layer.memristive_history[1]) - 1 - i
+        should_be_attached = distance_from_end <= num_backprop_steps_b
+        assert state.requires_grad == should_be_attached, (
+            f"memPS_b history[{i}]: distance_from_end={distance_from_end}, "
+            f"num_backprop_steps={num_backprop_steps_b}, "
+            f"expected requires_grad={should_be_attached}, got {state.requires_grad}"
+        )
+
+
+def test_memristive_works_with_typed_objects_and_cloning_protects_gradients():
+    """Memristive updates with typed objects must not break gradients via cloning.
+
+    This test verifies that:
+    1. Memristive phase shifters work correctly with typed output objects
+       (StateVector, ProbabilityDistribution, PartialMeasurement)
+    2. Cloning the output protects memristive computations from interfering
+       with the returned output's autograd graph
+    3. Modifications to the output inside the update rule do not affect the
+       returned layer output
+    4. Gradients flow correctly despite aggressive modification attempts
+    5. Memristive history accumulates across forward passes
+    """
+
+    def update_rule(state: torch.Tensor, output: torch.Tensor):
+        # Handle both tensor and typed object outputs
+        if isinstance(output, torch.Tensor):
+            output_tensor = output
+        else:
+            # Extract tensor from StateVector, ProbabilityDistribution, PartialMeasurement
+            output_tensor = output.tensor
+
+        # Modify the output received by the update rule to verify cloning protects
+        # the returned output from side effects
+        modified_output = output_tensor.clone()
+        modified_output[:] = 999.0  # Drastically modify the copy
+        return state + modified_output[:, 0]
+
+    # Create memristive circuit with trainable layers
+    builder = ML.CircuitBuilder(n_modes=3)
+    builder.add_entangling_layer(trainable=True, name="U1")
+    builder.add_memristive_ps(
+        mode=1,
+        update_rule=update_rule,
+        initial_state=0.5,
+        name="memPS",
+        num_backprop_steps=1,
+    )
+    builder.add_angle_encoding(modes=[0, 2], name="input")
+    builder.add_entangling_layer(trainable=True, name="U2")
+
+    # Test with StateVector typed output (from amplitudes)
+    layer_statevector_typed = ML.QuantumLayer(
+        builder=builder,
+        input_size=2,
+        n_photons=2,
+        measurement_strategy=ML.MeasurementStrategy.amplitudes(),
+        return_object=True,
+    )
+    layer_statevector_typed.reset(batch_size=2)
+
+    # Test with PartialMeasurement typed output
+    layer_partial = ML.QuantumLayer(
+        builder=builder,
+        input_size=2,
+        n_photons=2,
+        measurement_strategy=ML.MeasurementStrategy.partial(modes=[0, 1]),
+        return_object=True,
+    )
+    layer_partial.reset(batch_size=2)
+
+    # Test with ProbabilityDistribution typed output
+    layer_probdist_typed = ML.QuantumLayer(
+        builder=builder,
+        input_size=2,
+        n_photons=2,
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+        return_object=True,
+    )
+    layer_probdist_typed.reset(batch_size=2)
+
+    input_data = torch.randn(2, 2, requires_grad=True)
+
+    # Test StateVector with return_object=True
+    output_sv_typed = layer_statevector_typed(input_data)
+
+    assert isinstance(output_sv_typed, StateVector)
+    # Verify output is NOT modified by the update rule (cloning protected it)
+    assert not torch.allclose(
+        output_sv_typed.tensor, torch.full_like(output_sv_typed.tensor, 999.0)
+    ), "StateVector output was incorrectly modified by memristive update rule"
+    assert output_sv_typed.tensor.requires_grad
+
+    # Compute loss and backward for StateVector
+    loss_sv = output_sv_typed.tensor.abs().sum()
+    loss_sv.backward()
+    assert input_data.grad is not None
+    assert torch.any(input_data.grad != 0), "Gradients should flow through StateVector output"
+
+    # Verify memristive history accumulated (one forward pass = one state)
+    assert len(layer_statevector_typed.memristive_history[0]) >= 1
+
+    # Clear gradient for next test
+    input_data.grad = None
+
+    # Test ProbabilityDistribution with typed output
+    output_pd_typed = layer_probdist_typed(input_data.detach())
+
+    assert isinstance(output_pd_typed, ProbabilityDistribution)
+    # Verify output is NOT modified by the update rule (cloning protected it)
+    assert not torch.allclose(
+        output_pd_typed.tensor, torch.full_like(output_pd_typed.tensor, 999.0)
+    ), "ProbabilityDistribution output was incorrectly modified by memristive update rule"
+    assert output_pd_typed.tensor.requires_grad
+
+    # Compute loss and backward for ProbabilityDistribution
+    loss_pd = (
+        output_pd_typed.tensor * torch.arange(1, output_pd_typed.tensor.shape[-1] + 1)
+    ).sum()
+    loss_pd.backward()
+
+    # Verify memristive history accumulated
+    assert len(layer_probdist_typed.memristive_history[0]) >= 1
+
+    # Test PartialMeasurement with typed output
+    output_partial = layer_partial(input_data.detach())
+    assert isinstance(output_partial, PartialMeasurement)
+    # Verify output is NOT modified by the update rule (cloning protected it)
+    assert not torch.allclose(
+        output_partial.tensor, torch.full_like(output_partial.tensor, 999.0)
+    ), "PartialMeasurement output was incorrectly modified by memristive update rule"
+    assert output_partial.tensor.requires_grad
+
+    # Compute loss and backward for PartialMeasurement
+    loss_partial = output_partial.tensor.abs().sum()
+    loss_partial.backward()
+
+    # Verify memristive history accumulated
+    assert len(layer_partial.memristive_history[0]) >= 1
+
+    # Run second forward passes to verify memristive state and history continue to accumulate
+    output_sv_typed_2 = layer_statevector_typed(input_data.detach())
+    output_pd_typed_2 = layer_probdist_typed(input_data.detach())
+    output_partial_2 = layer_partial(input_data.detach())
+
+    assert isinstance(output_sv_typed_2, StateVector)
+    assert isinstance(output_pd_typed_2, ProbabilityDistribution)
+    assert isinstance(output_partial_2, PartialMeasurement)
+
+    # Verify history accumulated over multiple forward passes
+    assert len(layer_statevector_typed.memristive_history[0]) >= 2
+    assert len(layer_probdist_typed.memristive_history[0]) >= 2
+    assert len(layer_partial.memristive_history[0]) >= 2
+
+    # Verify outputs from second pass are also not modified to 999.0
+    assert not torch.allclose(
+        output_sv_typed_2.tensor, torch.full_like(output_sv_typed_2.tensor, 999.0)
+    )
+    assert not torch.allclose(
+        output_pd_typed_2.tensor, torch.full_like(output_pd_typed_2.tensor, 999.0)
+    )
+    assert not torch.allclose(
+        output_partial_2.tensor, torch.full_like(output_partial_2.tensor, 999.0)
+    )

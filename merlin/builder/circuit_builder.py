@@ -476,6 +476,7 @@ class CircuitBuilder:
         update_rule: Callable,
         initial_state: float,
         name: str | None = None,
+        num_backprop_steps: int = 0,
     ) -> "CircuitBuilder":
         """Add a memristive phase shifter that will update in regards to the update rule after each forward pass.
 
@@ -491,6 +492,8 @@ class CircuitBuilder:
            The initial value of the phase shifter. This will be the value used after each :meth:`~merlin.algorithms.layer.QuantumLayer.reset` call
         name : str | None
             Prefix used for the generated memristive phase shifter parameter. Defaults to ``"mem"``.
+        num_backprop_steps: int
+            The number of steps in this memristor history the back propagation can access for gradient calculation in the QuantumLayer. Default value is 0.
 
         Returns
         -------
@@ -549,12 +552,15 @@ class CircuitBuilder:
             value=scalar_initial_state,
         )
 
-        self.memristive_specs.append({
-            "target_mode": mode,
-            "name": f"{name}{self._memristor_counter}",
-            "update_rule": update_rule,
-            "initial_state": scalar_initial_state,
-        })
+        self.memristive_specs.append(
+            {
+                "target_mode": mode,
+                "name": f"{name}{self._memristor_counter}",
+                "update_rule": update_rule,
+                "initial_state": scalar_initial_state,
+                "num_backprop_steps": num_backprop_steps,
+            }
+        )
         return self
 
     def add_entangling_layer(
