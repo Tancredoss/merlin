@@ -115,7 +115,7 @@ class FeatureMap:
         elif experiment is not None:
             if (
                 not experiment.is_unitary
-                or experiment.post_select_fn is not None
+                or not experiment.post_select_fn == pcvl.PostSelect()
                 or experiment.heralds
             ):
                 raise ValueError(
