@@ -295,6 +295,45 @@ The snippet below prepares a basic quantum layer and returns a :class:`~merlin.c
     assert isinstance(probs,ProbabilityDistribution)
     assert isinstance(probs.tensor,torch.Tensor)
 
+
+Memristive phase-shifter
+-------------------------
+When using the :class:`~merlin.builder.circuit_builder.CircuitBuilder` that contains memristive phase-shifters (added with the :meth:`~merlin.builder.circuit_builder.CircuitBuilder.add_memristive_ps` method) to create a :class:`~merlin.algorithms.layer.QuantumLayer`, it is important to set the batch size. To do so, call the :meth:`~merlin.algorithms.layer.QuantumLayer.reset` method. This resets the memristors to their initial state while clearing their history.
+It also prepares the memristors to be run with the specified ``batch_size`` parameter of the function, which defaults to 1.
+
+The :class:`~merlin.algorithms.layer.QuantumLayer` expects all forward passes to use the configured ``batch_size`` unless :meth:`~merlin.algorithms.layer.QuantumLayer.reset` is called again. 
+This method resets the memristors to their initial state while clearing the history. It also
+defines the allowed batch size to be ran per forward pass for circuits with memristive phase shifters. Here is an example to run a N dimension batch.
+
+.. code-block:: python
+
+    from merlin.algorithms.layer import QuantumLayer
+    from merlin.builder.circuit_builder import CircuitBuilder
+
+    circ = CircuitBuilder(n_modes=3)
+    circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
+    circ.add_angle_encoding(modes=[0, 2])
+
+    ql = ML.QuantumLayer(
+        builder=circ,
+        n_photons=3,
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+    )
+
+    input_tensor=torch.rand((5,2))
+
+    # Will fail since it expects tensor of batch dimension of 1 not 5.
+    # probs=ql(input_tensor)
+
+    # Will pass since the layer was reset to accept tensors of batch dimension 5.
+    ql.reset(5)
+    probs=ql(input_tensor)
+
+The current state of the memristive phase-shifters can be accessed with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_state` attribute. The full history of the memristive phase-shifters can be accessed
+with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` attribute. The order of the states and history is defined by the order in which the memristive phase-shifters were added in the :class:`~merlin.builder.circuit_builder.CircuitBuilder`.
+
 Deprecations
 -------------------------
 .. warning:: *Deprecated since version 0.3:*

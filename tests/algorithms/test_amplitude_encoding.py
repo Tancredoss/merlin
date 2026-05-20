@@ -248,13 +248,25 @@ def test_amplitude_encoding_batches_use_vectorised_kernel(make_layer):
     original_ebs = process.compute_ebs_simultaneously
     original_super = process.compute_superposition_state
 
-    def tracked_ebs(self, parameters, simultaneous_processes=1):
+    def tracked_ebs(
+        self, parameters, simultaneous_processes=1, memristive_current_state=None
+    ):
+        if memristive_current_state is None:
+            memristive_current_state = []
         call_tracker["ebs"] += 1
-        return original_ebs(parameters, simultaneous_processes=simultaneous_processes)
+        return original_ebs(
+            parameters,
+            simultaneous_processes=simultaneous_processes,
+            memristive_current_state=memristive_current_state,
+        )
 
-    def tracked_super(self, parameters):
+    def tracked_super(self, parameters, memristive_current_state=None):
+        if memristive_current_state is None:
+            memristive_current_state = []
         call_tracker["super"] += 1
-        return original_super(parameters)
+        return original_super(
+            parameters, memristive_current_state=memristive_current_state
+        )
 
     process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
     process.compute_superposition_state = MethodType(tracked_super, process)

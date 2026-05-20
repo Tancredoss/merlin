@@ -46,6 +46,8 @@ import torch
 
 from ..builder.circuit_builder import CircuitBuilder
 from ..core.computation_space import ComputationSpace
+from ..core.partial_measurement import PartialMeasurement
+from ..core.probability_distribution import ProbabilityDistribution
 from ..core.state import StatePattern, generate_state
 from ..core.state_vector import StateVector
 from ..measurement.detectors import resolve_detectors
@@ -745,6 +747,44 @@ def apply_angle_encoding(
     )
 
     return encoded.squeeze(0) if squeeze else encoded
+
+
+def compute_new_memristive_ps_angles(
+    memristive_metadata: list[dict],
+    memristive_state: list[torch.Tensor],
+    output: torch.Tensor | PartialMeasurement | StateVector | ProbabilityDistribution,
+) -> list[torch.Tensor]:
+    """
+    Computes the new memristive phase shifter angles per the batch's output.
+
+    Parameters
+    ----------
+    memristive_metadata: list[dict]
+        The memristive metadata of all memristive phase shifters
+    memristive_state: list[torch.Tensor],
+        The current state of the memristive phase shifters
+    output: torch.Tensor | PartialMeasurement | merlin.core.state_vector.StateVector | ProbabilityDistribution,
+        The output of the quantum layers
+
+    Returns
+    -------
+    list[torch.Tensor]
+        The new states of all memristive phase shifters
+    """
+    new_memristive_states = []
+    for metadata, state in zip(memristive_metadata, memristive_state, strict=True):
+        try:
+            new_memristive_states.append(metadata["update_rule"](state, output))
+        except Exception as exc:
+            raise ValueError(
+                f"""The update rule of the following memristor does not follow the correct build or raises an error. Here is the expected signature:
+
+                    Expected: update_rule(state: torch.Tensor,output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement)-> torch.Tensor
+
+                    Memristive phase-shifter analyzed: {metadata}
+                    """
+            ) from exc
+    return new_memristive_states
 
 
 def prepare_input_encoding(

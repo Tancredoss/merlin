@@ -115,6 +115,7 @@ Switching to a Bell-style interferometer is as simple as:
    :width: 200px
    :align: center
 
+
 **add_superposition**
 -----------------------
 
@@ -151,6 +152,27 @@ Arguments:
    :alt: An entangling layer of depth 2
    :width: 200px
    :align: center
+
+
+**add_memristive_ps**
+--------------------------
+
+Adds a memristive phase-shifter.
+
+Arguments:
+
+- ``mode`` (``int``): Circuit mode to target.
+- ``update_rule`` (``callable``): Update rule to change the angle of the phase shifter after each forward pass of associated the :class:`~merlin.algorithms.layer.QuantumLayer` object. The function must take two
+   positional arguments: update_rule(state,output). Here is the expected signature:
+   .. code-block:: python
+
+      def update_rule(state: torch.Tensor,output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement)-> torch.Tensor
+
+   The update rule must also handle batch inputs and return a tensor of size ``[batch_size]``, just like the state parameter. The output will be the same as the corresponding :class:`~merlin.algorithms.layer.QuantumLayer` forward.
+- ``initial_state`` (``float``): The initial value of the phase shifter. This will be the value used after each :meth:`~merlin.algorithms.layer.QuantumLayer.reset` call.
+- ``name`` (``str``): Prefix used for the generated memristive phase shifter parameter. Defaults to ``"mem"``.
+
+
 
 Build
 -----

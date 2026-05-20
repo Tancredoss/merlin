@@ -25,7 +25,8 @@ Tests for the main QuantumLayer class.
 """
 
 import math
-
+import re
+from copy import deepcopy
 import numpy as np
 import perceval as pcvl
 import pytest
@@ -302,10 +303,12 @@ class TestQuantumLayer:
 
         amplitude = torch.rand(len(layer.output_keys))
         remaining_input = torch.rand(2)
-        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input([
-            amplitude,
-            remaining_input,
-        ])
+        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input(
+            [
+                amplitude,
+                remaining_input,
+            ]
+        )
 
         assert saved_state is original_state
         assert remaining[0] is remaining_input
@@ -346,10 +349,12 @@ class TestQuantumLayer:
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
 
-        params, batch_dim = layer._prepare_classical_parameters([
-            torch.rand(2, 2),
-            torch.rand(2, 2),
-        ])
+        params, batch_dim = layer._prepare_classical_parameters(
+            [
+                torch.rand(2, 2),
+                torch.rand(2, 2),
+            ]
+        )
 
         assert batch_dim == 2
         assert len(params) >= 2
@@ -937,9 +942,9 @@ class TestQuantumLayer:
         assert model[1].out_features == 3
         # Check that it has trainable parameters (only in Linear layer)
         trainable_params_layer = [p for p in layer.parameters() if p.requires_grad]
-        assert len(trainable_params_layer) == 0, (
-            "Layer should have no trainable parameters"
-        )
+        assert (
+            len(trainable_params_layer) == 0
+        ), "Layer should have no trainable parameters"
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         assert len(trainable_params) > 0, "Model should have trainable parameters"
 
@@ -1350,6 +1355,764 @@ class TestQuantumLayer:
 
             assert has_trainable_params, "Model should have trainable parameters"
 
+    def test_memrsistive_update(self):
+        def update_rule(state: torch.Tensor, output: torch.Tensor):
+            return state + torch.vstack([output[0, 0]] * state.size(0)).squeeze(dim=0)
+
+        circ = ML.CircuitBuilder(n_modes=3)
+        circ.add_entangling_layer()
+        circ.add_memristive_ps(mode=0, update_rule=update_rule, initial_state=0)
+        circ.add_entangling_layer()
+        circ.add_angle_encoding(modes=[0, 1])
+
+        ql = ML.QuantumLayer(
+            builder=circ,
+            n_photons=3,
+            measurement_strategy=ML.MeasurementStrategy.probs(
+                computation_space=ML.ComputationSpace.FOCK
+            ),
+        )
+
+        input = torch.Tensor([[0, 0]])
+
+        first_output = ql(input)
+        second_output = ql(input)
+        assert not torch.allclose(first_output, second_output)
+
+    def test_memrsistive_metadata(self):
+        def update_rule(state: torch.Tensor, output: torch.Tensor):
+            return state + output[:, 0]
+
+        def update_rule_exp(state: torch.Tensor, output: torch.Tensor):
+            return torch.exp(state + output[:, 0])
+
+        circ = ML.CircuitBuilder(n_modes=3)
+        circ.add_entangling_layer()
+        circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
+        circ.add_memristive_ps(mode=0, update_rule=update_rule_exp, initial_state=0.01)
+        circ.add_entangling_layer()
+        circ.add_angle_encoding(modes=[0, 2])
+
+        ql = ML.QuantumLayer(
+            builder=circ,
+            n_photons=3,
+            measurement_strategy=ML.MeasurementStrategy.probs(
+                computation_space=ML.ComputationSpace.FOCK
+            ),
+        )
+        # Initial metadata check
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert torch.allclose(ql.memristive_state[0], torch.Tensor([[1.2]]))
+        assert torch.allclose(ql.memristive_state[1], torch.Tensor([[0.01]]))
+
+        assert ql.memristive_history[0][0] == ql.memristive_state[0]
+        assert ql.memristive_history[1][0] == ql.memristive_state[1]
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        input = torch.Tensor([[0, 0]])
+
+        first_output = ql(input)
+
+        # Metadata check after one pass
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        new_state_0_t1 = update_rule(torch.Tensor([[1.2]]), first_output)
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t1)
+        new_state_1_t1 = update_rule_exp(torch.Tensor([[0.01]]), first_output)
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t1)
+
+        assert torch.allclose(ql.memristive_history[0][0], torch.Tensor([[1.2]]))
+        assert torch.allclose(ql.memristive_history[1][0], torch.Tensor([[0.01]]))
+        assert ql.memristive_history[0][1] == ql.memristive_state[0]
+        assert ql.memristive_history[1][1] == ql.memristive_state[1]
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 2
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        second_output = ql(input)
+
+        # Metadata check after two passes
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        new_state_0_t2 = update_rule(new_state_0_t1, second_output)
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t2)
+        new_state_1_t2 = update_rule_exp(new_state_1_t1, second_output)
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t2)
+
+        assert torch.allclose(ql.memristive_history[0][0], torch.Tensor([[1.2]]))
+        assert torch.allclose(ql.memristive_history[1][0], torch.Tensor([[0.01]]))
+        assert ql.memristive_history[0][1] == new_state_0_t1
+        assert ql.memristive_history[1][1] == new_state_1_t1
+        assert ql.memristive_history[0][2] == ql.memristive_state[0]
+        assert ql.memristive_history[1][2] == ql.memristive_state[1]
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 3
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        ql.reset()
+
+        # Metadata check after a reset
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert torch.allclose(ql.memristive_state[0], torch.Tensor([[1.2]]))
+        assert torch.allclose(ql.memristive_state[1], torch.Tensor([[0.01]]))
+
+        assert ql.memristive_history[0][0] == ql.memristive_state[0]
+        assert ql.memristive_history[1][0] == ql.memristive_state[1]
+        assert len(ql.memristive_history[0]) == 1
+        assert len(ql.memristive_history[1]) == 1
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+    def test_reset_and_batches(self):
+        def update_rule(state: torch.Tensor, output: torch.Tensor):
+            return state + output[:, 0]
+
+        def update_rule_exp(state: torch.Tensor, output: torch.Tensor):
+            return torch.exp(state + output[:, 0])
+
+        circ = ML.CircuitBuilder(n_modes=3)
+        circ.add_entangling_layer()
+        circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
+        circ.add_memristive_ps(mode=0, update_rule=update_rule_exp, initial_state=0.01)
+        circ.add_entangling_layer()
+        circ.add_angle_encoding(modes=[0, 2])
+
+        ql = ML.QuantumLayer(
+            builder=circ,
+            n_photons=3,
+            measurement_strategy=ML.MeasurementStrategy.probs(
+                computation_space=ML.ComputationSpace.FOCK
+            ),
+        )
+
+        # Initial metadata check
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert torch.allclose(ql.memristive_state[0], torch.Tensor([[1.2]]))
+        assert torch.allclose(ql.memristive_state[1], torch.Tensor([[0.01]]))
+
+        assert ql.memristive_history[0][0] == ql.memristive_state[0]
+        assert ql.memristive_history[1][0] == ql.memristive_state[1]
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        # Test batch too big
+        with pytest.raises(
+            RuntimeError,
+            match="batch size mismatch",
+        ):
+            ql(torch.zeros([10, 2]))
+
+        ql.reset(batch_size=5)
+
+        # Test batch too big
+        with pytest.raises(
+            RuntimeError,
+            match="batch size mismatch",
+        ):
+            ql(torch.zeros([10, 2]))
+
+        # Initial metadata check after reset
+        assert ql.input_size == 2
+
+        assert torch.allclose(ql.memristive_state[0], torch.Tensor([[1.2] * 5]))
+        assert torch.allclose(ql.memristive_state[1], torch.Tensor([[0.01] * 5]))
+
+        assert torch.allclose(ql.memristive_history[0][0], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][0], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        input_1 = torch.zeros([5, 2])
+        first_output = ql(input_1)
+
+        # Metadata check after one pass
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        new_state_0_t1 = update_rule(torch.Tensor([1.2] * 5), first_output)
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t1)
+        new_state_1_t1 = update_rule_exp(torch.Tensor([0.01] * 5), first_output)
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t1)
+
+        assert torch.allclose(ql.memristive_history[0][0], torch.Tensor([[1.2] * 5]))
+        assert torch.allclose(ql.memristive_history[1][0], torch.Tensor([[0.01] * 5]))
+        assert torch.allclose(ql.memristive_history[0][1], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][1], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 2
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        input_2 = torch.arange(10).reshape([5, 2])
+        second_output = ql(input_2)
+
+        # Metadata check after two passes
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        new_state_0_t2 = update_rule(new_state_0_t1, second_output)
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t2)
+        new_state_1_t2 = update_rule_exp(new_state_1_t1, second_output)
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t2)
+
+        assert torch.allclose(ql.memristive_history[0][0], torch.Tensor([[1.2] * 5]))
+        assert torch.allclose(ql.memristive_history[1][0], torch.Tensor([[0.01] * 5]))
+        assert torch.allclose(ql.memristive_history[0][1], new_state_0_t1)
+        assert torch.allclose(ql.memristive_history[1][1], new_state_1_t1)
+        assert torch.allclose(ql.memristive_history[0][2], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][2], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 3
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        # Metadata check after smaller last batch
+        input_3 = torch.arange(15, 21).reshape([3, 2])
+        third_output = ql(input_3)
+
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        new_state_0_t3 = update_rule(new_state_0_t2[:3], third_output)
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t3)
+        new_state_1_t3 = update_rule_exp(new_state_1_t2[:3], third_output)
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t3)
+
+        assert torch.allclose(ql.memristive_history[0][0], torch.Tensor([[1.2] * 5]))
+        assert torch.allclose(ql.memristive_history[1][0], torch.Tensor([[0.01] * 5]))
+        assert torch.allclose(ql.memristive_history[0][1], new_state_0_t1)
+        assert torch.allclose(ql.memristive_history[1][1], new_state_1_t1)
+        assert torch.allclose(ql.memristive_history[0][2], new_state_0_t2)
+        assert torch.allclose(ql.memristive_history[1][2], new_state_1_t2)
+        assert torch.allclose(ql.memristive_history[0][3], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][3], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 4
+        assert ql.memristive_history[0][0].size(0) == 5
+        assert ql.memristive_history[0][3].size(0) == 3
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        # Test last batch error
+        with pytest.raises(
+            RuntimeError,
+            match="Already ran a smaller batch size",
+        ):
+            ql(input_1)
+
+        with pytest.raises(
+            RuntimeError,
+            match="Already ran a smaller batch size",
+        ):
+            ql(input_3)
+
+        ql.reset()
+
+        # Metadata check after a reset
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert torch.allclose(ql.memristive_state[0], torch.Tensor([[1.2]]))
+        assert torch.allclose(ql.memristive_state[1], torch.Tensor([[0.01]]))
+
+        assert ql.memristive_history[0][0] == ql.memristive_state[0]
+        assert ql.memristive_history[1][0] == ql.memristive_state[1]
+        assert len(ql.memristive_history[0]) == 1
+        assert len(ql.memristive_history[1]) == 1
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        # Running again after a reset
+        try:
+            ql(torch.Tensor([[0, 0]]))
+        except Exception as e:
+            pytest.fail(f"Unexpected exception raised: {e}")
+
+    def test_param_mapping(self):
+        # Test with more than one param if the right param is attributed to the right component
+        def update_rule(state: torch.Tensor, output: torch.Tensor):
+            return state + output[:, 0]
+
+        def update_rule_exp(state: torch.Tensor, output: torch.Tensor):
+            return torch.exp(state + output[:, 0])
+
+        circ = ML.CircuitBuilder(n_modes=3)
+        circ.add_entangling_layer()
+        circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
+        circ.add_memristive_ps(mode=0, update_rule=update_rule_exp, initial_state=0.01)
+        circ.add_entangling_layer()
+        circ.add_angle_encoding(modes=[0, 2])
+
+        ql = ML.QuantumLayer(
+            builder=circ,
+            n_photons=3,
+            measurement_strategy=ML.MeasurementStrategy.probs(
+                computation_space=ML.ComputationSpace.FOCK
+            ),
+        )
+
+        name_to_index = (
+            ql.computation_process.converter.memristive_metadata_name_to_index
+        )
+        metadata = ql.computation_process.converter.memristive_metadata
+        assert metadata[name_to_index["mem1"]]["update_rule"] == update_rule
+        assert metadata[name_to_index["mem2"]]["update_rule"] == update_rule_exp
+
+        ql(torch.Tensor([0.0, 0.0]))
+
+        name_to_index = (
+            ql.computation_process.converter.memristive_metadata_name_to_index
+        )
+        metadata = ql.computation_process.converter.memristive_metadata
+        current_state = ql.computation_process.converter.memristive_current_state
+        assert metadata[name_to_index["mem1"]]["update_rule"] == update_rule
+        assert metadata[name_to_index["mem2"]]["update_rule"] == update_rule_exp
+        assert current_state[name_to_index["mem1"]] == torch.Tensor([1.2])
+        assert current_state[name_to_index["mem2"]] == torch.Tensor([0.01])
+
+    def test_memristor_gradient_flow(self):
+        def update_rule(state: torch.Tensor, output: torch.Tensor):
+            return state + output[:, 0]
+
+        def update_rule_exp(state: torch.Tensor, output: torch.Tensor):
+            return torch.exp(state + output[:, 0])
+
+        circ = ML.CircuitBuilder(n_modes=3)
+        circ.add_entangling_layer()
+        circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
+        circ.add_memristive_ps(mode=0, update_rule=update_rule_exp, initial_state=0.01)
+        circ.add_entangling_layer()
+
+        ql = ML.QuantumLayer(
+            builder=circ,
+            n_photons=3,
+            measurement_strategy=ML.MeasurementStrategy.probs(
+                computation_space=ML.ComputationSpace.FOCK
+            ),
+        )
+
+        # Check that the returned tensor remains attached to autograd even though
+        # memristive state updates use a detached copy internally.
+        output = ql()
+
+        assert isinstance(output, torch.Tensor)
+        assert output.requires_grad
+        assert output.grad_fn is not None
+
+        trainable_params = [param for param in ql.parameters() if param.requires_grad]
+        assert trainable_params
+        params_before_step = [param.detach().clone() for param in trainable_params]
+
+        opt = torch.optim.Adam(trainable_params)
+
+        weights = torch.arange(
+            1,
+            output.shape[-1] + 1,
+            device=output.device,
+            dtype=output.dtype,
+        )
+        loss = (output * weights).sum()
+        loss.backward()
+
+        assert all(param.grad is not None for param in trainable_params)
+        assert all(torch.isfinite(param.grad).all() for param in trainable_params)
+        assert any(torch.any(param.grad != 0) for param in trainable_params)
+
+        opt.step()
+
+        assert any(
+            not torch.allclose(param_before, param_after)
+            for param_before, param_after in zip(
+                params_before_step, trainable_params, strict=True
+            )
+        )
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_memristor_works_on_cuda(self):
+        def update_rule(state: torch.Tensor, output: torch.Tensor):
+            return state + output[:, 0]
+
+        def update_rule_exp(state: torch.Tensor, output: torch.Tensor):
+            return torch.exp(state + output[:, 0])
+
+        circ = ML.CircuitBuilder(n_modes=3)
+        circ.add_entangling_layer()
+        circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
+        circ.add_memristive_ps(mode=0, update_rule=update_rule_exp, initial_state=0.01)
+        circ.add_entangling_layer()
+        circ.add_angle_encoding(modes=[0, 2])
+
+        ql = ML.QuantumLayer(
+            builder=circ,
+            n_photons=3,
+            measurement_strategy=ML.MeasurementStrategy.probs(
+                computation_space=ML.ComputationSpace.FOCK
+            ),
+        )
+        # Copy to check the memristor states are correclty moved
+        ql_copy = deepcopy(ql)
+        ql_copy.reset(batch_size=5)
+        ql = ql.to(torch.device("cuda"))
+
+        # Initial metadata check
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert ql.memristive_history[0][0].device.type == torch.device("cuda").type
+        assert ql.memristive_state[0].device.type == torch.device("cuda").type
+
+        assert torch.allclose(
+            ql.memristive_state[0], torch.tensor([[1.2]], device=torch.device("cuda"))
+        )
+        assert torch.allclose(
+            ql.memristive_state[1], torch.tensor([[0.01]], device=torch.device("cuda"))
+        )
+
+        assert ql.memristive_history[0][0] == ql.memristive_state[0]
+        assert ql.memristive_history[1][0] == ql.memristive_state[1]
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        ql.reset(batch_size=5)
+
+        # Initial metadata check after reset
+        assert ql.input_size == 2
+
+        assert torch.allclose(
+            ql.memristive_state[0],
+            torch.tensor([[1.2] * 5], device=torch.device("cuda")),
+        )
+        assert torch.allclose(
+            ql.memristive_state[1],
+            torch.tensor([[0.01] * 5], device=torch.device("cuda")),
+        )
+
+        assert torch.allclose(ql.memristive_history[0][0], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][0], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        input_1 = torch.zeros([5, 2])
+        first_output = ql(input_1)
+
+        # Metadata check after one pass
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert ql.memristive_history[0][0].device.type == torch.device("cuda").type
+        assert ql.memristive_state[0].device.type == torch.device("cuda").type
+
+        new_state_0_t1 = update_rule(
+            torch.tensor([1.2] * 5, device=torch.device("cuda")), first_output
+        )
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t1)
+        new_state_1_t1 = update_rule_exp(
+            torch.tensor([0.01] * 5, device=torch.device("cuda")), first_output
+        )
+
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t1)
+
+        assert torch.allclose(
+            ql.memristive_history[0][0].to(torch.device("cuda")),
+            torch.tensor([[1.2] * 5], device=torch.device("cuda")),
+        )
+        assert torch.allclose(
+            ql.memristive_history[1][0],
+            torch.tensor([[0.01] * 5], device=torch.device("cuda")),
+        )
+        assert torch.allclose(ql.memristive_history[0][1], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][1], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 2
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        input_2 = torch.arange(10).reshape([5, 2])
+        second_output = ql(input_2)
+
+        # Metadata check after two passes
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert ql.memristive_history[0][0].device.type == torch.device("cuda").type
+        assert ql.memristive_state[0].device.type == torch.device("cuda").type
+
+        new_state_0_t2 = update_rule(
+            new_state_0_t1.to(torch.device("cuda")), second_output
+        )
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t2)
+        new_state_1_t2 = update_rule_exp(
+            new_state_1_t1.to(torch.device("cuda")), second_output
+        )
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t2)
+
+        assert torch.allclose(
+            ql.memristive_history[0][0],
+            torch.tensor([[1.2] * 5], device=torch.device("cuda")),
+        )
+        assert torch.allclose(
+            ql.memristive_history[1][0],
+            torch.tensor([[0.01] * 5], device=torch.device("cuda")),
+        )
+        assert torch.allclose(ql.memristive_history[0][1], new_state_0_t1)
+        assert torch.allclose(ql.memristive_history[1][1], new_state_1_t1)
+        assert torch.allclose(ql.memristive_history[0][2], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][2], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 3
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        # Metadata check after smaller last batch
+        input_3 = torch.arange(15, 21).reshape([3, 2]).to(torch.device("cuda"))
+        third_output = ql(input_3)
+
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert ql.memristive_history[0][0].device.type == torch.device("cuda").type
+        assert ql.memristive_state[0].device.type == torch.device("cuda").type
+        new_state_0_t3 = update_rule(
+            new_state_0_t2[:3].to(torch.device("cuda")), third_output
+        )
+        assert torch.allclose(ql.memristive_state[0], new_state_0_t3)
+        new_state_1_t3 = update_rule_exp(
+            new_state_1_t2[:3].to(torch.device("cuda")), third_output
+        )
+        assert torch.allclose(ql.memristive_state[1], new_state_1_t3)
+
+        assert torch.allclose(
+            ql.memristive_history[0][0],
+            torch.tensor([[1.2] * 5], device=torch.device("cuda")),
+        )
+        assert torch.allclose(
+            ql.memristive_history[1][0],
+            torch.tensor([[0.01] * 5], device=torch.device("cuda")),
+        )
+        assert torch.allclose(ql.memristive_history[0][1], new_state_0_t1)
+        assert torch.allclose(ql.memristive_history[1][1], new_state_1_t1)
+        assert torch.allclose(ql.memristive_history[0][2], new_state_0_t2)
+        assert torch.allclose(ql.memristive_history[1][2], new_state_1_t2)
+        assert torch.allclose(ql.memristive_history[0][3], ql.memristive_state[0])
+        assert torch.allclose(ql.memristive_history[1][3], ql.memristive_state[1])
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 4
+        assert ql.memristive_history[0][0].size(0) == 5
+        assert ql.memristive_history[0][3].size(0) == 3
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        ql.reset()
+
+        # Metadata check after a reset
+        assert ql.input_size == 2
+        assert "mem0" not in ql.input_parameters
+        assert "mem1" not in ql.input_parameters
+
+        assert ql.memristive_history[0][0].device.type == torch.device("cuda").type
+        assert ql.memristive_state[0].device.type == torch.device("cuda").type
+
+        assert torch.allclose(
+            ql.memristive_state[0], torch.tensor([[1.2]], device=torch.device("cuda"))
+        )
+        assert torch.allclose(
+            ql.memristive_state[1], torch.tensor([[0.01]], device=torch.device("cuda"))
+        )
+
+        assert ql.memristive_history[0][0] == ql.memristive_state[0]
+        assert ql.memristive_history[1][0] == ql.memristive_state[1]
+        assert len(ql.memristive_history[0]) == 1
+        assert len(ql.memristive_history[1]) == 1
+        assert len(ql.memristive_history) == len(ql.memristive_state) == 2
+        assert len(ql.memristive_history[0]) == len(ql.memristive_history[1]) == 1
+
+        assert ql._memristive_metadata == circ.memristive_specs
+
+        # Running again after a reset
+        try:
+            ql(torch.tensor([[0, 0]], device=torch.device("cuda")))
+        except Exception as e:
+            pytest.fail(f"Unexpected exception raised: {e}")
+
+        # Running three forward and seeing if the input is correctly moved
+        ql_copy(input_1)
+        ql_copy(input_2)
+        ql_copy(input_3)
+        ql_copy.to(torch.device("cuda"))
+
+        assert ql_copy.memristive_history[0][0].device.type == torch.device("cuda").type
+        assert ql_copy.memristive_state[0].device.type == torch.device("cuda").type
+        assert ql_copy.input_size == 2
+        assert "mem0" not in ql_copy.input_parameters
+        assert "mem1" not in ql_copy.input_parameters
+
+        assert torch.allclose(
+            ql_copy.memristive_history[0][0],
+            torch.tensor([[1.2] * 5], device=torch.device("cuda")),
+        )
+        assert torch.allclose(
+            ql_copy.memristive_history[1][0],
+            torch.tensor([[0.01] * 5], device=torch.device("cuda")),
+        )
+        assert torch.allclose(ql_copy.memristive_history[0][1], new_state_0_t1)
+        assert torch.allclose(ql_copy.memristive_history[1][1], new_state_1_t1)
+        assert torch.allclose(ql_copy.memristive_history[0][2], new_state_0_t2)
+        assert torch.allclose(ql_copy.memristive_history[1][2], new_state_1_t2)
+        assert torch.allclose(
+            ql_copy.memristive_history[0][3], ql_copy.memristive_state[0]
+        )
+        assert torch.allclose(
+            ql_copy.memristive_history[1][3], ql_copy.memristive_state[1]
+        )
+        assert len(ql_copy.memristive_history) == len(ql_copy.memristive_state) == 2
+        assert (
+            len(ql_copy.memristive_history[0])
+            == len(ql_copy.memristive_history[1])
+            == 4
+        )
+        assert ql_copy.memristive_history[0][0].size(0) == 5
+        assert ql_copy.memristive_history[0][3].size(0) == 3
+
+        assert ql_copy._memristive_metadata == circ.memristive_specs
+
+        # Moving the data back
+        ql_copy.to(torch.device("cpu"))
+        assert ql_copy.memristive_history[0][0].device.type == torch.device("cpu").type
+        assert ql_copy.memristive_state[0].device.type == torch.device("cpu").type
+
+
+def _identity_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+    """Keep a memristive state unchanged while satisfying current annotations."""
+    return state
+
+
+def _builder_with_memristor(
+    update_rule=_identity_update,
+    *,
+    with_inputs: bool = False,
+) -> ML.CircuitBuilder:
+    """Build the smallest useful memristive circuit for review probes."""
+    builder = ML.CircuitBuilder(n_modes=3)
+    builder.add_entangling_layer()
+    if with_inputs:
+        builder.add_angle_encoding(modes=[0, 2], name="input")
+    builder.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=0.25)
+    builder.add_entangling_layer()
+    return builder
+
+
+def _layer(builder: ML.CircuitBuilder, *, input_size: int = 0) -> ML.QuantumLayer:
+    """Create a probability layer in FOCK space so batch behavior is explicit."""
+    return ML.QuantumLayer(
+        builder=builder,
+        input_size=input_size,
+        input_state=[1, 0, 1],
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+    )
+
+
+def test_memristive_layer_to_moves_state_and_history_without_raising():
+    """``QuantumLayer.to(...)`` should work for layers with memristive state.
+
+    The device/dtype movement path is part of making the feature usable with
+    CPU/GPU workflows. The current implementation raises even for
+    ``layer.to(torch.device("cpu"))`` because it calls ``len(...)`` on an integer
+    loop index while moving ``memristive_history``.
+    """
+    layer = _layer(_builder_with_memristor())
+
+    layer.to(torch.device("cpu"))
+
+    assert layer.memristive_state[0].device == torch.device("cpu")
+    assert layer.memristive_history[0][0].device == torch.device("cpu")
+
+
+def test_update_rule_return_shape_is_validated_close_to_user_callback():
+    """The update rule must return a state tensor of shape ``[batch_size]``.
+
+    The ticket and docs both describe the runtime state as one scalar per batch
+    element. A user callback returning ``[batch_size, 1]`` should fail with a
+    clear validation error near the callback boundary instead of being stored as
+    the next memristive state and surfacing later as converter shape behavior.
+    """
+
+    def bad_shape_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return torch.ones((state.size(0), 1), dtype=state.dtype, device=state.device)
+
+    layer = _layer(
+        _builder_with_memristor(bad_shape_update, with_inputs=True),
+        input_size=2,
+    )
+    layer.reset(batch_size=2)
+
+    with pytest.raises(ValueError, match="shape|batch_size"):
+        layer(torch.zeros(2, 2))
+
+
+def test_invalid_memristor_update_rule():
+    def valid_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state + 0.1
+
+    def invalid_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        raise ValueError("Not valid")
+
+    builder = ML.CircuitBuilder(n_modes=5)
+    builder.add_memristive_ps(mode=1, update_rule=valid_update, initial_state=0.1)
+    builder.add_memristive_ps(mode=4, update_rule=invalid_update, initial_state=0.3)
+    builder.add_memristive_ps(mode=3, update_rule=valid_update, initial_state=0.5)
+
+    layer = ML.QuantumLayer(builder=builder, n_photons=3)
+
+    error_string = (
+        "The update rule of the following memristor does not follow the correct build or raises an error. Here is the expected signature:\n\n"
+        "                    Expected: update_rule(state: torch.Tensor,output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement)-> torch.Tensor\n\n"
+        f"                    Memristive phase-shifter analyzed: {builder.memristive_specs[1]}\n"
+        "                    "
+    )
+
+    with pytest.raises(ValueError, match=re.escape(error_string)):
+        layer()
+
 
 def test_simple_num_photons_modes_and_input_state():
     for i in range(1, 15):
@@ -1376,3 +2139,209 @@ def test_simple_parameters():
         assert len(params) == 2
         assert "LI_simple" in named_params
         assert "RI_simple" in named_params
+
+
+def test_memristive_state_dict_round_trip_preserves_state_and_history():
+    """``state_dict`` / ``load_state_dict`` must preserve memristive state.
+
+    Plain Python lists of tensors are invisible to PyTorch's default
+    serialization. QuantumLayer therefore injects explicit memristive runtime
+    entries into its own ``state_dict`` so save/load round-trips preserve both
+    the current memristive state and the accumulated history.
+    """
+    import io
+
+    layer = _layer(_builder_with_memristor(with_inputs=True), input_size=2)
+
+    # Advance the memristive state over two forward passes.
+    layer(torch.zeros(1, 2))
+    layer(torch.zeros(1, 2))
+
+    state_before = layer.memristive_state[0].clone()
+    history_len_before = len(layer.memristive_history[0])
+
+    # Save via the standard PyTorch checkpoint path.
+    buffer = io.BytesIO()
+    torch.save(layer.state_dict(), buffer)
+    buffer.seek(0)
+
+    restored = _layer(_builder_with_memristor(with_inputs=True), input_size=2)
+    restored.load_state_dict(torch.load(buffer, weights_only=True))
+
+    assert torch.allclose(
+        restored.memristive_state[0], state_before
+    ), "memristive_state was not preserved across a state_dict round-trip"
+    assert (
+        len(restored.memristive_history[0]) == history_len_before
+    ), "memristive_history length was not preserved across a state_dict round-trip"
+
+
+def test_memristive_state_dict_round_trip_as_submodule():
+    """Serialization must work when ``QuantumLayer`` is a child of another module.
+
+    When the parent calls ``state_dict()`` the prefix for child keys is
+    ``"quantum_layer."``; the custom memristive runtime entries must still
+    resolve correctly in that case.
+    """
+    import io
+
+    class _Wrapper(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.quantum_layer = _layer(
+                _builder_with_memristor(with_inputs=True),
+                input_size=2,
+            )
+
+    wrapper = _Wrapper()
+    wrapper.quantum_layer(torch.zeros(1, 2))
+    wrapper.quantum_layer(torch.zeros(1, 2))
+
+    state_before = wrapper.quantum_layer.memristive_state[0].clone()
+    history_len_before = len(wrapper.quantum_layer.memristive_history[0])
+
+    buffer = io.BytesIO()
+    torch.save(wrapper.state_dict(), buffer)
+    buffer.seek(0)
+
+    restored_wrapper = _Wrapper()
+    restored_wrapper.load_state_dict(torch.load(buffer, weights_only=True))
+
+    assert torch.allclose(
+        restored_wrapper.quantum_layer.memristive_state[0], state_before
+    ), "memristive_state was not preserved when QuantumLayer is a submodule"
+    assert (
+        len(restored_wrapper.quantum_layer.memristive_history[0]) == history_len_before
+    ), "memristive_history length was not preserved when QuantumLayer is a submodule"
+
+
+def test_non_memristive_layer_state_dict_has_no_memristive_runtime_entries():
+    """Non-memristive layers should not inject memristive runtime entries."""
+    builder = ML.CircuitBuilder(n_modes=3)
+    builder.add_entangling_layer()
+    layer = ML.QuantumLayer(builder=builder, n_photons=2)
+
+    sd = layer.state_dict()
+
+    assert "_extra_state" not in sd
+    assert all("_memristive_state" not in key for key in sd)
+    assert all("_memristive_history" not in key for key in sd)
+
+
+def test_memristive_reset_after_to_uses_updated_device_and_dtype():
+    """``reset()`` must recreate memristive tensors on the moved device and dtype."""
+    layer = _layer(_builder_with_memristor())
+
+    layer.to(torch.device("cpu"))
+    layer.to(torch.float64)
+    layer.reset(batch_size=3)
+
+    assert layer.memristive_state[0].device == torch.device("cpu")
+    assert layer.memristive_state[0].dtype == torch.float64
+    assert layer.memristive_history[0][0].device == torch.device("cpu")
+    assert layer.memristive_history[0][0].dtype == torch.float64
+    assert layer.memristive_state[0].shape == torch.Size([3])
+
+
+def test_memristive_ps_with_same_requested_name_get_distinct_parameter_names():
+    """Two memristive PS entries with the same requested prefix must stay unique."""
+
+    def update_to_first_marker(
+        state: torch.Tensor, output: torch.Tensor
+    ) -> torch.Tensor:
+        return torch.full_like(state, 0.123)
+
+    def update_to_second_marker(
+        state: torch.Tensor, output: torch.Tensor
+    ) -> torch.Tensor:
+        return torch.full_like(state, 2.345)
+
+    builder = ML.CircuitBuilder(n_modes=3)
+    builder.add_entangling_layer()
+    builder.add_memristive_ps(
+        mode=1,
+        update_rule=update_to_first_marker,
+        initial_state=0.25,
+        name="memPS",
+    )
+    builder.add_memristive_ps(
+        mode=0,
+        update_rule=update_to_second_marker,
+        initial_state=0.5,
+        name="memPS",
+    )
+    builder.add_entangling_layer()
+
+    layer = _layer(builder)
+
+    parameter_names = [parameter.name for parameter in layer.circuit.get_parameters()]
+    metadata_names = [metadata["name"] for metadata in layer._memristive_metadata]
+
+    assert metadata_names == ["memPS1", "memPS2"]
+    assert "memPS1" in parameter_names
+    assert "memPS2" in parameter_names
+    assert len(set(metadata_names)) == 2
+
+
+def test_memristive_updates_still_run_in_eval_mode():
+    """``eval()`` must not suppress memristive side effects between forwards."""
+
+    def increment_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state + 1.0
+
+    layer = _layer(
+        _builder_with_memristor(increment_update, with_inputs=True), input_size=2
+    )
+    initial_state = layer.memristive_state[0].clone()
+
+    layer.eval()
+    layer(torch.zeros(1, 2))
+    state_after_first_forward = layer.memristive_state[0].clone()
+    layer(torch.zeros(1, 2))
+
+    assert torch.allclose(state_after_first_forward, initial_state + 1.0)
+    assert torch.allclose(layer.memristive_state[0], initial_state + 2.0)
+    assert len(layer.memristive_history[0]) == 3
+
+
+def test_batch_size_mismatch_raises_before_first_memristive_update():
+    """Inconsistent memristive state sizes must fail before any forward side effect."""
+    update_calls = 0
+
+    def counted_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        nonlocal update_calls
+        update_calls += 1
+        return state + output[:, 0]
+
+    builder = ML.CircuitBuilder(n_modes=3)
+    builder.add_entangling_layer()
+    builder.add_memristive_ps(
+        mode=1,
+        update_rule=counted_update,
+        initial_state=0.25,
+        name="memPS_a",
+    )
+    builder.add_memristive_ps(
+        mode=0,
+        update_rule=counted_update,
+        initial_state=0.5,
+        name="memPS_b",
+    )
+    builder.add_angle_encoding(modes=[0, 2], name="input")
+
+    layer = _layer(builder, input_size=2)
+    layer.reset(batch_size=4)
+    layer.memristive_state[1] = layer.memristive_state[1][:1]
+
+    history_lengths_before = [len(history) for history in layer.memristive_history]
+
+    with pytest.raises(
+        RuntimeError,
+        match="Not all memristive states have the same size",
+    ):
+        layer(torch.zeros(4, 2))
+
+    assert update_calls == 0
+    assert [
+        len(history) for history in layer.memristive_history
+    ] == history_lengths_before

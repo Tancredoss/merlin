@@ -11,6 +11,7 @@ from merlin import MeasurementStrategy, QuantumLayer
 from merlin.builder import CircuitBuilder
 from merlin.core.components import (
     BeamSplitter,
+    EntanglingBlock,
     GenericInterferometer,
     ParameterRole,
     Rotation,
@@ -526,3 +527,343 @@ def test_entangling_layer_models_on_gpu(model):
     assert logits.shape == (2, 4)
     grads = [p.grad for p in layer.parameters() if p.requires_grad]
     assert any(g is not None and torch.any(g != 0) for g in grads if g is not None)
+
+
+def test_memristor_adds_a_simple_perceval_ps():
+    builder = CircuitBuilder(n_modes=4)
+
+    def exponential_decay(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        tau = 5.0
+        target = output[:, 2]
+        return state + (target - state) / tau
+
+    builder.add_memristive_ps(mode=0, update_rule=exponential_decay, initial_state=0.0)
+
+    assert "Circuit(4).add(0, PS(phi=mem1))" == builder.to_pcvl_circuit().describe()
+
+    builder.add_memristive_ps(
+        mode=3, update_rule=exponential_decay, initial_state=1.0, name="test"
+    )
+    assert (
+        "Circuit(4).add(0, PS(phi=mem1)).add(3, PS(phi=test2))"
+        == builder.to_pcvl_circuit().describe()
+    )
+    builder.add_memristive_ps(
+        mode=1,
+        update_rule=exponential_decay,
+        initial_state=1.0,
+    )
+    assert (
+        "Circuit(4).add(0, PS(phi=mem1)).add(3, PS(phi=test2)).add(1, PS(phi=mem3))"
+        == builder.to_pcvl_circuit().describe()
+    )
+    builder.add_memristive_ps(
+        mode=2, update_rule=exponential_decay, initial_state=1.0, name="test_two"
+    )
+    assert (
+        "Circuit(4).add(0, PS(phi=mem1)).add(3, PS(phi=test2)).add(1, PS(phi=mem3)).add(2, PS(phi=test_two4))"
+        == builder.to_pcvl_circuit().describe()
+    )
+
+
+def test_memristor_metadata():
+    builder = CircuitBuilder(n_modes=4)
+
+    def exponential_decay(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        tau = 5.0
+        target = output[:, 2]
+        return state + (target - state) / tau
+
+    def sum_outputs(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state + output[:, 2]
+
+    builder.add_memristive_ps(mode=0, update_rule=exponential_decay, initial_state=1)
+    builder.add_memristive_ps(mode=1, update_rule=sum_outputs, initial_state=1000)
+    builder.add_memristive_ps(mode=3, update_rule=sum_outputs, initial_state=2)
+    builder.add_memristive_ps(mode=2, update_rule=exponential_decay, initial_state=67)
+
+    metadata = builder.memristive_specs
+
+    assert len(metadata) == 4
+
+    assert metadata[0] == {
+        "target_mode": 0,
+        "name": "mem1",
+        "update_rule": exponential_decay,
+        "initial_state": 1,
+    }
+    assert metadata[1] == {
+        "target_mode": 1,
+        "name": "mem2",
+        "update_rule": sum_outputs,
+        "initial_state": 1000,
+    }
+    assert metadata[2] == {
+        "target_mode": 3,
+        "name": "mem3",
+        "update_rule": sum_outputs,
+        "initial_state": 2,
+    }
+    assert metadata[3] == {
+        "target_mode": 2,
+        "name": "mem4",
+        "update_rule": exponential_decay,
+        "initial_state": 67,
+    }
+
+    builder.add_memristive_ps(
+        mode=2, update_rule=sum_outputs, initial_state=0.0, name="test"
+    )
+    builder.add_memristive_ps(mode=2, update_rule=sum_outputs, initial_state=0.0)
+    metadata = builder.memristive_specs
+
+    assert len(metadata) == 6
+
+    assert metadata[0] == {
+        "target_mode": 0,
+        "name": "mem1",
+        "update_rule": exponential_decay,
+        "initial_state": 1,
+    }
+    assert metadata[1] == {
+        "target_mode": 1,
+        "name": "mem2",
+        "update_rule": sum_outputs,
+        "initial_state": 1000,
+    }
+    assert metadata[2] == {
+        "target_mode": 3,
+        "name": "mem3",
+        "update_rule": sum_outputs,
+        "initial_state": 2,
+    }
+    assert metadata[3] == {
+        "target_mode": 2,
+        "name": "mem4",
+        "update_rule": exponential_decay,
+        "initial_state": 67,
+    }
+    assert metadata[5] == {
+        "target_mode": 2,
+        "name": "mem6",
+        "update_rule": sum_outputs,
+        "initial_state": 0.0,
+    }
+    assert metadata[4] == {
+        "target_mode": 2,
+        "name": "test5",
+        "update_rule": sum_outputs,
+        "initial_state": 0.0,
+    }
+
+
+def test_parameter_memristor_role_assignement():
+    builder = CircuitBuilder(n_modes=4)
+
+    def exponential_decay(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        tau = 5.0
+        target = output[:, 2]
+        return state + (target - state) / tau
+
+    def sum_outputs(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state + output[:, 2]
+
+    builder.add_memristive_ps(mode=0, update_rule=exponential_decay, initial_state=1)
+    builder.add_memristive_ps(mode=1, update_rule=sum_outputs, initial_state=1000)
+    builder.add_memristive_ps(mode=3, update_rule=sum_outputs, initial_state=2)
+    builder.add_memristive_ps(mode=2, update_rule=exponential_decay, initial_state=67)
+
+    assert builder._memristor_prefix_set == set(["mem"])
+    assert builder._memristor_prefixes == ["mem"] * 4
+
+    for i, component in enumerate(builder.circuit.components):
+        assert isinstance(component, Rotation)
+        assert component.role == ParameterRole.MEMRISTOR
+        assert component.custom_name == f"mem{i + 1}"
+        if i == 0:
+            assert component.value == 1
+        elif i == 1:
+            assert component.value == 1000
+        elif i == 2:
+            assert component.value == 2
+        elif i == 3:
+            assert component.value == 67
+        else:
+            assert False
+
+    builder.add_memristive_ps(
+        mode=2, update_rule=sum_outputs, initial_state=0.0, name="test"
+    )
+    builder.add_memristive_ps(mode=2, update_rule=sum_outputs, initial_state=0.0)
+
+    assert builder._memristor_prefix_set == set(["mem", "test"])
+    assert builder._memristor_prefixes == ["mem", "mem", "mem", "mem", "test", "mem"]
+
+    for i, component in enumerate(builder.circuit.components):
+        assert isinstance(component, Rotation)
+        assert component.role == ParameterRole.MEMRISTOR
+        assert (
+            component.custom_name == f"test{i + 1}"
+            if i == 4
+            else component.custom_name == f"mem{i + 1}"
+        )
+        if i == 0:
+            assert component.value == 1
+        elif i == 1:
+            assert component.value == 1000
+        elif i == 2:
+            assert component.value == 2
+        elif i == 3:
+            assert component.value == 67
+        elif i == 4:
+            assert component.value == 0.0
+        elif i == 5:
+            assert component.value == 0.0
+        else:
+            assert False
+
+
+def test_memristive_own_type_of_parameter():
+    builder = CircuitBuilder(n_modes=4)
+
+    def exponential_decay(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        tau = 5.0
+        target = output[:, 2]
+        return state + (target - state) / tau
+
+    def sum_outputs(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state + output[:, 2]
+
+    builder.add_angle_encoding()
+    builder.add_rotations(trainable=True)
+    builder.add_rotations(trainable=False)
+    builder.add_superpositions()
+    builder.add_entangling_layer()
+
+    builder.add_memristive_ps(mode=0, update_rule=exponential_decay, initial_state=1)
+    builder.add_memristive_ps(mode=1, update_rule=sum_outputs, initial_state=1000)
+    builder.add_memristive_ps(mode=3, update_rule=sum_outputs, initial_state=2)
+    builder.add_memristive_ps(mode=2, update_rule=exponential_decay, initial_state=67)
+
+    builder.add_angle_encoding()
+    builder.add_rotations(trainable=True)
+    builder.add_rotations(trainable=False)
+    builder.add_superpositions()
+    builder.add_entangling_layer()
+
+    assert builder._memristor_prefixes == ["mem", "mem", "mem", "mem"]
+    assert builder._memristor_counter == 4
+    metadata = builder.memristive_specs
+
+    assert len(metadata) == 4
+
+    assert metadata[0] == {
+        "target_mode": 0,
+        "name": "mem1",
+        "update_rule": exponential_decay,
+        "initial_state": 1,
+    }
+    assert metadata[1] == {
+        "target_mode": 1,
+        "name": "mem2",
+        "update_rule": sum_outputs,
+        "initial_state": 1000,
+    }
+    assert metadata[2] == {
+        "target_mode": 3,
+        "name": "mem3",
+        "update_rule": sum_outputs,
+        "initial_state": 2,
+    }
+    assert metadata[3] == {
+        "target_mode": 2,
+        "name": "mem4",
+        "update_rule": exponential_decay,
+        "initial_state": 67,
+    }
+
+    assert not "mem" in builder.input_parameter_prefixes
+    assert not "test" in builder.input_parameter_prefixes
+
+    custom_names = [f"mem{i + 1}" for i in range(4)]
+    num_memristor = 0
+    num_other = 0
+    for component in builder.circuit.components:
+        if isinstance(component, EntanglingBlock):
+            num_other += 1
+        elif isinstance(component, GenericInterferometer):
+            num_other += 1
+        else:
+            if component.role is ParameterRole.MEMRISTOR:
+                assert component.custom_name in custom_names
+                assert isinstance(component, Rotation)
+                num_memristor += 1
+            else:
+                assert component.custom_name not in custom_names
+                num_other += 1
+
+    assert num_memristor == 4
+    assert num_other > 0
+
+
+def test_invalid_memristive_configurations():
+    builder = CircuitBuilder(n_modes=5)
+
+    # Valid update rule signature
+    def valid_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state + 0.1
+
+    # Invalid: wrong number of arguments
+    def too_many_args(
+        state: torch.Tensor, output: torch.Tensor, extra: int
+    ) -> torch.Tensor:
+        return state
+
+    with pytest.raises(TypeError, match="exactly 2 positional arguments"):
+        builder.add_memristive_ps(mode=0, update_rule=too_many_args, initial_state=0.5)
+
+    with pytest.raises(TypeError, match="exactly 2 positional arguments"):
+        builder.add_memristive_ps(
+            mode=0,
+            update_rule=lambda state, output, x: state + 0.1 * output[:, 2] + x,
+            initial_state=0.5,
+        )
+
+    def too_few_args(state: torch.Tensor) -> torch.Tensor:
+        return state
+
+    with pytest.raises(TypeError, match="exactly 2 positional arguments"):
+        builder.add_memristive_ps(mode=0, update_rule=too_few_args, initial_state=0.5)
+
+    with pytest.raises(TypeError, match="exactly 2 positional arguments"):
+        builder.add_memristive_ps(
+            mode=0,
+            update_rule=lambda state,: state * 2,
+            initial_state=0.5,
+        )
+
+    # Valid
+    builder.add_memristive_ps(mode=1, update_rule=valid_update, initial_state=0)
+
+
+def test_plain_python_update_rule_without_annotations_and_lambda_is_accepted():
+    def exponential_decay(state, output):
+        tau = 5.0
+        target = output[:, 2]
+        return state + (target - state) / tau
+
+    builder = CircuitBuilder(n_modes=3)
+    builder.add_memristive_ps(
+        mode=1,
+        update_rule=exponential_decay,
+        initial_state=0.25,
+    )
+
+    assert len(builder.memristive_specs) == 1
+    builder = CircuitBuilder(n_modes=3)
+    builder.add_memristive_ps(
+        mode=2,
+        update_rule=lambda state, output: state + 0.1 * output[:, 2],
+        initial_state=0.0,
+    )
+    assert len(builder.memristive_specs) == 1
