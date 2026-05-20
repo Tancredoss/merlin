@@ -946,9 +946,9 @@ class FidelityKernel(MerlinModule):
 
         # Check if we are constructing training matrix
         equal_inputs = self._check_equal_inputs(x1, x2)
-        U_forward = torch.stack([
-            self.feature_map.compute_unitary(x).to(x1.device) for x in x1
-        ])
+        U_forward = torch.stack(
+            [self.feature_map.compute_unitary(x).to(x1.device) for x in x1]
+        )
 
         len_x1 = len(x1)
         if x2 is not None:
@@ -957,19 +957,25 @@ class FidelityKernel(MerlinModule):
                 if isinstance(x2, torch.Tensor)
                 else torch.as_tensor(x2, dtype=self.dtype, device=self.device)
             )
-            U_adjoint = torch.stack([
-                self.feature_map.compute_unitary(x).transpose(0, 1).conj().to(x1.device)
-                for x in x2_tensor
-            ])
-            if isinstance(x2, torch.Tensor):
-                U_adjoint = torch.stack([
-                    self.feature_map
-                    .compute_unitary(x)
+            U_adjoint = torch.stack(
+                [
+                    self.feature_map.compute_unitary(x)
                     .transpose(0, 1)
                     .conj()
                     .to(x1.device)
-                    for x in x2
-                ])
+                    for x in x2_tensor
+                ]
+            )
+            if isinstance(x2, torch.Tensor):
+                U_adjoint = torch.stack(
+                    [
+                        self.feature_map.compute_unitary(x)
+                        .transpose(0, 1)
+                        .conj()
+                        .to(x1.device)
+                        for x in x2
+                    ]
+                )
             else:
                 raise (TypeError("x2 is not None nor torch.Tensor"))
 
@@ -1210,7 +1216,7 @@ class FidelityKernel(MerlinModule):
         """Validate that the provided experiment is compatible with fidelity kernels."""
         if (
             not experiment.is_unitary
-            or experiment.post_select_fn is not None
+            or not experiment.post_select_fn == pcvl.PostSelect()
             or experiment.heralds
             or experiment.in_heralds
         ):
