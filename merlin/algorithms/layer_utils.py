@@ -525,7 +525,7 @@ def vet_experiment(experiment: pcvl.Experiment) -> dict[str, bool]:
         If the experiment uses unsupported features such as post-selection,
         heralding, feed-forward, time dependence, or minimum-photon filters.
     """
-    has_post_select = experiment.post_select_fn is not None
+    has_post_select = not experiment.post_select_fn == pcvl.PostSelect()
     has_heralding = bool(experiment.heralds) or bool(experiment.in_heralds)
     has_feedforward = bool(getattr(experiment, "has_feedforward", False))
     has_td_attr = getattr(experiment, "has_td", None)

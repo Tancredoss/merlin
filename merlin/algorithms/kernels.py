@@ -115,7 +115,7 @@ class FeatureMap:
         elif experiment is not None:
             if (
                 not experiment.is_unitary
-                or experiment.post_select_fn is not None
+                or not experiment.post_select_fn == pcvl.PostSelect()
                 or experiment.heralds
             ):
                 raise ValueError(
@@ -1210,7 +1210,7 @@ class FidelityKernel(MerlinModule):
         """Validate that the provided experiment is compatible with fidelity kernels."""
         if (
             not experiment.is_unitary
-            or experiment.post_select_fn is not None
+            or not experiment.post_select_fn == pcvl.PostSelect()
             or experiment.heralds
             or experiment.in_heralds
         ):
