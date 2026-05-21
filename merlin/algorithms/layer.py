@@ -45,7 +45,7 @@ from ..core.process import ComputationProcessFactory
 from ..core.state import StatePattern, generate_state
 from ..core.state_vector import StateVector, embed_tensor_in_fock_basis
 from ..measurement import OutputMapper
-from ..measurement.autodiff import AutoDiffProcess
+from ..measurement.autodiff imort AutoDiffProcess
 from ..measurement.detectors import DetectorTransform
 from ..measurement.photon_loss import PhotonLossTransform
 from ..measurement.strategies import (
@@ -230,6 +230,8 @@ class QuantumLayer(MerlinModule):
 
         """
         super().__init__()
+        if sum_input_elements(input_state) != n_photons:
+            raise ValueError("number of photons doesn't fit input state")
 
         # === DEPRECATION WARNING: amplitude_encoding ===
         if amplitude_encoding:
