@@ -325,6 +325,10 @@ class QuantumLayer(MerlinModule):
             torch.tensor([i["initial_state"]], device=device, dtype=dtype)
             for i in self._memristive_metadata
         ]
+        self._memristive_gradient_states = [
+            [torch.tensor([i["initial_state"]], device=device, dtype=dtype)]
+            for i in self._memristive_metadata
+        ]
         self._memristive_smaller_last_batch = False
 
         # Phase 12: assign context to self + warnings
@@ -960,6 +964,10 @@ class QuantumLayer(MerlinModule):
                     self.memristive_state = [
                         x[:batch_dim] for x in self.memristive_state
                     ]
+                    for memristor in range(len(self._memristive_gradient_states)):
+                        self._memristive_gradient_states[memristor][-1] = (
+                            self._memristive_gradient_states[memristor][-1][:batch_dim]
+                        )
                 else:
                     raise RuntimeError(
                         "batch size mismatch: call reset(batch_size=N) before starting a new batch"
@@ -1067,27 +1075,21 @@ class QuantumLayer(MerlinModule):
 
         # Phase 7: memristive update
         if len(self.memristive_state) > 0:
-            # Create an independent copy of output for memristive computation without
-            # detaching gradients. This ensures memristive updates don't interfere with
-            # the autograd graph of the main output.
-            output_for_memristive: (
-                torch.Tensor
-                | PartialMeasurement
-                | ProbabilityDistribution
-                | StateVector
-            )
+            # ------------------------------------------------------------
+            # 1. Safe output copy
+            # ------------------------------------------------------------
             if not isinstance(output, PartialMeasurement):
                 output_for_memristive = output.clone()
             else:
-                branches = []
-                for branch in output.branches:
-                    branches.append(
-                        PartialMeasurementBranch(
-                            outcome=branch.outcome,
-                            probability=branch.probability.clone(),
-                            amplitudes=branch.amplitudes.clone(),
-                        )
+                branches = [
+                    PartialMeasurementBranch(
+                        outcome=b.outcome,
+                        probability=b.probability.clone(),
+                        amplitudes=b.amplitudes.clone(),
                     )
+                    for b in output.branches
+                ]
+
                 output_for_memristive = PartialMeasurement(
                     branches=tuple(branches),
                     measured_modes=output.measured_modes,
@@ -1095,38 +1097,56 @@ class QuantumLayer(MerlinModule):
                     grouping=output.grouping,
                 )
 
-            self.memristive_state = compute_new_memristive_ps_angles(
+            # ------------------------------------------------------------
+            # 2. BUILD SLIDING WINDOW (THIS IS THE KEY FIX)
+            # ------------------------------------------------------------
+            recurrent_inputs = []
+
+            for i in range(len(self.memristive_state)):
+
+                window = self._memristive_metadata[i]["num_backprop_steps"]
+                history = self.memristive_history[i]
+
+                # take last k states (INCLUDING current)
+                window_states = (
+                    history[-window:] if window > 0 else [self.memristive_state[i]]
+                )
+
+                # IMPORTANT:
+                # we reconstruct recurrence ONLY from this window
+                # no hidden graph beyond it
+
+                # ensure proper root at window boundary
+                if len(window_states) > 0:
+                    root = window_states[0].detach().requires_grad_()
+                else:
+                    root = self.memristive_state[i].detach().requires_grad_()
+
+                # reconstruct a clean local chain
+                state = root
+                for s in window_states[1:]:
+                    state = state + (s - s.detach())
+
+                recurrent_inputs.append(state)
+
+            # ------------------------------------------------------------
+            # 3. compute next state from reconstructed window
+            # ------------------------------------------------------------
+            new_states = compute_new_memristive_ps_angles(
                 memristive_metadata=self._memristive_metadata,
-                memristive_state=self.memristive_state,
+                memristive_state=recurrent_inputs,
                 output=output_for_memristive,
             )
 
-            expected_output_shape = torch.Size([batch_dim])
-            for i in range(len(self.memristive_history)):
-                if not (
-                    self.memristive_state[i].shape == expected_output_shape
-                    or self._memristive_smaller_last_batch
-                ):
-                    raise ValueError(
-                        f"""The following memristive phase shifter's update rule does not return a Tensor of shape [batch_dim]. Got {self.memristive_state[i].shape} instead of {expected_output_shape}.
+            # ------------------------------------------------------------
+            # 4. update storage
+            # ------------------------------------------------------------
+            for i, new_state in enumerate(new_states):
 
-                            Memristive phase-shifter analyzed: {self._memristive_metadata[i]}
-                        """
-                    )
-                # Add new state
-                self.memristive_history[i].append(self.memristive_state[i])
-                # Maintain truncated BPTT window: keep last (num_backprop_steps + 1) states
-                # with requires_grad=True; older states are detached from gradient tracking
-                position_to_remove = (
-                    len(self.memristive_history[i])
-                    - self._memristive_metadata[i]["num_backprop_steps"]
-                    - 1
-                )
-                if position_to_remove >= 0:
-                    # Detach the oldest remaining state
-                    self.memristive_history[i][
-                        position_to_remove
-                    ].detach_().requires_grad_(requires_grad=False)
+                self.memristive_state[i] = new_state
+
+                # store ONLY detached history
+                self.memristive_history[i].append(new_state.detach())
         return output
 
     def _compute_amplitudes(
@@ -1320,6 +1340,9 @@ class QuantumLayer(MerlinModule):
                 self.memristive_history[state][t] = self.memristive_history[state][
                     t
                 ].to(**target_kwargs)
+                self._memristive_gradient_states[state][t] = self.memristive_history[
+                    state
+                ][t].to(**target_kwargs)
 
         for state in range(len(self.memristive_state)):
             self.memristive_state[state] = self.memristive_state[state].to(
@@ -1791,13 +1814,19 @@ class QuantumLayer(MerlinModule):
                 self._memristive_metadata[i]["initial_state"],
                 device=self.device,
                 dtype=self.dtype,
-            )
+            ).detach()
             self.memristive_history[i] = [self.memristive_state[i]]
+            self._memristive_gradient_states[i] = [
+                torch.full(
+                    [batch_size],
+                    self._memristive_metadata[i]["initial_state"],
+                    device=self.device,
+                    dtype=self.dtype,
+                )
+            ]
             if self._memristive_metadata[i]["num_backprop_steps"] == 0:
-                self.memristive_state[i] = (
-                    self.memristive_state[i].detach().requires_grad_()
+                self._memristive_gradient_states[i][0].detach().requires_grad_(
+                    requires_grad=False
                 )
-                self.memristive_history[i][0] = (
-                    self.memristive_history[i][0].detach().requires_grad_()
-                )
+
         return
