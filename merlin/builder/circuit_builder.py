@@ -512,6 +512,10 @@ class CircuitBuilder:
             raise ValueError(
                 f"The assigned mode must be between 0 and CircuitBuilder.n_modes ({self.n_modes} here). Got {mode}."
             )
+        if (not isinstance(num_backprop_steps, int)) or num_backprop_steps < 0:
+            raise ValueError(
+                f"The `num_backprop_steps` parameter must be a positive interger. Got {type(num_backprop_steps)}: {num_backprop_steps}."
+            )
 
         scalar_initial_state = initial_state
         if isinstance(initial_state, torch.Tensor):
@@ -552,13 +556,15 @@ class CircuitBuilder:
             value=scalar_initial_state,
         )
 
-        self.memristive_specs.append({
-            "target_mode": mode,
-            "name": f"{name}{self._memristor_counter}",
-            "update_rule": update_rule,
-            "initial_state": scalar_initial_state,
-            "num_backprop_steps": num_backprop_steps,
-        })
+        self.memristive_specs.append(
+            {
+                "target_mode": mode,
+                "name": f"{name}{self._memristor_counter}",
+                "update_rule": update_rule,
+                "initial_state": scalar_initial_state,
+                "num_backprop_steps": num_backprop_steps,
+            }
+        )
         return self
 
     def add_entangling_layer(

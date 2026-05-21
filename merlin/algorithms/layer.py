@@ -1113,23 +1113,20 @@ class QuantumLayer(MerlinModule):
                             Memristive phase-shifter analyzed: {self._memristive_metadata[i]}
                         """
                     )
-
-                # Detach history that is too long ago
-                # num_backprop steps +1 are kept since the last step is not used for computations yet
-                position_to_detach = (
+                # Add new state
+                self.memristive_history[i].append(self.memristive_state[i])
+                # Maintain truncated BPTT window: keep last (num_backprop_steps + 1) states
+                # with requires_grad=True; older states are detached from gradient tracking
+                position_to_remove = (
                     len(self.memristive_history[i])
                     - self._memristive_metadata[i]["num_backprop_steps"]
                     - 1
                 )
-                if position_to_detach >= 0:
-                    self.memristive_history[i][position_to_detach] = (
-                        self.memristive_history[i][position_to_detach].detach()
-                    )
-                    print(self.memristive_history[i])
-
-                # Add new state
-                self.memristive_history[i].append(self.memristive_state[i])
-
+                if position_to_remove >= 0:
+                    # Detach the oldest remaining state
+                    self.memristive_history[i][
+                        position_to_remove
+                    ].detach_().requires_grad_(requires_grad=False)
         return output
 
     def _compute_amplitudes(
@@ -1797,5 +1794,10 @@ class QuantumLayer(MerlinModule):
             )
             self.memristive_history[i] = [self.memristive_state[i]]
             if self._memristive_metadata[i]["num_backprop_steps"] == 0:
-                self.memristive_history[i][0].detach()
+                self.memristive_state[i] = (
+                    self.memristive_state[i].detach().requires_grad_()
+                )
+                self.memristive_history[i][0] = (
+                    self.memristive_history[i][0].detach().requires_grad_()
+                )
         return
