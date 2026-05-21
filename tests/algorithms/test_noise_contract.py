@@ -103,8 +103,9 @@ def test_noisy_layer_with_amplitudes_strategy_raises_value_error():
                 phase_imprecision=0.5,
                 phase_error=0.6,
             ),
-            computation_space=ml.ComputationSpace.FOCK,
-            measurement_strategy=ml.MeasurementStrategy.AMPLITUDES,
+            measurement_strategy=ml.MeasurementStrategy.amplitudes(
+                computation_space=ml.ComputationSpace.FOCK
+            ),
         )
     with pytest.raises(
         ValueError,
@@ -193,8 +194,9 @@ def test_noisy_layer_with_mode_expectations_strategy_raises_value_error():
                 phase_imprecision=0.5,
                 phase_error=0.6,
             ),
-            measurement_strategy=ml.MeasurementStrategy.MODE_EXPECTATIONS,
-            computation_space=ml.ComputationSpace.FOCK,
+            measurement_strategy=ml.MeasurementStrategy.mode_expectations(
+                computation_space=ml.ComputationSpace.FOCK
+            ),
         )
     # No error: amplitudes with no noise model
     _ = ml.QuantumLayer(
@@ -212,7 +214,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
     circ.add_entangling_layer()
     with pytest.warns(
         UserWarning,
-        match="g2_distinguishable must be False since indistinguishable g2 photons (indistinguishability=1.0) cannot be distinguished.",
+        match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
     ):
         with pytest.raises(
             NotImplementedError,
@@ -227,11 +229,13 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
                 noise=pcvl.NoiseModel(
                     g2=0.2,
                 ),
-                computation_space=ml.ComputationSpace.FOCK,
+                measurement_strategy=ml.MeasurementStrategy.probs(
+                    computation_space=ml.ComputationSpace.FOCK
+                ),
             )
     with pytest.warns(
         UserWarning,
-        match="g2_distinguishable must be False since indistinguishable g2 photons (indistinguishability=1.0) cannot be distinguished.",
+        match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
     ):
         with pytest.raises(
             NotImplementedError,
@@ -246,7 +250,9 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
                 noise=pcvl.NoiseModel(
                     g2=0.3,
                 ),
-                computation_space=ml.ComputationSpace.FOCK,
+                measurement_strategy=ml.MeasurementStrategy.probs(
+                    computation_space=ml.ComputationSpace.FOCK
+                ),
             )
 
     with pytest.raises(
@@ -264,7 +270,9 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
                 g2=0.3,
                 g2_distinguishable=True,
             ),
-            computation_space=ml.ComputationSpace.FOCK,
+            measurement_strategy=ml.MeasurementStrategy.probs(
+                computation_space=ml.ComputationSpace.FOCK
+            ),
         )
     with pytest.raises(
         NotImplementedError,
@@ -324,7 +332,9 @@ def test_noise_via_experiment_raises_not_implemented():
             input_size=5,
             experiment=experiment,
             input_state=[1, 0, 0, 0, 0],
-            computation_space=ml.ComputationSpace.FOCK,
+            measurement_strategy=ml.MeasurementStrategy.probs(
+                computation_space=ml.ComputationSpace.FOCK
+            ),
         )
 
 
@@ -350,7 +360,9 @@ def test_noise_via_direct_parameter_raises_not_implemented():
                 phase_imprecision=0.5,
                 phase_error=0.6,
             ),
-            computation_space=ml.ComputationSpace.FOCK,
+            measurement_strategy=ml.MeasurementStrategy.probs(
+                computation_space=ml.ComputationSpace.FOCK
+            ),
         )
 
 
@@ -397,7 +409,7 @@ def test_impossible_noise():
     # a warning should be emitted and g2_distinguishable auto-corrected to False
     with pytest.warns(
         UserWarning,
-        match="g2_distinguishable must be False since indistinguishable g2 photons (indistinguishability=1.0) cannot be distinguished.",
+        match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
     ):
         with pytest.raises(
             NotImplementedError,
@@ -506,7 +518,7 @@ def test_brightness_only_classification_has_no_source_or_circuit_groups():
 def test_not_implemented_error_lists_classified_groups():
     with pytest.warns(
         UserWarning,
-        match="g2_distinguishable must be False since indistinguishable g2 photons (indistinguishability=1.0) cannot be distinguished.",
+        match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
     ):
         with pytest.raises(NotImplementedError) as exc_info:
             ml.QuantumLayer(
@@ -514,7 +526,9 @@ def test_not_implemented_error_lists_classified_groups():
                 input_size=4,
                 builder=_builder(),
                 noise=pcvl.NoiseModel(g2=0.05, phase_error=0.1),
-                computation_space=ml.ComputationSpace.FOCK,
+                measurement_strategy=ml.MeasurementStrategy.probs(
+                    computation_space=ml.ComputationSpace.FOCK
+                ),
             )
 
     message = str(exc_info.value)
