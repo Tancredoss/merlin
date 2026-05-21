@@ -552,15 +552,13 @@ class CircuitBuilder:
             value=scalar_initial_state,
         )
 
-        self.memristive_specs.append(
-            {
-                "target_mode": mode,
-                "name": f"{name}{self._memristor_counter}",
-                "update_rule": update_rule,
-                "initial_state": scalar_initial_state,
-                "num_backprop_steps": num_backprop_steps,
-            }
-        )
+        self.memristive_specs.append({
+            "target_mode": mode,
+            "name": f"{name}{self._memristor_counter}",
+            "update_rule": update_rule,
+            "initial_state": scalar_initial_state,
+            "num_backprop_steps": num_backprop_steps,
+        })
         return self
 
     def add_entangling_layer(
