@@ -424,40 +424,40 @@ def resolve_photon_loss_kernel(
         effective noise model was provided.
     """
     survival_probs = [1.0] * n_modes  # Default: no loss
-    empty_noise_model = True
+    empty_noise = True
 
-    noise_model = getattr(experiment, "noise", None)
-    if noise_model is None:
-        return survival_probs, empty_noise_model
+    noise = getattr(experiment, "noise", None)
+    if noise is None:
+        return survival_probs, empty_noise
 
-    brightness = cast(float, getattr(noise_model, "brightness", None))
-    transmittance = cast(float, getattr(noise_model, "transmittance", None))
+    brightness = cast(float, getattr(noise, "brightness", None))
+    transmittance = cast(float, getattr(noise, "transmittance", None))
 
     if brightness is None and transmittance is None:
         survival_probs = [1.0] * n_modes
-        empty_noise_model = True
+        empty_noise = True
     elif brightness is None:
         warnings.warn(
             "Brightness not specified in noise model; assuming 1.0.", stacklevel=2
         )
         survival_probs = [transmittance] * n_modes
-        empty_noise_model = False
+        empty_noise = False
     elif transmittance is None:
         warnings.warn(
             "Transmittance not specified in noise model; assuming 1.0.", stacklevel=2
         )
         survival_probs = [brightness] * n_modes
-        empty_noise_model = False
+        empty_noise = False
     else:
         survival_probs = [float(brightness) * float(transmittance)] * n_modes
-        empty_noise_model = False
+        empty_noise = False
 
     if not all(0.0 <= prob <= 1.0 for prob in survival_probs):
         raise ValueError("Photon survival probabilities must be within [0, 1].")
-    if empty_noise_model and not all(
+    if empty_noise and not all(
         math.isclose(prob, 1.0, rel_tol=1e-12, abs_tol=1e-12) for prob in survival_probs
     ):
         raise ValueError(
             "Inconsistent noise model: marked as empty but contains non-trivial loss parameters."
         )
-    return survival_probs, empty_noise_model
+    return survival_probs, empty_noise

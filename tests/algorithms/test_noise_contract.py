@@ -6,8 +6,8 @@ import pytest
 import merlin as ml
 from merlin.core import StateVector
 from merlin.algorithms.layer_utils import (
-    classify_noise_model,
-    normalize_noise_model,
+    classify_noise,
+    normalize_noise,
 )
 import numpy as np
 import torch
@@ -16,7 +16,7 @@ from copy import deepcopy
 
 @pytest.fixture
 def noise_groups() -> ml.QuantumLayer:
-    return classify_noise_model(
+    return classify_noise(
         pcvl.NoiseModel(
             brightness=0.1,
             indistinguishability=0.2,
@@ -84,6 +84,7 @@ def test_noisy_layer_with_amplitudes_strategy_raises_value_error():
     circ = ml.CircuitBuilder(n_modes=5)
     circ.add_entangling_layer()
     circ.add_angle_encoding()
+    circ.add_entangling_layer()
 
     with pytest.raises(
         ValueError,
@@ -123,6 +124,7 @@ def test_noisy_layer_with_detectors_with_other_computation_spaces():
     circ = ml.CircuitBuilder(n_modes=5)
     circ.add_entangling_layer()
     circ.add_angle_encoding()
+    circ.add_entangling_layer()
     circuit = circ.to_pcvl_circuit()
 
     exp = pcvl.Experiment(circuit)
@@ -132,7 +134,7 @@ def test_noisy_layer_with_detectors_with_other_computation_spaces():
         UserWarning, match="Detectors are ignored in favor of ComputationSpace"
     ):
         _ = ml.QuantumLayer(
-            n_photons=2,
+            n_photons=1,
             input_size=5,
             experiment=exp,
             input_state=[1, 0, 0, 0, 0],
@@ -146,6 +148,7 @@ def test_noisy_layer_with_detectors_with_other_computation_spaces():
     circ2 = ml.CircuitBuilder(n_modes=6)
     circ2.add_entangling_layer()
     circ2.add_angle_encoding()
+    circ.add_entangling_layer()
     circuit2 = circ2.to_pcvl_circuit()
 
     exp2 = pcvl.Experiment(circuit2)
@@ -171,6 +174,7 @@ def test_noisy_layer_with_mode_expectations_strategy_raises_value_error():
     circ = ml.CircuitBuilder(n_modes=5)
     circ.add_entangling_layer()
     circ.add_angle_encoding()
+    circ.add_entangling_layer()
 
     with pytest.raises(
         ValueError,
@@ -205,9 +209,10 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
     circ = ml.CircuitBuilder(n_modes=5)
     circ.add_entangling_layer()
     circ.add_angle_encoding()
+    circ.add_entangling_layer()
     with pytest.warns(
         UserWarning,
-        match="g2_distinguishable must be False since indistinguishable photons cannot be distinguished",
+        match="g2_distinguishable must be False since indistinguishable g2 photons (indistinguishability=1.0) cannot be distinguished.",
     ):
         with pytest.raises(
             NotImplementedError,
@@ -226,7 +231,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
             )
     with pytest.warns(
         UserWarning,
-        match="g2_distinguishable must be False since indistinguishable photons cannot be distinguished",
+        match="g2_distinguishable must be False since indistinguishable g2 photons (indistinguishability=1.0) cannot be distinguished.",
     ):
         with pytest.raises(
             NotImplementedError,
@@ -297,6 +302,7 @@ def test_noise_via_experiment_raises_not_implemented():
     circ = ml.CircuitBuilder(n_modes=5)
     circ.add_entangling_layer()
     circ.add_angle_encoding()
+    circ.add_entangling_layer()
     circuit = circ.to_pcvl_circuit()
 
     experiment = pcvl.Experiment(circuit)
@@ -326,6 +332,7 @@ def test_noise_via_direct_parameter_raises_not_implemented():
     circ = ml.CircuitBuilder(n_modes=5)
     circ.add_entangling_layer()
     circ.add_angle_encoding()
+    circ.add_entangling_layer()
 
     with pytest.raises(
         NotImplementedError,
@@ -358,23 +365,23 @@ def test_normalise_noise():
         phase_imprecision=0.5,
         phase_error=0.6,
     )
-    output = normalize_noise_model(noise, noise)
+    output = normalize_noise(noise, noise)
     assert output == noise
 
-    output = normalize_noise_model(noise, None)
+    output = normalize_noise(noise, None)
     assert output == noise
 
-    output = normalize_noise_model(None, noise)
+    output = normalize_noise(None, noise)
     assert output == noise
 
-    output = normalize_noise_model(None, None)
+    output = normalize_noise(None, None)
     assert output == None
 
     with pytest.raises(
         ValueError,
-        match="Conflicting noise models: specify via noise_model= or experiment.noise, not both",
+        match="Conflicting noise models: specify via noise= or experiment.noise, not both",
     ):
-        output = normalize_noise_model(pcvl.NoiseModel(brightness=0.9), noise)
+        output = normalize_noise(pcvl.NoiseModel(brightness=0.9), noise)
 
 
 # Error message content
@@ -382,6 +389,7 @@ def test_impossible_noise():
     circ = ml.CircuitBuilder(n_modes=5)
     circ.add_entangling_layer()
     circ.add_angle_encoding()
+    circ.add_entangling_layer()
 
     noise = pcvl.NoiseModel(indistinguishability=1.0, g2_distinguishable=True, g2=0.2)
 
@@ -389,7 +397,7 @@ def test_impossible_noise():
     # a warning should be emitted and g2_distinguishable auto-corrected to False
     with pytest.warns(
         UserWarning,
-        match="g2_distinguishable must be False since indistinguishable photons cannot be distinguished",
+        match="g2_distinguishable must be False since indistinguishable g2 photons (indistinguishability=1.0) cannot be distinguished.",
     ):
         with pytest.raises(
             NotImplementedError,
@@ -408,6 +416,7 @@ def _builder(n_modes: int = 4) -> ml.CircuitBuilder:
     builder = ml.CircuitBuilder(n_modes=n_modes)
     builder.add_entangling_layer()
     builder.add_angle_encoding()
+    builder.add_entangling_layer()
     return builder
 
 
@@ -415,7 +424,7 @@ def _is_empty_group(group: dict | None) -> bool:
     return group is None or group == {}
 
 
-def test_direct_noise_model_brightness_feeds_photon_loss_transform():
+def test_direct_noise_brightness_feeds_photon_loss_transform():
     layer = ml.QuantumLayer(
         n_photons=2,
         input_size=4,
@@ -426,7 +435,7 @@ def test_direct_noise_model_brightness_feeds_photon_loss_transform():
     assert layer._photon_survival_probs == pytest.approx([0.3, 0.3, 0.3, 0.3])
 
 
-def test_direct_noise_model_transmittance_feeds_photon_loss_transform():
+def test_direct_noise_transmittance_feeds_photon_loss_transform():
     layer = ml.QuantumLayer(
         n_photons=2,
         input_size=4,
@@ -474,9 +483,9 @@ def test_noise_groups_are_passed_to_computation_process():
     }
 
 
-def test_empty_noise_model_has_no_active_groups():
+def test_empty_noise_has_no_active_groups():
     # Normalizing for the non-trivial g2_distinguishable handling in Perceval
-    groups = classify_noise_model(normalize_noise_model(pcvl.NoiseModel(), None))
+    groups = classify_noise(normalize_noise(pcvl.NoiseModel(), None))
 
     assert groups is None or (
         _is_empty_group(groups.source)
@@ -486,9 +495,7 @@ def test_empty_noise_model_has_no_active_groups():
 
 
 def test_brightness_only_classification_has_no_source_or_circuit_groups():
-    groups = classify_noise_model(
-        normalize_noise_model(pcvl.NoiseModel(brightness=0.3), None)
-    )
+    groups = classify_noise(normalize_noise(pcvl.NoiseModel(brightness=0.3), None))
 
     assert groups is not None
     assert _is_empty_group(groups.source)
@@ -499,7 +506,7 @@ def test_brightness_only_classification_has_no_source_or_circuit_groups():
 def test_not_implemented_error_lists_classified_groups():
     with pytest.warns(
         UserWarning,
-        match="g2_distinguishable must be False since indistinguishable photons cannot be distinguished",
+        match="g2_distinguishable must be False since indistinguishable g2 photons (indistinguishability=1.0) cannot be distinguished.",
     ):
         with pytest.raises(NotImplementedError) as exc_info:
             ml.QuantumLayer(
@@ -530,7 +537,7 @@ def test_experiment_noise_amplitudes_uses_value_error_contract():
         )
 
 
-def test_return_object_with_noise_model_fails_fast():
+def test_return_object_with_noise_fails_fast():
     with pytest.raises(
         NotImplementedError,
         match="The noise computation with the return_object feature set at True is not yet implemented.",
@@ -700,8 +707,8 @@ def test_indistiguishable_layer_against_perceval_unitary_statevector_input():
     circuit = pcvl.Circuit(2)
     circuit.add((0, 1), pcvl.BS.H())
 
-    noise_model = pcvl.NoiseModel(indistinguishability=0.5)
-    source = pcvl.Source.from_noise_model(noise_model)
+    noise = pcvl.NoiseModel(indistinguishability=0.5)
+    source = pcvl.Source.from_noise_model(noise)
     backend = pcvl.BackendFactory.get_backend("SLOS")
     sim = pcvl.Simulator(backend)
     sim.set_circuit(deepcopy(circuit))
@@ -710,7 +717,7 @@ def test_indistiguishable_layer_against_perceval_unitary_statevector_input():
     layer = ml.QuantumLayer(
         n_photons=2,
         circuit=deepcopy(circuit),
-        noise=noise_model,
+        noise=noise,
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
@@ -759,8 +766,8 @@ def test_indistiguishable_layer_against_perceval_unitary_complex_tensor_input():
     circuit = pcvl.Circuit(2)
     circuit.add((0, 1), pcvl.BS.H())
 
-    noise_model = pcvl.NoiseModel(indistinguishability=0.5)
-    source = pcvl.Source.from_noise_model(noise_model)
+    noise = pcvl.NoiseModel(indistinguishability=0.5)
+    source = pcvl.Source.from_noise_model(noise)
     backend = pcvl.BackendFactory.get_backend("SLOS")
     sim = pcvl.Simulator(backend)
     sim.set_circuit(deepcopy(circuit))
@@ -769,7 +776,7 @@ def test_indistiguishable_layer_against_perceval_unitary_complex_tensor_input():
     layer = ml.QuantumLayer(
         n_photons=2,
         circuit=deepcopy(circuit),
-        noise=noise_model,
+        noise=noise,
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
@@ -826,8 +833,8 @@ def test_indistiguishable_layer_against_perceval_unitary_no_amplitude_encoding()
     circuit = pcvl.Circuit(2)
     circuit.add((0, 1), pcvl.BS.H())
 
-    noise_model = pcvl.NoiseModel(indistinguishability=0.5)
-    source = pcvl.Source.from_noise_model(noise_model)
+    noise = pcvl.NoiseModel(indistinguishability=0.5)
+    source = pcvl.Source.from_noise_model(noise)
     backend = pcvl.BackendFactory.get_backend("SLOS")
     sim = pcvl.Simulator(backend)
     sim.set_circuit(deepcopy(circuit))
@@ -840,7 +847,7 @@ def test_indistiguishable_layer_against_perceval_unitary_no_amplitude_encoding()
             n_photons=2,
             circuit=deepcopy(circuit),
             input_state=input_state_tuple,
-            noise=noise_model,
+            noise=noise,
             measurement_strategy=ml.MeasurementStrategy.probs(
                 computation_space=ml.ComputationSpace.FOCK
             ),
@@ -887,7 +894,7 @@ def test_no_noise():
 
 
 def test_computation_space_changed():
-    noise_model = pcvl.NoiseModel(indistinguishability=0.2)
+    noise = pcvl.NoiseModel(indistinguishability=0.2)
     builder = ml.CircuitBuilder(n_modes=5)
 
     with pytest.raises(
@@ -896,7 +903,7 @@ def test_computation_space_changed():
     ):
         layer = ml.QuantumLayer(
             builder=builder,
-            noise=noise_model,
+            noise=noise,
             n_photons=2,
             computation_space=ml.ComputationSpace.UNBUNCHED,
         )
@@ -910,7 +917,7 @@ def test_computation_space_changed():
     ):
         layer = ml.QuantumLayer(
             builder=builder,
-            noise=noise_model,
+            noise=noise,
             n_photons=2,
             computation_space=ml.ComputationSpace.DUAL_RAIL,
         )
@@ -923,7 +930,7 @@ def test_computation_space_changed():
     ):
         layer = ml.QuantumLayer(
             builder=builder,
-            noise=noise_model,
+            noise=noise,
             n_photons=2,
             computation_space=ml.ComputationSpace.UNBUNCHED,
             amplitude_encoding=True,

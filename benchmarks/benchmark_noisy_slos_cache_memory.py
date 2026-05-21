@@ -148,7 +148,7 @@ def _build_noisy_layer(modes: int, photons: int, dtype: torch.dtype) -> QuantumL
     return QuantumLayer(
         circuit=_build_fixed_circuit(modes),
         n_photons=photons,
-        noise_model=pcvl.NoiseModel(indistinguishability=0.5),
+        noise=pcvl.NoiseModel(indistinguishability=0.5),
         measurement_strategy=MeasurementStrategy.probs(
             computation_space=ComputationSpace.FOCK
         ),

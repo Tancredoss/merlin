@@ -58,8 +58,8 @@ merlin.algorithms.layer_utils module
 
 .. autofunction:: normalize_output_key
 
-.. autofunction:: classify_noise_model
+.. autofunction:: classify_noise
 
 .. autofunction:: validate_noisy_measurement_strategy
 
-.. autofunction:: normalize_noise_model
+.. autofunction:: normalize_noise

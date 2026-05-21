@@ -1125,6 +1125,8 @@ def build_slos_distribution_computegraph(
 
     compute_graph: SLOSComputeGraph | NoisySLOSComputeGraph
 
+    # If there is no source noise, use the regular SLOS graph
+    # No noise at all
     if noise_groups is None:
         compute_graph = SLOSComputeGraph(
             m,
@@ -1136,6 +1138,7 @@ def build_slos_distribution_computegraph(
             dtype,
             index_photons,
         )
+    # If there is noise but no source noise
     elif noise_groups.source is None:
         compute_graph = SLOSComputeGraph(
             m,

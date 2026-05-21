@@ -37,7 +37,7 @@ You can either add this noise model to a :class:`pcvl.Experiment` that is then u
     import torch
     import merlin as ML
 
-    noise_model=pcvl.NoiseModel(
+    noise=pcvl.NoiseModel(
             brightness=0.1,
             indistinguishability=0.2,
             g2=0.3,
@@ -48,12 +48,12 @@ You can either add this noise model to a :class:`pcvl.Experiment` that is then u
         ),
 
     circuit = pcvl.Circuit(3)
-    circuit.add(0, pcvl.PS(pcvl.P("px")))
     circuit.add((0, 1), pcvl.BS())
+    circuit.add(0, pcvl.PS(pcvl.P("px")))
     circuit.add((1, 2), pcvl.BS())
     
     # Option 1: define the noise model with an experiment
-    experiment = pcvl.Experiment(circuit, noise=noise_model)
+    experiment = pcvl.Experiment(circuit, noise=noise)
 
     layer = ML.QuantumLayer(
         input_size=1,
@@ -73,7 +73,7 @@ You can either add this noise model to a :class:`pcvl.Experiment` that is then u
         input_parameters=["px"],
         input_state=[1, 1, 1],
         computation_space=ML.ComputationSpace.FOCK,  # Fock space used for noisy simulations
-        noise=noise_model
+        noise=noise
     )
 
     x = torch.rand(3, 1)
@@ -105,3 +105,10 @@ Memory and computational complexity grow significantly with the number of modes 
 .. code-block:: bash
 
     python benchmarks/benchmark_noisy_slos_cache_memory.py --modes 6 7 8 9 --photons 1 2 3 4 5 --backward
+
+Here is an example of the output graph of this run.
+
+.. figure:: images/benchmark_noisy_slos_cache_memory.png
+   :align: center
+   :width: 600px
+   :alt: Memory need for the QuantumLayer with distinguishable photons per output size.

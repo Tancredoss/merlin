@@ -35,7 +35,7 @@ import numpy as np
 import merlin as ML
 from merlin.core.computation_space import ComputationSpace
 from merlin.measurement.photon_loss import resolve_photon_loss
-from merlin.algorithms.layer_utils import classify_noise_model
+from merlin.algorithms.layer_utils import classify_noise
 
 
 class TestPhotonLossWithQuantumLayer:
@@ -248,7 +248,7 @@ class TestPhotonLossWithQuantumLayer:
             output.sum(dim=1), torch.ones_like(output[:, 0]), atol=1e-6
         )
 
-    def test_photon_loss_no_noise_model(self):
+    def test_photon_loss_no_noise(self):
         """Experiments without a noise model must match the noise-free circuit."""
         circuit = pcvl.Circuit(2)
         circuit.add((0, 1), pcvl.BS())
@@ -284,7 +284,7 @@ class TestPhotonLossWithQuantumLayer:
             == layer_experiment_unbunched.output_keys
         )
 
-    def test_photon_loss_incomplete_noise_model(self):
+    def test_photon_loss_incomplete_noise(self):
         """Missing transmittance defaults to 1 while brightness controls survival and vice versa."""
         circuit = pcvl.Circuit(2)
         circuit.add((0, 1), pcvl.BS())
@@ -744,32 +744,32 @@ def test_resolve_photon_loss_with_noise_groups_empty_post_measurement():
     assert empty_post_measurement
 
     survival_probs, empty_post_measurement = resolve_photon_loss(
-        classify_noise_model(pcvl.NoiseModel(phase_imprecision=0.2)), n_modes=4
+        classify_noise(pcvl.NoiseModel(phase_imprecision=0.2)), n_modes=4
     )
     assert np.allclose(survival_probs, [1, 1, 1, 1])
     assert empty_post_measurement
 
     survival_probs, empty_post_measurement = resolve_photon_loss(
-        classify_noise_model(pcvl.NoiseModel(indistinguishability=0.2)), n_modes=4
+        classify_noise(pcvl.NoiseModel(indistinguishability=0.2)), n_modes=4
     )
     assert np.allclose(survival_probs, [1, 1, 1, 1])
     assert empty_post_measurement
 
     # Only post measurement noise
     survival_probs, empty_post_measurement = resolve_photon_loss(
-        classify_noise_model(pcvl.NoiseModel(brightness=0.2)), n_modes=4
+        classify_noise(pcvl.NoiseModel(brightness=0.2)), n_modes=4
     )
     assert np.allclose(survival_probs, [0.2, 0.2, 0.2, 0.2])
     assert not empty_post_measurement
 
     survival_probs, empty_post_measurement = resolve_photon_loss(
-        classify_noise_model(pcvl.NoiseModel(transmittance=0.2)), n_modes=4
+        classify_noise(pcvl.NoiseModel(transmittance=0.2)), n_modes=4
     )
     assert np.allclose(survival_probs, [0.2, 0.2, 0.2, 0.2])
     assert not empty_post_measurement
 
     survival_probs, empty_post_measurement = resolve_photon_loss(
-        classify_noise_model(pcvl.NoiseModel(transmittance=0.2, brightness=0.1)),
+        classify_noise(pcvl.NoiseModel(transmittance=0.2, brightness=0.1)),
         n_modes=4,
     )
     assert np.allclose(survival_probs, [0.02, 0.02, 0.02, 0.02])
@@ -777,20 +777,20 @@ def test_resolve_photon_loss_with_noise_groups_empty_post_measurement():
 
     # Mix of noises
     survival_probs, empty_post_measurement = resolve_photon_loss(
-        classify_noise_model(pcvl.NoiseModel(brightness=0.2, indistinguishability=0.9)),
+        classify_noise(pcvl.NoiseModel(brightness=0.2, indistinguishability=0.9)),
         n_modes=4,
     )
     assert np.allclose(survival_probs, [0.2, 0.2, 0.2, 0.2])
     assert not empty_post_measurement
 
     survival_probs, empty_post_measurement = resolve_photon_loss(
-        classify_noise_model(pcvl.NoiseModel(transmittance=0.2, g2=0.6)), n_modes=4
+        classify_noise(pcvl.NoiseModel(transmittance=0.2, g2=0.6)), n_modes=4
     )
     assert np.allclose(survival_probs, [0.2, 0.2, 0.2, 0.2])
     assert not empty_post_measurement
 
     survival_probs, empty_post_measurement = resolve_photon_loss(
-        classify_noise_model(
+        classify_noise(
             pcvl.NoiseModel(
                 transmittance=0.2,
                 brightness=0.1,

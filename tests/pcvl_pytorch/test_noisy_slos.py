@@ -10,7 +10,7 @@ from merlin.pcvl_pytorch.noisy_slos import (
 )
 from merlin.pcvl_pytorch.slos_torchscript import SLOSComputeGraph
 
-from merlin.algorithms.layer_utils import NoiseGroups, classify_noise_model
+from merlin.algorithms.layer_utils import NoiseGroups, classify_noise
 from merlin.pcvl_pytorch.locirc_to_tensor import CircuitConverter
 
 
@@ -85,7 +85,7 @@ def test_fully_distinguishable_hom_zero():
     circuit.add((0, 1), pcvl.BS.H())
     unitary = CircuitConverter(circuit).to_tensor([])
 
-    noise_groups = classify_noise_model(pcvl.NoiseModel(indistinguishability=0.0))
+    noise_groups = classify_noise(pcvl.NoiseModel(indistinguishability=0.0))
     noisy_slos = NoisySLOSComputeGraph(
         noise_groups,
         m=2,
@@ -113,13 +113,13 @@ def test_against_perceval(entangling_circuit):
     unitary = CircuitConverter(circuit_to_analyze).to_tensor([])
 
     for ind in torch.linspace(0.1, 0.99, 9):
-        noise_model = pcvl.NoiseModel(indistinguishability=ind.item())
-        groups = classify_noise_model(noise_model)
+        noise = pcvl.NoiseModel(indistinguishability=ind.item())
+        groups = classify_noise(noise)
         noisy_slos = NoisySLOSComputeGraph(
             groups, m=5, n_photons=3, computation_space=ComputationSpace.FOCK
         )
 
-        source = pcvl.Source.from_noise_model(noise_model)
+        source = pcvl.Source.from_noise_model(noise)
 
         backend = pcvl.BackendFactory.get_backend("SLOS")
         sim = pcvl.Simulator(backend)
@@ -166,14 +166,14 @@ def test_against_perceval_batched_unitary(entangling_circuit):
     unitary_b = CircuitConverter(circuit_b).to_tensor([])
     unitary_batch = torch.stack((unitary_a, unitary_b), dim=0)
 
-    noise_model = pcvl.NoiseModel(indistinguishability=0.4)
-    groups = classify_noise_model(noise_model)
+    noise = pcvl.NoiseModel(indistinguishability=0.4)
+    groups = classify_noise(noise)
     noisy_slos = NoisySLOSComputeGraph(
         groups, m=5, n_photons=3, computation_space=ComputationSpace.FOCK
     )
 
-    source_1 = pcvl.Source.from_noise_model(noise_model)
-    source_2 = pcvl.Source.from_noise_model(noise_model)
+    source_1 = pcvl.Source.from_noise_model(noise)
+    source_2 = pcvl.Source.from_noise_model(noise)
     backend_1 = pcvl.BackendFactory.get_backend("SLOS")
     backend_2 = pcvl.BackendFactory.get_backend("SLOS")
     sim_a = pcvl.Simulator(backend_1)
@@ -331,8 +331,8 @@ def test_noisy_slos_to_moves_cached_graph_and_preserves_probs():
 
 
 def test_computation_space_and_indistinguishability_default_value():
-    noise_model = pcvl.NoiseModel(indistinguishability=0.2)
-    groups = classify_noise_model(noise_model)
+    noise = pcvl.NoiseModel(indistinguishability=0.2)
+    groups = classify_noise(noise)
     noisy_slos = NoisySLOSComputeGraph(
         groups, m=5, n_photons=3, computation_space=ComputationSpace.FOCK
     )
@@ -351,8 +351,8 @@ def test_computation_space_and_indistinguishability_default_value():
         )
         assert noisy_slos.computation_space == ComputationSpace.DUAL_RAIL
 
-    noise_model = pcvl.NoiseModel(g2=1.0)
-    groups = classify_noise_model(noise_model)
+    noise = pcvl.NoiseModel(g2=1.0)
+    groups = classify_noise(noise)
     noisy_slos = NoisySLOSComputeGraph(
         groups, m=5, n_photons=3, computation_space=ComputationSpace.FOCK
     )

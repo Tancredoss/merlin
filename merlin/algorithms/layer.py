@@ -65,7 +65,7 @@ from .layer_utils import (
     InitializationContext,
     apply_angle_encoding,
     feature_count_for_prefix,
-    normalize_noise_model,
+    normalize_noise,
     prepare_input_encoding,
     prepare_input_state,
     resolve_circuit,
@@ -251,7 +251,7 @@ class QuantumLayer(MerlinModule):
             builder, circuit, experiment, trainable_parameters, input_parameters
         )
         # Phase 3.5 normalization of the noise
-        self.noise = normalize_noise_model(
+        self.noise = normalize_noise(
             noise, experiment.noise if experiment is not None else None
         )
 
@@ -289,7 +289,7 @@ class QuantumLayer(MerlinModule):
             computation_space,
             measurement_strategy,
             backend=self.backend,
-            noise_model=self.noise,
+            noise=self.noise,
             return_object=return_object,
         )
 
@@ -302,7 +302,7 @@ class QuantumLayer(MerlinModule):
 
         if source_noise and (not computation_space == ComputationSpace.FOCK):
             warnings.warn(
-                "Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
+                "Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models. pcvl.detectors can be used to use custom post-selection.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -317,7 +317,7 @@ class QuantumLayer(MerlinModule):
             input_size=encoding_config.input_size,
             circuit=resolved_circuit.circuit,
             experiment=resolved_circuit.experiment,
-            noise_model=resolved_circuit.noise_model,
+            noise=resolved_circuit.noise,
             has_custom_noise=resolved_circuit.has_custom_noise,
             input_state=input_state,
             n_photons=resolved_n_photons,
@@ -351,7 +351,7 @@ class QuantumLayer(MerlinModule):
         self.input_size = context.input_size
         self.measurement_strategy = context.measurement_strategy
         self.experiment = context.experiment
-        self.noise = context.noise_model
+        self.noise = context.noise
         self.amplitude_encoding = context.amplitude_encoding
         self.computation_space = context.computation_space
         self.angle_encoding_specs = context.angle_encoding_specs
