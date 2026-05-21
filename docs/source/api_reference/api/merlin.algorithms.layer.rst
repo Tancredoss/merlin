@@ -334,6 +334,8 @@ defines the allowed batch size to be ran per forward pass for circuits with memr
 The current state of the memristive phase-shifters can be accessed with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_state` attribute. The full history of the memristive phase-shifters can be accessed
 with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` attribute. The order of the states and history is defined by the order in which the memristive phase-shifters were added in the :class:`~merlin.builder.circuit_builder.CircuitBuilder`.
 
+Also, when defining a phase-shifter, the ``num_backprop_steps`` parameter helps to control the flow of the gradient through memristive phase shifters. As the state of this component is defined by the previous output of the layer, the gradient would have to go through all previous forward passes to be defined. The ``num_backprop_steps`` parameter dictates how many steps can the gradient go back in the memristive history to be defined. By default, it is set to 0.
+
 Deprecations
 -------------------------
 .. warning:: *Deprecated since version 0.3:*
