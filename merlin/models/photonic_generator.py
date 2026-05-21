@@ -307,7 +307,7 @@ class PhotonicGenerator(nn.Module):
 
     Parameters
     ----------
-    layers : Sequence[QuantumLayer]
+    layers : Sequence[merlin.algorithms.layer.QuantumLayer]
         Non-empty sequence of quantum generator heads. All layers must expose
         the same ``input_size``. Amplitude-output measurement strategies are not
         supported because they do not directly represent classical generated
@@ -324,7 +324,8 @@ class PhotonicGenerator(nn.Module):
     Raises
     ------
     TypeError
-        If ``layers`` is not a sequence of :class:`QuantumLayer`, if
+        If ``layers`` is not a sequence of
+        :class:`~merlin.algorithms.layer.QuantumLayer`, if
         ``output_adapter`` is not a :class:`torch.nn.Module`, or if ``latent`` is
         not a :class:`LatentDistribution`.
     ValueError
@@ -373,11 +374,12 @@ class PhotonicGenerator(nn.Module):
         Parameters
         ----------
         index : int
-            Index of the underlying :class:`QuantumLayer`.
+            Index of the underlying
+            :class:`~merlin.algorithms.layer.QuantumLayer`.
 
         Returns
         -------
-        QuantumLayer
+        merlin.algorithms.layer.QuantumLayer
             The selected quantum generator head.
         """
         return self.layers[index]
@@ -388,7 +390,8 @@ class PhotonicGenerator(nn.Module):
         Returns
         -------
         int
-            Number of underlying :class:`QuantumLayer` modules.
+            Number of underlying
+            :class:`~merlin.algorithms.layer.QuantumLayer` modules.
         """
         return len(self.layers)
 
@@ -552,18 +555,19 @@ def _validate_layers(layers: Sequence[QuantumLayer]) -> list[QuantumLayer]:
 
     Parameters
     ----------
-    layers : Sequence[QuantumLayer]
+    layers : Sequence[merlin.algorithms.layer.QuantumLayer]
         Candidate quantum generator heads.
 
     Returns
     -------
-    list[QuantumLayer]
+    list[merlin.algorithms.layer.QuantumLayer]
         Validated list of layers.
 
     Raises
     ------
     TypeError
-        If ``layers`` is not a sequence of :class:`QuantumLayer` objects.
+        If ``layers`` is not a sequence of
+        :class:`~merlin.algorithms.layer.QuantumLayer` objects.
     ValueError
         If the sequence is empty, if input sizes are inconsistent, or if a layer
         uses amplitude outputs.
