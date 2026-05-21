@@ -135,6 +135,7 @@ class CircuitConverter:
         self,
         circuit: Circuit,
         input_specs: list[str] = None,
+        memristive_metadata: list[dict] | None = None,
         dtype: torch.dtype = torch.complex64,
         device: torch.device = torch.device("cpu"),
     ):
@@ -147,6 +148,8 @@ class CircuitConverter:
         input_specs : list[str] | None
             Parameter name prefixes used to group parameters into separate
             tensors. If ``None``, all parameters go into a single tensor.
+        memristive_metadata: list[dict] | None
+            The memristive phase shifter metadata. If None, it will be stored as an empty list.
         dtype : torch.dtype
             Tensor dtype.
         device : torch.device
@@ -164,6 +167,14 @@ class CircuitConverter:
         # in pytorch module, there is no discovery of the device from parameters, so it is the user's responsibility to
         # set the device, with .to() before calling the generation function
         self.device = device
+        self.memristive_metadata = (
+            [] if memristive_metadata is None else memristive_metadata
+        )
+        self.memristive_metadata_name_to_index = {
+            memristive_metadata[i]["name"]: i
+            for i in range(len(self.memristive_metadata))
+        }
+        self.memristive_current_state: list[torch.Tensor] = []
         self.input_params = None
         self.batch_size = 1
 
@@ -201,9 +212,13 @@ class CircuitConverter:
             # Check if all parameters are covered
             for param in param_names:
                 if param not in self.param_mapping:
-                    raise ValueError(
-                        f"Parameter '{param}' not covered by any input spec"
-                    )
+                    if not (
+                        (param in self.memristive_metadata_name_to_index.keys())
+                        and (len(self.memristive_metadata) > 0)
+                    ):
+                        raise ValueError(
+                            f"Parameter '{param}' not covered by any input spec"
+                        )
 
         self.list_rct = self._compile_circuit()
 
@@ -260,6 +275,11 @@ class CircuitConverter:
                     r,
                     c.to(dtype=self.tensor_cdtype, device=self.device),
                 )
+        # Memristive current state
+        for state in range(len(self.memristive_current_state)):
+            self.memristive_current_state[state] = self.memristive_current_state[
+                state
+            ].to(dtype=self.tensor_fdtype, device=self.device)
 
         return self
 
@@ -352,7 +372,10 @@ class CircuitConverter:
         return [item for item in list_rct if item[1] is not None]
 
     def to_tensor(
-        self, *input_params: torch.Tensor, batch_size: int | None = None
+        self,
+        *input_params: torch.Tensor,
+        batch_size: int | None = None,
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor:
         r"""Convert the parameterized circuit to a PyTorch unitary tensor.
 
@@ -365,6 +388,9 @@ class CircuitConverter:
         batch_size : int | None
             Explicit batch size. If ``None``, it is inferred from the input
             tensors.
+        memristive_current_state : list[torch.Tensor] | None
+            The memristive phase shifters current states. Defaults to None
+            and will be treated as an empty list.
 
         Returns
         -------
@@ -392,6 +418,16 @@ class CircuitConverter:
             )
 
         self.torch_params = input_params
+        self.memristive_current_state = (
+            [] if memristive_current_state is None else memristive_current_state
+        )
+        if len(self.memristive_current_state) < len(self.memristive_metadata):
+            raise ValueError(
+                "Expected at least "
+                f"{len(self.memristive_metadata)} memristive current state value(s) "
+                f"for the configured memristive metadata, but got "
+                f"{len(self.memristive_current_state)}."
+            )
 
         if batch_size is None:
             if input_params and input_params[0].dim() > 1:
@@ -470,7 +506,7 @@ class CircuitConverter:
 
         for _index, param in enumerate(comp.get_parameters(all_params=True)):
             if param.is_variable:
-                (tensor_id, idx_in_tensor) = self.param_mapping[param.name]
+                tensor_id, idx_in_tensor = self.param_mapping[param.name]
                 param_values.append(self.torch_params[tensor_id][..., idx_in_tensor])
             else:
                 param_values.append(
@@ -533,8 +569,18 @@ class CircuitConverter:
             Batched 1x1 phase tensor of shape (batch_size, 1, 1)
         """
         if comp.param("phi").is_variable:
-            (tensor_id, idx_in_tensor) = self.param_mapping[comp.param("phi").name]
-            phase = self.torch_params[tensor_id][..., idx_in_tensor]
+            param_name = comp.param("phi").name
+            if len(self.memristive_metadata) > 0:
+                if param_name in self.memristive_metadata_name_to_index.keys():
+                    index = self.memristive_metadata_name_to_index[param_name]
+                    phase = self.memristive_current_state[index]
+                else:
+                    tensor_id, idx_in_tensor = self.param_mapping[param_name]
+                    phase = self.torch_params[tensor_id][..., idx_in_tensor]
+            else:
+                tensor_id, idx_in_tensor = self.param_mapping[param_name]
+                phase = self.torch_params[tensor_id][..., idx_in_tensor]
+
         else:
             phase = torch.tensor(
                 comp.param("phi")._value, dtype=self.tensor_fdtype, device=self.device

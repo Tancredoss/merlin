@@ -105,6 +105,7 @@ class ComputationProcess(AbstractComputationProcess):
         dtype: torch.dtype = torch.float32,
         device: torch.device | None = None,
         computation_space: ComputationSpace | None = None,
+        memristive_metadata: list[dict] | None = None,
         no_bunching: bool | None = None,
         output_map_func=None,
     ):
@@ -128,6 +129,8 @@ class ComputationProcess(AbstractComputationProcess):
             Device on which computation graphs are materialized.
         computation_space : ComputationSpace | None
             Computation space used for basis enumeration.
+        memristive_metadata: list[dict] | None
+            The memristive phase shifter metadata. If None, it will be stored as an empty list.
         no_bunching : bool | None
             Deprecated legacy parameter.
         output_map_func : Any
@@ -140,6 +143,9 @@ class ComputationProcess(AbstractComputationProcess):
         self.input_parameters = input_parameters
         self.dtype = dtype
         self.device = device
+        self.memristive_metadata = (
+            [] if memristive_metadata is None else memristive_metadata
+        )
 
         if no_bunching is not None:
             raise_no_bunching_deprecated(stacklevel=2)
@@ -184,7 +190,11 @@ class ComputationProcess(AbstractComputationProcess):
 
         # Build unitary graph
         self.converter = CircuitConverter(
-            self.circuit, parameter_specs, dtype=self.dtype, device=self.device
+            self.circuit,
+            parameter_specs,
+            memristive_metadata=self.memristive_metadata,
+            dtype=self.dtype,
+            device=self.device,
         )
 
         # Build simulation graph with correct parameters
@@ -197,13 +207,20 @@ class ComputationProcess(AbstractComputationProcess):
             dtype=self.dtype,
         )
 
-    def compute(self, parameters: list[torch.Tensor]) -> torch.Tensor:
+    def compute(
+        self,
+        parameters: list[torch.Tensor],
+        memristive_current_state: list[torch.Tensor] | None = None,
+    ) -> torch.Tensor:
         """Compute output amplitudes for the configured input state.
 
         Parameters
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
+        memristive_current_state : list[torch.Tensor] | None
+            The memristive phase shifters current states. Defaults to None
+            and will be treated as an empty list.
 
         Returns
         -------
@@ -212,7 +229,12 @@ class ComputationProcess(AbstractComputationProcess):
         """
         # Generate unitary matrix from parameters
 
-        unitary = self.converter.to_tensor(*parameters)
+        unitary = self.converter.to_tensor(
+            *parameters,
+            memristive_current_state=(
+                [] if memristive_current_state is None else memristive_current_state
+            ),
+        )
         self.unitary = unitary
         # Compute output distribution using the input state
         if isinstance(self.input_state, torch.Tensor):
@@ -230,6 +252,7 @@ class ComputationProcess(AbstractComputationProcess):
         *,
         simultaneous_processes: int | None = None,
         return_keys: Literal[True] = True,
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> tuple[list[tuple[int, ...]], torch.Tensor]: ...
 
     @overload
@@ -239,6 +262,7 @@ class ComputationProcess(AbstractComputationProcess):
         *,
         simultaneous_processes: int | None = None,
         return_keys: Literal[False] = False,
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor: ...
 
     def compute_superposition_state(
@@ -247,9 +271,15 @@ class ComputationProcess(AbstractComputationProcess):
         *,
         simultaneous_processes: int | None = None,
         return_keys: bool = False,
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
         prepared_state = self._prepare_superposition_support()
-        unitary = self.converter.to_tensor(*parameters)
+        unitary = self.converter.to_tensor(
+            *parameters,
+            memristive_current_state=(
+                [] if memristive_current_state is None else memristive_current_state
+            ),
+        )
         _keys_out, final_amplitudes = self._compute_chunked_superposition(
             prepared_state,
             unitary if unitary.dim() == 3 else unitary.unsqueeze(0),
@@ -265,7 +295,10 @@ class ComputationProcess(AbstractComputationProcess):
         return final_amplitudes
 
     def compute_ebs_simultaneously(
-        self, parameters: list[torch.Tensor], simultaneous_processes: int = 1
+        self,
+        parameters: list[torch.Tensor],
+        simultaneous_processes: int = 1,
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor:
         """
         Evaluate a single circuit parametrisation against all superposed input
@@ -289,6 +322,9 @@ class ComputationProcess(AbstractComputationProcess):
         simultaneous_processes : int
             Maximum number of non-zero input components propagated in a single
             call to ``compute_batch``.
+        memristive_current_state : list[torch.Tensor] | None
+            The memristive phase shifters current states. Defaults to None
+            and will be treated as an empty list.
 
         Returns
         -------
@@ -315,8 +351,13 @@ class ComputationProcess(AbstractComputationProcess):
 
         prepared_state = self._prepare_superposition_support()
 
-        unitary = self.converter.to_tensor(*parameters)
-        keys_out, final_amplitudes = self._compute_chunked_superposition(
+        unitary = self.converter.to_tensor(
+            *parameters,
+            memristive_current_state=(
+                [] if memristive_current_state is None else memristive_current_state
+            ),
+        )
+        _keys_out, final_amplitudes = self._compute_chunked_superposition(
             prepared_state,
             unitary if unitary.dim() == 3 else unitary.unsqueeze(0),
             simultaneous_processes=simultaneous_processes,
@@ -590,6 +631,7 @@ class ComputationProcessFactory:
         trainable_parameters: list[str],
         input_parameters: list[str],
         computation_space: ComputationSpace | None = None,
+        memristive_metadata: list[dict] | None = None,
         **kwargs,
     ) -> ComputationProcess:
         """Create a computation process.
@@ -606,6 +648,8 @@ class ComputationProcessFactory:
             Prefixes of input-driven circuit parameters.
         computation_space : ComputationSpace | None
             Computation space used for basis enumeration.
+        memristive_metadata: list[dict] | None
+            The memristive phase shifter metadata. If None, it will be stored as an empty list.
         **kwargs
             Additional keyword arguments forwarded to
             :class:`ComputationProcess`.
@@ -621,5 +665,8 @@ class ComputationProcessFactory:
             trainable_parameters=trainable_parameters,
             input_parameters=input_parameters,
             computation_space=computation_space,
+            memristive_metadata=(
+                [] if memristive_metadata is None else memristive_metadata
+            ),
             **kwargs,
         )
