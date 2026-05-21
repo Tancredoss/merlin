@@ -27,6 +27,7 @@ Tests for the main QuantumLayer class.
 import math
 import re
 from copy import deepcopy
+
 import numpy as np
 import perceval as pcvl
 import pytest
@@ -303,12 +304,10 @@ class TestQuantumLayer:
 
         amplitude = torch.rand(len(layer.output_keys))
         remaining_input = torch.rand(2)
-        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input(
-            [
-                amplitude,
-                remaining_input,
-            ]
-        )
+        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input([
+            amplitude,
+            remaining_input,
+        ])
 
         assert saved_state is original_state
         assert remaining[0] is remaining_input
@@ -349,12 +348,10 @@ class TestQuantumLayer:
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
 
-        params, batch_dim = layer._prepare_classical_parameters(
-            [
-                torch.rand(2, 2),
-                torch.rand(2, 2),
-            ]
-        )
+        params, batch_dim = layer._prepare_classical_parameters([
+            torch.rand(2, 2),
+            torch.rand(2, 2),
+        ])
 
         assert batch_dim == 2
         assert len(params) >= 2
@@ -942,9 +939,9 @@ class TestQuantumLayer:
         assert model[1].out_features == 3
         # Check that it has trainable parameters (only in Linear layer)
         trainable_params_layer = [p for p in layer.parameters() if p.requires_grad]
-        assert (
-            len(trainable_params_layer) == 0
-        ), "Layer should have no trainable parameters"
+        assert len(trainable_params_layer) == 0, (
+            "Layer should have no trainable parameters"
+        )
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         assert len(trainable_params) > 0, "Model should have trainable parameters"
 
@@ -2168,12 +2165,12 @@ def test_memristive_state_dict_round_trip_preserves_state_and_history():
     restored = _layer(_builder_with_memristor(with_inputs=True), input_size=2)
     restored.load_state_dict(torch.load(buffer, weights_only=True))
 
-    assert torch.allclose(
-        restored.memristive_state[0], state_before
-    ), "memristive_state was not preserved across a state_dict round-trip"
-    assert (
-        len(restored.memristive_history[0]) == history_len_before
-    ), "memristive_history length was not preserved across a state_dict round-trip"
+    assert torch.allclose(restored.memristive_state[0], state_before), (
+        "memristive_state was not preserved across a state_dict round-trip"
+    )
+    assert len(restored.memristive_history[0]) == history_len_before, (
+        "memristive_history length was not preserved across a state_dict round-trip"
+    )
 
 
 def test_memristive_state_dict_round_trip_as_submodule():

@@ -394,12 +394,14 @@ def _run_encoding_api_check(runs: int, warmups: int) -> dict[str, Any]:
     api_from_tensor_mean_s, api_from_tensor_times_s = _mean_timed_call(
         runs,
         warmups,
-        lambda: StateVector.from_tensor(
-            logical_input,
-            n_modes=n_modes,
-            n_photons=n_photons,
-            encoding=EncodingSpace.DUAL_RAIL,
-        ).tensor,
+        lambda: (
+            StateVector.from_tensor(
+                logical_input,
+                n_modes=n_modes,
+                n_photons=n_photons,
+                encoding=EncodingSpace.DUAL_RAIL,
+            ).tensor
+        ),
     )
     manual_embedding_mean_s, manual_embedding_times_s = _mean_timed_call(
         runs,
