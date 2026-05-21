@@ -1689,7 +1689,7 @@ class TestQuantumLayer:
         assert metadata[name_to_index["mem1"]]["update_rule"] == update_rule
         assert metadata[name_to_index["mem2"]]["update_rule"] == update_rule_exp
 
-        ql(torch.Tensor([0.0, 0.0]))
+        output = ql(torch.Tensor([0.0, 0.0]))
 
         name_to_index = (
             ql.computation_process.converter.memristive_metadata_name_to_index
@@ -1698,8 +1698,11 @@ class TestQuantumLayer:
         current_state = ql.computation_process.converter.memristive_current_state
         assert metadata[name_to_index["mem1"]]["update_rule"] == update_rule
         assert metadata[name_to_index["mem2"]]["update_rule"] == update_rule_exp
-        assert current_state[name_to_index["mem1"]] == torch.Tensor([1.2])
-        assert current_state[name_to_index["mem2"]] == torch.Tensor([0.01])
+        # After forward pass, check that states are updated correctly
+        expected_state_0 = update_rule(torch.Tensor([1.2]), output)
+        expected_state_1 = update_rule_exp(torch.Tensor([0.01]), output)
+        assert torch.allclose(current_state[name_to_index["mem1"]], expected_state_0)
+        assert torch.allclose(current_state[name_to_index["mem2"]], expected_state_1)
 
     def test_memristor_gradient_flow(self):
         def update_rule(state: torch.Tensor, output: torch.Tensor):

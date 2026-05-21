@@ -1073,11 +1073,13 @@ class QuantumLayer(MerlinModule):
         else:
             output = self.measurement_mapping(results)
 
-        # Phase 7: memristive update
+        # ================================================================
+        # Phase 7: memristive update with truncated BPTT sliding window
+        # ================================================================
+        # This runs AFTER measurement for ALL output types to ensure
+        # memristive states are updated regardless of measurement strategy.
         if len(self.memristive_state) > 0:
-            # ------------------------------------------------------------
-            # 1. Safe output copy
-            # ------------------------------------------------------------
+            # Safe output copy (handle all output types)
             if not isinstance(output, PartialMeasurement):
                 output_for_memristive = output.clone()
             else:
@@ -1089,7 +1091,6 @@ class QuantumLayer(MerlinModule):
                     )
                     for b in output.branches
                 ]
-
                 output_for_memristive = PartialMeasurement(
                     branches=tuple(branches),
                     measured_modes=output.measured_modes,
@@ -1097,56 +1098,72 @@ class QuantumLayer(MerlinModule):
                     grouping=output.grouping,
                 )
 
-            # ------------------------------------------------------------
-            # 2. BUILD SLIDING WINDOW (THIS IS THE KEY FIX)
-            # ------------------------------------------------------------
-            recurrent_inputs = []
+            # ============================================================
+            # BUILD SLIDING WINDOW FOR TRUNCATED BPTT
+            # ============================================================
+            # Key insight: _memristive_gradient_states maintains a window
+            # of states that participate in backprop. We use the LAST state
+            # in this window to compute the new state. Detaching happens
+            # AFTER computation to prevent old gradient chains.
+            # ============================================================
+            new_gradient_inputs = []
 
             for i in range(len(self.memristive_state)):
-
-                window = self._memristive_metadata[i]["num_backprop_steps"]
-                history = self.memristive_history[i]
-
-                # take last k states (INCLUDING current)
-                window_states = (
-                    history[-window:] if window > 0 else [self.memristive_state[i]]
-                )
-
-                # IMPORTANT:
-                # we reconstruct recurrence ONLY from this window
-                # no hidden graph beyond it
-
-                # ensure proper root at window boundary
-                if len(window_states) > 0:
-                    root = window_states[0].detach().requires_grad_()
+                # Get the last state in the gradient window
+                if len(self._memristive_gradient_states[i]) > 0:
+                    # Use the most recent state in the window (with gradients!)
+                    # This allows gradients to flow through states within window
+                    state_for_update = self._memristive_gradient_states[i][-1]
                 else:
-                    root = self.memristive_state[i].detach().requires_grad_()
+                    # Fallback: use current state (first forward pass)
+                    state_for_update = self.memristive_state[i]
 
-                # reconstruct a clean local chain
-                state = root
-                for s in window_states[1:]:
-                    state = state + (s - s.detach())
+                new_gradient_inputs.append(state_for_update)
 
-                recurrent_inputs.append(state)
-
-            # ------------------------------------------------------------
-            # 3. compute next state from reconstructed window
-            # ------------------------------------------------------------
+            # Compute new states using only window states
             new_states = compute_new_memristive_ps_angles(
                 memristive_metadata=self._memristive_metadata,
-                memristive_state=recurrent_inputs,
+                memristive_state=new_gradient_inputs,
                 output=output_for_memristive,
             )
 
-            # ------------------------------------------------------------
-            # 4. update storage
-            # ------------------------------------------------------------
+            # Get batch dimension from output for shape validation
+            output_batch_dim = (
+                output.shape[0]
+                if isinstance(output, torch.Tensor)
+                else output.tensor.shape[0]
+            )
+
+            # ============================================================
+            # UPDATE STATE STRUCTURES
+            # ============================================================
             for i, new_state in enumerate(new_states):
+                # Validate shape
+                expected_shape = torch.Size([output_batch_dim])
+                if new_state.shape != expected_shape:
+                    raise ValueError(
+                        f"Update rule for memristor {i} returned shape {new_state.shape}, "
+                        f"expected {expected_shape}. The update rule must return a tensor "
+                        f"of shape [batch_size].\n\nMemristor metadata: {self._memristive_metadata[i]}"
+                    )
 
-                self.memristive_state[i] = new_state
-
-                # store ONLY detached history
+                # 1. Add to full history (detached for serialization)
                 self.memristive_history[i].append(new_state.detach())
+
+                # 2. Add to gradient window (keep with gradients!)
+                # This allows gradients to flow through states within window.
+                # When states are popped from window, gradients won't reach older states.
+                self._memristive_gradient_states[i].append(new_state)
+
+                # 3. Enforce sliding window: keep only last (num_backprop_steps + 1) states
+                k = self._memristive_metadata[i]["num_backprop_steps"] + 1
+                if len(self._memristive_gradient_states[i]) > k:
+                    self._memristive_gradient_states[i].pop(0)
+
+                # 4. Update current state (used as recurrent input next forward)
+                # Store detached to break old gradient chains before next forward
+                self.memristive_state[i] = new_state.detach()
+
         return output
 
     def _compute_amplitudes(
