@@ -60,6 +60,15 @@ from .measurement import (
 from .measurement.autodiff import AutoDiffProcess
 from .measurement.process import SamplingProcess
 from .measurement.strategies import MeasurementStrategy
+from .models.photonic_generator import (
+    GeneratorMeasurements,
+    ImageAdapter,
+    LatentDistribution,
+    NormalLatent,
+    OutputAdapter,
+    PhotonicGenerator,
+    VectorAdapter,
+)
 from .models.qcnn import QCNNClassifier
 from .pcvl_pytorch import CircuitConverter, build_slos_distribution_computegraph
 from .utils.combinadics import Combinadics
@@ -76,6 +85,7 @@ __all__ = [
     "QuantumLayer",
     "QuantumBridge",
     "QCNNClassifier",
+    "PhotonicGenerator",
     # Configuration enums
     "ComputationSpace",
     "EncodingSpace",
@@ -108,4 +118,10 @@ __all__ = [
     "CircuitBuilder",
     "AutoDiffProcess",
     "SamplingProcess",
+    "GeneratorMeasurements",
+    "ImageAdapter",
+    "LatentDistribution",
+    "NormalLatent",
+    "OutputAdapter",
+    "VectorAdapter",
 ]
