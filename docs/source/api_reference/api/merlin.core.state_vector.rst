@@ -10,7 +10,7 @@ StateVector
 -----------
 
 .. autoclass:: StateVector
-   :members: from_basic_state, from_tensor, from_perceval, tensor_product, to_perceval, index, memory_bytes, __getitem__, __add__, __sub__, __mul__, to_dense, to, clone, detach, requires_grad_, normalize, basis, basis_size, is_sparse, is_normalized
+   :members: from_basic_state, from_tensor, from_perceval, tensor_product, to_perceval, index, logical_to_fock_map, memory_bytes, __getitem__, __add__, __sub__, __mul__, to_dense, to, clone, detach, requires_grad_, normalize, basis, basis_size, is_sparse, is_normalized
    :member-order: bysource
    :show-inheritance:
 
@@ -37,8 +37,8 @@ Constructors
    assert not sv_dense.is_sparse
 
 **from_tensor** — wrap a real or complex tensor with Fock metadata.
-Real data is auto-promoted to complex.  The last dimension must match the
-basis size :math:`\binom{n\_modes + n\_photons - 1}{n\_photons}`:
+Real data is auto-promoted to complex. By default, the last dimension must match
+the Fock basis size :math:`\binom{n\_modes + n\_photons - 1}{n\_photons}`:
 
 .. code-block:: python
 
@@ -53,6 +53,39 @@ basis size :math:`\binom{n\_modes + n\_photons - 1}{n\_photons}`:
    batch = torch.randn(32, 10)
    sv_batch = StateVector.from_tensor(batch, n_modes=4, n_photons=2)
    assert sv_batch.shape == (32, 10)
+
+Pass ``encoding=...`` to provide compact logical amplitudes and embed them into
+the Fock basis immediately. Structured encodings can infer their physical
+metadata from the encoding contract. Explicit ``n_modes`` and ``n_photons`` are
+also accepted, but they validate the contract rather than stretching it:
+
+.. code-block:: python
+
+   import torch
+   from merlin.core import EncodingSpace
+   from merlin.core.state_vector import StateVector
+
+   logical = torch.zeros(4, dtype=torch.complex64)
+   logical[0] = 1.0
+   sv = StateVector.from_tensor(
+       logical,
+       encoding=EncodingSpace.DUAL_RAIL,
+   )
+   assert sv.n_modes == 4
+   assert sv.n_photons == 2
+   assert sv.tensor.shape[-1] == 10
+   assert sv.encoding is EncodingSpace.DUAL_RAIL
+
+   # QLOQ dimensions are inferred from the qubit groups.
+   qloq = EncodingSpace.qloq(qubit_groups=[2, 1])
+   sv_qloq = StateVector.from_tensor(torch.zeros(8), encoding=qloq)
+   assert sv_qloq.n_modes == 6
+   assert sv_qloq.n_photons == 2
+
+   # Add auxiliary vacuum modes after constructing the encoded state.
+   padded = sv @ [0]
+   assert padded.n_modes == 5
+   assert padded.n_photons == 2
 
 **from_perceval** — convert from a Perceval ``StateVector``:
 
@@ -96,6 +129,21 @@ underlying tensor:
 
    sv.basis_size     # 10 for (4 modes, 2 photons)
    list(sv.basis)[:3]  # [(2,0,0,0), (1,1,0,0), (1,0,1,0)]
+
+``logical_to_fock_map()`` exposes the logical-to-Fock index assignment used by
+the stored encoding:
+
+.. code-block:: python
+
+   import torch
+   from merlin.core import EncodingSpace
+   from merlin.core.state_vector import StateVector
+
+   sv = StateVector.from_tensor(
+       torch.zeros(4, dtype=torch.complex64),
+       encoding=EncodingSpace.DUAL_RAIL,
+   )
+   sv.logical_to_fock_map()  # {(0, 0): 2, (0, 1): 3, (1, 0): 5, (1, 1): 6}
 
 
 Amplitude lookup

@@ -794,10 +794,13 @@ class _DummyComputationProcess:
         self.last_simultaneous_processes = simultaneous_processes
         return torch.tensor([float(simultaneous_processes)])
 
-    def compute_superposition_state(self, params, memristive_current_state=None):
+    def compute_superposition_state(
+        self, params, simultaneous_processes=None, memristive_current_state=None
+    ):
         if memristive_current_state is None:
             memristive_current_state = []
         self.called = "superposition"
+        self.last_simultaneous_processes = simultaneous_processes
         return torch.tensor([1.0])
 
     def compute(self, params, memristive_current_state=None):

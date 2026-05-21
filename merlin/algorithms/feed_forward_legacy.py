@@ -441,9 +441,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
                     )
 
                 # Set input quantum state for the layer
-                layer.computation_process.input_state = remaining_amplitudes[
-                    :, match_idx
-                ]
+                layer.set_input_state(remaining_amplitudes[:, match_idx])
                 start, end = self.input_segments[current_key]
 
                 # Execute layer with or without classical input

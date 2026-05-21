@@ -233,6 +233,30 @@ In the first example the circuit always starts from ``bell``; in the second, eac
 different logical photonic state that flows through the layer. This separation allows you to mix classical angle
 encoding with fully quantum, amplitude-based data pipelines.
 
+Chunked amplitude execution
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Amplitude inputs can be passed as ordinary dense tensors or as
+:class:`~merlin.core.state_vector.StateVector` objects. Internally,
+``QuantumLayer`` normalizes these inputs into compact active support before
+propagation: only basis states with non-zero amplitudes are sent to the
+simulator. Those active components are processed in chunks and accumulated into
+the final dense output amplitudes.
+
+This reduces peak temporary memory from a whole-support table of roughly
+``num_input_basis_states * num_output_states`` to approximately
+``chunk_size * num_output_states``. The tradeoff is that smaller chunks use less
+memory but require more simulator calls; larger chunks can improve throughput
+when memory is available. The chunk size is controlled by the
+``simultaneous_processes`` argument:
+
+.. code-block:: python
+
+    out = layer(prepared_states, simultaneous_processes=32)
+
+Changing ``simultaneous_processes`` should not change the numerical result; it
+only changes how the active support is batched internally.
+
 
 Returning typed objects
 -------------------------
@@ -301,7 +325,7 @@ Memristive phase-shifter
 When using the :class:`~merlin.builder.circuit_builder.CircuitBuilder` that contains memristive phase-shifters (added with the :meth:`~merlin.builder.circuit_builder.CircuitBuilder.add_memristive_ps` method) to create a :class:`~merlin.algorithms.layer.QuantumLayer`, it is important to set the batch size. To do so, call the :meth:`~merlin.algorithms.layer.QuantumLayer.reset` method. This resets the memristors to their initial state while clearing their history.
 It also prepares the memristors to be run with the specified ``batch_size`` parameter of the function, which defaults to 1.
 
-The :class:`~merlin.algorithms.layer.QuantumLayer` expects all forward passes to use the configured ``batch_size`` unless :meth:`~merlin.algorithms.layer.QuantumLayer.reset` is called again. 
+The :class:`~merlin.algorithms.layer.QuantumLayer` expects all forward passes to use the configured ``batch_size`` unless :meth:`~merlin.algorithms.layer.QuantumLayer.reset` is called again.
 This method resets the memristors to their initial state while clearing the history. It also
 defines the allowed batch size to be ran per forward pass for circuits with memristive phase shifters. Here is an example to run a N dimension batch.
 

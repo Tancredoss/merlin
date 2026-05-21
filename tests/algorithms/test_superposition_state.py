@@ -174,12 +174,21 @@ class TestOutputSuperposedState:
                 memristive_current_state=memristive_current_state,
             )
 
-        def tracked_super(self, parameters, memristive_current_state=None):
+        def tracked_super(
+            self,
+            parameters,
+            simultaneous_processes=None,
+            return_keys=False,
+            memristive_current_state=None,
+        ):
             if memristive_current_state is None:
                 memristive_current_state = []
             call_tracker["super"] += 1
             return original_super(
-                parameters, memristive_current_state=memristive_current_state
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                return_keys=return_keys,
+                memristive_current_state=memristive_current_state,
             )
 
         process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
@@ -234,12 +243,21 @@ class TestOutputSuperposedState:
                 memristive_current_state=memristive_current_state,
             )
 
-        def tracked_super(self, parameters, memristive_current_state=None):
+        def tracked_super(
+            self,
+            parameters,
+            simultaneous_processes=None,
+            return_keys=False,
+            memristive_current_state=None,
+        ):
             if memristive_current_state is None:
                 memristive_current_state = []
             call_tracker["super"] += 1
             return original_super(
-                parameters, memristive_current_state=memristive_current_state
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                return_keys=return_keys,
+                memristive_current_state=memristive_current_state,
             )
 
         process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
@@ -295,13 +313,18 @@ class TestOutputSuperposedState:
             return result
 
         def tracked_super(
-            self, parameters, return_keys=False, memristive_current_state=None
+            self,
+            parameters,
+            simultaneous_processes=None,
+            return_keys=False,
+            memristive_current_state=None,
         ):
             if memristive_current_state is None:
                 memristive_current_state = []
             call_tracker["super"] += 1
             return original_super(
                 parameters,
+                simultaneous_processes=simultaneous_processes,
                 return_keys=return_keys,
                 memristive_current_state=memristive_current_state,
             )
@@ -401,6 +424,7 @@ class TestOutputSuperposedState:
         coefficients = amplitude_layer.computation_process.input_state.to(output.dtype)
         if coefficients.dim() == 1:
             coefficients = coefficients.unsqueeze(0)
+        fock_basis = Combinadics("fock", n_photons, n_modes)
 
         shared_state = amplitude_layer.state_dict()
         amplitude_params = amplitude_layer.prepare_parameters([dummy_input])
@@ -413,7 +437,7 @@ class TestOutputSuperposedState:
         amplitude_params_dict = dict(amplitude_layer.named_parameters())
 
         expected_amplitudes = torch.zeros_like(output, dtype=output.dtype)
-        for idx, state in enumerate(amplitude_layer.output_keys):
+        for state in amplitude_layer.output_keys:
             basis_layer = QuantumLayer(
                 circuit=copy.deepcopy(circuit),
                 n_photons=n_photons,
@@ -453,7 +477,9 @@ class TestOutputSuperposedState:
                 basis_output = basis_output.unsqueeze(0).unsqueeze(1)
             basis_output = basis_output.to(expected_amplitudes.dtype)
 
-            coefficient = coefficients[:, idx].to(expected_amplitudes.dtype)
+            coefficient = coefficients[:, fock_basis.index(state)].to(
+                expected_amplitudes.dtype
+            )
             weight = coefficient.unsqueeze(0).unsqueeze(-1)
             if weight.abs().max() < 1e-10:
                 continue

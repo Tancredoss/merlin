@@ -21,8 +21,10 @@ import perceval as pcvl
 import pytest
 import torch
 
+import merlin.core.process as process_module
 from merlin import ComputationSpace
 from merlin.algorithms.layer import QuantumLayer
+from merlin.core.state_vector import StateVector
 from merlin.measurement.strategies import MeasurementStrategy
 
 
@@ -222,9 +224,6 @@ def test_amplitude_encoding_gpu_roundtrip(
         assert param.grad.shape == param.shape
 
 
-@pytest.mark.skip(
-    reason="compute_superposition state is broken but not sure it is necessary - not called anywhere anyway"
-)
 def test_amplitude_encoding_matches_superposition(make_layer):
     layer = make_layer()
     num_states = len(layer.computation_process.simulation_graph.mapped_keys)
@@ -233,7 +232,9 @@ def test_amplitude_encoding_matches_superposition(make_layer):
     prepared_state = layer._validate_amplitude_input(raw_amplitude)
     layer.set_input_state(prepared_state)
     params = layer.prepare_parameters([])
-    expected = layer.computation_process.compute_superposition_state(params)
+    expected = layer.computation_process.compute_superposition_state(
+        params, simultaneous_processes=2
+    )
 
     amplitudes = layer(raw_amplitude)
 
@@ -260,12 +261,21 @@ def test_amplitude_encoding_batches_use_vectorised_kernel(make_layer):
             memristive_current_state=memristive_current_state,
         )
 
-    def tracked_super(self, parameters, memristive_current_state=None):
+    def tracked_super(
+        self,
+        parameters,
+        simultaneous_processes=None,
+        return_keys=False,
+        memristive_current_state=None,
+    ):
         if memristive_current_state is None:
             memristive_current_state = []
         call_tracker["super"] += 1
         return original_super(
-            parameters, memristive_current_state=memristive_current_state
+            parameters,
+            simultaneous_processes=simultaneous_processes,
+            return_keys=return_keys,
+            memristive_current_state=memristive_current_state,
         )
 
     process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
@@ -278,6 +288,277 @@ def test_amplitude_encoding_batches_use_vectorised_kernel(make_layer):
 
     assert call_tracker["ebs"] == 1
     assert call_tracker["super"] == 0
+
+
+def test_amplitude_encoding_superposition_streams_chunked_batches(
+    make_layer, monkeypatch
+):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+    raw_amplitude = torch.arange(1, num_states + 1, dtype=torch.float64)
+
+    prepared_state = layer._validate_amplitude_input(raw_amplitude)
+    layer.set_input_state(prepared_state)
+    params = layer.prepare_parameters([])
+    expected = layer.computation_process.compute_superposition_state(
+        params, simultaneous_processes=2
+    )
+
+    layer.set_input_state(prepared_state)
+    original_compute_batch = process.simulation_graph.compute_batch
+    recorded_batches: list[int] = []
+
+    def tracked_compute_batch(unitary, batch_fock_states):
+        recorded_batches.append(len(batch_fock_states))
+        return original_compute_batch(unitary, batch_fock_states)
+
+    monkeypatch.setattr(
+        process.simulation_graph, "compute_batch", tracked_compute_batch
+    )
+
+    original_zeros = process_module.torch.zeros
+
+    def tracked_zeros(*args, **kwargs):
+        shape = args[0] if args else kwargs.get("size")
+        if tuple(shape) == (num_states, len(process.simulation_graph.mapped_keys)):
+            raise AssertionError("dense support matrix allocated")
+        return original_zeros(*args, **kwargs)
+
+    monkeypatch.setattr(process_module.torch, "zeros", tracked_zeros)
+
+    amplitudes = layer(raw_amplitude, simultaneous_processes=2)
+
+    assert recorded_batches == [2, 1]
+    assert torch.allclose(amplitudes, expected, rtol=1e-6, atol=1e-8)
+
+
+def test_amplitude_encoding_sparse_superposition_matches_dense(make_layer):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+
+    dense = torch.arange(1, num_states + 1, dtype=torch.float32).to(torch.complex64)
+    dense = dense / dense.norm(p=2)
+    indices = torch.arange(num_states, dtype=torch.long).unsqueeze(0)
+    sparse = torch.sparse_coo_tensor(
+        indices,
+        dense.clone(),
+        (num_states,),
+        dtype=torch.complex64,
+    ).coalesce()
+
+    dense_output = layer(dense, simultaneous_processes=2)
+    sparse_output = layer(sparse, simultaneous_processes=2)
+
+    assert torch.allclose(sparse_output, dense_output, rtol=1e-6, atol=1e-8)
+
+
+def test_amplitude_encoding_dense_tensor_forward_uses_sparse_support(
+    make_layer, monkeypatch
+):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+
+    dense = torch.zeros(num_states, dtype=torch.complex64)
+    dense[0] = 1.0 + 0.0j
+    dense[-1] = 0.0 + 1.0j
+    dense = dense / dense.norm(p=2)
+    expected = layer(dense.to_sparse().coalesce(), simultaneous_processes=2)
+
+    seen = {"sparse": False, "nnz": 0, "shape": None}
+    original_chunked = process._compute_chunked_superposition
+
+    def tracked_chunked(self, prepared_state, unitary, *, simultaneous_processes):
+        seen["sparse"] = prepared_state.is_sparse
+        seen["nnz"] = prepared_state.nnz
+        seen["shape"] = prepared_state.shape
+        return original_chunked(
+            prepared_state,
+            unitary,
+            simultaneous_processes=simultaneous_processes,
+        )
+
+    process._compute_chunked_superposition = MethodType(tracked_chunked, process)
+
+    output = layer(dense, simultaneous_processes=2)
+
+    assert seen == {"sparse": True, "nnz": 2, "shape": (1, num_states)}
+    assert torch.allclose(output, expected, rtol=1e-6, atol=1e-8)
+
+
+def test_amplitude_encoding_dense_statevector_forward_uses_sparse_support(
+    make_layer, monkeypatch
+):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+
+    dense = torch.zeros(num_states, dtype=torch.complex64)
+    dense[0] = 1.0 + 0.0j
+    dense[1] = 1.0 - 1.0j
+    statevector = StateVector.from_tensor(dense, n_modes=3, n_photons=1)
+    expected = layer(dense, simultaneous_processes=2)
+
+    seen = {"sparse": False, "nnz": 0, "shape": None}
+    original_chunked = process._compute_chunked_superposition
+
+    def tracked_chunked(self, prepared_state, unitary, *, simultaneous_processes):
+        seen["sparse"] = prepared_state.is_sparse
+        seen["nnz"] = prepared_state.nnz
+        seen["shape"] = prepared_state.shape
+        return original_chunked(
+            prepared_state,
+            unitary,
+            simultaneous_processes=simultaneous_processes,
+        )
+
+    process._compute_chunked_superposition = MethodType(tracked_chunked, process)
+
+    output = layer(statevector, simultaneous_processes=2)
+
+    assert seen == {"sparse": True, "nnz": 2, "shape": (1, num_states)}
+    assert torch.allclose(output, expected, rtol=1e-6, atol=1e-8)
+
+
+def test_amplitude_encoding_sparse_statevector_forward_stays_sparse(
+    make_layer, monkeypatch
+):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+
+    values = torch.arange(1, num_states + 1, dtype=torch.float32).to(torch.complex64)
+    indices = torch.arange(num_states, dtype=torch.long).unsqueeze(0)
+    sparse = torch.sparse_coo_tensor(
+        indices,
+        values,
+        (num_states,),
+        dtype=torch.complex64,
+    ).coalesce()
+    statevector = StateVector.from_tensor(sparse, n_modes=3, n_photons=1)
+
+    expected = layer(sparse, simultaneous_processes=2)
+
+    def fail_to_dense(self):
+        raise AssertionError("sparse StateVector input was densified")
+
+    monkeypatch.setattr(StateVector, "to_dense", fail_to_dense)
+
+    seen = {"sparse": False}
+    original_chunked = process._compute_chunked_superposition
+
+    def tracked_chunked(self, prepared_state, unitary, *, simultaneous_processes):
+        seen["sparse"] = prepared_state.is_sparse
+        return original_chunked(
+            prepared_state,
+            unitary,
+            simultaneous_processes=simultaneous_processes,
+        )
+
+    process._compute_chunked_superposition = MethodType(tracked_chunked, process)
+
+    output = layer(statevector, simultaneous_processes=2)
+
+    assert seen["sparse"]
+    assert torch.allclose(output, expected, rtol=1e-6, atol=1e-8)
+
+
+def test_constructor_dense_statevector_input_uses_sparse_support():
+    circuit = pcvl.components.GenericInterferometer(
+        3,
+        pcvl.components.catalog["mzi phase last"].generate,
+        shape=pcvl.InterferometerShape.RECTANGLE,
+    )
+    dense = torch.zeros(3, dtype=torch.complex64)
+    dense[0] = 1.0 + 0.0j
+    dense[2] = 0.0 - 1.0j
+    statevector = StateVector.from_tensor(dense, n_modes=3, n_photons=1)
+
+    layer = QuantumLayer(
+        circuit=circuit,
+        n_photons=1,
+        measurement_strategy=MeasurementStrategy.NONE,
+        input_state=statevector,
+        trainable_parameters=["phi"],
+        input_parameters=[],
+        dtype=torch.float32,
+    )
+
+    seen = {"sparse": False, "nnz": 0, "shape": None}
+    original_chunked = layer.computation_process._compute_chunked_superposition
+
+    def tracked_chunked(self, prepared_state, unitary, *, simultaneous_processes):
+        seen["sparse"] = prepared_state.is_sparse
+        seen["nnz"] = prepared_state.nnz
+        seen["shape"] = prepared_state.shape
+        return original_chunked(
+            prepared_state,
+            unitary,
+            simultaneous_processes=simultaneous_processes,
+        )
+
+    layer.computation_process._compute_chunked_superposition = MethodType(
+        tracked_chunked, layer.computation_process
+    )
+
+    layer(simultaneous_processes=2)
+
+    assert seen == {"sparse": True, "nnz": 2, "shape": (1, 3)}
+
+
+def test_constructor_sparse_statevector_input_stays_sparse(monkeypatch):
+    circuit = pcvl.components.GenericInterferometer(
+        3,
+        pcvl.components.catalog["mzi phase last"].generate,
+        shape=pcvl.InterferometerShape.RECTANGLE,
+    )
+    values = torch.tensor([1.0 + 0.0j], dtype=torch.complex64)
+    indices = torch.tensor([[0]], dtype=torch.long)
+    sparse = torch.sparse_coo_tensor(
+        indices,
+        values,
+        (3,),
+        dtype=torch.complex64,
+    ).coalesce()
+    statevector = StateVector.from_tensor(sparse, n_modes=3, n_photons=1)
+
+    def fail_to_dense(self):
+        raise AssertionError("sparse constructor StateVector input was densified")
+
+    monkeypatch.setattr(StateVector, "to_dense", fail_to_dense)
+
+    layer = QuantumLayer(
+        circuit=circuit,
+        n_photons=1,
+        measurement_strategy=MeasurementStrategy.NONE,
+        input_state=statevector,
+        trainable_parameters=["phi"],
+        input_parameters=[],
+        dtype=torch.float32,
+    )
+
+    assert layer.computation_process.input_state.is_sparse
+
+    seen = {"sparse": False}
+    original_chunked = layer.computation_process._compute_chunked_superposition
+
+    def tracked_chunked(self, prepared_state, unitary, *, simultaneous_processes):
+        seen["sparse"] = prepared_state.is_sparse
+        return original_chunked(
+            prepared_state,
+            unitary,
+            simultaneous_processes=simultaneous_processes,
+        )
+
+    layer.computation_process._compute_chunked_superposition = MethodType(
+        tracked_chunked, layer.computation_process
+    )
+
+    layer(simultaneous_processes=2)
+
+    assert seen["sparse"]
 
 
 def test_amplitude_encoding_requires_first_argument(make_layer):
@@ -608,6 +889,61 @@ def test_amplitude_encoding_superposition_matches_basis_sum():
 
     with pytest.raises(ValueError, match="Amplitude input expects"):
         layer(torch.ones(layer.input_size + 1, dtype=torch.complex64))
+
+
+def test_fock_amplitude_encoding_accepts_compact_unbunched_tensor():
+    m, n = 4, 2
+    layer = QuantumLayer(
+        circuit=pcvl.Circuit(m),
+        n_photons=n,
+        measurement_strategy=MeasurementStrategy.amplitudes(
+            computation_space=ComputationSpace.FOCK
+        ),
+    )
+
+    logical = torch.zeros(math.comb(m, n), dtype=torch.complex64)
+    logical[0] = 1.0 + 0.0j
+
+    embedded, _, _ = layer._prepare_amplitude_input([logical])
+    out = layer(logical)
+
+    assert out.shape[-1] == len(layer.output_keys)
+    assert embedded.shape[-1] == math.comb(m + n - 1, n)
+
+
+def test_fock_amplitude_encoding_accepts_compact_unbunched_statevector():
+    m, n = 4, 2
+    layer = QuantumLayer(
+        circuit=pcvl.Circuit(m),
+        n_photons=n,
+        measurement_strategy=MeasurementStrategy.amplitudes(
+            computation_space=ComputationSpace.FOCK
+        ),
+    )
+
+    logical = torch.zeros(math.comb(m, n), dtype=torch.complex64)
+    logical[0] = 1.0 + 0.0j
+    sv = StateVector(logical, n_modes=m, n_photons=n)
+
+    out = layer(sv)
+
+    assert out.shape[-1] == len(layer.output_keys)
+
+
+def test_fock_amplitude_encoding_rejects_non_coercible_compact_shape():
+    m, n = 4, 2
+    layer = QuantumLayer(
+        circuit=pcvl.Circuit(m),
+        n_photons=n,
+        measurement_strategy=MeasurementStrategy.amplitudes(
+            computation_space=ComputationSpace.FOCK
+        ),
+    )
+
+    invalid = torch.zeros(math.comb(m, n) + 1, dtype=torch.complex64)
+
+    with pytest.raises(ValueError, match="Amplitude input expects"):
+        layer(invalid)
 
 
 @pytest.mark.parametrize(
