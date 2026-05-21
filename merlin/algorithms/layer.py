@@ -29,7 +29,6 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from contextlib import contextmanager
-import copy
 from typing import Any, cast
 
 import perceval as pcvl
