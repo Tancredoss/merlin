@@ -1063,7 +1063,7 @@ class QuantumLayer(MerlinModule):
                         )
                     )
                 output_for_memristive = PartialMeasurement(
-                    branches=branches,
+                    branches=tuple(branches),
                     measured_modes=output.measured_modes,
                     unmeasured_modes=output.unmeasured_modes,
                     grouping=output.grouping,
