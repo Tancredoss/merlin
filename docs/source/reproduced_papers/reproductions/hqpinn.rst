@@ -203,7 +203,7 @@ Other known deviations:
 Interactive Exploration
 =======================
 
-The paper folder includes a `notebook <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/HQPINN/notebook.ipynb>`_ 
+The paper folder includes a `notebook <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/HQPINN/notebook.ipynb>`_
 for interactive DHO exploration and helper utilities.
 
 Extensions and Future Work
