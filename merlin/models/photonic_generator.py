@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, cast
 
 import torch
 from torch import nn
@@ -387,7 +387,7 @@ class PhotonicGenerator(nn.Module):
         merlin.algorithms.layer.QuantumLayer
             The selected quantum generator head.
         """
-        return self.layers[index]
+        return cast(QuantumLayer, self.layers[index])
 
     def __len__(self) -> int:
         """Return the number of quantum generator heads.
@@ -485,8 +485,9 @@ class PhotonicGenerator(nn.Module):
             If ``z`` does not have shape ``(batch_size, latent_dim)``.
         """
         self._validate_latent_input(z)
-        outputs = tuple(layer(z) for layer in self.layers)
-        output_keys = tuple(tuple(layer.output_keys) for layer in self.layers)
+        layers = [cast(QuantumLayer, layer) for layer in self.layers]
+        outputs = tuple(layer(z) for layer in layers)
+        output_keys = tuple(tuple(layer.output_keys) for layer in layers)
         return GeneratorMeasurements(outputs=outputs, output_keys=output_keys)
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
