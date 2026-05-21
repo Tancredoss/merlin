@@ -102,12 +102,18 @@ def test_generator_accepts_non_amplitude_measurement_strategies():
         )
     )
 
-    assert ML.PhotonicGenerator(
-        layers=[mode_layer], output_adapter=SumAdapter()
-    ).latent_dim == 2
-    assert ML.PhotonicGenerator(
-        layers=[partial_layer], output_adapter=SumAdapter()
-    ).latent_dim == 2
+    assert (
+        ML.PhotonicGenerator(
+            layers=[mode_layer], output_adapter=SumAdapter()
+        ).latent_dim
+        == 2
+    )
+    assert (
+        ML.PhotonicGenerator(
+            layers=[partial_layer], output_adapter=SumAdapter()
+        ).latent_dim
+        == 2
+    )
 
 
 def test_latent_dim_is_inferred_from_layers():

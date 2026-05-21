@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeAlias
 
 import torch
 from torch import nn
@@ -22,7 +22,7 @@ from merlin.measurement.strategies import (
     _resolve_measurement_kind,
 )
 
-GeneratorOutput = torch.Tensor | PartialMeasurement
+GeneratorOutput: TypeAlias = torch.Tensor | PartialMeasurement
 
 
 @dataclass(frozen=True)
@@ -163,12 +163,17 @@ class NormalLatent(LatentDistribution):
         if batch_size <= 0:
             raise ValueError("batch_size must be positive.")
         resolved_dtype = dtype if dtype is not None else torch.get_default_dtype()
-        return torch.randn(
-            batch_size,
-            self.dim,
-            device=device,
-            dtype=resolved_dtype,
-        ).mul(self.std).add(self.mean)
+        return (
+            torch
+            .randn(
+                batch_size,
+                self.dim,
+                device=device,
+                dtype=resolved_dtype,
+            )
+            .mul(self.std)
+            .add(self.mean)
+        )
 
 
 class OutputAdapter(nn.Module):
@@ -582,7 +587,10 @@ def _validate_layers(layers: Sequence[QuantumLayer]) -> list[QuantumLayer]:
             raise TypeError(
                 f"layers[{index}] must be a QuantumLayer, got {type(layer)}."
             )
-        if _resolve_measurement_kind(layer.measurement_strategy) is MeasurementKind.AMPLITUDES:
+        if (
+            _resolve_measurement_kind(layer.measurement_strategy)
+            is MeasurementKind.AMPLITUDES
+        ):
             raise ValueError(
                 "PhotonicGenerator does not support amplitude-output layers; "
                 f"layers[{index}] uses MeasurementStrategy.amplitudes()."
