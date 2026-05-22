@@ -573,9 +573,14 @@ Version Notes
 -------------
 
 * ``session`` parameter added for ``ISession``-based backends (Scaleway).
-  Exactly one of ``remote_processor`` or ``session`` must be provided.
-  Both paths now support chunking and ``chunk_concurrency`` — each chunk
+  Exactly one of ``remote_processor`` or ``session`` must be provided. A 
+  given session then uses its remote processor from the ``session.build_remote_processor()``
+  method to define the available commands. Both paths now support chunking and ``chunk_concurrency`` — each chunk
   gets an independent ``RemoteProcessor`` via ``session.build_remote_processor()``.
+
+  To see the avialable commands and backend name. Call the ``backend_capabilities``attribute of the ``MerlinProcessor``.
+* If the probs command is available and n_samples is None or 0, the processor will run a probabilities simulations.
+  Otherwise, sampling simulations or quantum executions will be done.
 * ``MeasurementStrategy.probs(computation_space=...)`` replaces the older
   ``no_bunching`` flag and bare ``computation_space`` parameter on
   ``QuantumLayer``. Both ``ComputationSpace.FOCK`` (bunched) and
@@ -583,5 +588,6 @@ Version Notes
 * Default ``chunk_concurrency`` is **1** (serial intra-leaf).
 * Failed chunks are retried up to 3 times with exponential backoff.
   Cancellation and timeout errors propagate immediately.
-* ``max_shots_per_call`` is automatically raised to match ``nsample`` when
-  needed, preventing Perceval from silently clamping the sample count.
+* ``max_shots_per_call`` is used as a hard cap for ``nsample``. So, when
+  ``nsample > max_shots_per_call``, ``max_shots_per_call`` samples are 
+  generated preventing Perceval from silently clamping the sample count.

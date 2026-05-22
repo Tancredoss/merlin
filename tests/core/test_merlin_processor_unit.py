@@ -15,7 +15,7 @@ from perceval.runtime import RemoteProcessor
 from perceval.runtime.session import ISession
 
 import merlin.core.merlin_processor as merlin_processor_module
-from merlin.core.merlin_processor import MerlinProcessor
+from merlin.core.merlin_processor import BackendCapabilities, MerlinProcessor
 
 
 class FakeCommand:
@@ -116,7 +116,10 @@ class FakeLayer:
 def make_processor(available_commands: list[str]) -> MerlinProcessor:
     """Build an uninitialized processor configured for unit helper tests."""
     proc = MerlinProcessor.__new__(MerlinProcessor)
-    proc.available_commands = available_commands
+    proc.backend_capabilities = BackendCapabilities(
+        name="sim:slos",
+        available_commands=available_commands,
+    )
     proc._lock = threading.Lock()
     proc._active_jobs = set()
     return proc
@@ -127,8 +130,10 @@ def make_poll_processor(output: torch.Tensor | None = None) -> MerlinProcessor:
     proc = make_processor(["probs"])
     proc.processed_calls = []
 
-    def process_results(raw_results, batch_size, layer, nsample):
-        proc.processed_calls.append((raw_results, batch_size, layer, nsample))
+    def process_results(raw_results, batch_size, layer, nsample, is_probability=False):
+        proc.processed_calls.append(
+            (raw_results, batch_size, layer, nsample, is_probability)
+        )
         return torch.tensor([[1.0]]) if output is None else output
 
     proc._process_batch_results = process_results
@@ -138,6 +143,117 @@ def make_poll_processor(output: torch.Tensor | None = None) -> MerlinProcessor:
 def make_state() -> dict:
     """Return the mutable polling state shape expected by _poll_job."""
     return {"cancel_requested": False, "job_ids": []}
+
+
+# ────── Tests for BackendCapabilities ──────
+
+
+def test_backend_capabilities_creation():
+    """BackendCapabilities stores name and available_commands."""
+    caps = BackendCapabilities(name="sim:slos", available_commands=["probs", "samples"])
+    assert caps.name == "sim:slos"
+    assert caps.available_commands == ["probs", "samples"]
+
+
+def test_backend_capabilities_is_frozen():
+    """BackendCapabilities is immutable (frozen dataclass)."""
+    caps = BackendCapabilities(name="sim:slos", available_commands=["probs"])
+    with pytest.raises(AttributeError):
+        caps.name = "new-name"
+
+
+def test_backend_capabilities_equality():
+    """BackendCapabilities instances with same data are equal."""
+    caps1 = BackendCapabilities(name="sim:slos", available_commands=["probs"])
+    caps2 = BackendCapabilities(name="sim:slos", available_commands=["probs"])
+    assert caps1 == caps2
+
+
+def test_backend_capabilities_inequality():
+    """BackendCapabilities instances with different data are not equal."""
+    caps1 = BackendCapabilities(name="sim:slos", available_commands=["probs"])
+    caps2 = BackendCapabilities(name="sim:other", available_commands=["probs"])
+    assert caps1 != caps2
+
+
+def test_backend_capabilities_repr():
+    """BackendCapabilities has a useful string representation."""
+    caps = BackendCapabilities(
+        name="sim:slos", available_commands=["probs", "sample_count"]
+    )
+    repr_str = repr(caps)
+    assert "BackendCapabilities" in repr_str
+    assert "sim:slos" in repr_str
+    assert "probs" in repr_str
+
+
+# ────── Tests for MerlinProcessor with BackendCapabilities ──────
+
+
+def test_remote_processor_path_stores_backend_capabilities():
+    """RemoteProcessor path stores capabilities in backend_capabilities."""
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.name = "sim:slos"
+    remote_processor.available_commands = ["probs", "sample_count"]
+    remote_processor.proxies = None
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(remote_processor=remote_processor)
+
+    assert proc.backend_capabilities.name == "sim:slos"
+    assert proc.backend_capabilities.available_commands == ["probs", "sample_count"]
+
+
+def test_backend_name_property_backward_compatibility():
+    """backend_name property provides backward compatibility."""
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.name = "sim:slos"
+    remote_processor.available_commands = ["probs"]
+    remote_processor.proxies = None
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(remote_processor=remote_processor)
+
+    # Old-style access should still work
+    assert proc.backend_name == "sim:slos"
+    # New-style access should work too
+    assert proc.backend_capabilities.name == "sim:slos"
+    # Both should refer to the same value
+    assert proc.backend_name == proc.backend_capabilities.name
+
+
+def test_available_commands_property_backward_compatibility():
+    """available_commands property provides backward compatibility."""
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.name = "sim:slos"
+    remote_processor.available_commands = ["probs", "samples"]
+    remote_processor.proxies = None
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(remote_processor=remote_processor)
+
+    # Old-style access should still work
+    assert proc.available_commands == ["probs", "samples"]
+    # New-style access should work too
+    assert proc.backend_capabilities.available_commands == ["probs", "samples"]
+    # Both should refer to the same value
+    assert proc.available_commands == proc.backend_capabilities.available_commands
+
+
+def test_session_path_stores_backend_capabilities():
+    """ISession path also stores capabilities in backend_capabilities."""
+    session = MagicMock(spec=ISession)
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.name = "perceval-qpu:scaleway"
+    remote_processor.available_commands = ["probs", "sample_count"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+
+    assert proc.backend_capabilities.name == "perceval-qpu:scaleway"
+    assert proc.backend_capabilities.available_commands == ["probs", "sample_count"]
 
 
 def test_remote_processor_path_copies_available_commands():
@@ -155,23 +271,31 @@ def test_remote_processor_path_copies_available_commands():
     assert proc.available_commands == ["probs", "sample_count"]
 
 
-def test_session_path_is_characterized_as_empty_commands_and_sampling_only():
-    """ISession currently starts with no command list, so submission samples."""
+def test_session_path_with_empty_commands_and_sampling_only():
+    """ISession with no command list, so submission samples."""
     session = MagicMock(spec=ISession)
     session.platform_name = "scaleway-like"
-    proc = MerlinProcessor(session=session)
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.available_commands = []
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        with pytest.warns(
+            UserWarning, match="Remote processor has no available commands"
+        ):
+            proc = MerlinProcessor(session=session)
     sampler = FakeSampler()
 
-    proc._submit_job(
+    _, is_probability = proc._submit_job(
         sampler,
         nsample=None,
         job_base_label="job",
         _capped_name=lambda base, command: f"{base}:{command}",
     )
-
     assert proc.session is session
-    assert proc.remote_processor is None
+    # Session path does not store remote_processor; only uses it per chunk
     assert proc.available_commands == []
+    assert is_probability is False
     assert sampler.sample_count.executed is True
     assert sampler.sample_count.execute_kwargs == {
         "max_samples": MerlinProcessor.DEFAULT_SHOTS_PER_CALL
@@ -180,12 +304,19 @@ def test_session_path_is_characterized_as_empty_commands_and_sampling_only():
     assert sampler.probs.executed is False
 
 
-def test_submit_job_prefers_probs_when_available_without_samples():
-    """Probability-capable backends use probs for exact probability requests."""
-    proc = make_processor(["probs", "sample_count"])
+def test_session_path_prefers_probs_when_available():
+    """ISession path with probs available uses probs for exact probability requests."""
+    session = MagicMock(spec=ISession)
+    session.platform_name = "scaleway-like"
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.available_commands = ["probs", "sample_count"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
     sampler = FakeSampler()
 
-    returned_job = proc._submit_job(
+    returned_job, is_probability = proc._submit_job(
         sampler,
         nsample=None,
         job_base_label="job",
@@ -193,6 +324,248 @@ def test_submit_job_prefers_probs_when_available_without_samples():
     )
 
     assert returned_job is sampler.probs
+    assert is_probability is True
+    assert sampler.probs.executed is True
+    assert sampler.probs.execute_kwargs == {}
+    assert sampler.probs.name == "job:probs"
+    assert sampler.sample_count.executed is False
+
+
+def test_session_path_uses_sample_count_when_probs_unavailable():
+    """ISession path without probs available falls back to sample_count."""
+    session = MagicMock(spec=ISession)
+    session.platform_name = "scaleway-like"
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.available_commands = ["sample_count"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+    sampler = FakeSampler()
+
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=None,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+
+    assert returned_job is sampler.sample_count
+    assert is_probability is False
+    assert sampler.sample_count.executed is True
+    assert sampler.sample_count.execute_kwargs == {
+        "max_samples": MerlinProcessor.DEFAULT_SHOTS_PER_CALL
+    }
+    assert sampler.sample_count.name == "job:sample_count"
+    assert sampler.probs.executed is False
+
+
+def test_session_path_with_probs_and_samples_no_sample_count():
+    """ISession with probs+samples but no sample_count uses probs for probability."""
+    session = MagicMock(spec=ISession)
+    session.platform_name = "scaleway-like"
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.available_commands = ["probs", "samples"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+    sampler = FakeSampler()
+
+    # Probability request should use probs
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=None,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+    assert returned_job is sampler.probs
+    assert is_probability is True
+
+    # Reset sampler for sampling request
+    sampler = FakeSampler()
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=10,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+    # Should use samples (not sample_count since unavailable)
+    assert returned_job is sampler.samples
+    assert is_probability is False
+
+
+def test_session_path_with_sample_count_and_samples_no_probs():
+    """ISession with sample_count+samples but no probs uses sample_count for probability."""
+    session = MagicMock(spec=ISession)
+    session.platform_name = "scaleway-like"
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.available_commands = ["sample_count", "samples"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+    sampler = FakeSampler()
+
+    # Probability request (nsample=None) should use sample_count as fallback
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=None,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+    assert returned_job is sampler.sample_count
+    assert is_probability is False  # No probs available
+
+
+def test_session_path_with_only_probs():
+    """ISession with only probs available defaults to sample_count for sampling."""
+    session = MagicMock(spec=ISession)
+    session.platform_name = "scaleway-like"
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.available_commands = ["probs"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+    sampler = FakeSampler()
+
+    # Probability request should use probs
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=None,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+    assert returned_job is sampler.probs
+    assert is_probability is True
+
+    # Sampling request with only probs defaults to sample_count (unavailable)
+    sampler = FakeSampler()
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=10,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+    # Defaults to sample_count since no sampling commands available
+    assert returned_job is sampler.sample_count
+    assert is_probability is False
+
+
+def test_session_path_with_only_samples():
+    """ISession with only samples available falls back for probability requests."""
+    session = MagicMock(spec=ISession)
+    session.platform_name = "scaleway-like"
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.available_commands = ["samples"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+    sampler = FakeSampler()
+
+    # Sampling request should use samples
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=10,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+    assert returned_job is sampler.samples
+    assert is_probability is False
+
+
+def test_session_path_with_all_three_commands():
+    """ISession with all commands prioritizes probs for probability, sample_count for sampling."""
+    session = MagicMock(spec=ISession)
+    session.platform_name = "scaleway-like"
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.available_commands = ["probs", "sample_count", "samples"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+    sampler = FakeSampler()
+
+    # Probability request should prefer probs
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=None,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+    assert returned_job is sampler.probs
+    assert is_probability is True
+    assert sampler.sample_count.executed is False
+    assert sampler.samples.executed is False
+
+    # Reset sampler and test sampling request
+    sampler = FakeSampler()
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=25,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+    # Should prefer sample_count over samples
+    assert returned_job is sampler.sample_count
+    assert is_probability is False
+    assert sampler.samples.executed is False
+
+
+def test_session_path_zero_samples_treated_as_probability_request():
+    """ISession with nsample=0 is treated the same as nsample=None for probability."""
+    session = MagicMock(spec=ISession)
+    session.platform_name = "scaleway-like"
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.available_commands = ["probs", "sample_count"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+    sampler = FakeSampler()
+
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=0,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+
+    assert returned_job is sampler.probs
+    assert is_probability is True
+
+
+def test_session_path_backend_name_is_extracted():
+    """ISession processors extract and store the backend name from RemoteProcessor."""
+    session = MagicMock(spec=ISession)
+    session.platform_name = "scaleway-like"
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.name = "perceval-qpu:scaleway"
+    remote_processor.available_commands = ["probs"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+
+    assert proc.backend_name == "perceval-qpu:scaleway"
+
+
+def test_submit_job_prefers_probs_when_available_without_samples():
+    """Probability-capable backends use probs for exact probability requests."""
+    proc = make_processor(["probs", "sample_count"])
+    sampler = FakeSampler()
+
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=None,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+
+    assert returned_job is sampler.probs
+    assert is_probability is True
     assert sampler.probs.executed is True
     assert sampler.probs.execute_kwargs == {}
     assert sampler.probs.name == "job:probs"
@@ -205,7 +578,7 @@ def test_submit_job_treats_zero_samples_as_exact_probabilities():
     proc = make_processor(["probs", "sample_count"])
     sampler = FakeSampler()
 
-    returned_job = proc._submit_job(
+    returned_job, is_probability = proc._submit_job(
         sampler,
         nsample=0,
         job_base_label="job",
@@ -213,6 +586,7 @@ def test_submit_job_treats_zero_samples_as_exact_probabilities():
     )
 
     assert returned_job is sampler.probs
+    assert is_probability is True
     assert sampler.probs.executed is True
     assert sampler.probs.execute_kwargs == {}
     assert sampler.probs.name == "job:probs"
@@ -224,7 +598,7 @@ def test_submit_job_uses_sample_count_when_sampling_requested():
     proc = make_processor(["probs", "sample_count"])
     sampler = FakeSampler()
 
-    returned_job = proc._submit_job(
+    returned_job, is_probability = proc._submit_job(
         sampler,
         nsample=37,
         job_base_label="job",
@@ -232,6 +606,7 @@ def test_submit_job_uses_sample_count_when_sampling_requested():
     )
 
     assert returned_job is sampler.sample_count
+    assert is_probability is False
     assert sampler.sample_count.executed is True
     assert sampler.sample_count.execute_kwargs == {"max_samples": 37}
     assert sampler.sample_count.name == "job:sample_count"
@@ -243,7 +618,7 @@ def test_submit_job_falls_back_to_samples_when_sample_count_is_unavailable():
     proc = make_processor(["samples"])
     sampler = FakeSampler()
 
-    returned_job = proc._submit_job(
+    returned_job, is_probability = proc._submit_job(
         sampler,
         nsample=11,
         job_base_label="job",
@@ -251,6 +626,7 @@ def test_submit_job_falls_back_to_samples_when_sample_count_is_unavailable():
     )
 
     assert returned_job is sampler.samples
+    assert is_probability is False
     assert sampler.samples.executed is True
     assert sampler.samples.execute_kwargs == {"max_samples": 11}
     assert sampler.samples.name == "job:samples"
@@ -262,7 +638,7 @@ def test_submit_job_defaults_to_sample_count_when_commands_are_empty():
     proc = make_processor([])
     sampler = FakeSampler()
 
-    returned_job = proc._submit_job(
+    returned_job, is_probability = proc._submit_job(
         sampler,
         nsample=None,
         job_base_label=None,
@@ -270,6 +646,7 @@ def test_submit_job_defaults_to_sample_count_when_commands_are_empty():
     )
 
     assert returned_job is sampler.sample_count
+    assert is_probability is False
     assert sampler.sample_count.executed is True
     assert sampler.sample_count.execute_kwargs == {
         "max_samples": MerlinProcessor.DEFAULT_SHOTS_PER_CALL
@@ -299,7 +676,7 @@ def test_poll_job_success_processes_dict_payload_and_records_job_id():
 
     assert torch.equal(result, output)
     assert state["job_ids"] == ["job-success"]
-    assert proc.processed_calls == [(raw_results, 3, layer, None)]
+    assert proc.processed_calls == [(raw_results, 3, layer, None, False)]
     assert job not in proc._active_jobs
 
 
@@ -478,11 +855,13 @@ def test_process_batch_results_zero_fills_missing_rows():
 
     assert torch.allclose(
         result,
-        torch.tensor([
-            [0.0, 1.0],
-            [0.0, 0.0],
-            [0.0, 0.0],
-        ]),
+        torch.tensor(
+            [
+                [0.0, 1.0],
+                [0.0, 0.0],
+                [0.0, 0.0],
+            ]
+        ),
     )
 
 
@@ -497,3 +876,166 @@ def test_process_batch_results_probability_heuristic_renormalizes_float_rows():
     result = proc._process_batch_results(raw_results, 1, layer)
 
     assert torch.allclose(result, torch.tensor([[0.5, 0.5]]))
+
+
+# ────── Tests for _create_fresh_rp() ──────
+
+
+def test_create_fresh_rp_remote_processor_path_clones_with_token():
+    """RemoteProcessor path delegates to _clone_remote_processor."""
+    original_rp = MagicMock(spec=RemoteProcessor)
+    original_rp.name = "sim:slos"
+    original_rp.available_commands = ["probs"]
+    original_rp.proxies = None
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="test_token"):
+        proc = MerlinProcessor(remote_processor=original_rp)
+
+    # Verify session is None (RemoteProcessor path)
+    assert proc.session is None
+    # Verify the original RP is stored
+    assert proc.remote_processor is original_rp
+
+    # Mock _clone_remote_processor to verify it's called by _create_fresh_rp
+    cloned_rp = MagicMock(spec=RemoteProcessor)
+    with patch.object(
+        proc, "_clone_remote_processor", return_value=cloned_rp
+    ) as mock_clone:
+        fresh_rp = proc._create_fresh_rp()
+        mock_clone.assert_called_once_with(original_rp)
+
+    assert fresh_rp is cloned_rp
+
+
+def test_create_fresh_rp_session_path_calls_build_remote_processor():
+    """ISession path calls session.build_remote_processor() for each chunk."""
+    session = MagicMock(spec=ISession)
+    rp1 = MagicMock(spec=RemoteProcessor)
+    rp1.available_commands = ["probs"]
+    rp1.proxies = None
+    session.build_remote_processor.return_value = rp1
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+
+    # Create first fresh processor
+    fresh_rp1 = proc._create_fresh_rp()
+    assert fresh_rp1 is rp1
+    assert session.build_remote_processor.call_count == 2  # init + this call
+    assert proc.session is session
+
+
+def test_create_fresh_rp_session_path_creates_independent_processors():
+    """ISession path creates independent processors on repeated calls."""
+    session = MagicMock(spec=ISession)
+    rp1 = MagicMock(spec=RemoteProcessor)
+    rp1.available_commands = ["probs"]
+    rp1.proxies = None
+    rp2 = MagicMock(spec=RemoteProcessor)
+    rp2.available_commands = ["probs"]
+    rp2.proxies = None
+    rp3 = MagicMock(spec=RemoteProcessor)
+    rp3.available_commands = ["probs"]
+    rp3.proxies = None
+    rp4 = MagicMock(spec=RemoteProcessor)
+    rp4.available_commands = ["probs"]
+    rp4.proxies = None
+
+    # Set up the session to return different processor instances each time
+    # side_effect needs: 1 for init + 3 for _create_fresh_rp calls = 4 total
+    session.build_remote_processor.side_effect = [rp1, rp2, rp3, rp4]
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+
+    # Create multiple fresh processors
+    fresh_rp2 = proc._create_fresh_rp()
+    fresh_rp3 = proc._create_fresh_rp()
+    fresh_rp4 = proc._create_fresh_rp()
+
+    # Each should be a different instance
+    assert fresh_rp2 is not fresh_rp3
+    assert fresh_rp3 is not fresh_rp4
+    assert fresh_rp2 is not fresh_rp4
+    assert session.build_remote_processor.call_count == 4  # init + 3 calls
+
+
+def test_create_fresh_rp_remote_processor_path_maintains_available_commands():
+    """RemoteProcessor path preserves available_commands through cloning."""
+    original_rp = MagicMock(spec=RemoteProcessor)
+    original_rp.name = "sim:slos"
+    original_rp.available_commands = ["probs", "sample_count", "samples"]
+    original_rp.proxies = None
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(remote_processor=original_rp)
+
+    # Verify available_commands was captured at init
+    assert proc.available_commands == ["probs", "sample_count", "samples"]
+
+    # Create fresh RPs and verify available_commands is unchanged
+    cloned_rp1 = MagicMock(spec=RemoteProcessor)
+    cloned_rp1.available_commands = ["probs", "sample_count"]  # Different commands
+    cloned_rp2 = MagicMock(spec=RemoteProcessor)
+    cloned_rp2.available_commands = []  # Empty commands
+
+    with patch.object(
+        proc, "_clone_remote_processor", side_effect=[cloned_rp1, cloned_rp2]
+    ):
+        proc._create_fresh_rp()
+        proc._create_fresh_rp()
+
+    # available_commands should still reflect the original
+    assert proc.available_commands == ["probs", "sample_count", "samples"]
+
+
+def test_create_fresh_rp_session_path_maintains_available_commands():
+    """ISession path preserves available_commands from first initialization."""
+    session = MagicMock(spec=ISession)
+    rp_init = MagicMock(spec=RemoteProcessor)
+    rp_init.available_commands = ["probs", "sample_count"]
+    rp_init.proxies = None
+
+    # Later RPs may have different commands, but shouldn't affect proc's cached value
+    rp_chunk1 = MagicMock(spec=RemoteProcessor)
+    rp_chunk1.available_commands = ["probs"]
+    rp_chunk2 = MagicMock(spec=RemoteProcessor)
+    rp_chunk2.available_commands = []
+
+    session.build_remote_processor.side_effect = [rp_init, rp_chunk1, rp_chunk2]
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(session=session)
+
+    # Verify available_commands was captured from init processor
+    assert proc.available_commands == ["probs", "sample_count"]
+
+    # Create fresh processors
+    proc._create_fresh_rp()
+    proc._create_fresh_rp()
+
+    # available_commands should still reflect the initial state
+    assert proc.available_commands == ["probs", "sample_count"]
+
+
+def test_create_fresh_rp_remote_processor_path_with_cloning_disabled():
+    """RemoteProcessor path delegates to _clone_remote_processor correctly."""
+    original_rp = MagicMock(spec=RemoteProcessor)
+    original_rp.name = "sim:ascella"
+    original_rp.available_commands = ["probs"]
+    original_rp.proxies = None
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(remote_processor=original_rp)
+
+    # Verify remote_processor is stored
+    assert proc.remote_processor is original_rp
+    assert proc.session is None
+
+    # Create fresh RP and verify clone method was called
+    with patch.object(proc, "_clone_remote_processor") as mock_clone:
+        mock_clone.return_value = MagicMock(spec=RemoteProcessor)
+        fresh_rp = proc._create_fresh_rp()
+
+    mock_clone.assert_called_once_with(original_rp)
+    assert fresh_rp is mock_clone.return_value
