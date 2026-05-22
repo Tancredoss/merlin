@@ -45,6 +45,7 @@ from .builder.circuit_builder import CircuitBuilder
 # Essential enums
 # Advanced components (for power users)
 from .core.computation_space import ComputationSpace
+from .core.encoding_space import EncodingSpace
 from .core.merlin_processor import MerlinProcessor
 from .core.process import ComputationProcess
 from .core.state import StatePattern, generate_state
@@ -77,6 +78,7 @@ __all__ = [
     "QCNNClassifier",
     # Configuration enums
     "ComputationSpace",
+    "EncodingSpace",
     "MeasurementStrategy",
     "Combinadics",
     # Advanced components

@@ -19,6 +19,8 @@ Modules
      - Public circuit-component dataclasses such as rotations, beam splitters, and interferometers.
    * - :doc:`merlin.core.computation_space`
      - Computation-space enums and coercion helpers for Fock and related bases.
+   * - :doc:`merlin.core.encoding_space`
+     - Input encoding definitions and logical-to-Fock mapping helpers.
    * - :doc:`merlin.core.generators`
      - Legacy state and circuit generator helpers kept for compatibility.
    * - :doc:`merlin.core.partial_measurement`
@@ -43,6 +45,7 @@ Modules
    merlin.core.circuit
    merlin.core.components
    merlin.core.computation_space
+   merlin.core.encoding_space
    merlin.core.generators
    merlin.core.partial_measurement
    merlin.core.photonicbackend

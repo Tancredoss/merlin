@@ -27,6 +27,7 @@ import torch
 import merlin as ML
 from merlin.algorithms.layer_utils import (
     apply_angle_encoding,
+    compute_new_memristive_ps_angles,
     feature_count_for_prefix,
     normalize_output_key,
     prepare_input_encoding,
@@ -243,3 +244,42 @@ def test_feature_count_for_prefix_spec_mappings():
 def test_normalize_output_key_tensor():
     key = normalize_output_key(torch.tensor([1, 0, 2]))
     assert key == (1, 0, 2)
+
+
+def test_compute_new_memristive_ps_angles():
+
+    def exponential_decay(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        tau = 5.0
+        target = torch.full([state.size(0)], output[2])
+        return state + (target - state) / tau
+
+    def sum_outputs(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state + (output.mean().repeat(2))
+
+    memristive_metadata = [
+        {
+            "target_mode": 0,
+            "name": "mem1",
+            "update_rule": exponential_decay,
+            "initial_state": 1,
+        },
+        {
+            "target_mode": 1,
+            "name": "mem2",
+            "update_rule": sum_outputs,
+            "initial_state": 1000,
+        },
+    ]
+
+    memristive_state = [torch.Tensor([1, 2]), torch.Tensor([10, 1000])]
+    output = torch.Tensor([1, 2, 3, 4])
+
+    res = compute_new_memristive_ps_angles(
+        memristive_metadata=memristive_metadata,
+        memristive_state=memristive_state,
+        output=output,
+    )
+    expected = [torch.Tensor([1.4, 2.2]), torch.Tensor([12.5, 1002.5])]
+
+    for x, y in zip(res, expected, strict=True):
+        assert torch.allclose(x, y)
