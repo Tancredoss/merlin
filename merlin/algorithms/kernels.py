@@ -78,8 +78,9 @@ class FeatureMap:
     device : torch.device | None
         Torch device on which unitaries are evaluated.
     encoder : Callable[[torch.Tensor], torch.Tensor] | None
-        Optional custom encoder used when the raw input shape does not match the
-        circuit parameter layout.
+        Optional custom encoder used only by the deprecated
+        :meth:`compute_unitary` path. ``FidelityKernel`` supports this argument
+        for compatibility with a deprecation warning.
     """
 
     def __init__(
@@ -93,7 +94,7 @@ class FeatureMap:
         trainable_parameters: list[str] | None = None,
         dtype: str | torch.dtype = torch.float32,
         device: torch.device | None = None,
-        encoder: Callable[[Tensor], Tensor] | None = None,  # was: callable | None
+        encoder: Callable[[Tensor], Tensor] | None = None,
     ) -> None:
         """Initialize a feature-map descriptor.
 
@@ -123,7 +124,8 @@ class FeatureMap:
         encoder : Callable[[torch.Tensor], torch.Tensor] | None
             Optional custom encoder used by the deprecated
             :meth:`compute_unitary` path when the raw input shape does not
-            match the circuit parameter layout.
+            match the circuit parameter layout. ``FidelityKernel`` supports
+            this argument for compatibility with a deprecation warning.
 
         Raises
         ------
@@ -184,7 +186,8 @@ class FeatureMap:
         self.dtype = to_torch_dtype(dtype)
         self.device = device or torch.device("cpu")
         self.is_trainable = bool(self.trainable_parameters)
-        self._encoder = encoder  # NEW
+        # TODO: In release 0.5.x, remove FeatureMap.encoder support.
+        self._encoder = encoder
 
         if input_parameters is None:
             if builder_input:
@@ -231,6 +234,7 @@ class FeatureMap:
         int
             Number of angle-encoding slots expected by the legacy converter.
         """
+        # TODO: In release 0.5.x, remove this legacy compute_unitary helper.
         return len(self._circuit_graph.spec_mappings.get(self.input_parameters, []))
 
     def _subset_sum_expand(self, x: Tensor, k: int) -> Tensor:
@@ -254,6 +258,7 @@ class FeatureMap:
         torch.Tensor
             Encoded tensor of length ``k`` on the configured device and dtype.
         """
+        # TODO: In release 0.5.x, remove legacy subset expansion support.
         x = x.to(dtype=self.dtype, device=self.device).reshape(-1)
         d = x.shape[0]
         vals: list[Tensor] = []
@@ -300,6 +305,7 @@ class FeatureMap:
         torch.Tensor
             Encoded tensor matching the circuit's expected parameter length.
         """
+        # TODO: In release 0.5.x, remove legacy encoder/subset/truncation support.
         x = x.to(dtype=self.dtype, device=self.device).reshape(-1)
         px_len = self._px_len()
 
@@ -359,6 +365,7 @@ class FeatureMap:
         torch.Tensor
             Encoded tensor obeying the combination rules.
         """
+        # TODO: In release 0.5.x, remove this legacy compute_unitary helper.
         combos = spec.get("combinations", [])
         scales = spec.get("scales", {})
 
@@ -433,6 +440,7 @@ class FeatureMap:
         ValueError
             If angle encoding metadata is inconsistent with ``x``.
         """
+        # TODO: In release 0.5.x, remove deprecated compute_unitary support.
         # Normalize input to tensor on correct device/dtype
         if isinstance(x, torch.Tensor):
             x = x.to(dtype=self.dtype, device=self.device)
@@ -870,7 +878,11 @@ class _CCInvQuantumLayer(QuantumLayer):
     input_state : list[int]
         Input Fock state occupation list.
     input_size : int
-        Dimension of the classical input vector.
+        Number of encoded circuit input parameters passed to
+        :class:`~merlin.algorithms.layer.QuantumLayer`.
+    raw_input_size : int
+        Dimension of the raw classical input vector accepted by
+        :class:`FidelityKernel`.
     input_parameters : list[str]
         Perceval parameter prefix(es) used for angle encoding.
     trainable_parameters : list[str]
@@ -881,6 +893,11 @@ class _CCInvQuantumLayer(QuantumLayer):
         Real dtype for internal tensors.
     device : torch.device
         Device on which computation graphs are placed.
+    angle_encoding_specs : dict[str, dict[str, object]] | None
+        Builder-derived angle-encoding metadata used to map raw feature
+        tensors to encoded circuit parameters.
+    encoder : Callable[[torch.Tensor], torch.Tensor] | None
+        Deprecated compatibility encoder copied from :class:`FeatureMap`.
 
     Notes
     -----
@@ -895,11 +912,14 @@ class _CCInvQuantumLayer(QuantumLayer):
         experiment: pcvl.Experiment,
         input_state: list[int],
         input_size: int,
+        raw_input_size: int,
         input_parameters: list[str],
         trainable_parameters: list[str],
         computation_space: ComputationSpace,
         dtype: torch.dtype,
         device: torch.device,
+        angle_encoding_specs: dict[str, dict[str, object]] | None = None,
+        encoder: Callable[[Tensor], Tensor] | None = None,
     ) -> None:
         super().__init__(
             experiment=experiment,
@@ -913,6 +933,10 @@ class _CCInvQuantumLayer(QuantumLayer):
             dtype=dtype,
             device=device,
         )
+        self._raw_input_size = raw_input_size
+        self.angle_encoding_specs = angle_encoding_specs or {}
+        # TODO: In release 0.5.x, remove FeatureMap.encoder compatibility.
+        self._encoder = encoder
 
         raw_keys = self._raw_output_keys
         try:
@@ -955,6 +979,12 @@ class _CCInvQuantumLayer(QuantumLayer):
         -------
         torch.Tensor
             Encoded tensor matching the number of circuit input parameters.
+
+        Raises
+        ------
+        ValueError
+            If a compatibility encoder produces the wrong number of circuit
+            input parameters.
         """
         x = x.to(dtype=self.dtype, device=self.device).reshape(-1)
         prefix = self.input_parameters[0] if self.input_parameters else None
@@ -966,14 +996,31 @@ class _CCInvQuantumLayer(QuantumLayer):
                 return self._prepare_input_encoding(x, prefix)
 
         # No CircuitBuilder metadata available: the circuit was constructed
-        # directly with pcvl.Circuit, so angle_encoding_specs is empty.
-        # Fall back to direct pass-through or subset-sum expansion.
+        # directly with pcvl.Circuit or pcvl.Experiment. Preserve the legacy
+        # FeatureMap encoding behavior for non-major releases.
+        # TODO: In release 0.5.x, remove encoder/subset/truncation compatibility.
         spec_mappings = self.computation_process.converter.spec_mappings
         px_len = len(spec_mappings.get(prefix, [])) if prefix else x.numel()
 
-        if x.numel() == px_len or px_len == 0:
+        if x.numel() == px_len:
             return x
+        if px_len == 0:
+            return x[:0]
         if x.numel() < px_len:
+            if self._encoder is not None:
+                encoded = self._encoder(x)
+                if isinstance(encoded, np.ndarray):
+                    encoded = torch.from_numpy(encoded)
+                encoded_tensor = torch.as_tensor(
+                    encoded, dtype=self.dtype, device=self.device
+                ).reshape(-1)
+                if encoded_tensor.numel() != px_len:
+                    raise ValueError(
+                        "FeatureMap.encoder produced "
+                        f"{encoded_tensor.numel()} parameters, but the circuit "
+                        f"expects {px_len} parameters for prefix {prefix!r}."
+                    )
+                return encoded_tensor
             return self._subset_sum_expand(x, px_len)
         return x[:px_len]
 
@@ -994,6 +1041,7 @@ class _CCInvQuantumLayer(QuantumLayer):
             Tensor of length ``k`` containing subset sums, padded with zeros
             when fewer than ``k`` sums are available.
         """
+        # TODO: In release 0.5.x, remove legacy subset expansion support.
         d = x.shape[0]
         vals: list[Tensor] = []
         for r in range(1, d + 1):
@@ -1300,6 +1348,7 @@ class FidelityKernel(MerlinModule):
         else:
             self.dtype = to_torch_dtype(dtype, default=feature_map.dtype)
         self.input_size = self.feature_map.input_size
+        backend_input_size = self._resolve_backend_input_size()
 
         if self.feature_map.circuit.m != len(input_state):
             raise ValueError("Input state length does not match circuit size.")
@@ -1347,12 +1396,15 @@ class FidelityKernel(MerlinModule):
         self._quantum_layer = _CCInvQuantumLayer(
             experiment=self.experiment,
             input_state=input_state,
-            input_size=self.input_size,
+            input_size=backend_input_size,
+            raw_input_size=self.input_size,
             input_parameters=[self.feature_map.input_parameters],
             trainable_parameters=self.feature_map.trainable_parameters,
             computation_space=self.computation_space,
             dtype=self.dtype,
             device=self.device,
+            angle_encoding_specs=self.feature_map._angle_encoding_specs,
+            encoder=self.feature_map._encoder,
         )
 
         self.is_trainable = feature_map.is_trainable
@@ -1617,6 +1669,65 @@ class FidelityKernel(MerlinModule):
         elif isinstance(x1, np.ndarray):
             return np.allclose(x1, x2)
         return False
+
+    def _resolve_backend_input_size(self) -> int:
+        """Resolve the encoded input size required by the kernel backend.
+
+        Returns
+        -------
+        int
+            Number of encoded circuit input parameters expected by the
+            internal :class:`_CCInvQuantumLayer` backend.
+
+        Warns
+        -----
+        DeprecationWarning
+            If ``FeatureMap.encoder`` or direct-circuit subset/truncation
+            compatibility is required for the kernel path.
+        """
+        # TODO: In release 0.5.x, remove legacy kernel encoding compatibility.
+        spec_mappings = self.feature_map._circuit_graph.spec_mappings
+        input_parameter_count = len(
+            spec_mappings.get(self.feature_map.input_parameters, [])
+        )
+
+        has_compatibility_encoder = self.feature_map._encoder is not None
+        if has_compatibility_encoder:
+            warnings.warn(
+                "FeatureMap.encoder support inside FidelityKernel is deprecated "
+                "and will be removed in a future release. Migrate by either "
+                "expressing the encoding with CircuitBuilder.add_angle_encoding(...) "
+                "or pre-encoding the data before the kernel call, then construct "
+                "FeatureMap with input_size equal to the encoded circuit-parameter "
+                "count.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+
+        if self.feature_map._angle_encoding_specs:
+            return input_parameter_count
+
+        if self.input_size == input_parameter_count:
+            return input_parameter_count
+        if has_compatibility_encoder:
+            return input_parameter_count
+
+        warnings.warn(
+            "FidelityKernel support for direct pcvl.Circuit or pcvl.Experiment "
+            "feature maps whose input_size differs from the circuit input "
+            "parameter count is deprecated and will be removed in a future "
+            "release. Received input_size="
+            f"{self.input_size}, but input prefix "
+            f"{self.feature_map.input_parameters!r} maps to "
+            f"{input_parameter_count} circuit input parameters. Migrate by either "
+            "expressing the raw-feature encoding with "
+            "CircuitBuilder.add_angle_encoding(...) or pre-encoding the data "
+            "before the kernel call, then construct FeatureMap with input_size "
+            "equal to the encoded circuit-parameter count.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return input_parameter_count
 
     @staticmethod
     def _validate_experiment(experiment: pcvl.Experiment) -> None:

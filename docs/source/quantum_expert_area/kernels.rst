@@ -58,7 +58,7 @@ Data encoding pipeline
 
 ``FidelityKernel`` encodes datapoints through ``_CCInvQuantumLayer._encode_single``,
 which maps a flat feature tensor to the parameter shape the circuit expects.
-The encoding follows a two-step preference order:
+The supported encoding contract has two cases:
 
 1. If the feature map was created from a
 	 :class:`~merlin.builder.circuit_builder.CircuitBuilder`, use its
@@ -67,19 +67,24 @@ The encoding follows a two-step preference order:
 	 ``_prepare_input_encoding``. This guarantees the encoded vector length
 	 matches the converter specification for the declared input prefix.
 2. Otherwise (plain :class:`pcvl.Circuit` or :class:`pcvl.Experiment`
-	 construction), the input is passed through directly when its length already
-	 matches the expected parameter count, or expanded with the deterministic
-	 subset‑sum expansion that enumerates and sums non‑empty feature subsets in
-	 lexicographic order.
+	 construction), ``FeatureMap.input_size`` must exactly match the number of
+	 circuit input parameters selected by ``FeatureMap.input_parameters``. The
+	 input is passed through with that parameter dimension.
+
+	 For compatibility, direct circuit and experiment feature maps may still use
+	 the legacy ``FeatureMap.encoder`` callable or the legacy subset/truncation
+	 behavior when ``FeatureMap.input_size`` differs from the circuit input
+	 parameter count. This compatibility path emits a ``DeprecationWarning`` and
+	 will be removed in a future release.
 
 .. deprecated:: 0.4
 
 	 The ``encoder`` callable accepted by :class:`~merlin.algorithms.kernels.FeatureMap`
 	 is **only** consulted by the legacy :meth:`~merlin.algorithms.kernels.FeatureMap.compute_unitary`
-	 path (``FeatureMap._encode_x``). ``FidelityKernel`` does not invoke
-	 ``compute_unitary`` and therefore ignores the ``encoder`` argument
-	 entirely. Pass encoding logic through a
-	 :class:`~merlin.builder.circuit_builder.CircuitBuilder` instead.
+	 path (``FeatureMap._encode_x``) and by ``FidelityKernel`` only for
+	 deprecated compatibility with older direct-circuit feature maps. Pass
+	 encoding logic through a :class:`~merlin.builder.circuit_builder.CircuitBuilder`
+	 or pass inputs with the circuit parameter dimension instead.
 
 Unitary construction
 --------------------
@@ -206,4 +211,3 @@ Limitations
 
 For class/method signatures and basic usage examples, see the API reference:
 :mod:`merlin.algorithms.kernels`.
-

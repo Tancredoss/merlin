@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import perceval as pcvl
 import pytest
@@ -8,15 +10,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.svm import SVC
 
 from merlin.algorithms.kernels import (
-    _CCInvQuantumLayer,
     FeatureMap,
     FidelityKernel,
     KernelCircuitBuilder,
+    _CCInvQuantumLayer,
 )
 from merlin.algorithms.loss import NKernelAlignment
 from merlin.builder import CircuitBuilder
 from merlin.core.computation_space import ComputationSpace
-from merlin.pcvl_pytorch.locirc_to_tensor import CircuitConverter
 
 
 class TestCCInvBackend:
@@ -429,6 +430,93 @@ class TestFidelityKernel:
                 input_state=[2, 0],  # Only 2 modes
                 computation_space=ComputationSpace.FOCK,
             )
+
+    def test_kernel_warns_and_uses_feature_map_encoder(self):
+        circuit = pcvl.Circuit(3)
+        for mode in range(3):
+            circuit.add(mode, pcvl.PS(pcvl.P(f"x{mode}")))
+
+        def encoder(x):
+            return torch.stack([x[0], x[1], x[0] + x[1]])
+
+        feature_map = FeatureMap(
+            circuit=circuit,
+            input_size=2,
+            input_parameters="x",
+            encoder=encoder,
+        )
+
+        with pytest.warns(
+            DeprecationWarning,
+            match="FeatureMap.encoder support inside FidelityKernel is deprecated",
+        ) as warning_record:
+            kernel = FidelityKernel(
+                feature_map=feature_map,
+                input_state=[1, 0, 0],
+                computation_space=ComputationSpace.FOCK,
+            )
+        warning_message = str(warning_record[0].message)
+        assert "CircuitBuilder.add_angle_encoding" in warning_message
+        assert "pre-encoding the data" in warning_message
+        assert "input_size equal to the encoded circuit-parameter count" in warning_message
+
+        encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.3]))
+        expected = torch.tensor([0.2, 0.3, 0.5], dtype=encoded.dtype)
+        assert torch.allclose(encoded, expected)
+
+    def test_kernel_warns_and_uses_direct_circuit_subset_expansion(self):
+        circuit = pcvl.Circuit(3)
+        for mode in range(3):
+            circuit.add(mode, pcvl.PS(pcvl.P(f"x{mode}")))
+
+        feature_map = FeatureMap(
+            circuit=circuit,
+            input_size=2,
+            input_parameters="x",
+        )
+
+        with pytest.warns(
+            DeprecationWarning,
+            match="input_size differs from the circuit input parameter count",
+        ) as warning_record:
+            kernel = FidelityKernel(
+                feature_map=feature_map,
+                input_state=[1, 0, 0],
+                computation_space=ComputationSpace.FOCK,
+            )
+        warning_message = str(warning_record[0].message)
+        assert "CircuitBuilder.add_angle_encoding" in warning_message
+        assert "pre-encoding the data" in warning_message
+        assert "input_size equal to the encoded circuit-parameter count" in warning_message
+
+        encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.3]))
+        expected = torch.tensor([0.2, 0.3, 0.5], dtype=encoded.dtype)
+        assert torch.allclose(encoded, expected)
+
+    def test_kernel_uses_builder_subset_encoding_without_deprecation(self):
+        builder = CircuitBuilder(n_modes=3)
+        builder.add_angle_encoding(
+            modes=[0, 1],
+            name="input",
+            subset_combinations=True,
+        )
+        feature_map = FeatureMap(
+            builder=builder,
+            input_size=2,
+            input_parameters=None,
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            kernel = FidelityKernel(
+                feature_map=feature_map,
+                input_state=[1, 0, 0],
+                computation_space=ComputationSpace.FOCK,
+            )
+
+        encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.3]))
+        expected = torch.tensor([0.2, 0.3, 0.5], dtype=encoded.dtype)
+        assert torch.allclose(encoded, expected)
 
     def test_psd_projection(self):
         # Test the static method for PSD projection

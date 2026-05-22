@@ -69,13 +69,33 @@ Quick Start Decision Guide
 How feature maps encode data
 ----------------------------
 
-The :class:`~merlin.algorithms.kernels.FeatureMap` converts a datapoint into the exact list of circuit parameters required by the underlying circuit/experiment. The encoding pipeline follows this preference order:
+For kernel computation, :class:`~merlin.algorithms.kernels.FidelityKernel`
+treats :class:`~merlin.algorithms.kernels.FeatureMap` as a descriptor and
+delegates encoding to its internal ``_CCInvQuantumLayer`` backend. The supported
+encoding contract is:
 
-1. Builder‑provided metadata (from :class:`~merlin.builder.circuit_builder.CircuitBuilder.add_angle_encoding`) that lists feature combinations and per‑index scales;
-2. A user‑provided callable encoder, if supplied to :class:`~merlin.algorithms.kernels.FeatureMap`;
-3. A deterministic subset‑sum expansion that generates :math:`1`‑to‑:math:`d` order sums of the input until the expected parameter count is reached.
+1. For feature maps created from a
+   :class:`~merlin.builder.circuit_builder.CircuitBuilder`, builder-provided
+   angle-encoding metadata defines how raw input features are converted into
+   circuit parameters.
+2. For feature maps created directly from a :class:`pcvl.Circuit` or
+   :class:`pcvl.Experiment`, ``input_size`` must match the number of circuit
+   input parameters selected by ``input_parameters``. Inputs are passed with
+   that parameter dimension.
 
-The resulting vector is then sent to the Torch converter (:class:`~merlin.pcvl_pytorch.locirc_to_tensor.CircuitConverter`) to obtain the complex unitary matrix :math:`U(x)`.
+The callable ``encoder`` accepted by :class:`~merlin.algorithms.kernels.FeatureMap`
+is legacy-only. It is primarily used by deprecated
+:meth:`~merlin.algorithms.kernels.FeatureMap.compute_unitary`. ``FidelityKernel``
+still supports it for compatibility when a direct circuit or experiment needs
+to map raw inputs to a larger circuit parameter vector, but this emits a
+``DeprecationWarning``. New code should put encoding logic in
+:class:`~merlin.builder.circuit_builder.CircuitBuilder` or pass inputs with the
+circuit parameter dimension.
+
+Direct circuit and experiment feature maps whose ``input_size`` differs from
+the number of circuit input parameters are also supported only for
+compatibility. Without ``encoder``, the kernel uses the legacy subset-sum
+expansion or truncation behavior and emits a ``DeprecationWarning``.
 
 Detectors, photon loss and experiments
 --------------------------------------
@@ -86,8 +106,6 @@ If no experiment is provided, the kernel constructs one from the circuit (unitar
 
 Parameters and behaviour
 ------------------------
-
-Below is a summary of key constructor arguments and their effects. See the API reference for full signatures.
 
 Below is a summary of key constructor arguments and their effects. See the API reference for full signatures.
 
@@ -129,7 +147,7 @@ FeatureMap Parameters
    * - ``encoder``
      - Callable | None
      - None
-     - Custom encoding: ``(x: Tensor) → param_vector``
+     - Deprecated compatibility encoding; prefer ``CircuitBuilder.add_angle_encoding``
    * - ``dtype``
      - torch.dtype
      - torch.float32
