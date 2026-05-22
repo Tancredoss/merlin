@@ -208,7 +208,13 @@ FidelityKernel Parameters
 Implementation highlights
 -------------------------
 
-Internally, :class:`~merlin.algorithms.kernels.FidelityKernel` builds the pairwise circuits :math:`U^{\dagger}(x_2) U(x_1)` in a vectorised way and asks the SLOS graph to compute detection probabilities for the chosen input state. If photon loss and/or detectors are defined, the raw probabilities are transformed accordingly before the scalar kernel is read.
+Internally, :class:`~merlin.algorithms.kernels.FidelityKernel` delegates
+pairwise circuit construction and SLOS evaluation to its ``_CCInvQuantumLayer``
+backend. The backend builds the pairwise circuits
+:math:`U^{\dagger}(x_2) U(x_1)` in a vectorised way and asks the SLOS graph to
+compute detection probabilities for the chosen input state. If photon loss
+and/or detectors are defined, the raw probabilities are transformed accordingly
+before the scalar kernel is read.
 
 When constructing a training Gram matrix (``x2 is None``), only the upper triangle is simulated and mirrored to the lower triangle, then the diagonal is set to 1. With ``force_psd=True``, the matrix is symmetrised and projected to PSD by zeroing negative eigenvalues in an eigendecomposition.
 

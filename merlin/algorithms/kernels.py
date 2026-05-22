@@ -109,6 +109,47 @@ def _require_angle_encoding_spec(
     return spec
 
 
+def _project_psd_matrix(matrix: Tensor) -> Tensor:
+    """Project a symmetric matrix to the closest positive semi-definite matrix.
+
+    Parameters
+    ----------
+    matrix : torch.Tensor
+        Symmetric matrix to project.
+
+    Returns
+    -------
+    torch.Tensor
+        Positive semi-definite projection of ``matrix``.
+    """
+    eigenvals, eigenvecs = torch.linalg.eigh(matrix)
+    eigenvals = torch.diag(torch.where(eigenvals > 0, eigenvals, 0))
+    return eigenvecs @ eigenvals @ eigenvecs.T
+
+
+def _inputs_are_equal(x1: Tensor, x2: Tensor | None) -> bool:
+    """Check whether two tensor batches represent the same inputs.
+
+    Parameters
+    ----------
+    x1 : torch.Tensor
+        First input batch.
+    x2 : torch.Tensor | None
+        Second input batch, if provided.
+
+    Returns
+    -------
+    bool
+        ``True`` when ``x2`` is omitted or both tensors have equal shape and
+        values.
+    """
+    if x2 is None:
+        return True
+    if x1.shape != x2.shape:
+        return False
+    return torch.allclose(x1, x2)
+
+
 class FeatureMap:
     """Quantum feature map.
 
@@ -1005,6 +1046,7 @@ class _CCInvQuantumLayer(QuantumLayer):
             device=device,
         )
         self._raw_input_size = raw_input_size
+        self._kernel_input_state = list(input_state)
         self.angle_encoding_specs = angle_encoding_specs or {}
         self._requires_angle_encoding_specs = requires_angle_encoding_specs
         # TODO: In release 0.5.x, remove FeatureMap.encoder compatibility.
@@ -1263,6 +1305,97 @@ class _CCInvQuantumLayer(QuantumLayer):
             dtype=detection_probs.dtype, device=detection_probs.device
         )
         return detection_probs @ weights
+
+    def forward(
+        self,
+        x1: Tensor,
+        x2: Tensor | None = None,
+        *,
+        shots: int = 0,
+        sampling_method: str = "multinomial",
+        force_psd: bool = True,
+    ) -> Tensor:
+        """Compute a fidelity-kernel matrix from raw feature batches.
+
+        Parameters
+        ----------
+        x1 : torch.Tensor
+            First input batch with shape ``(N, raw_input_size)``.
+        x2 : torch.Tensor | None
+            Optional second input batch with shape ``(M, raw_input_size)``. If
+            omitted, a symmetric training Gram matrix for ``x1`` is returned.
+        shots : int
+            Number of pseudo-sampling shots. Default is ``0``.
+        sampling_method : str
+            Sampling method used when ``shots`` is positive. Default is
+            ``"multinomial"``.
+        force_psd : bool
+            Whether to project symmetric kernel matrices to the nearest
+            positive semi-definite matrix. Default is ``True``.
+
+        Returns
+        -------
+        torch.Tensor
+            Kernel matrix of shape ``(N, N)`` when ``x2`` is omitted, otherwise
+            shape ``(N, M)``.
+        """
+        equal_inputs = _inputs_are_equal(x1, x2)
+        U_forward = self._compute_unitary_batch(x1).to(x1.device)
+
+        len_x1 = len(x1)
+        if x2 is not None:
+            U_adjoint = (
+                self._compute_unitary_batch(x2)
+                .conj()
+                .transpose(1, 2)
+                .to(x1.device)
+            )
+            all_circuits = U_forward.unsqueeze(1) @ U_adjoint.unsqueeze(0)
+            all_circuits = all_circuits.view(-1, *all_circuits.shape[2:])
+        else:
+            if len_x1 < 2:
+                return torch.ones(
+                    len_x1,
+                    len_x1,
+                    dtype=self.dtype,
+                    device=x1.device,
+                )
+
+            U_adjoint = U_forward.conj().transpose(1, 2)
+            upper_idx = torch.triu_indices(
+                len_x1,
+                len_x1,
+                offset=1,
+                device=x1.device,
+            )
+            all_circuits = U_forward[upper_idx[0]] @ U_adjoint[upper_idx[1]]
+
+        transition_probs = self._compute_transition_probs(
+            all_circuits, self._kernel_input_state, shots, sampling_method
+        )
+
+        if x2 is None:
+            kernel_matrix = torch.zeros(
+                len_x1, len_x1, dtype=self.dtype, device=x1.device
+            )
+            upper_idx = upper_idx.to(x1.device)
+            transition_probs = transition_probs.to(dtype=self.dtype, device=x1.device)
+            kernel_matrix[upper_idx[0], upper_idx[1]] = transition_probs
+            kernel_matrix[upper_idx[1], upper_idx[0]] = transition_probs
+            kernel_matrix.fill_diagonal_(1)
+
+            if force_psd:
+                kernel_matrix = _project_psd_matrix(kernel_matrix)
+            return kernel_matrix
+
+        transition_probs = transition_probs.to(dtype=self.dtype, device=x1.device)
+        kernel_matrix = transition_probs.reshape(len_x1, len(x2))
+
+        if force_psd and equal_inputs:
+            kernel_matrix = 0.5 * (kernel_matrix + kernel_matrix.T)
+            kernel_matrix = _project_psd_matrix(kernel_matrix)
+
+        return kernel_matrix
 
 
 class FidelityKernel(MerlinModule):
@@ -1534,7 +1667,23 @@ class FidelityKernel(MerlinModule):
         if self.feature_map.is_datapoint(x1):
             if x2 is None:
                 raise ValueError("For input datapoints, please specify an x2 argument.")
-            return self._return_kernel_scalar(x1, x2)
+            if not isinstance(x2, torch.Tensor):
+                x2 = torch.as_tensor(x2, dtype=self.dtype, device=self.device)
+
+            x1_batch = torch.as_tensor(
+                x1, dtype=self.dtype, device=self.device
+            ).reshape(1, self.input_size)
+            x2_batch = torch.as_tensor(
+                x2, dtype=self.dtype, device=self.device
+            ).reshape(1, self.input_size)
+            kernel_matrix = self._quantum_layer(
+                x1_batch,
+                x2_batch,
+                shots=self.shots,
+                sampling_method=self.sampling_method,
+                force_psd=False,
+            )
+            return float(kernel_matrix.reshape(-1)[0].item())
 
         # Ensure tensors before reshaping (satisfies mypy)
         if x2 is not None and not isinstance(x2, torch.Tensor):
@@ -1546,105 +1695,13 @@ class FidelityKernel(MerlinModule):
         else:
             raise TypeError("x2 is not None nor torch.Tensor")
 
-        equal_inputs = self._check_equal_inputs(x1, x2)
-        U_forward = self._quantum_layer._compute_unitary_batch(x1).to(x1.device)
-
-        len_x1 = len(x1)
-        if x2 is not None:
-            U_adjoint = (
-                self._quantum_layer
-                ._compute_unitary_batch(x2)
-                .conj()
-                .transpose(1, 2)
-                .to(x1.device)
-            )
-            # All (len_x1 × len_x2) pair unitaries
-            all_circuits = U_forward.unsqueeze(1) @ U_adjoint.unsqueeze(0)
-            all_circuits = all_circuits.view(-1, *all_circuits.shape[2:])
-        else:
-            U_adjoint = U_forward.conj().transpose(1, 2)
-            # Upper-triangle pairs only to exploit symmetry
-            upper_idx = torch.triu_indices(
-                len_x1,
-                len_x1,
-                offset=1,
-                device=x1.device,
-            )
-            all_circuits = U_forward[upper_idx[0]] @ U_adjoint[upper_idx[1]]
-
-        transition_probs = self._quantum_layer._compute_transition_probs(
-            all_circuits, self.input_state, self.shots, self.sampling_method
+        return self._quantum_layer(
+            x1,
+            x2,
+            shots=self.shots,
+            sampling_method=self.sampling_method,
+            force_psd=self.force_psd,
         )
-
-        if x2 is None:
-            kernel_matrix = torch.zeros(
-                len_x1, len_x1, dtype=self.dtype, device=x1.device
-            )
-            upper_idx = upper_idx.to(x1.device)
-            transition_probs = transition_probs.to(dtype=self.dtype, device=x1.device)
-            kernel_matrix[upper_idx[0], upper_idx[1]] = transition_probs
-            kernel_matrix[upper_idx[1], upper_idx[0]] = transition_probs
-            kernel_matrix.fill_diagonal_(1)
-
-            if self.force_psd:
-                kernel_matrix = self._project_psd(kernel_matrix)
-        else:
-            transition_probs = transition_probs.to(dtype=self.dtype, device=x1.device)
-            kernel_matrix = transition_probs.reshape(len_x1, len(x2))
-
-            if self.force_psd and equal_inputs:
-                kernel_matrix = 0.5 * (kernel_matrix + kernel_matrix.T)
-                kernel_matrix = self._project_psd(kernel_matrix)
-
-        return kernel_matrix
-
-    def _return_kernel_scalar(
-        self,
-        x1: Tensor | np.ndarray | float | int,
-        x2: Tensor | np.ndarray | float | int,
-    ) -> float:
-        """Return the scalar kernel value for a single pair of datapoints.
-
-        Parameters
-        ----------
-        x1 : torch.Tensor | numpy.ndarray | float | int
-            First datapoint.
-        x2 : torch.Tensor | numpy.ndarray | float | int
-            Second datapoint.
-
-        Returns
-        -------
-        float
-            Scalar kernel value.
-        """
-        if isinstance(x1, np.ndarray):
-            x1_t: Tensor = torch.from_numpy(x1)
-        elif isinstance(x1, (float, int)):
-            x1_t = torch.tensor([x1])
-        else:
-            x1_t = x1
-        if isinstance(x2, np.ndarray):
-            x2_t: Tensor = torch.from_numpy(x2)
-        elif isinstance(x2, (float, int)):
-            x2_t = torch.tensor([x2])
-        else:
-            x2_t = x2
-
-        x1_t = torch.as_tensor(x1_t, dtype=self.dtype, device=self.device).reshape(
-            self.input_size
-        )
-        x2_t = torch.as_tensor(x2_t, dtype=self.dtype, device=self.device).reshape(
-            self.input_size
-        )
-
-        kernel_unitary = self._quantum_layer._compute_kernel_unitary(x1_t, x2_t)
-        transition_probs = self._quantum_layer._compute_transition_probs(
-            kernel_unitary.unsqueeze(0),
-            self.input_state,
-            self.shots,
-            self.sampling_method,
-        )
-        return transition_probs[0].item()
 
     @classmethod
     @sanitize_parameters
@@ -1732,9 +1789,7 @@ class FidelityKernel(MerlinModule):
     @staticmethod
     def _project_psd(matrix: Tensor) -> Tensor:
         """Projects a symmetric matrix to closest positive semi-definite"""
-        eigenvals, eigenvecs = torch.linalg.eigh(matrix)
-        eigenvals = torch.diag(torch.where(eigenvals > 0, eigenvals, 0))
-        return eigenvecs @ eigenvals @ eigenvecs.T
+        return _project_psd_matrix(matrix)
 
     @staticmethod
     def _check_equal_inputs(x1, x2) -> bool:

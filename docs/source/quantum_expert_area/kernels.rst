@@ -42,13 +42,12 @@ Four components cooperate to build and evaluate kernels:
 2. ``_CCInvQuantumLayer`` – the internal computation backend, a
 	 :class:`~merlin.algorithms.layer.QuantumLayer` subclass constructed by
 	 ``FidelityKernel``. It owns encoding, unitary computation, SLOS
-	 simulation, and the photon-loss/detector pipeline. All circuit-level work
-	 is delegated to this object.
+	 simulation, pairwise kernel-matrix assembly, and the photon-loss/detector
+	 pipeline. All circuit-level work is delegated to this object.
 
-3. :class:`~merlin.algorithms.kernels.FidelityKernel` – orchestrates the
-	 pairwise kernel computation. It validates the feature map, builds
-	 ``_CCInvQuantumLayer``, drives the batched unitary construction and SLOS
-	 evaluation, and applies PSD projection.
+3. :class:`~merlin.algorithms.kernels.FidelityKernel` – validates the feature
+	 map, builds ``_CCInvQuantumLayer``, normalizes public inputs, and delegates
+	 kernel-matrix construction to the backend.
 
 4. :class:`~merlin.algorithms.kernels.KernelCircuitBuilder` – convenience
 	 helper to produce a standard feature map and fidelity kernel.
@@ -106,8 +105,8 @@ Pairwise circuit evaluation and vectorization
 ---------------------------------------------
 
 Given batches ``X1`` of size :math:`N` and (optionally) ``X2`` of size
-:math:`M`, the kernel evaluates the transition probabilities for all pairs by
-constructing the set of composite circuits
+:math:`M`, ``_CCInvQuantumLayer`` evaluates the transition probabilities for
+all pairs by constructing the set of composite circuits
 ``U_forward @ U_adjoint`` where ``U_forward = U(x1)`` and
 ``U_adjoint = U(x2)^{\dagger}``:
 
