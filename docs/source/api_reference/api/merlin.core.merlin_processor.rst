@@ -247,15 +247,15 @@ Batching & Chunking
 Backends & Commands
 ^^^^^^^^^^^^^^^^^^^
 * Backend capabilities (name and available commands) are extracted once at
-  initialization and stored in :attr:`backend_capabilities`. Both the
+  initialization and stored in ``backend_capabilities``. Both the
   RemoteProcessor path (via the original RP) and ISession path (via the
   first processor built from the session) use this snapshot.
 * If the backend exposes ``"probs"``, the processor queries exact probabilities
   and ignores ``nsample``.
 * Otherwise it uses ``"sample_count"`` or ``"samples"`` with
   ``nsample or DEFAULT_SHOTS_PER_CALL``.
-* The backward-compatibility properties :attr:`backend_name` and
-  :attr:`available_commands` provide direct access to the capabilities.
+* The backward-compatibility properties ``backend_name`` and
+  ``available_commands`` provide direct access to the capabilities.
 
 Timeouts & Cancellation
 ^^^^^^^^^^^^^^^^^^^^^^^
