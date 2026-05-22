@@ -576,6 +576,32 @@ class TestFidelityKernel:
         expected = torch.tensor([0.1, 0.15, 0.25], dtype=encoded.dtype)
         assert torch.allclose(encoded, expected)
 
+    def test_simple_kernel_rejects_missing_angle_encoding_specs(self):
+        feature_map = FeatureMap.simple(input_size=2, n_modes=4)
+        feature_map._angle_encoding_specs = {}
+
+        with pytest.raises(RuntimeError, match="missing angle_encoding_specs"):
+            FidelityKernel(
+                feature_map=feature_map,
+                input_state=[1, 0, 1, 0],
+                computation_space=ComputationSpace.FOCK,
+            )
+
+    def test_simple_kernel_rejects_missing_angle_encoding_scales(self):
+        feature_map = FeatureMap.simple(
+            input_size=2,
+            n_modes=4,
+            angle_encoding_scale=0.5,
+        )
+        feature_map._angle_encoding_specs["input"]["scales"] = {}
+
+        with pytest.raises(RuntimeError, match="missing angle-encoding scale entries"):
+            FidelityKernel(
+                feature_map=feature_map,
+                input_state=[1, 0, 1, 0],
+                computation_space=ComputationSpace.FOCK,
+            )
+
     def test_psd_projection(self):
         # Test the static method for PSD projection
         matrix = torch.tensor(

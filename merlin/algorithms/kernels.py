@@ -44,6 +44,71 @@ from .layer import QuantumLayer
 from .module import MerlinModule
 
 
+def _require_angle_encoding_spec(
+    angle_encoding_specs: dict[str, dict[str, object]],
+    prefix: str | None,
+) -> dict[str, object]:
+    """Return validated angle-encoding metadata for a builder-backed prefix.
+
+    Parameters
+    ----------
+    angle_encoding_specs : dict[str, dict[str, object]]
+        Builder-derived angle-encoding metadata keyed by input prefix.
+    prefix : str | None
+        Input parameter prefix expected to have angle-encoding metadata.
+
+    Returns
+    -------
+    dict[str, object]
+        Metadata for ``prefix``.
+
+    Raises
+    ------
+    RuntimeError
+        If the metadata or its scale entries are missing or malformed.
+    """
+    if prefix is None:
+        raise RuntimeError(
+            "Builder-backed FeatureMap is missing an input parameter prefix for angle encoding."
+        )
+
+    spec = angle_encoding_specs.get(prefix)
+    if spec is None:
+        raise RuntimeError(
+            "Builder-backed FeatureMap is missing angle_encoding_specs for input "
+            f"prefix {prefix!r}. This metadata should be produced by "
+            "CircuitBuilder.add_angle_encoding(...)."
+        )
+
+    combos = spec.get("combinations")
+    if (
+        not isinstance(combos, list)
+        or not combos
+        or not all(isinstance(combo, tuple) for combo in combos)
+    ):
+        raise RuntimeError(
+            "Builder-backed FeatureMap has invalid angle_encoding_specs for input "
+            f"prefix {prefix!r}: 'combinations' must be a non-empty list of tuples."
+        )
+
+    scales = spec.get("scales")
+    if not isinstance(scales, dict):
+        raise RuntimeError(
+            "Builder-backed FeatureMap has invalid angle_encoding_specs for input "
+            f"prefix {prefix!r}: 'scales' must be a dictionary."
+        )
+
+    feature_indices = sorted({idx for combo in combos for idx in combo})
+    missing_scale_indices = [idx for idx in feature_indices if idx not in scales]
+    if missing_scale_indices:
+        raise RuntimeError(
+            "Builder-backed FeatureMap is missing angle-encoding scale entries "
+            f"for input prefix {prefix!r}: {missing_scale_indices}."
+        )
+
+    return spec
+
+
 class FeatureMap:
     """Quantum feature map.
 
@@ -139,6 +204,7 @@ class FeatureMap:
         builder_input: list[str] = []
 
         self._angle_encoding_specs: dict[str, dict[str, object]] = {}
+        self._requires_angle_encoding_specs = False
         self.experiment: pcvl.Experiment | None = None
 
         # The feature map can be defined from exactly one artefact among circuit, builder, or experiment.
@@ -153,6 +219,7 @@ class FeatureMap:
             builder_trainable = builder.trainable_parameter_prefixes
             builder_input = builder.input_parameter_prefixes
             self._angle_encoding_specs = builder.angle_encoding_specs
+            self._requires_angle_encoding_specs = bool(self._angle_encoding_specs)
             resolved_circuit = builder.to_pcvl_circuit(pcvl)
             self.experiment = pcvl.Experiment(resolved_circuit)
         elif circuit is not None:
@@ -896,6 +963,9 @@ class _CCInvQuantumLayer(QuantumLayer):
     angle_encoding_specs : dict[str, dict[str, object]] | None
         Builder-derived angle-encoding metadata used to map raw feature
         tensors to encoded circuit parameters.
+    requires_angle_encoding_specs : bool
+        Whether missing builder angle-encoding metadata is an invalid internal
+        state instead of a direct-circuit compatibility case.
     encoder : Callable[[torch.Tensor], torch.Tensor] | None
         Deprecated compatibility encoder copied from :class:`FeatureMap`.
 
@@ -919,6 +989,7 @@ class _CCInvQuantumLayer(QuantumLayer):
         dtype: torch.dtype,
         device: torch.device,
         angle_encoding_specs: dict[str, dict[str, object]] | None = None,
+        requires_angle_encoding_specs: bool = False,
         encoder: Callable[[Tensor], Tensor] | None = None,
     ) -> None:
         super().__init__(
@@ -935,6 +1006,7 @@ class _CCInvQuantumLayer(QuantumLayer):
         )
         self._raw_input_size = raw_input_size
         self.angle_encoding_specs = angle_encoding_specs or {}
+        self._requires_angle_encoding_specs = requires_angle_encoding_specs
         # TODO: In release 0.5.x, remove FeatureMap.encoder compatibility.
         self._encoder = encoder
 
@@ -990,6 +1062,10 @@ class _CCInvQuantumLayer(QuantumLayer):
         prefix = self.input_parameters[0] if self.input_parameters else None
 
         # Angle encoding specs (from CircuitBuilder) take priority.
+        if self._requires_angle_encoding_specs:
+            _require_angle_encoding_spec(self.angle_encoding_specs, prefix)
+            return self._prepare_input_encoding(x, prefix)
+
         if prefix and self.angle_encoding_specs:
             spec = self.angle_encoding_specs.get(prefix)
             if spec:
@@ -1404,6 +1480,9 @@ class FidelityKernel(MerlinModule):
             dtype=self.dtype,
             device=self.device,
             angle_encoding_specs=self.feature_map._angle_encoding_specs,
+            requires_angle_encoding_specs=(
+                self.feature_map._requires_angle_encoding_specs
+            ),
             encoder=self.feature_map._encoder,
         )
 
@@ -1686,6 +1765,12 @@ class FidelityKernel(MerlinModule):
             compatibility is required for the kernel path.
         """
         # TODO: In release 0.5.x, remove legacy kernel encoding compatibility.
+        if self.feature_map._requires_angle_encoding_specs:
+            _require_angle_encoding_spec(
+                self.feature_map._angle_encoding_specs,
+                self.feature_map.input_parameters,
+            )
+
         spec_mappings = self.feature_map._circuit_graph.spec_mappings
         input_parameter_count = len(
             spec_mappings.get(self.feature_map.input_parameters, [])
