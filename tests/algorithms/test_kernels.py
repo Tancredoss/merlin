@@ -518,6 +518,64 @@ class TestFidelityKernel:
         expected = torch.tensor([0.2, 0.3, 0.5], dtype=encoded.dtype)
         assert torch.allclose(encoded, expected)
 
+    def test_kernel_backend_preserves_builder_angle_encoding_scale(self):
+        builder = CircuitBuilder(n_modes=3)
+        builder.add_angle_encoding(
+            modes=[0, 1],
+            name="input",
+            scale=0.5,
+        )
+        feature_map = FeatureMap(
+            builder=builder,
+            input_size=2,
+            input_parameters=None,
+        )
+
+        kernel = FidelityKernel(
+            feature_map=feature_map,
+            input_state=[1, 0, 0],
+            computation_space=ComputationSpace.FOCK,
+        )
+
+        encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.4]))
+        expected = torch.tensor([0.1, 0.2], dtype=encoded.dtype)
+        assert torch.allclose(encoded, expected)
+
+    def test_simple_kernel_backend_preserves_angle_encoding_scale(self):
+        kernel = FidelityKernel.simple(
+            input_size=2,
+            n_modes=4,
+            angle_encoding_scale=0.5,
+        )
+
+        encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.4]))
+        expected = torch.tensor([0.1, 0.2], dtype=encoded.dtype)
+        assert torch.allclose(encoded, expected)
+
+    def test_kernel_backend_preserves_builder_subset_scale(self):
+        builder = CircuitBuilder(n_modes=3)
+        builder.add_angle_encoding(
+            modes=[0, 1],
+            name="input",
+            scale=0.5,
+            subset_combinations=True,
+        )
+        feature_map = FeatureMap(
+            builder=builder,
+            input_size=2,
+            input_parameters=None,
+        )
+
+        kernel = FidelityKernel(
+            feature_map=feature_map,
+            input_state=[1, 0, 0],
+            computation_space=ComputationSpace.FOCK,
+        )
+
+        encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.3]))
+        expected = torch.tensor([0.1, 0.15, 0.25], dtype=encoded.dtype)
+        assert torch.allclose(encoded, expected)
+
     def test_psd_projection(self):
         # Test the static method for PSD projection
         matrix = torch.tensor(
