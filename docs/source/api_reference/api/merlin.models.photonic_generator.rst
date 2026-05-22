@@ -6,17 +6,15 @@ merlin.models.photonic_generator module
 
 .. currentmodule:: merlin.models.photonic_generator
 
+Direct-use classes
+------------------
+
 .. autoclass:: PhotonicGenerator
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: GeneratorMeasurements
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. autoclass:: OutputAdapter
+.. autoclass:: NormalLatent
    :members:
    :undoc-members:
    :show-inheritance:
@@ -31,12 +29,23 @@ merlin.models.photonic_generator module
    :undoc-members:
    :show-inheritance:
 
+Extension interfaces
+--------------------
+
+``LatentDistribution`` and ``OutputAdapter`` are abstract base classes for
+custom samplers and adapters. They are not meant to be instantiated directly.
+
+.. autoclass:: GeneratorMeasurements
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. autoclass:: LatentDistribution
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: NormalLatent
+.. autoclass:: OutputAdapter
    :members:
    :undoc-members:
    :show-inheritance:

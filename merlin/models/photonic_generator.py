@@ -7,6 +7,7 @@ delegates task-specific output shaping to an adapter.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, TypeAlias, cast
@@ -44,8 +45,12 @@ class GeneratorMeasurements:
     output_keys: tuple[tuple[Any, ...], ...]
 
 
-class LatentDistribution:
-    """Base interface for latent distributions used by PhotonicGenerator.
+class LatentDistribution(ABC):
+    """Abstract base class for PhotonicGenerator latent samplers.
+
+    Users normally rely on :class:`NormalLatent`, which is the default sampler
+    created by :class:`PhotonicGenerator`. Subclass ``LatentDistribution`` when
+    a generator needs a custom latent sampling rule.
 
     Parameters
     ----------
@@ -69,6 +74,7 @@ class LatentDistribution:
             raise ValueError("dim must be positive.")
         self.dim = dim
 
+    @abstractmethod
     def sample(
         self,
         batch_size: int,
@@ -83,11 +89,11 @@ class LatentDistribution:
         batch_size : int
             Number of latent vectors to sample.
         device : torch.device | None
-            Device on which the tensor is created. If omitted, the distribution
-            implementation chooses its default.
+            Device on which the tensor is created. If omitted, the concrete
+            distribution chooses its default.
         dtype : torch.dtype | None
-            Floating dtype of the returned tensor. If omitted, the distribution
-            implementation chooses its default.
+            Floating dtype of the returned tensor. If omitted, the concrete
+            distribution chooses its default.
 
         Returns
         -------
@@ -97,7 +103,8 @@ class LatentDistribution:
         Raises
         ------
         NotImplementedError
-            If the subclass does not implement sampling.
+            If called from a subclass that delegates to the abstract base
+            implementation.
         """
         raise NotImplementedError
 
@@ -176,9 +183,15 @@ class NormalLatent(LatentDistribution):
         )
 
 
-class OutputAdapter(nn.Module):
-    """Base module for adapting generator measurements to classical samples."""
+class OutputAdapter(nn.Module, ABC):
+    """Abstract base class for custom generator output adapters.
 
+    Users normally use :class:`VectorAdapter` or :class:`ImageAdapter` directly.
+    Subclass ``OutputAdapter`` when raw quantum measurements need a custom
+    mapping to generated samples.
+    """
+
+    @abstractmethod
     def forward(self, measurements: GeneratorMeasurements) -> torch.Tensor:
         """Adapt raw generator measurements.
 
@@ -196,7 +209,8 @@ class OutputAdapter(nn.Module):
         Raises
         ------
         NotImplementedError
-            If the subclass does not implement adaptation.
+            If called from a subclass that delegates to the abstract base
+            implementation.
         """
         raise NotImplementedError
 
@@ -319,8 +333,9 @@ class PhotonicGenerator(nn.Module):
         samples.
     output_adapter : torch.nn.Module
         Module that maps :class:`GeneratorMeasurements` to a tensor. Built-in
-        adapters inherit from :class:`OutputAdapter`, but custom adapters only
-        need to be PyTorch modules with a compatible ``forward`` method.
+        adapters inherit from the abstract :class:`OutputAdapter` extension
+        interface, but custom adapters only need to be PyTorch modules with a
+        compatible ``forward`` method.
     latent : LatentDistribution | None
         Latent distribution used by :meth:`sample_latent` and :meth:`generate`.
         If omitted, :class:`NormalLatent` with the inferred latent dimension is
@@ -356,7 +371,7 @@ class PhotonicGenerator(nn.Module):
             raise TypeError("output_adapter must be a torch.nn.Module.")
         self.output_adapter = output_adapter
 
-        inferred_dim = validated_layers[0].input_size
+        inferred_dim = cast(int, validated_layers[0].input_size)
         if latent is None:
             latent = NormalLatent(inferred_dim)
         elif not isinstance(latent, LatentDistribution):
@@ -596,8 +611,13 @@ def _validate_layers(layers: Sequence[QuantumLayer]) -> list[QuantumLayer]:
                 "PhotonicGenerator does not support amplitude-output layers; "
                 f"layers[{index}] uses MeasurementStrategy.amplitudes()."
             )
+        if layer.input_size is None:
+            raise ValueError(
+                "PhotonicGenerator layers must expose an input_size; "
+                f"layers[{index}] has input_size=None."
+            )
 
-    latent_dim = validated_layers[0].input_size
+    latent_dim = cast(int, validated_layers[0].input_size)
     for index, layer in enumerate(validated_layers[1:], start=1):
         if layer.input_size != latent_dim:
             raise ValueError(
