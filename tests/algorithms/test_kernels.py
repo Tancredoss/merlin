@@ -274,6 +274,21 @@ class TestFidelityKernelInternals:
     def test_quantum_layer_is_ccinv_instance(self):
         assert isinstance(self.kernel._quantum_layer, _CCInvQuantumLayer)
 
+    def test_quantum_layer_forward_matches_kernel_forward(self):
+        X = torch.tensor(
+            [[0.2, 0.3], [0.5, 0.1], [0.7, 0.4]],
+            dtype=torch.float32,
+        )
+
+        expected = self.kernel(X)
+        actual = self.kernel._quantum_layer(
+            X,
+            shots=self.kernel.shots,
+            sampling_method=self.kernel.sampling_method,
+        )
+
+        assert torch.allclose(actual, expected, atol=1e-6)
+
 
 class TestFidelityKernel:
     def setup_method(self):

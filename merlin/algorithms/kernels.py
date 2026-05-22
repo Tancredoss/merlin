@@ -33,6 +33,7 @@ from torch import Tensor
 from ..builder.circuit_builder import ANGLE_ENCODING_MODE_ERROR, CircuitBuilder
 from ..core.computation_space import ComputationSpace
 from ..core.state import StatePattern, generate_state
+from ..core.state_vector import StateVector
 from ..measurement.autodiff import AutoDiffProcess
 from ..measurement.detectors import resolve_detectors
 from ..measurement.photon_loss import resolve_photon_loss
@@ -1001,6 +1002,9 @@ class _CCInvQuantumLayer(QuantumLayer):
         Real dtype for internal tensors.
     device : torch.device
         Device on which computation graphs are placed.
+    force_psd : bool
+        Whether to project symmetric kernel matrices to the nearest positive
+        semi-definite matrix.
     angle_encoding_specs : dict[str, dict[str, object]] | None
         Builder-derived angle-encoding metadata used to map raw feature
         tensors to encoded circuit parameters.
@@ -1029,6 +1033,7 @@ class _CCInvQuantumLayer(QuantumLayer):
         computation_space: ComputationSpace,
         dtype: torch.dtype,
         device: torch.device,
+        force_psd: bool = True,
         angle_encoding_specs: dict[str, dict[str, object]] | None = None,
         requires_angle_encoding_specs: bool = False,
         encoder: Callable[[Tensor], Tensor] | None = None,
@@ -1047,6 +1052,7 @@ class _CCInvQuantumLayer(QuantumLayer):
         )
         self._raw_input_size = raw_input_size
         self._kernel_input_state = list(input_state)
+        self.force_psd = force_psd
         self.angle_encoding_specs = angle_encoding_specs or {}
         self._requires_angle_encoding_specs = requires_angle_encoding_specs
         # TODO: In release 0.5.x, remove FeatureMap.encoder compatibility.
@@ -1308,47 +1314,68 @@ class _CCInvQuantumLayer(QuantumLayer):
 
     def forward(
         self,
-        x1: Tensor,
-        x2: Tensor | None = None,
-        *,
-        shots: int = 0,
-        sampling_method: str = "multinomial",
-        force_psd: bool = True,
+        *input_parameters: Tensor | StateVector,
+        shots: int | None = None,
+        sampling_method: str | None = None,
+        simultaneous_processes: int | None = None,
     ) -> Tensor:
         """Compute a fidelity-kernel matrix from raw feature batches.
 
         Parameters
         ----------
-        x1 : torch.Tensor
-            First input batch with shape ``(N, raw_input_size)``.
-        x2 : torch.Tensor | None
-            Optional second input batch with shape ``(M, raw_input_size)``. If
-            omitted, a symmetric training Gram matrix for ``x1`` is returned.
-        shots : int
-            Number of pseudo-sampling shots. Default is ``0``.
-        sampling_method : str
-            Sampling method used when ``shots`` is positive. Default is
-            ``"multinomial"``.
-        force_psd : bool
-            Whether to project symmetric kernel matrices to the nearest
-            positive semi-definite matrix. Default is ``True``.
+        input_parameters : torch.Tensor | merlin.core.state_vector.StateVector
+            One or two raw feature batches. The first tensor has shape
+            ``(N, raw_input_size)``. The optional second tensor has shape
+            ``(M, raw_input_size)``. If omitted, a symmetric training Gram
+            matrix for the first tensor is returned.
+        shots : int | None
+            Number of pseudo-sampling shots. If omitted, exact probabilities
+            are used.
+        sampling_method : str | None
+            Sampling method used when ``shots`` is positive. If omitted,
+            ``"multinomial"`` is used.
+        simultaneous_processes : int | None
+            Present for signature compatibility with
+            :class:`~merlin.algorithms.layer.QuantumLayer`; currently ignored.
 
         Returns
         -------
         torch.Tensor
             Kernel matrix of shape ``(N, N)`` when ``x2`` is omitted, otherwise
             shape ``(N, M)``.
+
+        Raises
+        ------
+        TypeError
+            If inputs are not tensors.
+        ValueError
+            If zero or more than two input tensors are provided.
         """
+        if not 1 <= len(input_parameters) <= 2:
+            raise ValueError(
+                "_CCInvQuantumLayer.forward expects one or two tensor inputs."
+            )
+
+        x1 = input_parameters[0]
+        if not isinstance(x1, Tensor):
+            raise TypeError("_CCInvQuantumLayer.forward expects tensor inputs.")
+
+        x2: Tensor | None = None
+        if len(input_parameters) == 2:
+            x2_candidate = input_parameters[1]
+            if not isinstance(x2_candidate, Tensor):
+                raise TypeError("_CCInvQuantumLayer.forward expects tensor inputs.")
+            x2 = x2_candidate
+
+        effective_shots = 0 if shots is None else shots
+        effective_sampling_method = sampling_method or "multinomial"
         equal_inputs = _inputs_are_equal(x1, x2)
         U_forward = self._compute_unitary_batch(x1).to(x1.device)
 
         len_x1 = len(x1)
         if x2 is not None:
             U_adjoint = (
-                self._compute_unitary_batch(x2)
-                .conj()
-                .transpose(1, 2)
-                .to(x1.device)
+                self._compute_unitary_batch(x2).conj().transpose(1, 2).to(x1.device)
             )
             all_circuits = U_forward.unsqueeze(1) @ U_adjoint.unsqueeze(0)
             all_circuits = all_circuits.view(-1, *all_circuits.shape[2:])
@@ -1371,7 +1398,10 @@ class _CCInvQuantumLayer(QuantumLayer):
             all_circuits = U_forward[upper_idx[0]] @ U_adjoint[upper_idx[1]]
 
         transition_probs = self._compute_transition_probs(
-            all_circuits, self._kernel_input_state, shots, sampling_method
+            all_circuits,
+            self._kernel_input_state,
+            effective_shots,
+            effective_sampling_method,
         )
 
         if x2 is None:
@@ -1384,14 +1414,14 @@ class _CCInvQuantumLayer(QuantumLayer):
             kernel_matrix[upper_idx[1], upper_idx[0]] = transition_probs
             kernel_matrix.fill_diagonal_(1)
 
-            if force_psd:
+            if self.force_psd:
                 kernel_matrix = _project_psd_matrix(kernel_matrix)
             return kernel_matrix
 
         transition_probs = transition_probs.to(dtype=self.dtype, device=x1.device)
         kernel_matrix = transition_probs.reshape(len_x1, len(x2))
 
-        if force_psd and equal_inputs:
+        if self.force_psd and equal_inputs:
             kernel_matrix = 0.5 * (kernel_matrix + kernel_matrix.T)
             kernel_matrix = _project_psd_matrix(kernel_matrix)
 
@@ -1612,6 +1642,7 @@ class FidelityKernel(MerlinModule):
             computation_space=self.computation_space,
             dtype=self.dtype,
             device=self.device,
+            force_psd=self.force_psd,
             angle_encoding_specs=self.feature_map._angle_encoding_specs,
             requires_angle_encoding_specs=(
                 self.feature_map._requires_angle_encoding_specs
@@ -1676,12 +1707,12 @@ class FidelityKernel(MerlinModule):
             x2_batch = torch.as_tensor(
                 x2, dtype=self.dtype, device=self.device
             ).reshape(1, self.input_size)
+            self._quantum_layer.force_psd = self.force_psd
             kernel_matrix = self._quantum_layer(
                 x1_batch,
                 x2_batch,
                 shots=self.shots,
                 sampling_method=self.sampling_method,
-                force_psd=False,
             )
             return float(kernel_matrix.reshape(-1)[0].item())
 
@@ -1695,12 +1726,19 @@ class FidelityKernel(MerlinModule):
         else:
             raise TypeError("x2 is not None nor torch.Tensor")
 
+        self._quantum_layer.force_psd = self.force_psd
+        if x2 is None:
+            return self._quantum_layer(
+                x1,
+                shots=self.shots,
+                sampling_method=self.sampling_method,
+            )
+
         return self._quantum_layer(
             x1,
             x2,
             shots=self.shots,
             sampling_method=self.sampling_method,
-            force_psd=self.force_psd,
         )
 
     @classmethod
