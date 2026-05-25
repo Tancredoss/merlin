@@ -38,7 +38,10 @@ import torch.jit as jit
 
 from merlin.algorithms.layer_utils import NoiseGroups
 from merlin.core.computation_space import ComputationSpace
-from merlin.pcvl_pytorch.noisy_slos import NoisySLOSComputeGraph
+from merlin.pcvl_pytorch.noisy_slos import (
+    NoisySLOSComputeGraph,
+    NoisyG2SLOSComputeGraph,
+)
 from merlin.utils.deprecations import raise_no_bunching_deprecated
 from merlin.utils.dtypes import resolve_float_complex
 from merlin.utils.normalization import (
@@ -1083,7 +1086,7 @@ def build_slos_distribution_computegraph(
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float,
     index_photons: list[tuple[int, ...]] | None = None,
-) -> SLOSComputeGraph | NoisySLOSComputeGraph:
+) -> SLOSComputeGraph | NoisySLOSComputeGraph | NoisyG2SLOSComputeGraph:
     """Construct a reusable SLOS computation graph.
 
     Parameters
@@ -1100,7 +1103,7 @@ def build_slos_distribution_computegraph(
     no_bunching : bool | None
         Deprecated legacy flag. Use ``computation_space`` instead.
     keep_keys : bool
-        Whether to keep the list of mapped Fock states. Default is ``True``.
+        Whether to keep the list of mapped Fock states. It does not apply for simulations with g2 noise. Default is ``True``.
     noise_groups : NoiseGroups|None
         The noise groups defined in the creation of the QuantumLayer. Default is None (no noise).
     device : torch.device | str | None
@@ -1112,7 +1115,7 @@ def build_slos_distribution_computegraph(
 
     Returns
     -------
-    SLOSComputeGraph
+    SLOSComputeGraph | NoisySLOSComputeGraph | NoisyG2SLOSComputeGraph
         Pre-built computation graph ready for repeated evaluations.
 
     """
@@ -1151,15 +1154,20 @@ def build_slos_distribution_computegraph(
             index_photons,
         )
     else:
-        compute_graph = NoisySLOSComputeGraph(
-            noise_groups,
-            m,
-            n_photons,
-            computation_space,
-            keep_keys,
-            device,
-            dtype,
-        )
+        if "g2" in noise_groups.source:
+            compute_graph = NoisyG2SLOSComputeGraph(
+                noise_groups, m, n_photons, computation_space, device, dtype
+            )
+        else:
+            compute_graph = NoisySLOSComputeGraph(
+                noise_groups,
+                m,
+                n_photons,
+                computation_space,
+                keep_keys,
+                device,
+                dtype,
+            )
 
     return compute_graph
 

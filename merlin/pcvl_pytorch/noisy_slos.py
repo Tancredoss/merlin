@@ -39,7 +39,6 @@ class NoisyG2SLOSComputeGraph:
         m: int,
         n_photons: int,
         computation_space: ComputationSpace = ComputationSpace.FOCK,
-        keep_keys: bool = True,
         device: str | torch.device | None = None,
         dtype: torch.dtype = torch.float,
     ) -> None:
@@ -61,8 +60,6 @@ class NoisyG2SLOSComputeGraph:
         self.m = m
         self.n_photons = n_photons
         self.computation_space = computation_space
-
-        self.keep_keys = keep_keys
         self.device = device
         self.dtype = dtype
         self.cdtype = resolve_float_complex(dtype)[1]
@@ -116,6 +113,13 @@ class NoisyG2SLOSComputeGraph:
             )
             for i in range(1, 2 * self.n_photons + 1)
         }
+
+        self.mapped_keys = [
+            tuple(state)
+            for state in Combinadics(
+                self.computation_space.casefold(), n=self.n_photons, m=self.m
+            ).enumerate_states()
+        ]
 
     def _get_extra_photon_combinations(
         self,
@@ -206,12 +210,16 @@ class NoisyG2SLOSComputeGraph:
                         ] + distributions_to_convolve
                         keys_list, probs_list = zip(*all_distributions)
                         keys, probs = convolve_distributions(keys_list, *probs_list)
-                        
+
                         # Reorder probs to match Fock order
-                        fock_states = self._fock_states_per_n[self.n_photons + num_photons_added]
-                        fock_states_list = [tuple(state.tolist()) for state in fock_states]
+                        fock_states = self._fock_states_per_n[
+                            self.n_photons + num_photons_added
+                        ]
+                        fock_states_list = [
+                            tuple(state.tolist()) for state in fock_states
+                        ]
                         key_to_idx = {key: idx for idx, key in enumerate(keys)}
-                        
+
                         reordered_probs = torch.zeros_like(probs)
                         for fock_idx, fock_state in enumerate(fock_states_list):
                             if fock_state in key_to_idx:
@@ -234,6 +242,10 @@ class NoisyG2SLOSComputeGraph:
 
             sector_outputs.append(sector)
         return SectoredDistribution(sector_outputs)
+
+    def to():
+        # TODO
+        pass
 
 
 class NoisySLOSComputeGraph:
