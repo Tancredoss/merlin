@@ -183,7 +183,29 @@ DEPRECATION_REGISTRY: dict[
         False,
         None,
     ),
-    # FidelityKernel.simple deprecations
+    # FeatureMap.simple deprecations
+    "FeatureMap.simple.n_modes": (
+        "The number of modes is fixed to 'input_size + 1'. "
+        "Use CircuitBuilder directly if you need a different mode count.",
+        False,
+        None,
+    ),
+    # FidelityKernel.simple method-level deprecation
+    # TODO: In release 0.5.x, remove this entry along with FidelityKernel.simple.
+    "FidelityKernel.simple": (
+        "FidelityKernel.simple() is deprecated and will be removed in release 0.5. "
+        "Build a feature map with FeatureMap.simple(input_size=...) and pass it to "
+        "FidelityKernel(feature_map=...) directly.",
+        False,
+        None,
+    ),
+    # FidelityKernel.simple parameter-level deprecations
+    "FidelityKernel.simple.n_modes": (
+        "The number of modes is fixed to 'input_size + 1'. "
+        "Use CircuitBuilder directly if you need a different mode count.",
+        False,
+        None,
+    ),
     "FidelityKernel.simple.n_photons": (
         "Since merlin >= 0.3, the number of photons is automatically inferred from input dimensionality. Manual control of photons is deprecated.",
         False,

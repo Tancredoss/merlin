@@ -42,6 +42,7 @@ from ..pcvl_pytorch.locirc_to_tensor import CircuitConverter
 from ..utils.deprecations import sanitize_parameters
 from ..utils.dtypes import to_torch_dtype
 from .layer import QuantumLayer
+from .layer_utils import _build_simple_circuit
 from .module import MerlinModule
 
 
@@ -268,9 +269,13 @@ class FeatureMap:
             resolved_circuit = circuit
             self.experiment = pcvl.Experiment(resolved_circuit)
         elif experiment is not None:
+            _post_select_fn = experiment.post_select_fn
+            _has_non_trivial_post_select = (
+                _post_select_fn is not None and _post_select_fn != pcvl.PostSelect()
+            )
             if (
                 not experiment.is_unitary
-                or not experiment.post_select_fn == pcvl.PostSelect()
+                or _has_non_trivial_post_select
                 or experiment.heralds
             ):
                 raise ValueError(
@@ -642,9 +647,12 @@ class FeatureMap:
         dtype: str | torch.dtype = torch.float32,
         device: torch.device | None = None,
         angle_encoding_scale: float = 1.0,
+        # TODO: In release 0.5.x, remove the n_modes parameter.
         n_modes: int | None = None,
     ) -> "FeatureMap":
         """Simple factory method to create a FeatureMap with minimal configuration.
+
+        The circuit uses ``n_modes = input_size + 1`` by default.
 
         Parameters
         ----------
@@ -657,8 +665,12 @@ class FeatureMap:
         angle_encoding_scale : float
             Global scaling applied to angle encoding features. Default is ``1.0``.
         n_modes : int | None
-            Number of photonic modes used by the helper circuit. If omitted,
-            ``n_modes = input_size + 1``. Maximum is 20.
+            .. warning:: *Deprecated since version 0.4:*
+                Passing ``n_modes`` is deprecated and will be removed in
+                release 0.5. The number of modes is fixed to
+                ``input_size + 1``. Use
+                :class:`~merlin.builder.circuit_builder.CircuitBuilder`
+                directly if you need a different mode count.
 
         Returns
         -------
@@ -668,10 +680,12 @@ class FeatureMap:
         Raises
         ------
         ValueError
-            If ``input_size`` or ``n_modes`` is outside the supported range.
+            If ``input_size`` is outside the supported range.
         """
+        # TODO: In release 0.5.x, remove n_modes handling and always use input_size + 1.
         if n_modes is None:
             n_modes = input_size + 1
+
         if n_modes < 2:
             raise ValueError(f"The number of modes must be at least 2, got {n_modes}")
         if input_size > 19 or n_modes > 20:
@@ -684,24 +698,7 @@ class FeatureMap:
         if input_size > n_modes:
             raise ValueError(ANGLE_ENCODING_MODE_ERROR)
 
-        builder = CircuitBuilder(n_modes=n_modes)
-
-        # Trainable entangling layer before encoding
-        builder.add_entangling_layer(
-            trainable=True,
-            name="LI_simple",
-        )
-
-        # Angle encoding
-        builder.add_angle_encoding(
-            modes=list(range(int(input_size))),
-            name="input",
-            subset_combinations=False,
-            scale=angle_encoding_scale,
-        )
-
-        # Trainable entangling layer after encoding
-        builder.add_entangling_layer(trainable=True, name="RI_simple")
+        builder = _build_simple_circuit(input_size, n_modes, angle_encoding_scale)
 
         return cls(
             builder=builder,
@@ -1741,6 +1738,7 @@ class FidelityKernel(MerlinModule):
             sampling_method=self.sampling_method,
         )
 
+    # TODO: In release 0.5.x, remove FidelityKernel.simple.
     @classmethod
     @sanitize_parameters
     def simple(
@@ -1754,9 +1752,15 @@ class FidelityKernel(MerlinModule):
         dtype: str | torch.dtype = torch.float32,
         device: torch.device | None = None,
         angle_encoding_scale: float = 1.0,
+        # TODO: In release 0.5.x, remove the n_modes parameter.
         n_modes: int | None = None,
     ) -> "FidelityKernel":
         """Create a simple fidelity kernel with minimal configuration.
+
+        .. warning:: *Deprecated since version 0.4:*
+            This factory method is deprecated and will be removed in release 0.5.
+            Build a feature map with :meth:`FeatureMap.simple` and pass it
+            directly to :class:`FidelityKernel`.
 
         Parameters
         ----------
@@ -1779,7 +1783,12 @@ class FidelityKernel(MerlinModule):
         angle_encoding_scale : float
             Global scaling applied to angle encoding features. Default is ``1.0``.
         n_modes : int | None
-            Number of photonic modes used by the helper construction.
+            .. warning:: *Deprecated since version 0.4:*
+                Passing ``n_modes`` is deprecated and will be removed in
+                release 0.5. The number of modes is fixed to
+                ``input_size + 1``. Use
+                :class:`~merlin.builder.circuit_builder.CircuitBuilder`
+                directly if you need a different mode count.
 
         Returns
         -------
@@ -1795,18 +1804,21 @@ class FidelityKernel(MerlinModule):
             If the generated experiment configuration is incompatible with the
             requested computation space.
         """
-        feature_map = FeatureMap.simple(
-            input_size=input_size,
-            n_modes=n_modes,
-            dtype=dtype,
-            device=device,
-            angle_encoding_scale=angle_encoding_scale,
-        )
+        # TODO: In release 0.5.x, remove n_modes handling; always use input_size + 1.
+        state_size = n_modes if n_modes is not None else input_size + 1
 
-        if n_modes is None:
-            state_size = input_size + 1
-        else:
-            state_size = n_modes
+        # Suppress the DeprecationWarning from FeatureMap.simple when n_modes is
+        # forwarded: FidelityKernel.simple already warned the caller via its own
+        # registry entry, so a second warning would be confusing.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            feature_map = FeatureMap.simple(
+                input_size=input_size,
+                n_modes=n_modes,
+                dtype=dtype,
+                device=device,
+                angle_encoding_scale=angle_encoding_scale,
+            )
 
         input_state = state_size * [0]
         for i in range(state_size):
@@ -1910,9 +1922,13 @@ class FidelityKernel(MerlinModule):
     @staticmethod
     def _validate_experiment(experiment: pcvl.Experiment) -> None:
         """Validate that the provided experiment is compatible with fidelity kernels."""
+        post_select_fn = experiment.post_select_fn
+        has_non_trivial_post_select = (
+            post_select_fn is not None and post_select_fn != pcvl.PostSelect()
+        )
         if (
             not experiment.is_unitary
-            or not experiment.post_select_fn == pcvl.PostSelect()
+            or has_non_trivial_post_select
             or experiment.heralds
             or experiment.in_heralds
         ):
