@@ -77,7 +77,7 @@ class NoisyG2SLOSComputeGraph:
                 m=self.m,
                 n_photons=self.n_photons,
                 computation_space=self.computation_space,
-                keep_keys=keep_keys,
+                keep_keys=True,
                 device=device,
                 dtype=dtype,
             )
@@ -101,7 +101,7 @@ class NoisyG2SLOSComputeGraph:
                     m=self.m,
                     n_photons=self.n_photons + i,
                     computation_space=self.computation_space,
-                    keep_keys=keep_keys,
+                    keep_keys=False,
                     device=device,
                     dtype=dtype,
                     _slos_graphs=regular_slos_graphs[: n_photons + i],
@@ -109,54 +109,26 @@ class NoisyG2SLOSComputeGraph:
                 for i in range(self.n_photons + 1)
             ]
 
-    def _get_extra_photon_states(
+        # All fock states associated with each photon number n
+        self._fock_states_per_n = {
+            i: torch.tensor(Combinadics("fock", n=i, m=self.m).enumerate_states()).to(
+                device
+            )
+            for i in range(1, 2 * self.n_photons + 1)
+        }
+
+    def _get_extra_photon_combinations(
         self,
         input_state: list[int] | tuple[int, ...],
-    ) -> list[torch.Tensor]:
-        output = []
+    ) -> list[list[tuple[int]]]:
+        num_photons = sum(input_state)
+        output = [[]]
 
+        # Convert to tensor if not already
         if not isinstance(input_state, Tensor):
             input_state_tensor = torch.tensor(list(input_state), dtype=torch.int32)
         else:
             input_state_tensor = input_state.int()
-
-        output.append(input_state_tensor.unsqueeze(0))
-
-        positions = torch.arange(len(input_state_tensor), dtype=torch.long).to(
-            self.device
-        )
-        photon_positions = torch.repeat_interleave(positions, input_state_tensor).to(
-            self.device
-        )
-        for num_to_add in range(1, sum(input_state) + 1):
-            # All combinations of photons to add
-            photon_to_add_indices_list = list(
-                combinations(photon_positions.tolist(), num_to_add)
-            )
-            photon_to_add_indices = torch.tensor(
-                photon_to_add_indices_list, dtype=torch.long
-            )
-
-            n_comb = photon_to_add_indices.shape[0]
-
-            # Base matrix: original vector repeated for each combination
-            base = input_state_tensor.unsqueeze(0).repeat(n_comb, 1)
-            for i, remove_index in enumerate(photon_to_add_indices):
-                for j in remove_index:
-                    base[i, j] = base[i, j] + 1
-            output.append(base)
-
-    def _get_OBB_extra_photon_states(
-        self,
-        input_state: list[int] | tuple[int, ...],
-    ) -> torch.Tensor:
-        output = []
-        if not isinstance(input_state, Tensor):
-            input_state_tensor = torch.tensor(list(input_state), dtype=torch.int32)
-        else:
-            input_state_tensor = input_state.int()
-
-        output.append(input_state_tensor)
 
         positions = torch.arange(len(input_state_tensor), dtype=torch.long).to(
             self.device
@@ -165,11 +137,9 @@ class NoisyG2SLOSComputeGraph:
             self.device
         )
 
-        output = torch.zeros(
-            (photon_positions.size(0), len(input_state)), dtype=torch.long
-        )
-        for i, j in enumerate(photon_positions):
-            output[i, j] = 1
+        for i in range(1, num_photons + 1):
+            output.append(list(combinations(photon_positions.tolist(), i)))
+
         return output
 
     def compute_probs(
@@ -178,19 +148,92 @@ class NoisyG2SLOSComputeGraph:
         input_state: list[int] | tuple[int, ...],
     ) -> SectoredDistribution:
 
+        sector_outputs = []
+
         if unitary.size(0) == unitary.size(1) and unitary.ndim == 2:
             unitary = unitary.unsqueeze(0)
 
+        # Getting the non-g2 probs and the one hot runs for g2_distinguishable photons
         if self.g2_distinguishable:
-            OBB_states = self._get_OBB_extra_photon_states(input_state=input_state)
-            original_probs = self._slos_graphs.compute_probs(unitary, input_state)
-
+            keys_regular, probs_regular = self._slos_graphs.compute_probs(
+                unitary, input_state
+            )
+            # Generate one-hot states for each active mode and compute their probs
+            one_hot_slos_graphs = {}
+            for mode_idx in range(len(input_state)):
+                if input_state[mode_idx] > 0:  # Only for active modes
+                    one_hot_state = [0] * len(input_state)
+                    one_hot_state[mode_idx] = 1
+                    keys_one_hot, probs_one_hot = self._slos_graphs._slos_graphs[
+                        0
+                    ].compute_probs(unitary, one_hot_state)
+                    one_hot_slos_graphs[mode_idx] = (keys_one_hot, probs_one_hot)
         else:
-            input_states = self._get_extra_photon_states(input_state)
+            probs_regular = self._slos_graphs[0].compute_probs(unitary, input_state)
 
-            for i, states in enumerate(input_states):
-                for state in states:
-                    self._slos_graphs[i].compute_probs(unitary, state)
+        # Getting the photon combinations
+        extra_photons_combinations = self._get_extra_photon_combinations(input_state)
+
+        # Calculating for each sector
+        for num_photons_added in range(len(extra_photons_combinations)):
+            weight_k = (self.g2 ** (num_photons_added)) * (
+                (1 - self.g2) ** (len(input_state) - num_photons_added)
+            )
+
+            # Creating the n_photons + num_photons_added sector
+            sector = SectorResult(
+                torch.zeros(
+                    Combinadics(
+                        scheme="fock", n=self.n_photons + num_photons_added, m=self.m
+                    )
+                ),
+                n_modes=self.m,
+                n_photons=self.n_photons,
+            )
+
+            # For each combination in the sector
+            if num_photons_added == 0:
+                sector.tensor = sector.tensor + weight_k * probs_regular
+            else:
+                for combination in extra_photons_combinations[num_photons_added]:
+                    if self.g2_distinguishable:
+                        distributions_to_convolve = [
+                            one_hot_slos_graphs[photon] for photon in combination
+                        ]
+                        # Convolve probs_regular with all one-hot distributions
+                        all_distributions = [
+                            (keys_regular, probs_regular)
+                        ] + distributions_to_convolve
+                        keys_list, probs_list = zip(*all_distributions)
+                        keys, probs = convolve_distributions(keys_list, *probs_list)
+                        
+                        # Reorder probs to match Fock order
+                        fock_states = self._fock_states_per_n[self.n_photons + num_photons_added]
+                        fock_states_list = [tuple(state.tolist()) for state in fock_states]
+                        key_to_idx = {key: idx for idx, key in enumerate(keys)}
+                        
+                        reordered_probs = torch.zeros_like(probs)
+                        for fock_idx, fock_state in enumerate(fock_states_list):
+                            if fock_state in key_to_idx:
+                                conv_idx = key_to_idx[fock_state]
+                                if probs.ndim == 1:
+                                    reordered_probs[fock_idx] = probs[conv_idx]
+                                else:
+                                    reordered_probs[:, fock_idx] = probs[:, conv_idx]
+                        probs = reordered_probs
+
+                    else:
+                        input_state_to_run = input_state
+                        for photon in combination:
+                            input_state_to_run[photon] += 1
+                        probs = self._slos_graphs[num_photons_added].compute_probs(
+                            unitary, input_state_to_run
+                        )
+
+                    sector.tensor = sector.tensor + weight_k * probs
+
+            sector_outputs.append(sector)
+        return SectoredDistribution(sector_outputs)
 
 
 class NoisySLOSComputeGraph:
