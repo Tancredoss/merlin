@@ -189,9 +189,12 @@ class OccupancyGrouping(nn.Module):
     ``OccupancyGrouping`` is a key-aware grouping policy. Unlike
     :class:`LexGrouping` and :class:`ModGrouping`, its output size is inferred
     from the output keys it is bound to. Columns whose keys resolve to the same
-    occupancy key are summed into the same output bin. Output bins are ordered
-    lexicographically by grouped key so the result is deterministic and does not
-    depend on simulator column order.
+    occupancy key are summed into the same output bin. With
+    ``collapse_counts=True``, any nonzero count in a key is converted to ``1``
+    before grouping, so bunched keys such as ``(2, 0)`` and ``(1, 0)`` occupy
+    the same output bin. Output bins are ordered lexicographically by grouped
+    key so the result is deterministic and does not depend on simulator column
+    order.
 
     Parameters
     ----------
@@ -202,6 +205,9 @@ class OccupancyGrouping(nn.Module):
     max_count_per_mode : int | None
         Maximum allowed count in each mode. Keys with a larger count are
         dropped. If omitted, all keys are retained. Default is ``None``.
+    collapse_counts : bool
+        Whether to convert each retained key count to occupancy indicators
+        before grouping. Default is ``False``.
     renormalize : bool
         Whether to renormalize by the kept probability mass when keys are
         dropped. Default is ``True``.
@@ -210,8 +216,8 @@ class OccupancyGrouping(nn.Module):
     ------
     TypeError
         If ``max_count_per_mode`` is not an integer or ``None``, if
-        ``renormalize`` is not a bool, or if output keys contain non-integer
-        entries.
+        ``collapse_counts`` or ``renormalize`` are not bool, or if output keys
+        contain non-integer entries.
     ValueError
         If ``max_count_per_mode`` is negative, if output keys are empty, if
         output keys have inconsistent lengths, if key entries are negative, or
@@ -227,6 +233,7 @@ class OccupancyGrouping(nn.Module):
         output_keys: Sequence[Sequence[int]] | None = None,
         *,
         max_count_per_mode: int | None = None,
+        collapse_counts: bool = False,
         renormalize: bool = True,
     ) -> None:
         """Initialize an occupancy grouping.
@@ -240,6 +247,10 @@ class OccupancyGrouping(nn.Module):
         max_count_per_mode : int | None
             Maximum allowed count in each mode. Keys with a larger count are
             dropped. If omitted, all keys are retained. Default is ``None``.
+        collapse_counts : bool
+            Whether to convert each retained key count to occupancy indicators
+            before grouping. Filtering by ``max_count_per_mode`` is applied
+            before this conversion. Default is ``False``.
         renormalize : bool
             Whether to renormalize by the kept probability mass when keys are
             dropped. Default is ``True``.
@@ -248,8 +259,8 @@ class OccupancyGrouping(nn.Module):
         ------
         TypeError
             If ``max_count_per_mode`` is not an integer or ``None``, if
-            ``renormalize`` is not a bool, or if output keys contain
-            non-integer entries.
+            ``collapse_counts`` or ``renormalize`` are not bool, or if output
+            keys contain non-integer entries.
         ValueError
             If ``max_count_per_mode`` is negative, if output keys are empty, if
             output keys have inconsistent lengths, if key entries are negative,
@@ -262,10 +273,13 @@ class OccupancyGrouping(nn.Module):
             if max_count_per_mode < 0:
                 raise ValueError("max_count_per_mode must be non-negative.")
             max_count_per_mode = int(max_count_per_mode)
+        if type(collapse_counts) is not bool:
+            raise TypeError("collapse_counts must be a bool.")
         if type(renormalize) is not bool:
             raise TypeError("renormalize must be a bool.")
 
         self.max_count_per_mode = max_count_per_mode
+        self.collapse_counts = collapse_counts
         self.renormalize = renormalize
         self.input_size = None
         self.output_size = 0
@@ -309,6 +323,7 @@ class OccupancyGrouping(nn.Module):
         return type(self)(
             output_keys,
             max_count_per_mode=self.max_count_per_mode,
+            collapse_counts=self.collapse_counts,
             renormalize=self.renormalize,
         )
 
@@ -385,7 +400,10 @@ class OccupancyGrouping(nn.Module):
             ):
                 continue
             kept_columns.append(index)
-            kept_keys.append(key)
+            if self.collapse_counts:
+                kept_keys.append(_collapse_occupancy_key(key))
+            else:
+                kept_keys.append(key)
 
         if not kept_keys:
             raise ValueError("OccupancyGrouping must retain at least one output key.")
@@ -430,6 +448,11 @@ def _normalize_occupancy_keys(
         normalized.append(tuple(normalized_key))
 
     return normalized
+
+
+def _collapse_occupancy_key(key: tuple[int, ...]) -> tuple[int, ...]:
+    """Convert a count-resolved key to occupancy indicators."""
+    return tuple(1 if count > 0 else 0 for count in key)
 
 
 def _bind_grouping_to_output_keys(

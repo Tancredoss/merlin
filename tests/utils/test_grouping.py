@@ -291,6 +291,20 @@ class TestOccupancyGrouping:
         assert grouping.output_keys == ((0, 1), (1, 0))
         assert torch.allclose(output, expected)
 
+    def test_occupancy_grouping_collapses_counts_when_requested(self):
+        """Bunched states should merge with their occupancy bin when requested."""
+        grouping = OccupancyGrouping(
+            output_keys=[(2, 0), (1, 0), (0, 2), (0, 1), (1, 1), (0, 0)],
+            collapse_counts=True,
+        )
+        input_dist = torch.tensor([[0.30, 0.15, 0.10, 0.20, 0.20, 0.05]])
+
+        output = grouping(input_dist)
+
+        expected = torch.tensor([[0.05, 0.30, 0.45, 0.20]])
+        assert grouping.output_keys == ((0, 0), (0, 1), (1, 0), (1, 1))
+        assert torch.allclose(output, expected)
+
     def test_occupancy_grouping_filters_and_renormalizes(self):
         """Filtered keys should be removed and kept mass renormalized."""
         grouping = OccupancyGrouping(
@@ -303,6 +317,21 @@ class TestOccupancyGrouping:
 
         assert grouping.output_keys == ((0, 1), (1, 0))
         assert torch.allclose(output, torch.tensor([[0.5, 0.5]]))
+
+    def test_occupancy_grouping_filters_before_collapsing_counts(self):
+        """Raw-count filters should be applied before occupancy collapse."""
+        grouping = OccupancyGrouping(
+            output_keys=[(2, 0), (1, 0), (0, 2), (0, 1), (1, 1)],
+            max_count_per_mode=1,
+            collapse_counts=True,
+        )
+        input_dist = torch.tensor([[0.40, 0.20, 0.10, 0.10, 0.20]])
+
+        output = grouping(input_dist)
+
+        expected = torch.tensor([[0.20, 0.40, 0.40]])
+        assert grouping.output_keys == ((0, 1), (1, 0), (1, 1))
+        assert torch.allclose(output, expected)
 
     def test_occupancy_grouping_zero_kept_mass_returns_zero(self):
         """Renormalization should not create NaN when kept mass is zero."""
@@ -359,6 +388,8 @@ class TestOccupancyGrouping:
             OccupancyGrouping(output_keys=[(2, 0)], max_count_per_mode=1)
         with pytest.raises(TypeError, match="max_count_per_mode"):
             OccupancyGrouping(max_count_per_mode=cast(int, 1.5))
+        with pytest.raises(TypeError, match="collapse_counts"):
+            OccupancyGrouping(collapse_counts=cast(bool, 1))
 
     def test_occupancy_grouping_preserves_device_and_dtype(self):
         """Output tensors should preserve input device and dtype."""

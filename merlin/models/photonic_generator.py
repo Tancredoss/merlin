@@ -289,8 +289,12 @@ class ImageAdapter(OutputAdapter):
         preserves the specified channel count.
     headwise : bool
         Whether to adapt each generator head to an equal-sized image patch
-        before concatenation. If ``False``, all heads are concatenated and then
-        adapted once. Default is ``False``.
+        before concatenation. If ``False``, all heads are flattened,
+        concatenated, and center-cropped or padded once to the total image
+        feature count. If ``True``, each head is center-cropped or padded to an
+        equal patch size before the patches are concatenated. Center-cropping
+        discards features symmetrically from the flattened vector. Default is
+        ``False``.
     normalize_patches : bool
         Whether to divide each headwise patch by its per-sample maximum after
         crop/pad. Requires ``headwise=True``. Default is ``False``.
@@ -327,8 +331,12 @@ class ImageAdapter(OutputAdapter):
             width)`` preserves the specified channel count.
         headwise : bool
             Whether to adapt each generator head to an equal-sized image patch
-            before concatenation. If ``False``, all heads are concatenated and
-            then adapted once. Default is ``False``.
+            before concatenation. If ``False``, all heads are flattened,
+            concatenated, and center-cropped or padded once to the total image
+            feature count. If ``True``, each head is center-cropped or padded
+            to an equal patch size before the patches are concatenated.
+            Center-cropping discards features symmetrically from the flattened
+            vector. Default is ``False``.
         normalize_patches : bool
             Whether to divide each headwise patch by its per-sample maximum
             after crop/pad. Requires ``headwise=True``. Default is ``False``.
