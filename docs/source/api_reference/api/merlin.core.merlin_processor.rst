@@ -250,8 +250,7 @@ Backends & Commands
   initialization and stored in ``backend_capabilities``. Both the
   RemoteProcessor path (via the original RP) and ISession path (via the
   first processor built from the session) use this snapshot.
-* If the backend exposes ``"probs"``, the processor queries exact probabilities
-  and ignores ``nsample``.
+* If the backend exposes ``"probs"`` and  ``nsample`` is None or 0, the processor queries exact probabilities.
 * Otherwise it uses ``"sample_count"`` or ``"samples"`` with
   ``nsample or DEFAULT_SHOTS_PER_CALL``.
 * The backward-compatibility properties ``backend_name`` and

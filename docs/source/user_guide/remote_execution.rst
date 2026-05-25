@@ -578,8 +578,8 @@ Version Notes
   method to define the available commands. Both paths now support chunking and ``chunk_concurrency`` — each chunk
   gets an independent ``RemoteProcessor`` via ``session.build_remote_processor()``.
 
-  To see the avialable commands and backend name. Call the ``backend_capabilities``attribute of the ``MerlinProcessor``.
-* If the probs command is available and n_samples is None or 0, the processor will run a probabilities simulations.
+  To see the available commands and backend name, call the ``backend_capabilities`` attribute of the ``MerlinProcessor``.
+* If the probs command is available and nsample is None or 0, the processor will run a probabilities simulations.
   Otherwise, sampling simulations or quantum executions will be done.
 * ``MeasurementStrategy.probs(computation_space=...)`` replaces the older
   ``no_bunching`` flag and bare ``computation_space`` parameter on
@@ -588,6 +588,7 @@ Version Notes
 * Default ``chunk_concurrency`` is **1** (serial intra-leaf).
 * Failed chunks are retried up to 3 times with exponential backoff.
   Cancellation and timeout errors propagate immediately.
-* ``max_shots_per_call`` is used as a hard cap for ``nsample``. So, when
-  ``nsample > max_shots_per_call``, ``max_shots_per_call`` samples are 
-  generated preventing Perceval from silently clamping the sample count.
+* ``max_shots_per_call`` sets the maximum number of samples sent in a
+   single call. When ``nsample > max_shots_per_call``, the call is limited
+   to ``max_shots_per_call`` samples, which prevents Perceval from silently
+   clamping the requested sample count. The default ``max_shots_per_call`` is 100 000.

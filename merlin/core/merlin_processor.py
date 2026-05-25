@@ -32,12 +32,12 @@ class BackendCapabilities:
     ----------
     name : str
         Backend platform name (e.g., "sim:slos", "perceval-qpu:scaleway").
-    available_commands : list[str]
-        List of supported remote commands (e.g., ["probs", "sample_count"]).
+    available_commands : tuple[str]
+        Immutable snapshot of supported remote commands (e.g., ["probs", "sample_count"]).
     """
 
     name: str
-    available_commands: list[str]
+    available_commands: tuple[str]
 
 
 class MerlinProcessor:
@@ -151,7 +151,7 @@ class MerlinProcessor:
             Hard cap on shots per remote sampler call (only applies when
             sampling; ignored for exact probabilities). If ``nsample`` exceeds
             this value in :meth:`forward` or :meth:`forward_async`, ``nsample``
-            is clamped with a warning. Default: None.
+            is clamped with a warning. if it is None, it will be set to 100 000. Default: None.
         chunk_concurrency : int
             Max number of chunk jobs in flight per quantum leaf during a
             single call. Default: 1 (serial).
@@ -208,7 +208,7 @@ class MerlinProcessor:
         )
         self.backend_capabilities = BackendCapabilities(
             name=backend_name,
-            available_commands=available_cmds,
+            available_commands=tuple(available_cmds),
         )
 
         # Check if commands list is empty and warn
@@ -234,9 +234,10 @@ class MerlinProcessor:
 
         self.microbatch_size = microbatch_size
         self.default_timeout = float(timeout)
-
         self.max_shots_per_call = (
-            None if max_shots_per_call is None else int(max_shots_per_call)
+            self.DEFAULT_MAX_SHOTS
+            if max_shots_per_call is None
+            else int(max_shots_per_call)
         )
 
         # Concurrency of chunk submissions inside a single quantum leaf
@@ -262,8 +263,8 @@ class MerlinProcessor:
         return self.backend_capabilities.name
 
     @property
-    def available_commands(self) -> list[str]:
-        """List of supported remote commands (e.g., ["probs", "sample_count"]).
+    def available_commands(self) -> tuple[str]:
+        """Snapshot of supported remote commands (e.g., ("probs", "sample_count")).
 
         This is a backward-compatibility property. Use `backend_capabilities.available_commands` directly.
         """
@@ -303,14 +304,16 @@ class MerlinProcessor:
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        suppress_exception = False
         try:
             self.cancel_all()
         finally:
             # End session lifecycle if provided
             if self.session is not None and hasattr(self.session, "__exit__"):
-                self.session.__exit__(exc_type, exc, tb)
+                suppress_exception = bool(self.session.__exit__(exc_type, exc, tb))
             with self._lock:
                 self._closed = True
+        return suppress_exception
 
     def cancel_all(self) -> None:
         """Cancel all in-flight jobs across all futures."""
@@ -340,8 +343,7 @@ class MerlinProcessor:
 
         The backend determines whether results are exact probabilities or samples:
 
-        - If backend exposes ``"probs"`` command: uses exact probabilities; ``nsample``
-          is ignored.
+        - If backend exposes ``"probs"`` command: uses exact probabilities if sample is None or 0.
         - Otherwise: uses sampling; shots = ``nsample`` if provided, else
           ``DEFAULT_SHOTS_PER_CALL``. If ``nsample`` exceeds ``max_shots_per_call``,
           a warning is issued and ``nsample`` is clamped.

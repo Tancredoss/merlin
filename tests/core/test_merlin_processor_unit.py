@@ -150,9 +150,9 @@ def make_state() -> dict:
 
 def test_backend_capabilities_creation():
     """BackendCapabilities stores name and available_commands."""
-    caps = BackendCapabilities(name="sim:slos", available_commands=["probs", "samples"])
+    caps = BackendCapabilities(name="sim:slos", available_commands=("probs", "samples"))
     assert caps.name == "sim:slos"
-    assert caps.available_commands == ["probs", "samples"]
+    assert caps.available_commands == ("probs", "samples")
 
 
 def test_backend_capabilities_is_frozen():
@@ -201,7 +201,7 @@ def test_remote_processor_path_stores_backend_capabilities():
         proc = MerlinProcessor(remote_processor=remote_processor)
 
     assert proc.backend_capabilities.name == "sim:slos"
-    assert proc.backend_capabilities.available_commands == ["probs", "sample_count"]
+    assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
 
 
 def test_backend_name_property_backward_compatibility():
@@ -233,9 +233,9 @@ def test_available_commands_property_backward_compatibility():
         proc = MerlinProcessor(remote_processor=remote_processor)
 
     # Old-style access should still work
-    assert proc.available_commands == ["probs", "samples"]
+    assert proc.available_commands == ("probs", "samples")
     # New-style access should work too
-    assert proc.backend_capabilities.available_commands == ["probs", "samples"]
+    assert proc.backend_capabilities.available_commands == ("probs", "samples")
     # Both should refer to the same value
     assert proc.available_commands == proc.backend_capabilities.available_commands
 
@@ -253,7 +253,7 @@ def test_session_path_stores_backend_capabilities():
         proc = MerlinProcessor(session=session)
 
     assert proc.backend_capabilities.name == "perceval-qpu:scaleway"
-    assert proc.backend_capabilities.available_commands == ["probs", "sample_count"]
+    assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
 
 
 def test_remote_processor_path_copies_available_commands():
@@ -268,7 +268,7 @@ def test_remote_processor_path_copies_available_commands():
 
     assert proc.remote_processor is remote_processor
     assert proc.session is None
-    assert proc.available_commands == ["probs", "sample_count"]
+    assert proc.available_commands == ("probs", "sample_count")
 
 
 def test_session_path_with_empty_commands_and_sampling_only():
@@ -286,6 +286,8 @@ def test_session_path_with_empty_commands_and_sampling_only():
             proc = MerlinProcessor(session=session)
     sampler = FakeSampler()
 
+    assert proc.available_commands == ()
+
     _, is_probability = proc._submit_job(
         sampler,
         nsample=None,
@@ -294,7 +296,7 @@ def test_session_path_with_empty_commands_and_sampling_only():
     )
     assert proc.session is session
     # Session path does not store remote_processor; only uses it per chunk
-    assert proc.available_commands == []
+    assert proc.available_commands == ()
     assert is_probability is False
     assert sampler.sample_count.executed is True
     assert sampler.sample_count.execute_kwargs == {
@@ -971,7 +973,7 @@ def test_create_fresh_rp_remote_processor_path_maintains_available_commands():
         proc = MerlinProcessor(remote_processor=original_rp)
 
     # Verify available_commands was captured at init
-    assert proc.available_commands == ["probs", "sample_count", "samples"]
+    assert proc.available_commands == ("probs", "sample_count", "samples")
 
     # Create fresh RPs and verify available_commands is unchanged
     cloned_rp1 = MagicMock(spec=RemoteProcessor)
@@ -986,7 +988,7 @@ def test_create_fresh_rp_remote_processor_path_maintains_available_commands():
         proc._create_fresh_rp()
 
     # available_commands should still reflect the original
-    assert proc.available_commands == ["probs", "sample_count", "samples"]
+    assert proc.available_commands == ("probs", "sample_count", "samples")
 
 
 def test_create_fresh_rp_session_path_maintains_available_commands():
@@ -1008,14 +1010,14 @@ def test_create_fresh_rp_session_path_maintains_available_commands():
         proc = MerlinProcessor(session=session)
 
     # Verify available_commands was captured from init processor
-    assert proc.available_commands == ["probs", "sample_count"]
+    assert proc.available_commands == ("probs", "sample_count")
 
     # Create fresh processors
     proc._create_fresh_rp()
     proc._create_fresh_rp()
 
     # available_commands should still reflect the initial state
-    assert proc.available_commands == ["probs", "sample_count"]
+    assert proc.available_commands == ("probs", "sample_count")
 
 
 def test_create_fresh_rp_remote_processor_path_with_cloning_disabled():
