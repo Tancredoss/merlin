@@ -59,7 +59,7 @@ from ..utils.deprecations import (
     normalize_measurement_strategy,
     sanitize_parameters,
 )
-from ..utils.grouping import ModGrouping
+from ..utils.grouping import ModGrouping, _bind_grouping_to_output_keys
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
     InitializationContext,
@@ -362,6 +362,9 @@ class QuantumLayer(MerlinModule):
         self._photon_loss_transform: PhotonLossTransform | None = None
         self._detector_keys: list[tuple[int, ...]] = []
         self._raw_output_keys: list[tuple[int, ...]] = []
+        self._measurement_output_keys: list[tuple[int, ...]] = []
+        self._grouped_output_keys: list[tuple[int, ...]] | None = None
+        self._measurement_grouping: nn.Module | None = None
         self._detector_is_identity = True
         self._output_size = 0
         self._current_params: dict[str, Any] = {}
@@ -554,6 +557,21 @@ class QuantumLayer(MerlinModule):
                 else list(self._detector_keys)
             )
 
+        self._measurement_output_keys = list(keys)
+        self._grouped_output_keys = None
+        self._measurement_grouping = None
+        if (
+            isinstance(measurement_strategy, MeasurementStrategy)
+            and measurement_strategy.grouping is not None
+        ):
+            if kind == MeasurementKind.PROBABILITIES:
+                self._measurement_grouping = _bind_grouping_to_output_keys(
+                    measurement_strategy.grouping,
+                    keys,
+                )
+            elif kind == MeasurementKind.PARTIAL:
+                self._measurement_grouping = measurement_strategy.grouping
+
         dist_size = len(keys)
 
         # Determine output size (upstream model)
@@ -575,6 +593,19 @@ class QuantumLayer(MerlinModule):
             self._output_size = self._detector_transform.output_size
         else:
             raise TypeError(f"Unknown measurement_strategy: {measurement_strategy}")
+
+        if (
+            kind == MeasurementKind.PROBABILITIES
+            and self._measurement_grouping is not None
+        ):
+            grouping_output_keys = getattr(
+                self._measurement_grouping, "output_keys", None
+            )
+            if grouping_output_keys is not None:
+                self._grouped_output_keys = [
+                    self._normalize_output_key(key) for key in grouping_output_keys
+                ]
+                self._output_size = len(self._grouped_output_keys)
 
         # Create measurement mapping
         if kind == MeasurementKind.PARTIAL:
@@ -1019,7 +1050,7 @@ class QuantumLayer(MerlinModule):
                 MeasurementKind.PROBABILITIES,
                 MeasurementKind.PARTIAL,
             ):
-                grouping = self.measurement_strategy.grouping
+                grouping = self._measurement_grouping
 
         results = strategy.process(
             distribution=distribution,
@@ -1315,6 +1346,12 @@ class QuantumLayer(MerlinModule):
             == MeasurementKind.AMPLITUDES
         ):
             return list(self._raw_output_keys)
+        if (
+            _resolve_measurement_kind(self.measurement_strategy)
+            == MeasurementKind.PROBABILITIES
+            and self._grouped_output_keys is not None
+        ):
+            return list(self._grouped_output_keys)
         if self._detector_is_identity:
             return list(self._photon_loss_keys)
         return list(self._detector_keys)

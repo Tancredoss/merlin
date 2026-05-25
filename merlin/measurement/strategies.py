@@ -36,7 +36,7 @@ from merlin.core.computation_space import ComputationSpace
 from merlin.core.partial_measurement import PartialMeasurement
 from merlin.measurement.process import partial_measurement
 from merlin.utils.deprecations import warn_deprecated_enum_access
-from merlin.utils.grouping import LexGrouping, ModGrouping
+from merlin.utils.grouping import LexGrouping, ModGrouping, OccupancyGrouping
 
 # Deprecation guide (target: v0.4):
 # - Remove `_LegacyMeasurementStrategy`, `_MeasurementStrategyMeta`, and any
@@ -244,14 +244,14 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         Measured modes for partial measurement.
     computation_space : ComputationSpace | None
         Computation space used by the strategy.
-    grouping : LexGrouping | ModGrouping | None
+    grouping : LexGrouping | ModGrouping | OccupancyGrouping | None
         Optional grouping applied to probability outputs.
     """
 
     type: MeasurementKind
     measured_modes: tuple[int, ...] = ()
     computation_space: ComputationSpace | None = None
-    grouping: LexGrouping | ModGrouping | None = None
+    grouping: LexGrouping | ModGrouping | OccupancyGrouping | None = None
     if TYPE_CHECKING:
         # Type-checker-only legacy/compat attributes. At runtime, the metaclass
         # resolves these names to either a new API instance (NONE) or legacy enums.
@@ -264,7 +264,7 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
     @staticmethod
     def probs(
         computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
-        grouping: LexGrouping | ModGrouping | None = None,
+        grouping: LexGrouping | ModGrouping | OccupancyGrouping | None = None,
     ) -> MeasurementStrategy:
         """Create a probability-output measurement strategy.
 
@@ -272,7 +272,7 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         ----------
         computation_space : ComputationSpace
             Computation space used to enumerate the output basis.
-        grouping : LexGrouping | ModGrouping | None
+        grouping : LexGrouping | ModGrouping | OccupancyGrouping | None
             Optional grouping applied to the resulting probabilities.
 
         Returns
@@ -339,7 +339,7 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
     def partial(
         modes: list[int],
         computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
-        grouping: LexGrouping | ModGrouping | None = None,
+        grouping: LexGrouping | ModGrouping | OccupancyGrouping | None = None,
     ) -> MeasurementStrategy:
         """Create a partial measurement on the given mode indices.
         Note that the specified grouping only applies on the resulting probabilities, not on the amplitudes.
@@ -350,7 +350,7 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
             Mode indices to measure.
         computation_space : ComputationSpace
             Computation space used to enumerate the output basis.
-        grouping : LexGrouping | ModGrouping | None
+        grouping : LexGrouping | ModGrouping | OccupancyGrouping | None
             Optional grouping applied to the resulting probabilities only.
 
         Returns

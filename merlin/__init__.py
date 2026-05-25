@@ -72,7 +72,7 @@ from .models.photonic_generator import (
 from .models.qcnn import QCNNClassifier
 from .pcvl_pytorch import CircuitConverter, build_slos_distribution_computegraph
 from .utils.combinadics import Combinadics
-from .utils.grouping import LexGrouping, ModGrouping
+from .utils.grouping import LexGrouping, ModGrouping, OccupancyGrouping
 
 # Version and metadata
 __version__ = "0.3.2"
@@ -104,6 +104,7 @@ __all__ = [
     "Amplitudes",
     "LexGrouping",
     "ModGrouping",
+    "OccupancyGrouping",
     "CircuitConverter",
     "build_slos_distribution_computegraph",
     "NKernelAlignment",

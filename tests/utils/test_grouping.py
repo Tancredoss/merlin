@@ -20,25 +20,29 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from typing import cast
+
 import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 import merlin as ML
-from merlin import LexGrouping, ModGrouping
+from merlin import LexGrouping, ModGrouping, OccupancyGrouping
 
 
 def test_groupings_creation():
     """Test creation of default grouping mappings."""
     lex_grouping = LexGrouping(input_size=8, output_size=4)
     mod_grouping = ModGrouping(input_size=8, output_size=4)
+    occupancy_grouping = OccupancyGrouping()
     assert isinstance(lex_grouping, LexGrouping)
     assert lex_grouping.input_size == 8
     assert lex_grouping.output_size == 4
     assert isinstance(mod_grouping, ModGrouping)
     assert mod_grouping.input_size == 8
     assert mod_grouping.output_size == 4
+    assert isinstance(occupancy_grouping, OccupancyGrouping)
 
 
 class TestLexGrouping:
@@ -252,6 +256,119 @@ class TestModGrouping:
 
         assert input_dist.grad is not None
         assert not torch.allclose(input_dist.grad, torch.zeros_like(input_dist.grad))
+
+
+class TestOccupancyGrouping:
+    """Test suite for OccupancyGrouping."""
+
+    def test_occupancy_grouping_requires_output_keys_before_forward(self):
+        """Unbound occupancy grouping should raise clearly."""
+        grouping = OccupancyGrouping()
+
+        with pytest.raises(RuntimeError, match="bound to output keys"):
+            grouping(torch.rand(3))
+
+    def test_occupancy_grouping_sorts_effective_keys(self):
+        """Effective keys should define deterministic output order."""
+        grouping = OccupancyGrouping(output_keys=[(1, 0), (0, 1), (0, 0)])
+        input_dist = torch.tensor([0.2, 0.3, 0.5])
+
+        output = grouping(input_dist)
+
+        assert grouping.output_keys == ((0, 0), (0, 1), (1, 0))
+        assert grouping.input_size == 3
+        assert grouping.output_size == 3
+        assert torch.allclose(output, torch.tensor([0.5, 0.3, 0.2]))
+
+    def test_occupancy_grouping_sums_duplicate_keys(self):
+        """Duplicate effective keys should be merged by summing columns."""
+        grouping = OccupancyGrouping(output_keys=[(1, 0), (0, 1), (1, 0)])
+        input_dist = torch.tensor([[0.2, 0.3, 0.5], [0.1, 0.8, 0.1]])
+
+        output = grouping(input_dist)
+
+        expected = torch.tensor([[0.3, 0.7], [0.8, 0.2]])
+        assert grouping.output_keys == ((0, 1), (1, 0))
+        assert torch.allclose(output, expected)
+
+    def test_occupancy_grouping_filters_and_renormalizes(self):
+        """Filtered keys should be removed and kept mass renormalized."""
+        grouping = OccupancyGrouping(
+            output_keys=[(2, 0), (1, 0), (0, 1)],
+            max_count_per_mode=1,
+        )
+        input_dist = torch.tensor([[0.5, 0.25, 0.25]])
+
+        output = grouping(input_dist)
+
+        assert grouping.output_keys == ((0, 1), (1, 0))
+        assert torch.allclose(output, torch.tensor([[0.5, 0.5]]))
+
+    def test_occupancy_grouping_zero_kept_mass_returns_zero(self):
+        """Renormalization should not create NaN when kept mass is zero."""
+        grouping = OccupancyGrouping(
+            output_keys=[(2, 0), (1, 0), (0, 1)],
+            max_count_per_mode=1,
+        )
+        input_dist = torch.tensor([[1.0, 0.0, 0.0]])
+
+        output = grouping(input_dist)
+
+        assert torch.equal(output, torch.zeros(1, 2))
+        assert torch.all(torch.isfinite(output))
+
+    def test_occupancy_grouping_supports_batched_leading_dims(self):
+        """Arbitrary leading dimensions should be preserved."""
+        grouping = OccupancyGrouping(output_keys=[(1, 0), (0, 1), (1, 0)])
+        input_dist = torch.rand(2, 3, 3)
+
+        output = grouping(input_dist)
+
+        assert output.shape == (2, 3, 2)
+
+    def test_occupancy_grouping_gradient_flow(self):
+        """Gradients should flow through index-add grouping."""
+        grouping = OccupancyGrouping(output_keys=[(1, 0), (0, 1), (1, 0)])
+        input_dist = torch.rand(4, 3, requires_grad=True)
+
+        output = grouping(input_dist)
+        loss = F.mse_loss(output, torch.ones_like(output))
+        loss.backward()
+
+        assert input_dist.grad is not None
+        assert not torch.allclose(input_dist.grad, torch.zeros_like(input_dist.grad))
+
+    def test_occupancy_grouping_input_size_mismatch(self):
+        """OccupancyGrouping should validate the input tensor width."""
+        grouping = OccupancyGrouping(output_keys=[(1, 0), (0, 1), (0, 0)])
+
+        with pytest.raises(ValueError, match="last dimension"):
+            grouping(torch.rand(2))
+
+    def test_occupancy_grouping_validates_keys_and_filter(self):
+        """Invalid key and filter configuration should raise clear errors."""
+        with pytest.raises(ValueError, match="must not be empty"):
+            OccupancyGrouping(output_keys=[])
+        with pytest.raises(ValueError, match="same length"):
+            OccupancyGrouping(output_keys=[(1, 0), (0,)])
+        with pytest.raises(ValueError, match="non-negative"):
+            OccupancyGrouping(output_keys=[(-1, 0)])
+        with pytest.raises(TypeError, match="integer"):
+            OccupancyGrouping(output_keys=[(1.5, 0)])
+        with pytest.raises(ValueError, match="retain at least one"):
+            OccupancyGrouping(output_keys=[(2, 0)], max_count_per_mode=1)
+        with pytest.raises(TypeError, match="max_count_per_mode"):
+            OccupancyGrouping(max_count_per_mode=cast(int, 1.5))
+
+    def test_occupancy_grouping_preserves_device_and_dtype(self):
+        """Output tensors should preserve input device and dtype."""
+        grouping = OccupancyGrouping(output_keys=[(1, 0), (0, 1), (1, 0)])
+        input_dist = torch.tensor([[0.2, 0.3, 0.5]], dtype=torch.float64)
+
+        output = grouping(input_dist)
+
+        assert output.dtype == torch.float64
+        assert output.device == input_dist.device
 
 
 def test_lexgrouping_mapping_integration():

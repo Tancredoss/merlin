@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import cast
 
 import pytest
@@ -112,6 +113,85 @@ class PartialProbabilityAdapter(ML.OutputAdapter):
         return output.tensor[:, :1]
 
 
+def _reference_state_to_int(key: tuple[int, ...]) -> int:
+    """Return the reproduced QGAN integer code for a count-resolved key."""
+    mode_count = len(key)
+    result = 0
+    for index, count in enumerate(key):
+        result += count * (mode_count + 1) ** (mode_count - index)
+    return result
+
+
+def _reference_center_crop_or_pad(x: torch.Tensor, size: int) -> torch.Tensor:
+    """Center-crop or zero-pad a batched matrix to a target width."""
+    current_size = x.shape[1]
+    if current_size == size:
+        return x
+    if current_size > size:
+        left = (current_size - size) // 2
+        return x[:, left : left + size]
+
+    left = (size - current_size) // 2
+    right = size - current_size - left
+    return torch.nn.functional.pad(x, (left, right))
+
+
+def _reference_dist_to_image(
+    output_keys: list[tuple[int, ...]],
+    raw_results_list: list[torch.Tensor],
+    image_size: int,
+    *,
+    max_count_per_mode: int | None = None,
+) -> torch.Tensor:
+    """Minimal local reference for reproduced photonic_QGAN dist_to_image."""
+    rev_map: dict[int, list[tuple[int, ...]]] = {}
+    possible_outputs: list[int] = []
+    for key in output_keys:
+        if max_count_per_mode is not None and any(
+            count > max_count_per_mode for count in key
+        ):
+            continue
+        int_state = _reference_state_to_int(key)
+        rev_map.setdefault(int_state, []).append(key)
+        if int_state not in possible_outputs:
+            possible_outputs.append(int_state)
+
+    output_map: dict[tuple[int, ...], int] = {}
+    for index, int_state in enumerate(sorted(possible_outputs)):
+        for key in rev_map[int_state]:
+            output_map[key] = index
+
+    bin_count = max(output_map.values()) + 1
+    expected_size = image_size * image_size // len(raw_results_list)
+    kept_columns = [index for index, key in enumerate(output_keys) if key in output_map]
+    group_indices = [output_map[key] for key in output_keys if key in output_map]
+
+    patches = []
+    for result in raw_results_list:
+        col_idx = torch.tensor(kept_columns, dtype=torch.long, device=result.device)
+        idx = torch.tensor(group_indices, dtype=torch.long, device=result.device)
+        mapped = result.index_select(1, col_idx)
+        grouped = torch.zeros(
+            result.shape[0],
+            bin_count,
+            dtype=result.dtype,
+            device=result.device,
+        )
+        grouped.index_add_(1, idx, mapped)
+        if len(kept_columns) != len(output_keys):
+            total_count = mapped.sum(dim=1, keepdim=True)
+            grouped = torch.where(
+                total_count > 0,
+                grouped / total_count.clamp_min(torch.finfo(grouped.dtype).eps),
+                grouped,
+            )
+        patch = _reference_center_crop_or_pad(grouped, expected_size)
+        max_values = patch.max(dim=1, keepdim=True).values
+        patches.append(patch / (max_values + 1e-8))
+
+    return torch.cat(patches, dim=1)
+
+
 def test_latent_distribution_is_abstract():
     with pytest.raises(TypeError, match="abstract class"):
         ML.LatentDistribution(dim=2)
@@ -144,6 +224,72 @@ def test_generator_accepts_single_layer():
 
     assert len(generator) == 1
     assert generator.latent_dim == 2
+
+
+def test_generator_accepts_single_layer_object():
+    layer = _make_layer(input_size=2)
+
+    generator = ML.PhotonicGenerator(
+        layers=layer,
+        output_adapter=ML.VectorAdapter(size=4),
+    )
+
+    assert len(generator) == 1
+    assert generator[0] is layer
+
+
+def test_generator_count_creates_independent_layer_copies():
+    template = _make_layer(input_size=2)
+
+    generator = ML.PhotonicGenerator(
+        layers=template,
+        count=3,
+        output_adapter=ML.VectorAdapter(size=4),
+    )
+
+    assert len(generator) == 3
+    assert all(generator[index] is not template for index in range(len(generator)))
+    first_head_param_ids = {id(param) for param in generator[0].parameters()}
+    for head_index in range(1, len(generator)):
+        other_head_param_ids = {
+            id(param) for param in generator[head_index].parameters()
+        }
+        assert first_head_param_ids.isdisjoint(other_head_param_ids)
+    for key, value in generator[0].state_dict().items():
+        assert torch.equal(value, generator[1].state_dict()[key])
+
+
+def test_generator_rejects_invalid_count_usage():
+    layer = _make_layer(input_size=2)
+
+    with pytest.raises(ValueError, match="count can only"):
+        ML.PhotonicGenerator(
+            layers=[layer],
+            count=2,
+            output_adapter=ML.VectorAdapter(size=4),
+        )
+    with pytest.raises(TypeError, match="count"):
+        ML.PhotonicGenerator(
+            layers=layer,
+            count=cast(int, 1.5),
+            output_adapter=ML.VectorAdapter(size=4),
+        )
+    with pytest.raises(ValueError, match="count"):
+        ML.PhotonicGenerator(
+            layers=layer,
+            count=0,
+            output_adapter=ML.VectorAdapter(size=4),
+        )
+
+
+def test_generator_rejects_duplicate_layer_objects():
+    layer = _make_layer(input_size=2)
+
+    with pytest.raises(ValueError, match="duplicate"):
+        ML.PhotonicGenerator(
+            layers=[layer, layer],
+            output_adapter=ML.VectorAdapter(size=4),
+        )
 
 
 def test_generator_rejects_inconsistent_latent_dims():
@@ -209,6 +355,16 @@ def test_sample_latent_shape():
     z = generator.sample_latent(batch_size=5)
 
     assert z.shape == (5, 3)
+
+
+def test_default_generator_latent_uses_original_qgan_scale():
+    generator = ML.PhotonicGenerator(
+        layers=[_make_layer(input_size=3)],
+        output_adapter=ML.VectorAdapter(size=4),
+    )
+
+    assert isinstance(generator.latent, ML.NormalLatent)
+    assert generator.latent.std == pytest.approx(2 * math.pi)
 
 
 def test_sample_latent_respects_explicit_dtype():
@@ -392,6 +548,119 @@ def test_image_adapter_output_shape_multichannel():
     output = adapter(measurements)
 
     assert output.shape == (4, 2, 2, 3)
+
+
+def test_image_adapter_headwise_crops_and_pads_each_head():
+    adapter = ML.ImageAdapter(shape=(2, 3), headwise=True)
+    measurements = GeneratorMeasurements(
+        outputs=(
+            torch.tensor([[0.0, 1.0, 2.0, 3.0]]),
+            torch.tensor([[10.0, 11.0]]),
+        ),
+        output_keys=((), ()),
+    )
+
+    output = adapter(measurements)
+
+    expected = torch.tensor([[[[0.0, 1.0, 2.0], [10.0, 11.0, 0.0]]]])
+    assert torch.equal(output, expected)
+
+
+def test_image_adapter_headwise_normalizes_each_patch():
+    adapter = ML.ImageAdapter(shape=(2, 3), headwise=True, normalize_patches=True)
+    measurements = GeneratorMeasurements(
+        outputs=(
+            torch.tensor([[0.0, 2.0, 4.0]]),
+            torch.tensor([[0.0, 3.0, 0.0]]),
+        ),
+        output_keys=((), ()),
+    )
+
+    output = adapter(measurements)
+
+    expected = torch.tensor([[[[0.0, 0.5, 1.0], [0.0, 1.0, 0.0]]]])
+    assert torch.allclose(output, expected)
+
+
+def test_image_adapter_headwise_requires_even_patch_split():
+    adapter = ML.ImageAdapter(shape=(1, 5), headwise=True)
+    measurements = GeneratorMeasurements(
+        outputs=(torch.ones(1, 2), torch.ones(1, 2)),
+        output_keys=((), ()),
+    )
+
+    with pytest.raises(ValueError, match="divisible"):
+        adapter(measurements)
+
+
+def test_image_adapter_rejects_patch_normalization_without_headwise():
+    with pytest.raises(ValueError, match="requires headwise"):
+        ML.ImageAdapter(shape=(2, 3), normalize_patches=True)
+
+
+def test_generator_with_occupancy_grouping_uses_grouped_measurement_keys():
+    strategy = ML.MeasurementStrategy.probs(
+        computation_space=ML.ComputationSpace.FOCK,
+        grouping=ML.OccupancyGrouping(),
+    )
+    layer = _make_layer(input_size=2, measurement_strategy=strategy)
+    generator = ML.PhotonicGenerator(
+        layers=layer,
+        count=2,
+        output_adapter=ML.ImageAdapter(shape=(1, 4, 4), headwise=True),
+    )
+    z = torch.randn(3, generator.latent_dim)
+
+    measurements = generator.measure(z)
+    output = generator(z)
+
+    assert output.shape == (3, 1, 4, 4)
+    assert len(measurements.outputs) == 2
+    assert len(measurements.output_keys) == 2
+    for head_index, head_output in enumerate(measurements.outputs):
+        assert isinstance(head_output, torch.Tensor)
+        assert head_output.shape[1] == generator[head_index].output_size
+        assert len(measurements.output_keys[head_index]) == head_output.shape[1]
+
+
+def test_occupancy_grouping_image_pipeline_matches_reference_dist_to_image():
+    output_keys = [(2, 0), (1, 0), (0, 1), (1, 0), (0, 0)]
+    raw_results_list = [
+        torch.tensor([
+            [0.50, 0.20, 0.10, 0.10, 0.10],
+            [0.00, 0.25, 0.25, 0.25, 0.25],
+        ]),
+        torch.tensor([
+            [0.20, 0.20, 0.20, 0.20, 0.20],
+            [0.60, 0.10, 0.10, 0.10, 0.10],
+        ]),
+    ]
+    reference = _reference_dist_to_image(
+        output_keys,
+        raw_results_list,
+        image_size=4,
+        max_count_per_mode=1,
+    )
+    grouping = ML.OccupancyGrouping(
+        output_keys=output_keys,
+        max_count_per_mode=1,
+    )
+    grouped_outputs = tuple(grouping(result) for result in raw_results_list)
+    adapter = ML.ImageAdapter(
+        shape=(1, 4, 4),
+        headwise=True,
+        normalize_patches=True,
+    )
+
+    output = adapter(
+        GeneratorMeasurements(
+            outputs=grouped_outputs,
+            output_keys=(grouping.output_keys, grouping.output_keys),
+        )
+    ).reshape(reference.shape)
+
+    assert output.shape == reference.shape
+    torch.testing.assert_close(output, reference)
 
 
 def test_parameters_include_all_layer_parameters():

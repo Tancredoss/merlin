@@ -30,7 +30,7 @@ This module exposes commonly used utility helpers so they can be imported from
 from .combinadics import Combinadics
 from .deprecations import sanitize_parameters
 from .dtypes import resolve_float_complex, to_torch_dtype
-from .grouping import LexGrouping, ModGrouping
+from .grouping import LexGrouping, ModGrouping, OccupancyGrouping
 from .normalization import (
     normalize_probabilities,
     normalize_probabilities_and_amplitudes,
@@ -40,6 +40,7 @@ from .normalization import (
 __all__ = [
     "LexGrouping",
     "ModGrouping",
+    "OccupancyGrouping",
     "Combinadics",
     "normalize_probabilities",
     "normalize_probabilities_and_amplitudes",

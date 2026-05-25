@@ -3,10 +3,16 @@
 The generator is a thin PyTorch model abstraction: it runs one latent batch
 through one or more :class:`~merlin.algorithms.layer.QuantumLayer` heads and
 delegates task-specific output shaping to an adapter.
+
+The repeated-head image workflow is intended to support photonic QGAN-style
+generators such as the architecture introduced in
+`Optica Quantum 2, 458 (2024) <https://opg.optica.org/opticaq/fulltext.cfm?uri=opticaq-2-6-458>`_.
 """
 
 from __future__ import annotations
 
+import copy
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -281,21 +287,72 @@ class ImageAdapter(OutputAdapter):
         Image shape. ``(height, width)`` produces single-channel output with
         shape ``(batch_size, 1, height, width)``. ``(channels, height, width)``
         preserves the specified channel count.
+    headwise : bool
+        Whether to adapt each generator head to an equal-sized image patch
+        before concatenation. If ``False``, all heads are concatenated and then
+        adapted once. Default is ``False``.
+    normalize_patches : bool
+        Whether to divide each headwise patch by its per-sample maximum after
+        crop/pad. Requires ``headwise=True``. Default is ``False``.
 
     Raises
     ------
     TypeError
-        If ``shape`` is not a tuple of integers.
+        If ``shape`` is not a tuple of integers, or if ``headwise`` or
+        ``normalize_patches`` do not have bool type.
     ValueError
         If ``shape`` does not have length 2 or 3, or if any dimension is not
-        positive.
+        positive, or if ``normalize_patches=True`` is requested without
+        ``headwise=True``.
     """
 
     shape: tuple[int, int, int]
+    headwise: bool
+    normalize_patches: bool
 
-    def __init__(self, shape: tuple[int, int] | tuple[int, int, int]) -> None:
+    def __init__(
+        self,
+        shape: tuple[int, int] | tuple[int, int, int],
+        *,
+        headwise: bool = False,
+        normalize_patches: bool = False,
+    ) -> None:
+        """Initialize an image adapter.
+
+        Parameters
+        ----------
+        shape : tuple[int, int] | tuple[int, int, int]
+            Image shape. ``(height, width)`` produces single-channel output with
+            shape ``(batch_size, 1, height, width)``. ``(channels, height,
+            width)`` preserves the specified channel count.
+        headwise : bool
+            Whether to adapt each generator head to an equal-sized image patch
+            before concatenation. If ``False``, all heads are concatenated and
+            then adapted once. Default is ``False``.
+        normalize_patches : bool
+            Whether to divide each headwise patch by its per-sample maximum
+            after crop/pad. Requires ``headwise=True``. Default is ``False``.
+
+        Raises
+        ------
+        TypeError
+            If ``shape`` is not a tuple of integers, or if ``headwise`` or
+            ``normalize_patches`` do not have bool type.
+        ValueError
+            If ``shape`` does not have length 2 or 3, if any dimension is not
+            positive, or if ``normalize_patches=True`` is requested without
+            ``headwise=True``.
+        """
         super().__init__()
+        if type(headwise) is not bool:
+            raise TypeError("headwise must be a bool.")
+        if type(normalize_patches) is not bool:
+            raise TypeError("normalize_patches must be a bool.")
+        if normalize_patches and not headwise:
+            raise ValueError("normalize_patches=True requires headwise=True.")
         self.shape = _normalize_image_shape(shape)
+        self.headwise = headwise
+        self.normalize_patches = normalize_patches
         channels, height, width = self.shape
         self._vector_adapter = VectorAdapter(channels * height * width)
 
@@ -311,10 +368,37 @@ class ImageAdapter(OutputAdapter):
         -------
         torch.Tensor
             Tensor with shape ``(batch_size, channels, height, width)``.
+
+        Raises
+        ------
+        ValueError
+            If ``headwise=True`` and the image feature count is not divisible by
+            the number of generator heads.
         """
-        vector = self._vector_adapter(measurements)
+        if self.headwise:
+            vector = self._headwise_vector(measurements)
+        else:
+            vector = self._vector_adapter(measurements)
         channels, height, width = self.shape
         return vector.reshape(vector.shape[0], channels, height, width)
+
+    def _headwise_vector(self, measurements: GeneratorMeasurements) -> torch.Tensor:
+        """Return a fixed image vector by adapting each head independently."""
+        flattened = _flatten_tensor_outputs(measurements.outputs)
+        total_size = self._vector_adapter.size
+        if total_size % len(flattened) != 0:
+            raise ValueError(
+                "ImageAdapter with headwise=True requires the image feature "
+                "count to be divisible by the number of measurement outputs."
+            )
+        patch_size = total_size // len(flattened)
+        patches = []
+        for output in flattened:
+            patch = _center_crop_or_pad(output, patch_size)
+            if self.normalize_patches:
+                patch = _max_normalize_rows(patch)
+            patches.append(patch)
+        return torch.cat(patches, dim=1)
 
 
 class PhotonicGenerator(nn.Module):
@@ -326,9 +410,11 @@ class PhotonicGenerator(nn.Module):
 
     Parameters
     ----------
-    layers : Sequence[merlin.algorithms.layer.QuantumLayer]
-        Non-empty sequence of quantum generator heads. All layers must expose
-        the same ``input_size``. Amplitude-output measurement strategies are not
+    layers : merlin.algorithms.layer.QuantumLayer | Sequence[merlin.algorithms.layer.QuantumLayer]
+        Quantum generator head template or non-empty sequence of quantum
+        generator heads. If a single layer is provided with ``count``, Merlin
+        creates ``count`` independent copies. All heads must expose the same
+        ``input_size``. Amplitude-output measurement strategies are not
         supported because they do not directly represent classical generated
         samples.
     output_adapter : torch.nn.Module
@@ -338,20 +424,26 @@ class PhotonicGenerator(nn.Module):
         compatible ``forward`` method.
     latent : LatentDistribution | None
         Latent distribution used by :meth:`sample_latent` and :meth:`generate`.
-        If omitted, :class:`NormalLatent` with the inferred latent dimension is
-        used. Default is ``None``.
+        If omitted, :class:`NormalLatent` with the inferred latent dimension and
+        ``std=2*pi`` is used. Default is ``None``.
+    count : int | None
+        Number of independent copies to create when ``layers`` is a single
+        :class:`~merlin.algorithms.layer.QuantumLayer`. Must be omitted when
+        ``layers`` is a sequence. Default is ``None``.
 
     Raises
     ------
     TypeError
-        If ``layers`` is not a sequence of
+        If ``layers`` is neither a single
+        :class:`~merlin.algorithms.layer.QuantumLayer` nor a sequence of
         :class:`~merlin.algorithms.layer.QuantumLayer`, if
         ``output_adapter`` is not a :class:`torch.nn.Module`, or if ``latent`` is
-        not a :class:`LatentDistribution`.
+        not a :class:`LatentDistribution`, or if ``count`` does not have int
+        type when provided.
     ValueError
         If no layers are provided, if layer input sizes differ, if a layer uses
         amplitude outputs, or if the latent distribution dimension does not
-        match the inferred latent dimension.
+        match the inferred latent dimension, or if ``count`` is not positive.
     """
 
     layers: nn.ModuleList
@@ -360,12 +452,14 @@ class PhotonicGenerator(nn.Module):
 
     def __init__(
         self,
-        layers: Sequence[QuantumLayer],
+        layers: QuantumLayer | Sequence[QuantumLayer],
         output_adapter: nn.Module,
         latent: LatentDistribution | None = None,
+        *,
+        count: int | None = None,
     ) -> None:
         super().__init__()
-        validated_layers = _validate_layers(layers)
+        validated_layers = _validate_layers(_prepare_layers(layers, count))
         self.layers = nn.ModuleList(validated_layers)
         if not isinstance(output_adapter, nn.Module):
             raise TypeError("output_adapter must be a torch.nn.Module.")
@@ -373,7 +467,7 @@ class PhotonicGenerator(nn.Module):
 
         inferred_dim = cast(int, validated_layers[0].input_size)
         if latent is None:
-            latent = NormalLatent(inferred_dim)
+            latent = NormalLatent(inferred_dim, std=2 * math.pi)
         elif not isinstance(latent, LatentDistribution):
             raise TypeError("latent must be a LatentDistribution or None.")
         if latent.dim != inferred_dim:
@@ -571,6 +665,59 @@ class PhotonicGenerator(nn.Module):
         return resolved_device, resolved_dtype
 
 
+def _prepare_layers(
+    layers: QuantumLayer | Sequence[QuantumLayer],
+    count: int | None,
+) -> list[QuantumLayer]:
+    """Normalize layer construction forms into a list of generator heads.
+
+    Parameters
+    ----------
+    layers : merlin.algorithms.layer.QuantumLayer | Sequence[merlin.algorithms.layer.QuantumLayer]
+        Single layer template or explicit sequence of generator heads.
+    count : int | None
+        Number of independent copies to create when ``layers`` is a single
+        layer. If omitted, a single layer is used directly. Default is
+        ``None``.
+
+    Returns
+    -------
+    list[merlin.algorithms.layer.QuantumLayer]
+        Candidate generator heads.
+
+    Raises
+    ------
+    TypeError
+        If ``layers`` is neither a single
+        :class:`~merlin.algorithms.layer.QuantumLayer` nor a sequence, or if
+        ``count`` does not have int type when provided.
+    ValueError
+        If ``count`` is not positive or if ``count`` is supplied with a layer
+        sequence.
+    """
+    if isinstance(layers, QuantumLayer):
+        if count is None:
+            return [layers]
+        _validate_count(count)
+        return [copy.deepcopy(layers) for _ in range(count)]
+
+    if count is not None:
+        raise ValueError("count can only be supplied when layers is a QuantumLayer.")
+    if isinstance(layers, (str, bytes)) or not isinstance(layers, Sequence):
+        raise TypeError(
+            "layers must be a QuantumLayer or a non-empty sequence of QuantumLayer objects."
+        )
+    return list(layers)
+
+
+def _validate_count(count: int) -> None:
+    """Validate the repeated-head count."""
+    if type(count) is not int:
+        raise TypeError("count must have int type.")
+    if count <= 0:
+        raise ValueError("count must be positive.")
+
+
 def _validate_layers(layers: Sequence[QuantumLayer]) -> list[QuantumLayer]:
     """Return validated generator heads.
 
@@ -587,17 +734,18 @@ def _validate_layers(layers: Sequence[QuantumLayer]) -> list[QuantumLayer]:
     Raises
     ------
     TypeError
-        If ``layers`` is not a sequence of
-        :class:`~merlin.algorithms.layer.QuantumLayer` objects.
+        If an item in ``layers`` is not a
+        :class:`~merlin.algorithms.layer.QuantumLayer` object.
     ValueError
-        If the sequence is empty, if input sizes are inconsistent, or if a layer
-        uses amplitude outputs.
+        If the sequence is empty, if it contains duplicate layer objects, if
+        input sizes are inconsistent, or if a layer uses amplitude outputs.
     """
-    if isinstance(layers, (str, bytes)) or not isinstance(layers, Sequence):
-        raise TypeError("layers must be a non-empty sequence of QuantumLayer objects.")
     validated_layers = list(layers)
     if not validated_layers:
         raise ValueError("layers must contain at least one QuantumLayer.")
+    layer_ids = [id(layer) for layer in validated_layers]
+    if len(set(layer_ids)) != len(layer_ids):
+        raise ValueError("layers must not contain duplicate QuantumLayer objects.")
     for index, layer in enumerate(validated_layers):
         if not isinstance(layer, QuantumLayer):
             raise TypeError(
@@ -669,6 +817,12 @@ def _center_crop_or_pad(x: torch.Tensor, size: int) -> torch.Tensor:
     left = (size - current_size) // 2
     right = size - current_size - left
     return F.pad(x, (left, right))
+
+
+def _max_normalize_rows(x: torch.Tensor) -> torch.Tensor:
+    """Normalize each row by its maximum value without creating NaNs."""
+    max_values = x.max(dim=1, keepdim=True).values
+    return x / (max_values + 1e-8)
 
 
 def _normalize_image_shape(
