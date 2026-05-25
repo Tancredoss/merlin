@@ -31,6 +31,8 @@ Modules
      - Computation processes and factory logic used to execute Merlin circuits.
    * - :doc:`merlin.core.merlin_processor`
      - The high-level :class:`~merlin.core.merlin_processor.MerlinProcessor` remote/local execution interface.
+   * - :doc:`merlin.core.sectored_distribution`
+     - Data classes used for g2 simulation outputs.
    * - :doc:`merlin.core.state`
      - State-pattern helpers and input-state generation utilities.
    * - :doc:`merlin.core.state_vector`
@@ -49,5 +51,6 @@ Modules
    merlin.core.probability_distribution
    merlin.core.process
    merlin.core.merlin_processor
+   merlin.cire.sectored_distribution
    merlin.core.state
    merlin.core.state_vector
