@@ -793,7 +793,7 @@ class _DummyComputationProcess:
         self.called = "superposition"
         return torch.tensor([1.0])
 
-    def compute(self, params):
+    def compute(self, params, amplitude_encoding):
         self.called = "compute"
         return torch.tensor([2.0])
 

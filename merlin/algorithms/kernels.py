@@ -115,7 +115,7 @@ class FeatureMap:
         elif experiment is not None:
             if (
                 not experiment.is_unitary
-                or experiment.post_select_fn is not None
+                or not experiment.post_select_fn == pcvl.PostSelect()
                 or experiment.heralds
             ):
                 raise ValueError(
@@ -821,7 +821,11 @@ class FidelityKernel(MerlinModule):
             dtype=self.dtype,
         )
         # Resolve raw simulation keys and photon loss transform
-        raw_keys = [tuple(int(v) for v in key) for key in self._slos_graph.final_keys]
+        if hasattr(self._slos_graph, "final_keys"):
+            basis_keys = self._slos_graph.final_keys
+        else:
+            basis_keys = self._slos_graph.mapped_keys
+        raw_keys = [tuple(int(v) for v in key) for key in basis_keys]
         self._raw_output_keys = raw_keys
         try:
             self._input_state_index = raw_keys.index(tuple(input_state))
@@ -830,10 +834,10 @@ class FidelityKernel(MerlinModule):
                 "Input state is not present in the simulation basis produced by the circuit."
             ) from exc
 
-        self._photon_survival_probs, empty_noise_model = resolve_photon_loss_kernel(
+        self._photon_survival_probs, empty_noise = resolve_photon_loss_kernel(
             self.experiment, m
         )
-        self.has_custom_noise_model = not empty_noise_model
+        self.has_custom_noise_model = not empty_noise
 
         self._photon_loss_transform = PhotonLossTransform(
             raw_keys,
@@ -1210,7 +1214,7 @@ class FidelityKernel(MerlinModule):
         """Validate that the provided experiment is compatible with fidelity kernels."""
         if (
             not experiment.is_unitary
-            or experiment.post_select_fn is not None
+            or not experiment.post_select_fn == pcvl.PostSelect()
             or experiment.heralds
             or experiment.in_heralds
         ):

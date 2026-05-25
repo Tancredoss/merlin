@@ -43,6 +43,7 @@ Experiment support
    :maxdepth: 1
 
    experiment_support
+   noisy_simulations
 
 .. merlin-gallery::
    :data: _data/galleries/quantum_expert/exp_support.json

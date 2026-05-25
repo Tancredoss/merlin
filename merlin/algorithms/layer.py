@@ -65,7 +65,7 @@ from .layer_utils import (
     InitializationContext,
     apply_angle_encoding,
     feature_count_for_prefix,
-    normalize_noise_model,
+    normalize_noise,
     prepare_input_encoding,
     prepare_input_state,
     resolve_circuit,
@@ -116,7 +116,7 @@ class QuantumLayer(MerlinModule):
         computation_space: ComputationSpace | str | None = None,
         measurement_strategy: MeasurementStrategyLike | None = None,
         return_object: bool = False,
-        noise_model: pcvl.NoiseModel | None = None,
+        noise: pcvl.NoiseModel | None = None,
         # device and dtype
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
@@ -190,7 +190,7 @@ class QuantumLayer(MerlinModule):
             - ``MeasurementKind.PROBABILITIES`` returns a ``ProbabilityDistribution``
             - ``MeasurementKind.PARTIAL`` returns a ``PartialMeasurement``.
             - ``MeasurementKind.MODE_EXPECTATIONS`` returns a ``torch.Tensor``.
-        noise_model: pcvl.NoiseModel | None
+        noise: pcvl.NoiseModel | None
             The noise model used in the simulation. Default is None where no `noise` is
             applied.
         device : torch.device | None
@@ -251,8 +251,8 @@ class QuantumLayer(MerlinModule):
             builder, circuit, experiment, trainable_parameters, input_parameters
         )
         # Phase 3.5 normalization of the noise
-        self.noise_model = normalize_noise_model(
-            noise_model, experiment.noise if experiment is not None else None
+        self.noise = normalize_noise(
+            noise, experiment.noise if experiment is not None else None
         )
 
         # Phase 4: encoding validation (post-resolution)
@@ -266,10 +266,10 @@ class QuantumLayer(MerlinModule):
         # Phase 6: experiment vetting (if provided)
         if experiment is not None:
             vet_experiment(experiment)
-            experiment.noise = self.noise_model
+            experiment.noise = self.noise
 
         # Phase 7: circuit resolution
-        resolved_circuit = resolve_circuit(circuit_source, pcvl, self.noise_model)
+        resolved_circuit = resolve_circuit(circuit_source, pcvl, self.noise)
         # Phase 8: input state normalization
         input_state, resolved_n_photons = prepare_input_state(
             input_state,
@@ -289,9 +289,24 @@ class QuantumLayer(MerlinModule):
             computation_space,
             measurement_strategy,
             backend=self.backend,
-            noise_model=self.noise_model,
+            noise=self.noise,
             return_object=return_object,
         )
+
+        # Adapt the computation space if a noisy simulation with source noise is done
+        source_noise = False if noise_and_detectors.noise_groups is None else True
+        if source_noise:
+            source_noise = (
+                False if noise_and_detectors.noise_groups.source is None else True
+            )
+
+        if source_noise and (not computation_space == ComputationSpace.FOCK):
+            warnings.warn(
+                "Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models. pcvl.detectors can be used to use custom post-selection.",
+                UserWarning,
+                stacklevel=2,
+            )
+            computation_space = ComputationSpace.FOCK
 
         # Phase 10: build initialization context
         context = InitializationContext(
@@ -302,7 +317,7 @@ class QuantumLayer(MerlinModule):
             input_size=encoding_config.input_size,
             circuit=resolved_circuit.circuit,
             experiment=resolved_circuit.experiment,
-            noise_model=resolved_circuit.noise_model,
+            noise=resolved_circuit.noise,
             has_custom_noise=resolved_circuit.has_custom_noise,
             input_state=input_state,
             n_photons=resolved_n_photons,
@@ -336,7 +351,7 @@ class QuantumLayer(MerlinModule):
         self.input_size = context.input_size
         self.measurement_strategy = context.measurement_strategy
         self.experiment = context.experiment
-        self.noise_model = context.noise_model
+        self.noise = context.noise
         self.amplitude_encoding = context.amplitude_encoding
         self.computation_space = context.computation_space
         self.angle_encoding_specs = context.angle_encoding_specs
@@ -571,7 +586,13 @@ class QuantumLayer(MerlinModule):
             raise TypeError(f"Unknown measurement_strategy: {measurement_strategy}")
 
         # Create measurement mapping
-        if kind == MeasurementKind.PARTIAL:
+
+        # Check if there is source noise, if so, it directly returns probabilities and should stay probabilities
+        source_noise = False if self._noise_groups is None else True
+        if source_noise and (self._noise_groups.source is None):
+            source_noise = False
+
+        if kind == MeasurementKind.PARTIAL or source_noise:
             self.measurement_mapping = nn.Identity()
         else:
             self.measurement_mapping = OutputMapper.create_mapping(
@@ -938,15 +959,23 @@ class QuantumLayer(MerlinModule):
             needs_gradient, apply_sampling, requested_shots
         )
 
-        # Phase 5: Convert and normalize amplitudes
-        if isinstance(amplitudes, tuple):
-            amplitudes = amplitudes[1]
-        elif not isinstance(amplitudes, torch.Tensor):
-            raise TypeError(f"Unexpected amplitudes type: {type(amplitudes)}")
+        # Phase 5: Convert and normalize amplitudes if it is a non noisy simulation. If it is noisy, they are already normalized
+        source_noise = False if self._noise_groups is None else True
+        if source_noise:
+            source_noise = False if self._noise_groups.source is None else True
 
-        distribution, amplitudes = self._renormalize_distribution_and_amplitudes(
-            amplitudes
-        )
+        if not source_noise:
+            if isinstance(amplitudes, tuple):
+                amplitudes = amplitudes[1]
+            elif not isinstance(amplitudes, torch.Tensor):
+                raise TypeError(f"Unexpected amplitudes type: {type(amplitudes)}")
+
+            distribution, amplitudes = self._renormalize_distribution_and_amplitudes(
+                amplitudes
+            )
+        else:
+            # The `amplitudes` are already probabilities in the noisy case
+            distribution = amplitudes
 
         # Phase 6: Measurement strategy dispatch and output mapping
         strategy = resolve_measurement_strategy(self.measurement_strategy)
@@ -1008,27 +1037,39 @@ class QuantumLayer(MerlinModule):
         simultaneous_processes: int | None,
     ) -> torch.Tensor:
         """Select the computation path based on the encoding mode and input state."""
-        if self.amplitude_encoding:
-            if inferred_state is None:
-                raise TypeError(
-                    "Amplitude encoding requires the computation process input_state to be a tensor."
+        # Checking if there is source noise
+        source_noise = False if self._noise_groups is None else True
+        if source_noise:
+            source_noise = False if self._noise_groups.source is None else True
+
+        if not source_noise:
+            if self.amplitude_encoding:
+                if inferred_state is None:
+                    raise TypeError(
+                        "Amplitude encoding requires the computation process input_state to be a tensor."
+                    )
+                batch_size = (
+                    simultaneous_processes
+                    if simultaneous_processes is not None
+                    else (1 if inferred_state.dim() == 1 else inferred_state.shape[0])
                 )
-            batch_size = (
-                simultaneous_processes
-                if simultaneous_processes is not None
-                else (1 if inferred_state.dim() == 1 else inferred_state.shape[0])
-            )
-            return self.computation_process.compute_ebs_simultaneously(
-                params, simultaneous_processes=batch_size
-            )
-        if isinstance(inferred_state, torch.Tensor):
-            if parameter_batch_dim:
-                chunk = simultaneous_processes or inferred_state.shape[-1]
                 return self.computation_process.compute_ebs_simultaneously(
-                    params, simultaneous_processes=chunk
+                    params, simultaneous_processes=batch_size
                 )
-            return self.computation_process.compute_superposition_state(params)
-        return self.computation_process.compute(params)
+            if isinstance(inferred_state, torch.Tensor):
+                if parameter_batch_dim:
+                    chunk = simultaneous_processes or inferred_state.shape[-1]
+                    return self.computation_process.compute_ebs_simultaneously(
+                        params, simultaneous_processes=chunk
+                    )
+                return self.computation_process.compute_superposition_state(params)
+        # If there is source noise, we just compute the probabilities
+        should_use_amplitude_encoding = self.amplitude_encoding or isinstance(
+            inferred_state, torch.Tensor
+        )
+        return self.computation_process.compute(
+            params, amplitude_encoding=should_use_amplitude_encoding
+        )
 
     def _renormalize_distribution_and_amplitudes(
         self, amplitudes: torch.Tensor
@@ -1290,7 +1331,7 @@ class QuantumLayer(MerlinModule):
             ),
             "trainable_parameters": list(self.trainable_parameters),
             "input_parameters": list(self.input_parameters),
-            "noise_model": self.noise_model,
+            "noise": self.noise,
             "input_param_order": [
                 name
                 for prefix in self.input_parameters
