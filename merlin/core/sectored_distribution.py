@@ -17,9 +17,6 @@ class SectorResult:
     computation_space: ComputationSpace = ComputationSpace.FOCK
     keys: tuple[tuple[int, ...], ...] = ()
 
-    # mirrors StateVector / ProbabilityDistribution:
-    # to(), clone(), detach(), requires_grad_()
-
     def to(self, *args, **kwargs) -> SectorResult:
         """Return a new state vector moved or cast via ``torch.Tensor.to``.
 
@@ -37,7 +34,11 @@ class SectorResult:
         """
         new_tensor = self.tensor.to(*args, **kwargs)
         return SectorResult(
-            new_tensor, self.n_modes, self.n_photons, computation_space=self.computation_space,keys=self.keys
+            new_tensor,
+            self.n_modes,
+            self.n_photons,
+            computation_space=self.computation_space,
+            keys=self.keys,
         )
 
     def clone(self) -> SectorResult:
@@ -50,7 +51,10 @@ class SectorResult:
         """
         return SectorResult(
             self.tensor.clone(),
-            self.n_modes, self.n_photons, computation_space=self.computation_space,keys=self.keys
+            self.n_modes,
+            self.n_photons,
+            computation_space=self.computation_space,
+            keys=self.keys,
         )
 
     def detach(self) -> SectorResult:
@@ -63,7 +67,10 @@ class SectorResult:
         """
         return SectorResult(
             self.tensor.detach(),
-            self.n_modes, self.n_photons, computation_space=self.computation_space,keys=self.keys
+            self.n_modes,
+            self.n_photons,
+            computation_space=self.computation_space,
+            keys=self.keys,
         )
 
     def requires_grad_(self, requires_grad: bool = True) -> SectorResult:
@@ -81,14 +88,95 @@ class SectorResult:
         """
         self.tensor.requires_grad_(requires_grad)
         return self
-    
+
 
 @dataclass
 class SectoredDistribution:
     """Probability output spanning multiple photon-number sectors."""
+
     sectors: tuple[SectorResult, ...]
 
-
-     # mirrors StateVector / ProbabilityDistribution:
-    # to(), clone(), detach(), requires_grad_()
     # get_sector(n_photons), photon_counts, total_probability()
+
+    def __post_init__(self) -> None:
+        """Sort sectors by photon number after initialization."""
+        self._photon_map = {
+            self.sectors[i].n_photons: i for i in range(len(self.sectors))
+        }
+
+    @property
+    def get_sector(self, n_photons: int) -> SectorResult:
+        """Return the SectorResult associated with n_photons."""
+        if n_photons not in self._photon_map.keys():
+            raise ValueError("No SectorResult with that number of photons")
+        return self.sectors[self._photon_map[n_photons]]
+
+    def total_probability(self) -> float:
+        """Return the SectorResult associated with n_photons."""
+        total_prob = 0
+        for sector in self.sectors:
+            total_prob += sector.tensor.sum().item()
+        return total_prob
+
+    def to(self, *args, **kwargs) -> SectoredDistribution:
+        """Return a new ``SectoredDistribution`` with SectorResults moved/cast via ``torch.Tensor.to``.
+
+        Parameters
+        ----------
+        *args
+            Positional arguments forwarded to :meth:`torch.Tensor.to`.
+        **kwargs
+            Keyword arguments forwarded to :meth:`torch.Tensor.to`.
+
+        Returns
+        -------
+        SectoredDistribution
+            Converted sectored distribution.
+        """
+        new_sectors = []
+        for sector in self.sectors:
+            new_sectors.append(sector.to(*args, **kwargs))
+        return SectoredDistribution(new_sectors)
+
+    def clone(self) -> SectoredDistribution:
+        """Return a cloned SectoredDistribution with metadata and logical performance preserved.
+
+        Returns
+        -------
+        SectoredDistribution
+            Cloned sectored distribution.
+        """
+        new_sectors = []
+        for sector in self.sectors:
+            new_sectors.append(sector.clone())
+        return SectoredDistribution(new_sectors)
+
+    def detach(self) -> SectoredDistribution:
+        """Return a detached ``SectoredDistribution`` sharing data without gradients.
+
+        Returns
+        -------
+        SectoredDistribution
+            Detached sectored distribution.
+        """
+        new_sectors = []
+        for sector in self.sectors:
+            new_sectors.append(sector.detach())
+        return SectoredDistribution(new_sectors)
+
+    def requires_grad_(self, requires_grad: bool = True) -> SectoredDistribution:
+        """Set ``requires_grad`` on underlying tensors and return self.
+
+        Parameters
+        ----------
+        requires_grad : bool
+            Whether gradients should be tracked.
+
+        Returns
+        -------
+        SectoredDistribution
+            The updated instance.
+        """
+        for sector in self.sectors:
+            sector.requires_grad_(requires_grad)
+        return self
