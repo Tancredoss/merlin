@@ -996,29 +996,27 @@ class QuantumLayer(MerlinModule):
         # This runs AFTER measurement for ALL output types to ensure
         # memristive states are updated regardless of measurement strategy.
         if len(self.memristive_state) > 0:
-            # Runtime state is stored detached so future windows start from a clear anchor.
+            # Always detach states for the update rule computation to prevent
+            # gradients from flowing through the memristive recurrence.
+            # The user-facing output still uses the live state window for gradient flow.
             detached_memristive_state = [
                 state.detach() for state in memristive_current_state
             ]
-            if any(state.requires_grad for state in memristive_current_state):
-                # Recompute the update output with identical values but detached state edges.
-                update_output = self._compute_layer_output(
-                    params,
-                    amplitude_input=amplitude_input,
-                    original_input_state=original_input_state,
-                    parameter_batch_dim=parameter_batch_dim,
-                    simultaneous_processes=simultaneous_processes,
-                    shots=shots,
-                    sampling_method=sampling_method,
-                    memristive_current_state=detached_memristive_state,
-                )
-            else:
-                update_output = output
+
+            update_output = self._compute_layer_output(
+                params,
+                amplitude_input=amplitude_input,
+                original_input_state=original_input_state,
+                parameter_batch_dim=parameter_batch_dim,
+                simultaneous_processes=simultaneous_processes,
+                shots=shots,
+                sampling_method=sampling_method,
+                memristive_current_state=detached_memristive_state,
+            )
 
             # Use independent clones because user update rules may mutate the output.
             output_for_state_window = self._clone_memristive_output(update_output)
             output_for_update_rule = self._clone_memristive_output(update_output)
-
             new_states = compute_new_memristive_ps_angles(
                 memristive_metadata=self._memristive_metadata,
                 memristive_state=detached_memristive_state,
