@@ -243,9 +243,71 @@ class NoisyG2SLOSComputeGraph:
             sector_outputs.append(sector)
         return SectoredDistribution(sector_outputs)
 
-    def to():
-        # TODO
-        pass
+    def to(self, device: str | torch.device) -> "NoisyG2SLOSComputeGraph":
+        """Move cached tensors and subgraphs to a specific device.
+
+        Parameters
+        ----------
+        device : str | torch.device
+            Target device.
+
+        Returns
+        -------
+        NoisyG2SLOSComputeGraph
+            The graph instance moved to ``device``.
+
+        Raises
+        ------
+        TypeError
+            If ``device`` is neither a string nor a ``torch.device``.
+        """
+        if isinstance(device, str):
+            self.device = torch.device(device)
+        elif isinstance(device, torch.device):
+            self.device = device
+        else:
+            raise TypeError(
+                f"Expected a string or torch.device, but got {type(device).__name__}"
+            )
+
+        # Move fock states tensors to device
+        self._fock_states_per_n = {
+            n: states.to(self.device)
+            for n, states in self._fock_states_per_n.items()
+        }
+
+        # Move SLOS graphs to device (handle both single graph and list cases)
+        if isinstance(self._slos_graphs, NoisySLOSComputeGraph):
+            self._slos_graphs.to(self.device)
+        else:
+            for graph in self._slos_graphs:
+                graph.to(self.device)
+
+        return self
+
+    def save(self, path: str | os.PathLike[str]) -> None:
+        """Save the noisy g2 SLOS graph configuration to disk.
+
+        Parameters
+        ----------
+        path : str | os.PathLike[str]
+            Destination path for the serialized graph metadata.
+        """
+        dir_path = os.path.dirname(path)
+        if dir_path and not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        metadata = {
+            "noise_groups": self.noise_groups,
+            "m": self.m,
+            "n_photons": self.n_photons,
+            "computation_space": self.computation_space.value,
+            "g2_distinguishable": self.g2_distinguishable,
+            "g2": float(self.g2),
+            "dtype_str": str(self.dtype),
+        }
+
+        torch.save({"metadata": metadata}, path)
 
 
 class NoisySLOSComputeGraph:

@@ -44,6 +44,7 @@ from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
 from ..core.state import StatePattern, generate_state
 from ..core.state_vector import StateVector
+from ..core.sectored_distribution import SectoredDistribution
 from ..measurement import OutputMapper
 from ..measurement.autodiff import AutoDiffProcess
 from ..measurement.detectors import DetectorTransform
@@ -993,7 +994,7 @@ class QuantumLayer(MerlinModule):
             amplitudes=amplitudes,
             apply_sampling=apply_sampling,
             effective_shots=effective_shots,
-            sample_fn=adp.sampling_noise.pcvl_sampler,
+            sampler=adp.sampling_noise,
             apply_photon_loss=self._apply_photon_loss_transform,
             apply_detectors=self._apply_detector_transform,
             grouping=grouping,
