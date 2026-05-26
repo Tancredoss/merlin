@@ -59,10 +59,18 @@ class NoisyG2SLOSComputeGraph:
 
         self.m = m
         self.n_photons = n_photons
-        self.computation_space = computation_space
+
         self.device = device
         self.dtype = dtype
-        self.cdtype = resolve_float_complex(dtype)[1]
+
+        self.computation_space = computation_space
+        if not self.computation_space == ComputationSpace.FOCK:
+            warnings.warn(
+                "Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
+                UserWarning,
+                stacklevel=2,
+            )
+            self.computation_space = ComputationSpace.FOCK
 
         from .slos_torchscript import (
             build_slos_distribution_computegraph as build_slos_graph,
@@ -272,8 +280,7 @@ class NoisyG2SLOSComputeGraph:
 
         # Move fock states tensors to device
         self._fock_states_per_n = {
-            n: states.to(self.device)
-            for n, states in self._fock_states_per_n.items()
+            n: states.to(self.device) for n, states in self._fock_states_per_n.items()
         }
 
         # Move SLOS graphs to device (handle both single graph and list cases)
