@@ -2597,7 +2597,7 @@ def test_num_backprop_steps_2_maintains_sliding_window():
     4. Earlier inputs receive zero gradients (properly detached)
     """
     torch.manual_seed(42)
-    layer = _make_memristive_layer(num_backprop_steps=2)
+    layer = _make_memristive_layer(num_backprop_steps=3)
     layer.reset(batch_size=1)
 
     # Run 5 forward passes to ensure window pops older entries

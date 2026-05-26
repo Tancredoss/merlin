@@ -329,6 +329,7 @@ class QuantumLayer(MerlinModule):
             [torch.tensor([i["initial_state"]], device=device, dtype=dtype)]
             for i in self._memristive_metadata
         ]
+        self._memristive_gradient_outputs = []
         self._memristive_smaller_last_batch = False
 
         # Phase 12: assign context to self + warnings
@@ -1097,34 +1098,32 @@ class QuantumLayer(MerlinModule):
                     unmeasured_modes=output.unmeasured_modes,
                     grouping=output.grouping,
                 )
+            self._memristive_gradient_outputs.append(output_for_memristive)
 
             # ============================================================
             # BUILD SLIDING WINDOW FOR TRUNCATED BPTT
             # ============================================================
             # Key insight: _memristive_gradient_states maintains a window
-            # of states that participate in backprop. We use the LAST state
-            # in this window to compute the new state. Detaching happens
-            # AFTER computation to prevent old gradient chains.
+            # of NEW STATES that can receive gradients during backprop.
+            # We always compute new states from the current detached state,
+            # then add new states to the window. When states fall outside
+            # the window, they are detached (gradients can't reach them).
             # ============================================================
             new_gradient_inputs = []
 
             for i in range(len(self.memristive_state)):
-                # Get the last state in the gradient window
-                if len(self._memristive_gradient_states[i]) > 0:
-                    # Use the most recent state in the window (with gradients!)
-                    # This allows gradients to flow through states within window
-                    state_for_update = self._memristive_gradient_states[i][-1]
-                else:
-                    # Fallback: use current state (first forward pass)
-                    state_for_update = self.memristive_state[i]
-
+                # Always use the current detached state for computation.
+                # This is the state that gets passed to each forward as the
+                # recurrent input. The gradient window tracks which new states
+                # can be backpropped through (not which states to use as input).
+                state_for_update = self.memristive_state[i]
                 new_gradient_inputs.append(state_for_update)
 
             # Compute new states using only window states
             new_states = compute_new_memristive_ps_angles(
                 memristive_metadata=self._memristive_metadata,
                 memristive_state=new_gradient_inputs,
-                output=output_for_memristive,
+                output=self._memristive_gradient_outputs[-1],
             )
 
             # Get batch dimension from output for shape validation
@@ -1156,13 +1155,27 @@ class QuantumLayer(MerlinModule):
                 self._memristive_gradient_states[i].append(new_state)
 
                 # 3. Enforce sliding window: keep only last (num_backprop_steps + 1) states
-                k = self._memristive_metadata[i]["num_backprop_steps"] + 1
-                if len(self._memristive_gradient_states[i]) > k:
+                k = self._memristive_metadata[i]["num_backprop_steps"]
+                window_size = k + 1
+                if len(self._memristive_gradient_states[i]) > window_size:
+                    self._memristive_gradient_states[i][0] = (
+                        self._memristive_gradient_states[i][0].detach()
+                    )
                     self._memristive_gradient_states[i].pop(0)
 
                 # 4. Update current state (used as recurrent input next forward)
                 # Store detached to break old gradient chains before next forward
                 self.memristive_state[i] = new_state.detach()
+
+            if len(self._memristive_gradient_outputs) >= k:
+                self._memristive_gradient_outputs[0] = (
+                    self._memristive_gradient_outputs[0].detach()
+                )
+                print(f"State after detach {self._memristive_gradient_outputs[0]}")
+                self._memristive_gradient_outputs.pop(0)
+            print(f"states {self._memristive_gradient_states}")
+            print(f"Outputs {self._memristive_gradient_outputs}")
+            print()
 
         return output
 
