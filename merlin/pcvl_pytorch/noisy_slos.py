@@ -243,7 +243,7 @@ class NoisyG2SLOSComputeGraph:
                         probs = reordered_probs
 
                     else:
-                        input_state_to_run = input_state
+                        input_state_to_run = input_state.copy()
                         for photon in combination:
                             input_state_to_run[photon] += 1
                         probs = self._slos_graphs[num_photons_added].compute_probs(
@@ -684,7 +684,6 @@ class _InputStateNoisySLOSComputeGraph:
         for state in self._obb_input_states:
             key = tuple(state.tolist())
             n = sum(key)
-
             _, probs = slos_graphs[n - 1].compute_probs(unitary, state)
 
             if probs.ndim == 1:
