@@ -485,8 +485,8 @@ class CircuitBuilder:
         mode : int
            Circuit mode to target.
         update_rule : ~collections.abc.Callable
-           Callable with signature ``update_rule(state: torch.Tensor, output: torch.Tensor | StateVector | 
-           ProbabilityDistribution | PartialMeasurement) -> torch.Tensor``. The update rule receives the current 
+           Callable with signature ``update_rule(state: torch.Tensor, output: torch.Tensor | StateVector |
+           ProbabilityDistribution | PartialMeasurement) -> torch.Tensor``. The update rule receives the current
            memristive state and the layer output, and must return a new state tensor of shape ``[batch_size]``.
         initial_state : float
            The initial value of the phase shifter. This will be the value used after each :meth:`~merlin.algorithms.layer.QuantumLayer.reset` call.
@@ -494,10 +494,10 @@ class CircuitBuilder:
             Prefix used for the generated memristive phase shifter parameter. Defaults to ``"mem"``.
         detach_at_each_forward : bool
             Controls gradient flow through the memristive recurrence (state → new_state):
-            
-            - ``True`` (default): The new state is detached at each forward, preventing gradients from flowing 
+
+            - ``True`` (default): The new state is detached at each forward, preventing gradients from flowing
               through the recurrence chain. Earlier inputs receive zero gradients from the memristive state.
-            - ``False``: The new state retains gradients, allowing full gradient flow through the entire 
+            - ``False``: The new state retains gradients, allowing full gradient flow through the entire
               recurrence history. All inputs can receive gradients through the accumulated state chain.
 
         Returns
