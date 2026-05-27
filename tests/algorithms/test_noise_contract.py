@@ -1064,7 +1064,9 @@ def test_g2_gradient_regression():
     x = torch.randn(1, 2, requires_grad=True)
     output = layer(x)
 
-    loss = output.sectors[0].tensor.sum() ** 2 - output.sectors[1].tensor.sum() ** 2
+    loss = (100 * output.sectors[0].tensor.sum()) ** 2 - (
+        100 * output.sectors[1].tensor.sum()
+    ) ** 2
     loss.backward()
 
     # # Verify gradients are computed
