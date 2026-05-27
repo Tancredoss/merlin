@@ -1093,7 +1093,10 @@ class QuantumLayer(MerlinModule):
         if len(self.memristive_state) > 0:
             # Safe output copy (handle all output types)
             output_for_memristive: (
-                torch.Tensor | PartialMeasurement | StateVector | ProbabilityDistribution
+                torch.Tensor
+                | PartialMeasurement
+                | StateVector
+                | ProbabilityDistribution
             )
             if not isinstance(output, PartialMeasurement):
                 output_for_memristive = output.clone()
