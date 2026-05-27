@@ -331,10 +331,9 @@ defines the allowed batch size to be ran per forward pass for circuits with memr
 
 .. code-block:: python
 
-    from merlin.algorithms.layer import QuantumLayer
-    from merlin.builder.circuit_builder import CircuitBuilder
+    import merlin as ML
 
-    circ = CircuitBuilder(n_modes=3)
+    circ = ML.CircuitBuilder(n_modes=3)
     circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
     circ.add_angle_encoding(modes=[0, 2])
 
@@ -358,7 +357,60 @@ defines the allowed batch size to be ran per forward pass for circuits with memr
 The current state of the memristive phase-shifters can be accessed with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_state` attribute. The full history of the memristive phase-shifters can be accessed
 with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` attribute. The order of the states and history is defined by the order in which the memristive phase-shifters were added in the :class:`~merlin.builder.circuit_builder.CircuitBuilder`.
 
-Also, when defining a phase-shifter, the ``num_backprop_steps`` parameter helps to control the flow of the gradient through memristive phase shifters. As the state of this component is defined by the previous output of the layer, the gradient would have to go through all previous forward passes to be defined. The ``num_backprop_steps`` parameter dictates how many steps can the gradient go back in the memristive history to be defined. By default, it is set to 0.
+**Gradient Flow Control**
+
+When defining a memristive phase-shifter using :meth:`~merlin.builder.circuit_builder.CircuitBuilder.add_memristive_ps`, the ``detach_at_each_forward`` parameter controls how gradients flow through the memristive state recurrence.
+
+Since the memristive state at time *t* depends on the previous state and the output at *t-1*, gradients would normally propagate through the entire history during backpropagation. The ``detach_at_each_forward`` parameter controls this behavior:
+
+- ``detach_at_each_forward=True`` (default): New states are detached after computation, blocking gradients from flowing back through the state recurrence. Earlier inputs will receive zero gradients from the memristive state chain, but backpropagation remains fast.
+- ``detach_at_each_forward=False``: New states retain gradients, allowing full gradient flow through the entire accumulated state history. This enables learning from all historical states but may be more computationally expensive.
+
+The full history of states is always maintained in :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` regardless of the ``detach_at_each_forward`` setting.
+
+If one wants to use truncated backpropagation through time instead (TBPTT) for the k previous forwards instead, it can easily be implemented. Here is how:
+
+.. code-block:: python
+    
+    import torch
+    import merlin as ML
+
+    # Define the memristive layer
+    circ.add_entangling_layer()
+    circ.add_memristive_ps(
+        mode=1, update_rule=update_rule, initial_state=1.2, detach_at_each_forward=False
+    )
+    circ.add_angle_encoding(modes=[0, 2])
+    circ.add_entangling_layer()
+
+    ql = ML.QuantumLayer(
+        builder=circ,
+        n_photons=3,
+        input_size=2,  # Two input angles for modes [0, 2]
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+    )
+
+    ql.reset(batch_size=1)
+
+    N = 100  # The total number of forwards to complete before backwards
+    k = 3  # Only last k steps should have gradients
+    
+    for t in range(N):
+        # Create a simple input tensor
+        inputs = torch.randn(1, 2, requires_grad=True)
+        out = ql(inputs)
+
+        if N - t == k + 1:
+            # Keep only the last k timesteps with gradients by detaching earlier history
+            for i in range(len(ql.memristive_history)):
+                for j in range(len(ql.memristive_history[i])):
+                    ql.memristive_history[i][j] = ql.memristive_history[i][j].detach()
+
+    loss = out.sum()  # Reduce to scalar for backward
+    loss.backward()
+
 
 Deprecations
 -------------------------

@@ -325,10 +325,10 @@ class QuantumLayer(MerlinModule):
             torch.tensor([i["initial_state"]], device=device, dtype=dtype)
             for i in self._memristive_metadata
         ]
-        self._memristive_gradient_states = [
-            [torch.tensor([i["initial_state"]], device=device, dtype=dtype)]
-            for i in self._memristive_metadata
-        ]
+        for i in range(len(self.memristive_state)):
+            if self._memristive_metadata[i]["detach_at_each_forward"]:
+                self.memristive_history[i][0] = self.memristive_history[i][0].detach()
+                self.memristive_state[i] = self.memristive_state[i].detach()
         self._memristive_smaller_last_batch = False
 
         # Phase 12: assign context to self + warnings
@@ -824,6 +824,16 @@ class QuantumLayer(MerlinModule):
         - ``torch.Tensor`` (complex): amplitude encoding
         - :class:`~merlin.core.state_vector.StateVector`: amplitude encoding (preferred for quantum state injection)
 
+        **Memristive State Updates**
+
+        For layers with memristive elements, the state is updated after each forward pass according to the
+        registered update rule. Gradient flow through the memristive recurrence is controlled by the
+        ``detach_at_each_forward`` flag:
+
+        - ``detach_at_each_forward=True`` (default): New states are detached, blocking gradients through
+          the state recurrence. Earlier inputs receive zero gradients from memristive state chains.
+          the entire accumulated state history.
+
         Parameters
         ----------
         input_parameters : torch.Tensor | merlin.core.state_vector.StateVector
@@ -850,6 +860,8 @@ class QuantumLayer(MerlinModule):
             unsupported input type is provided.
         ValueError
             If multiple ``StateVector`` inputs are provided.
+        RuntimeError
+            If batch size is inconsistent with memristive state (call ``reset(batch_size=N)`` to fix).
         """
         # Phase 1: Input classification and validation
         tensor_inputs: list[torch.Tensor] = []
@@ -964,10 +976,10 @@ class QuantumLayer(MerlinModule):
                     self.memristive_state = [
                         x[:batch_dim] for x in self.memristive_state
                     ]
-                    for memristor in range(len(self._memristive_gradient_states)):
-                        self._memristive_gradient_states[memristor][-1] = (
-                            self._memristive_gradient_states[memristor][-1][:batch_dim]
-                        )
+                    for memristor in range(len(self.memristive_state)):
+                        self.memristive_state[memristor] = self.memristive_state[
+                            memristor
+                        ][:batch_dim]
                 else:
                     raise RuntimeError(
                         "batch size mismatch: call reset(batch_size=N) before starting a new batch"
@@ -1074,7 +1086,7 @@ class QuantumLayer(MerlinModule):
             output = self.measurement_mapping(results)
 
         # ================================================================
-        # Phase 7: memristive update with truncated BPTT sliding window
+        # Phase 7: memristive update
         # ================================================================
         # This runs AFTER measurement for ALL output types to ensure
         # memristive states are updated regardless of measurement strategy.
@@ -1098,32 +1110,10 @@ class QuantumLayer(MerlinModule):
                     grouping=output.grouping,
                 )
 
-            # ============================================================
-            # BUILD SLIDING WINDOW FOR TRUNCATED BPTT
-            # ============================================================
-            # Key insight: _memristive_gradient_states maintains a window
-            # of states that participate in backprop. We use the LAST state
-            # in this window to compute the new state. Detaching happens
-            # AFTER computation to prevent old gradient chains.
-            # ============================================================
-            new_gradient_inputs = []
-
-            for i in range(len(self.memristive_state)):
-                # Get the last state in the gradient window
-                if len(self._memristive_gradient_states[i]) > 0:
-                    # Use the most recent state in the window (with gradients!)
-                    # This allows gradients to flow through states within window
-                    state_for_update = self._memristive_gradient_states[i][-1]
-                else:
-                    # Fallback: use current state (first forward pass)
-                    state_for_update = self.memristive_state[i]
-
-                new_gradient_inputs.append(state_for_update)
-
-            # Compute new states using only window states
+            # Compute new states
             new_states = compute_new_memristive_ps_angles(
                 memristive_metadata=self._memristive_metadata,
-                memristive_state=new_gradient_inputs,
+                memristive_state=self.memristive_state,
                 output=output_for_memristive,
             )
 
@@ -1146,23 +1136,15 @@ class QuantumLayer(MerlinModule):
                         f"expected {expected_shape}. The update rule must return a tensor "
                         f"of shape [batch_size].\n\nMemristor metadata: {self._memristive_metadata[i]}"
                     )
+                self.memristive_history[i].append(new_state)
+                self.memristive_state[i] = new_state
 
-                # 1. Add to full history (detached for serialization)
-                self.memristive_history[i].append(new_state.detach())
-
-                # 2. Add to gradient window (keep with gradients!)
-                # This allows gradients to flow through states within window.
-                # When states are popped from window, gradients won't reach older states.
-                self._memristive_gradient_states[i].append(new_state)
-
-                # 3. Enforce sliding window: keep only last (num_backprop_steps + 1) states
-                k = self._memristive_metadata[i]["num_backprop_steps"] + 1
-                if len(self._memristive_gradient_states[i]) > k:
-                    self._memristive_gradient_states[i].pop(0)
-
-                # 4. Update current state (used as recurrent input next forward)
-                # Store detached to break old gradient chains before next forward
-                self.memristive_state[i] = new_state.detach()
+                # If it needs to be detached
+                if self._memristive_metadata[i]["detach_at_each_forward"]:
+                    self.memristive_history[i][-1] = self.memristive_history[i][
+                        -1
+                    ].detach()
+                    self.memristive_state[i] = new_state.detach()
 
         return output
 
@@ -1357,9 +1339,6 @@ class QuantumLayer(MerlinModule):
                 self.memristive_history[state][t] = self.memristive_history[state][
                     t
                 ].to(**target_kwargs)
-                self._memristive_gradient_states[state][t] = self.memristive_history[
-                    state
-                ][t].to(**target_kwargs)
 
         for state in range(len(self.memristive_state)):
             self.memristive_state[state] = self.memristive_state[state].to(
@@ -1808,14 +1787,21 @@ class QuantumLayer(MerlinModule):
             self._restore_memristive_runtime_state(runtime_state)
 
     def reset(self, batch_size: int = 1) -> None:
-        """Resets the memristors to their initial state while clearing the history. It also
-        defines the allowed batch size to be ran per forward pass for circuits with memristive phase shifters.
+        """Resets the memristors to their initial state while clearing the history.
+
+        This also defines the allowed batch size to be ran per forward pass for circuits with
+        memristive phase shifters.
 
         Parameters
         ----------
         batch_size : int
-            Batch size that will be used in forward.
+            Batch size that will be used in forward passes. Must be at least 1.
+            Call this before each new batch to ensure memristive states are properly initialized.
 
+        Raises
+        ------
+        ValueError
+            If batch_size < 1.
         """
         if batch_size < 1:
             raise ValueError(f"batch_size must be at least 1, got {batch_size}")
@@ -1831,19 +1817,12 @@ class QuantumLayer(MerlinModule):
                 self._memristive_metadata[i]["initial_state"],
                 device=self.device,
                 dtype=self.dtype,
-            ).detach()
+            )
             self.memristive_history[i] = [self.memristive_state[i]]
-            self._memristive_gradient_states[i] = [
-                torch.full(
-                    [batch_size],
-                    self._memristive_metadata[i]["initial_state"],
-                    device=self.device,
-                    dtype=self.dtype,
-                )
-            ]
-            if self._memristive_metadata[i]["num_backprop_steps"] == 0:
-                self._memristive_gradient_states[i][0].detach().requires_grad_(
-                    requires_grad=False
-                )
+
+            # Initial state gradient tracking depends on detach flag
+            if self._memristive_metadata[i]["detach_at_each_forward"]:
+                self.memristive_state[i] = self.memristive_state[i].detach()
+                self.memristive_history[i][-1] = self.memristive_history[i][-1].detach()
 
         return

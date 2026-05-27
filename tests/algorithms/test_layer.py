@@ -1714,13 +1714,16 @@ class TestQuantumLayer:
         circ = ML.CircuitBuilder(n_modes=3)
         circ.add_entangling_layer()
         circ.add_memristive_ps(
-            mode=1, update_rule=update_rule, initial_state=1.2, num_backprop_steps=5
+            mode=1,
+            update_rule=update_rule,
+            initial_state=1.2,
+            detach_at_each_forward=False,
         )
         circ.add_memristive_ps(
             mode=0,
             update_rule=update_rule_exp,
             initial_state=0.01,
-            num_backprop_steps=5,
+            detach_at_each_forward=False,
         )
         circ.add_entangling_layer()
 
@@ -2394,7 +2397,7 @@ def test_memristive_works_with_typed_objects_and_cloning_protects_gradients():
         update_rule=update_rule,
         initial_state=0.5,
         name="memPS",
-        num_backprop_steps=1,
+        detach_at_each_forward=False,
     )
     builder.add_angle_encoding(modes=[0, 2], name="input")
     builder.add_entangling_layer(trainable=True, name="U2")
@@ -2530,7 +2533,7 @@ def _update_from_first_probability(
     return state + output[:, 0]
 
 
-def _make_memristive_layer(num_backprop_steps: int) -> ML.QuantumLayer:
+def _make_memristive_layer(detach_at_each_forward: bool = True) -> ML.QuantumLayer:
     """Build a small memristive layer with one recurrent phase shifter."""
     builder = ML.CircuitBuilder(n_modes=3)
     builder.add_entangling_layer(trainable=True, name="U1")
@@ -2539,7 +2542,7 @@ def _make_memristive_layer(num_backprop_steps: int) -> ML.QuantumLayer:
         update_rule=_update_from_first_probability,
         initial_state=0.25,
         name="mem",
-        num_backprop_steps=num_backprop_steps,
+        detach_at_each_forward=detach_at_each_forward,
     )
     builder.add_angle_encoding(modes=[0, 2], name="input")
     builder.add_entangling_layer(trainable=True, name="U2")
@@ -2554,17 +2557,16 @@ def _make_memristive_layer(num_backprop_steps: int) -> ML.QuantumLayer:
     )
 
 
-def test_zero_backprop_steps_blocks_later_loss_from_earlier_inputs():
-    """num_backprop_steps=0 should make the memristor reservoir-like.
+def test_detach_at_each_forward_true_blocks_gradient_through_recurrence():
+    """detach_at_each_forward=True should block gradients through state recurrence.
 
-    With a zero-step guard, the last output is allowed to depend on the current
-    input and the current memristive value, but its gradient should not traverse
-    previous memristive updates into earlier latent inputs. The current branch
-    still gives non-zero gradients to earlier inputs because it detaches old
-    history references rather than the state chain used in future forwards.
+    With detach_at_each_forward=True, the memristive state is detached at each
+    forward pass, preventing gradients from flowing through the recurrence
+    (state → new_state). This breaks the gradient chain so earlier inputs
+    receive zero gradients from the memristive state dependence.
     """
     torch.manual_seed(1)
-    layer = _make_memristive_layer(num_backprop_steps=0)
+    layer = _make_memristive_layer(detach_at_each_forward=True)
     layer.reset(batch_size=1)
 
     inputs = [torch.randn(1, 2, requires_grad=True) for _ in range(4)]
@@ -2583,30 +2585,22 @@ def test_zero_backprop_steps_blocks_later_loss_from_earlier_inputs():
     assert past_grad_norms == pytest.approx([0.0, 0.0, 0.0], abs=1e-8)
 
 
-def test_num_backprop_steps_2_maintains_sliding_window():
-    """num_backprop_steps=2 should allow gradients through the last 3 states.
+def test_detach_at_each_forward_false_allows_full_gradient_history():
+    """detach_at_each_forward=False should allow full gradient flow through history.
 
-    With num_backprop_steps=2, the window size is 3. This means that:
-    - Forward passes 1-3: all gradients flow freely
-    - Forward passes 4+: gradients only flow through the last 3 forwards
-
-    This test verifies:
-    1. Multiple forward passes accumulate memristive history
-    2. The sliding window (popping old entries) is maintained
-    3. Loss backpropagation only reaches inputs within the window
-    4. Earlier inputs receive zero gradients (properly detached)
+    With detach_at_each_forward=False, the memristive state is NOT detached,
+    so gradients flow through the entire recurrence chain. All previous inputs
+    should receive non-zero gradients from the memristive history.
     """
     torch.manual_seed(42)
-    layer = _make_memristive_layer(num_backprop_steps=2)
+    layer = _make_memristive_layer(detach_at_each_forward=False)
     layer.reset(batch_size=1)
 
-    # Run 5 forward passes to ensure window pops older entries
+    # Run 5 forward passes to accumulate history
     inputs = [torch.randn(1, 2, requires_grad=True) for _ in range(5)]
     outputs = [layer(input_batch) for input_batch in inputs]
 
-    # Verify memristive history and gradient state tracking
-    # After 5 forwards: history should have 6 entries (initial + 5 new)
-    # _memristive_gradient_states should have 3 entries (window_size = num_backprop_steps + 1)
+    # Verify memristive history accumulated
     assert (
         len(layer.memristive_history[0]) == 6
     ), f"Expected 6 history entries, got {len(layer.memristive_history[0])}"
@@ -2615,48 +2609,46 @@ def test_num_backprop_steps_2_maintains_sliding_window():
     loss = outputs[-1][:, 0].sum()
     loss.backward()
 
-    # With num_backprop_steps=2 (window=3), only the last 3 forwards should get gradients
-    # That's inputs[2], inputs[3], inputs[4]
+    # With detach_at_each_forward=False, all inputs should receive gradients
+    # from the full recurrence chain
     grad_norms = [
         0.0 if input_batch.grad is None else input_batch.grad.abs().max().item()
         for input_batch in inputs
     ]
 
-    print(grad_norms)
-
-    # First two inputs (outside window) should have zero gradients
-    assert grad_norms[0] < 1e-8, f"Input 0 should have ~0 gradient, got {grad_norms[0]}"
-    assert grad_norms[1] < 1e-8, f"Input 1 should have ~0 gradient, got {grad_norms[1]}"
-
-    # Last three inputs (inside window) should have non-zero gradients
-    # Note: input[2] might have very small gradient (at the boundary), but should be non-zero
-    assert (
-        grad_norms[2] > 1e-10
-    ), f"Input 2 should have non-zero gradient, got {grad_norms[2]}"
-    assert (
-        grad_norms[3] > 1e-8
-    ), f"Input 3 should have significant gradient, got {grad_norms[3]}"
-    assert (
-        grad_norms[4] > 1e-8
-    ), f"Input 4 should have significant gradient, got {grad_norms[4]}"
+    # All inputs should have non-zero gradients (full history retained)
+    for i, grad_norm in enumerate(grad_norms):
+        assert (
+            grad_norm > 1e-8
+        ), f"Input {i} should have non-zero gradient with full history, got {grad_norm}"
 
 
-def test_negative_num_backprop_steps_is_rejected_at_builder_boundary():
-    """Invalid backpropagation windows should fail at construction time.
+def test_detach_at_each_forward_is_boolean_flag():
+    """detach_at_each_forward flag accepts boolean values.
 
-    The window length is a count, so negative values cannot define a valid
-    sliding backpropagation window. The current implementation stores negative
-    values and later risks failing from list indexing in QuantumLayer.forward().
+    The flag should accept True or False to control whether gradients flow
+    through the memristive recurrence. Both values should be accepted without
+    raising errors.
     """
     builder = ML.CircuitBuilder(n_modes=3)
 
-    with pytest.raises(ValueError, match="num_backprop_steps"):
-        builder.add_memristive_ps(
-            mode=1,
-            update_rule=_update_from_first_probability,
-            initial_state=0.25,
-            num_backprop_steps=-1,
-        )
+    # Should not raise for valid boolean values
+    builder.add_memristive_ps(
+        mode=1,
+        update_rule=_update_from_first_probability,
+        initial_state=0.25,
+        detach_at_each_forward=True,
+    )
+    assert builder.memristive_specs[0]["detach_at_each_forward"] is True
+
+    builder2 = ML.CircuitBuilder(n_modes=3)
+    builder2.add_memristive_ps(
+        mode=1,
+        update_rule=_update_from_first_probability,
+        initial_state=0.25,
+        detach_at_each_forward=False,
+    )
+    assert builder2.memristive_specs[0]["detach_at_each_forward"] is False
 
 
 def test_detach_without_assignment_does_not_detach_original_tensor():
@@ -2675,3 +2667,233 @@ def test_detach_without_assignment_does_not_detach_original_tensor():
 
     assert state.requires_grad
     assert not state.detach().requires_grad
+
+
+def test_mixed_memristors_with_different_detach_settings():
+    """Layer with multiple memristors using different detach_at_each_forward settings.
+
+    Different memristors in the same layer can have different gradient flow,
+    allowing fine-grained control over gradient paths.
+    """
+    torch.manual_seed(2)
+
+    builder = ML.CircuitBuilder(n_modes=5)
+    # First memristor: detach gradients (blocking flow)
+    builder.add_memristive_ps(
+        mode=1,
+        update_rule=_update_from_first_probability,
+        initial_state=0.5,
+        detach_at_each_forward=True,
+        name="mem_detached",
+    )
+    # Second memristor: keep gradients (full flow)
+    builder.add_memristive_ps(
+        mode=2,
+        update_rule=_update_from_first_probability,
+        initial_state=0.3,
+        detach_at_each_forward=False,
+        name="mem_full_grad",
+    )
+    builder.add_angle_encoding(modes=[0, 3])
+
+    layer = ML.QuantumLayer(
+        builder=builder,
+        n_photons=3,
+        input_size=2,
+        measurement_strategy=ML.MeasurementStrategy.probs(),
+    )
+    layer.reset(batch_size=1)
+
+    # Run several forward passes
+    inputs = [torch.randn(1, 2, requires_grad=True) for _ in range(3)]
+    outputs = [layer(inp) for inp in inputs]
+
+    loss = outputs[-1].sum()
+    loss.backward()
+
+    # First memristor (detached) should NOT have gradients in history
+    for state in layer.memristive_history[0]:
+        assert state.grad_fn is None, "Detached memristor states should have no grad_fn"
+
+    # Second memristor (full grad) should retain gradients
+    assert (
+        layer.memristive_history[1][-1].grad_fn is not None
+    ), "Non-detached memristor should retain gradients"
+
+
+def test_detach_at_each_forward_false_has_larger_gradients_than_true():
+    """Gradients propagate further with detach_at_each_forward=False.
+
+    With full gradient flow (False), earlier inputs typically receive
+    larger gradients than with detach_at_each_forward=True due to longer
+    computational paths.
+    """
+    torch.manual_seed(3)
+
+    layer_detached = _make_memristive_layer(detach_at_each_forward=True)
+    layer_detached.reset(batch_size=1)
+
+    layer_full_grad = _make_memristive_layer(detach_at_each_forward=False)
+    layer_full_grad.reset(batch_size=1)
+
+    N = 5
+    seed_inputs = [torch.randn(1, 2) for _ in range(N)]
+
+    # Run with detach=True
+    torch.manual_seed(42)
+    inputs_detached = [inp.clone().detach().requires_grad_(True) for inp in seed_inputs]
+    outputs_detached = [layer_detached(inp) for inp in inputs_detached]
+    loss_detached = outputs_detached[-1].sum()
+    loss_detached.backward()
+    grads_detached = [
+        inp.grad.abs().max().item() if inp.grad is not None else 0.0
+        for inp in inputs_detached
+    ]
+
+    # Run with detach=False
+    torch.manual_seed(42)
+    inputs_full = [inp.clone().detach().requires_grad_(True) for inp in seed_inputs]
+    outputs_full = [layer_full_grad(inp) for inp in inputs_full]
+    loss_full = outputs_full[-1].sum()
+    loss_full.backward()
+    grads_full = [
+        inp.grad.abs().max().item() if inp.grad is not None else 0.0
+        for inp in inputs_full
+    ]
+
+    # Earlier inputs should have larger or equal gradients with full history
+    for i in range(N - 1):  # All except last
+        assert (
+            grads_full[i] >= grads_detached[i] * 0.9
+        ), f"Full gradient flow should have larger or equal gradients for earlier inputs"
+
+
+def test_reset_properly_detaches_or_keeps_initial_state():
+    """reset() properly initializes gradient tracking based on detach_at_each_forward.
+
+    After reset(), the initial state should be detached or not based on the flag,
+    ensuring fresh gradient tracking for the new batch.
+    """
+    torch.manual_seed(4)
+
+    # Test with detach=True
+    layer_detached = _make_memristive_layer(detach_at_each_forward=True)
+    layer_detached.reset(batch_size=1)
+    assert (
+        layer_detached.memristive_state[0].grad_fn is None
+    ), "Initial state should be detached with detach_at_each_forward=True"
+    assert (
+        layer_detached.memristive_history[0][0].grad_fn is None
+    ), "Initial history state should be detached with detach_at_each_forward=True"
+
+    # Test with detach=False
+    layer_full = _make_memristive_layer(detach_at_each_forward=False)
+    layer_full.reset(batch_size=1)
+    # Initial state is typically created without grad by default
+    # But after first forward it should retain gradients
+    inp = torch.randn(1, 2, requires_grad=True)
+    out = layer_full(inp)
+    assert (
+        layer_full.memristive_state[0].grad_fn is not None
+    ), "State should retain gradients after forward with detach_at_each_forward=False"
+
+
+def test_detach_at_each_forward_with_batch_dimension():
+    """Gradient flow works correctly with batch_size > 1.
+
+    The flag should maintain correct gradient behavior regardless of batch size.
+    """
+    torch.manual_seed(5)
+    batch_size = 4
+
+    layer = _make_memristive_layer(detach_at_each_forward=False)
+    layer.reset(batch_size=batch_size)
+
+    inputs = [torch.randn(batch_size, 2, requires_grad=True) for _ in range(3)]
+    outputs = [layer(inp) for inp in inputs]
+
+    loss = outputs[-1].sum()
+    loss.backward()
+
+    # All inputs should have gradients
+    for i, inp in enumerate(inputs):
+        assert inp.grad is not None, f"Input {i} should have gradients"
+        assert inp.grad.shape == (
+            batch_size,
+            2,
+        ), f"Gradient shape mismatch for input {i}"
+
+
+def test_long_sequence_with_manual_sliding_window_detach():
+    """Long sequence with manual sliding window: detach during forward loop.
+
+    This test demonstrates a practical use case where a user runs many forward
+    passes (N=100) and manually detaches the history during the loop to implement
+    a truncated BPTT sliding window of k steps. Detaching must happen DURING the
+    loop, not after, to affect the computational graph of subsequent forwards.
+    """
+
+    def update_rule(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        scalar_output = output.mean(dim=1)
+        return torch.exp(state - scalar_output)
+
+    torch.manual_seed(6)
+
+    builder = ML.CircuitBuilder(n_modes=3)
+    builder.add_entangling_layer()
+    builder.add_memristive_ps(
+        mode=1,
+        update_rule=update_rule,
+        initial_state=1.2,
+        detach_at_each_forward=False,
+    )
+    builder.add_angle_encoding(modes=[0, 2])
+    builder.add_entangling_layer()
+
+    layer = ML.QuantumLayer(
+        builder=builder,
+        n_photons=3,
+        input_size=2,
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+    )
+    layer.reset(batch_size=1)
+
+    N = 100
+    k = 3
+
+    inputs = []
+
+    for t in range(N):
+        inp = torch.randn(1, 2, requires_grad=True)
+        inputs.append(inp)
+        out = layer(inp)
+
+        if N - t == k + 1:
+            for i in range(len(layer.memristive_history)):
+                for j in range(len(layer.memristive_history[i])):
+                    layer.memristive_history[i][j] = layer.memristive_history[i][j].detach()
+
+    assert (
+        len(layer.memristive_history[0]) == N + 1
+    ), f"Expected {N + 1} history entries, got {len(layer.memristive_history[0])}"
+
+    # Verify only last k timesteps have gradients in computational graph
+    for i, history in enumerate(layer.memristive_history):
+        for j, state in enumerate(history):
+            has_grad = state.grad_fn is not None
+            steps_back = len(history) - j - 1
+            
+            if steps_back < k:
+                assert (
+                    has_grad
+                ), f"Expected gradients for last {k} steps, but step {j} has no grad_fn"
+            else:
+                assert (
+                    not has_grad
+                ), f"Expected no gradients before last {k} steps, but step {j} has grad_fn"
+
+    # Backward pass
+    loss = out.sum()
+    loss.backward()

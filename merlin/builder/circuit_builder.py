@@ -476,24 +476,29 @@ class CircuitBuilder:
         update_rule: Callable,
         initial_state: float,
         name: str | None = None,
-        num_backprop_steps: int = 0,
+        detach_at_each_forward: bool = True,
     ) -> "CircuitBuilder":
         """Add a memristive phase shifter that will update in regards to the update rule after each forward pass.
 
         Parameters
         ----------
         mode : int
-           Circuit mode to target
+           Circuit mode to target.
         update_rule : ~collections.abc.Callable
-           update_rule(state,output). The update rule must also handle batch inputs and return
-           a tensor of size ``[batch_size]``, just like the state parameter. The output will be
-           the same as the corresponding :class:`~merlin.algorithms.layer.QuantumLayer` forward.
+           Callable with signature ``update_rule(state: torch.Tensor, output: torch.Tensor | StateVector | 
+           ProbabilityDistribution | PartialMeasurement) -> torch.Tensor``. The update rule receives the current 
+           memristive state and the layer output, and must return a new state tensor of shape ``[batch_size]``.
         initial_state : float
-           The initial value of the phase shifter. This will be the value used after each :meth:`~merlin.algorithms.layer.QuantumLayer.reset` call
+           The initial value of the phase shifter. This will be the value used after each :meth:`~merlin.algorithms.layer.QuantumLayer.reset` call.
         name : str | None
             Prefix used for the generated memristive phase shifter parameter. Defaults to ``"mem"``.
-        num_backprop_steps: int
-            The number of steps in this memristor history the back propagation can access for gradient calculation in the QuantumLayer. Default value is 0.
+        detach_at_each_forward : bool
+            Controls gradient flow through the memristive recurrence (state → new_state):
+            
+            - ``True`` (default): The new state is detached at each forward, preventing gradients from flowing 
+              through the recurrence chain. Earlier inputs receive zero gradients from the memristive state.
+            - ``False``: The new state retains gradients, allowing full gradient flow through the entire 
+              recurrence history. All inputs can receive gradients through the accumulated state chain.
 
         Returns
         -------
@@ -511,10 +516,6 @@ class CircuitBuilder:
         if mode < 0 or mode >= self.n_modes:
             raise ValueError(
                 f"The assigned mode must be between 0 and CircuitBuilder.n_modes ({self.n_modes} here). Got {mode}."
-            )
-        if (not isinstance(num_backprop_steps, int)) or num_backprop_steps < 0:
-            raise ValueError(
-                f"The `num_backprop_steps` parameter must be a positive interger. Got {type(num_backprop_steps)}: {num_backprop_steps}."
             )
 
         scalar_initial_state = initial_state
@@ -562,7 +563,7 @@ class CircuitBuilder:
                 "name": f"{name}{self._memristor_counter}",
                 "update_rule": update_rule,
                 "initial_state": scalar_initial_state,
-                "num_backprop_steps": num_backprop_steps,
+                "detach_at_each_forward": detach_at_each_forward,
             }
         )
         return self
