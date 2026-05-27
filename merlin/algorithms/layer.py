@@ -1158,22 +1158,21 @@ class QuantumLayer(MerlinModule):
                 k = self._memristive_metadata[i]["num_backprop_steps"]
                 window_size = k + 1
                 if len(self._memristive_gradient_states[i]) > window_size:
-                    self._memristive_gradient_states[i].pop(0)
                     self._memristive_gradient_states[i][0] = (
-                        self._memristive_gradient_states[i][0].detach().requires_grad_()
+                        self._memristive_gradient_states[i][0].detach()
                     )
+                    self._memristive_gradient_states[i].pop(0)
 
                 # 4. Update current state (used as recurrent input next forward)
                 # Store detached to break old gradient chains before next forward
                 self.memristive_state[i] = new_state.detach()
 
             if len(self._memristive_gradient_outputs) >= k:
-                self._memristive_gradient_outputs.pop(0)
                 self._memristive_gradient_outputs[0] = (
-                    self._memristive_gradient_outputs[0].detach().requires_grad_()
+                    self._memristive_gradient_outputs[0].detach()
                 )
                 print(f"State after detach {self._memristive_gradient_outputs[0]}")
-
+                self._memristive_gradient_outputs.pop(0)
             print(f"states {self._memristive_gradient_states}")
             print(f"Outputs {self._memristive_gradient_outputs}")
             print()
