@@ -2583,7 +2583,7 @@ def test_zero_backprop_steps_blocks_later_loss_from_earlier_inputs():
     assert past_grad_norms == pytest.approx([0.0, 0.0, 0.0], abs=1e-8)
 
 
-def test_num_backprop_steps_3_maintains_sliding_window():
+def test_num_backprop_steps_2_maintains_sliding_window():
     """num_backprop_steps=2 should allow gradients through the last 3 states.
 
     With num_backprop_steps=2, the window size is 3. This means that:
