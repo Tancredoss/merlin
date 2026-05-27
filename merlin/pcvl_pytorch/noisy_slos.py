@@ -204,7 +204,7 @@ class NoisyG2SLOSComputeGraph:
                     ).compute_space_size()
                 ),
                 n_modes=self.m,
-                n_photons=self.n_photons,
+                n_photons=self.n_photons + num_photons_added,
             )
 
             # For each combination in the sector

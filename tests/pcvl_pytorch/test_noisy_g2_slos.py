@@ -342,7 +342,11 @@ class TestG2DistinguishabilityModes:
         # g2=1.0 → weight_0=(1-1)^1=0, weight_1=1^1*(1-1)^0=1 (sector 1 carries everything)
         # indistinguishability=1.0 → NoisySLOSComputeGraph ≡ pure SLOS
         groups = NoiseGroups(
-            source={"g2": 1.0, "g2_distinguishable": False, "indistinguishability": 1.0},
+            source={
+                "g2": 1.0,
+                "g2_distinguishable": False,
+                "indistinguishability": 1.0,
+            },
             circuit=None,
             post_measurement=None,
         )
