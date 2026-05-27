@@ -329,9 +329,6 @@ class QuantumLayer(MerlinModule):
             [torch.tensor([i["initial_state"]], device=device, dtype=dtype)]
             for i in self._memristive_metadata
         ]
-        self._memristive_gradient_outputs = []
-        # Absolute forward index of the first output kept for window rebuilds.
-        self._memristive_gradient_output_start_index = 0
         self._memristive_smaller_last_batch = False
 
         # Phase 12: assign context to self + warnings
@@ -1251,13 +1248,107 @@ class QuantumLayer(MerlinModule):
                     n_photons=self.n_photons,
                     computation_space=self.computation_space,
                 )
-            return StateVector(
-                self.measurement_mapping(results),
-                n_modes=len(self.input_state),
-                n_photons=self.n_photons,
+            else:
+                output = StateVector(
+                    self.measurement_mapping(results),
+                    n_modes=len(self.input_state),
+                    n_photons=self.n_photons,
+                )
+        else:
+            output = self.measurement_mapping(results)
+
+        # ================================================================
+        # Phase 7: memristive update with truncated BPTT sliding window
+        # ================================================================
+        # This runs AFTER measurement for ALL output types to ensure
+        # memristive states are updated regardless of measurement strategy.
+        if len(self.memristive_state) > 0:
+            # Safe output copy (handle all output types)
+            if not isinstance(output, PartialMeasurement):
+                output_for_memristive = output.clone()
+            else:
+                branches = [
+                    PartialMeasurementBranch(
+                        outcome=b.outcome,
+                        probability=b.probability.clone(),
+                        amplitudes=b.amplitudes.clone(),
+                    )
+                    for b in output.branches
+                ]
+                output_for_memristive = PartialMeasurement(
+                    branches=tuple(branches),
+                    measured_modes=output.measured_modes,
+                    unmeasured_modes=output.unmeasured_modes,
+                    grouping=output.grouping,
+                )
+
+            # ============================================================
+            # BUILD SLIDING WINDOW FOR TRUNCATED BPTT
+            # ============================================================
+            # Key insight: _memristive_gradient_states maintains a window
+            # of states that participate in backprop. We use the LAST state
+            # in this window to compute the new state. Detaching happens
+            # AFTER computation to prevent old gradient chains.
+            # ============================================================
+            new_gradient_inputs = []
+
+            for i in range(len(self.memristive_state)):
+                # Get the last state in the gradient window
+                if len(self._memristive_gradient_states[i]) > 0:
+                    # Use the most recent state in the window (with gradients!)
+                    # This allows gradients to flow through states within window
+                    state_for_update = self._memristive_gradient_states[i][-1]
+                else:
+                    # Fallback: use current state (first forward pass)
+                    state_for_update = self.memristive_state[i]
+
+                new_gradient_inputs.append(state_for_update)
+
+            # Compute new states using only window states
+            new_states = compute_new_memristive_ps_angles(
+                memristive_metadata=self._memristive_metadata,
+                memristive_state=new_gradient_inputs,
+                output=output_for_memristive,
             )
 
-        return self.measurement_mapping(results)
+            # Get batch dimension from output for shape validation
+            output_batch_dim = (
+                output.shape[0]
+                if isinstance(output, torch.Tensor)
+                else output.tensor.shape[0]
+            )
+
+            # ============================================================
+            # UPDATE STATE STRUCTURES
+            # ============================================================
+            for i, new_state in enumerate(new_states):
+                # Validate shape
+                expected_shape = torch.Size([output_batch_dim])
+                if new_state.shape != expected_shape:
+                    raise ValueError(
+                        f"Update rule for memristor {i} returned shape {new_state.shape}, "
+                        f"expected {expected_shape}. The update rule must return a tensor "
+                        f"of shape [batch_size].\n\nMemristor metadata: {self._memristive_metadata[i]}"
+                    )
+
+                # 1. Add to full history (detached for serialization)
+                self.memristive_history[i].append(new_state.detach())
+
+                # 2. Add to gradient window (keep with gradients!)
+                # This allows gradients to flow through states within window.
+                # When states are popped from window, gradients won't reach older states.
+                self._memristive_gradient_states[i].append(new_state)
+
+                # 3. Enforce sliding window: keep only last (num_backprop_steps + 1) states
+                k = self._memristive_metadata[i]["num_backprop_steps"] + 1
+                if len(self._memristive_gradient_states[i]) > k:
+                    self._memristive_gradient_states[i].pop(0)
+
+                # 4. Update current state (used as recurrent input next forward)
+                # Store detached to break old gradient chains before next forward
+                self.memristive_state[i] = new_state.detach()
+
+        return output
 
     def _compute_amplitudes(
         self,
