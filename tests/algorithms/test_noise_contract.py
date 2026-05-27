@@ -1064,16 +1064,10 @@ def test_g2_gradient_regression():
     x = torch.randn(1, 2, requires_grad=True)
     output = layer(x)
 
-    # Compute loss and backward
-    if hasattr(output, "tensor"):
-        # If it's a SectoredDistribution
-        loss = output.sectors[0].probs.sum()
-    else:
-        loss = output.sum()
-
+    loss = output.sectors[0].tensor.sum() - output.sectors[1].tensor.sum()
     loss.backward()
 
-    # Verify gradients are computed
+    # # Verify gradients are computed
     assert x.grad is not None
     assert torch.any(x.grad != 0)
 

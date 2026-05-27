@@ -49,7 +49,13 @@ def unitary_2mode(simple_bs_circuit):
 @pytest.fixture
 def unitary_3mode(entangling_circuit):
     """Convert entangling circuit to unitary tensor."""
-    return CircuitConverter(entangling_circuit).to_tensor([])
+    converter = CircuitConverter(entangling_circuit)
+    # Create dummy parameters for variable components
+    if converter.nb_input_tensor > 0:
+        dummy_params = [torch.zeros(1) for _ in range(converter.nb_input_tensor)]
+        return converter.to_tensor(*dummy_params)
+    else:
+        return converter.to_tensor()
 
 
 class TestG2SectorStructure:
@@ -94,7 +100,7 @@ class TestG2SectorStructure:
 
         # Check each sector exists and is accessible
         for i, sector in enumerate(result.sectors):
-            assert hasattr(sector, "probs")
+            assert hasattr(sector, "tensor")
             assert isinstance(sector.tensor, torch.Tensor)
             assert sector.tensor.shape[0] > 0
 
@@ -378,7 +384,13 @@ class TestG2PercevalComparison:
 
     def test_joint_g2_and_indistinguishability(self, entangling_circuit):
         """Combined hom + g2 produces SectoredDistribution."""
-        unitary = CircuitConverter(entangling_circuit).to_tensor([])
+        converter = CircuitConverter(entangling_circuit)
+        # Create dummy parameters for variable components
+        if converter.nb_input_tensor > 0:
+            dummy_params = [torch.zeros(1) for _ in range(converter.nb_input_tensor)]
+            unitary = converter.to_tensor(*dummy_params)
+        else:
+            unitary = converter.to_tensor()
 
         groups = NoiseGroups(
             source={
