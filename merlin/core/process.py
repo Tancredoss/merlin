@@ -298,9 +298,12 @@ class ComputationProcess(AbstractComputationProcess):
 
                     return mixed_probs
             else:
-                keys, probs = self.simulation_graph.compute_probs(
-                    unitary, self.input_state
-                )
+                result = self.simulation_graph.compute_probs(unitary, self.input_state)
+                # NoisyG2SLOSComputeGraph returns SectoredDistribution directly
+                if isinstance(result, SectoredDistribution):
+                    return result
+                # NoisySLOSComputeGraph returns (keys, probs) tuple
+                keys, probs = result
                 return probs
         else:
             if isinstance(self.input_state, torch.Tensor):

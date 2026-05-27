@@ -135,17 +135,14 @@ class DistributionStrategy(BaseMeasurementStrategy):
             sample_fn = sampler.pcvl_sampler_g2
             if grouping:
                 raise RuntimeError(
-                    f"One grouping strategy can not be applied to the output of a simulation with g2 noise. Indeed, since this noise creates input states with more phtons than expected, multiple photon sectors are explored. The fock spaces explored are m={distribution.sectors[0].n_modes} modes and n_photons={min(distribution._photon_map.keys())} to 2*n_photons={max(distribution._photon_map.keys())} that all have different space dimensions. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult`s of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector."
+                    f"A grouping strategy can not be applied to the output of a simulation with g2 noise. Indeed, since this noise creates input states with more phtons than expected, multiple photon sectors are explored. The fock spaces explored are m={distribution.sectors[0].n_modes} modes and n_photons={min(distribution._photon_map.keys())} to 2*n_photons={max(distribution._photon_map.keys())} that all have different space dimensions. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult`s of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector."
                 )
             for sector_result in distribution.sectors:
                 sector_result.tensor = apply_photon_loss(sector_result.tensor)
                 sector_result.tensor = apply_detectors(sector_result.tensor)
 
-                if apply_sampling and effective_shots > 0:
-                    sector_result.tensor = sample_fn(
-                        sector_result.tensor, effective_shots
-                    )
-            distribution = sample_fn(distribution)
+            if apply_sampling and effective_shots > 0:
+                distribution = sample_fn(distribution, effective_shots)
         else:
             sample_fn = sampler.pcvl_sampler
             distribution = apply_photon_loss(distribution)
@@ -178,7 +175,7 @@ class AmplitudesStrategy(BaseMeasurementStrategy):
         *,
         amplitudes: torch.Tensor,
         sampler: SamplingProcess | None = None,
-        **kwargs: object
+        **kwargs: object,
     ) -> torch.Tensor:
         # Amplitudes bypass detectors, photon loss, and sampling.
         apply_sampling = bool(kwargs.get("apply_sampling", False))

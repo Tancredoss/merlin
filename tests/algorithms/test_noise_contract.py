@@ -216,64 +216,33 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
         UserWarning,
         match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
     ):
-        with pytest.raises(
-            NotImplementedError,
-            match=re.escape(
-                "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
+        _ = ml.QuantumLayer(
+            n_photons=2,
+            input_size=5,
+            builder=circ,
+            noise=pcvl.NoiseModel(
+                g2=0.2,
             ),
-        ):
-            _ = ml.QuantumLayer(
-                n_photons=2,
-                input_size=5,
-                builder=circ,
-                noise=pcvl.NoiseModel(
-                    g2=0.2,
-                ),
-                measurement_strategy=ml.MeasurementStrategy.probs(
-                    computation_space=ml.ComputationSpace.FOCK
-                ),
-            )
+            measurement_strategy=ml.MeasurementStrategy.probs(
+                computation_space=ml.ComputationSpace.FOCK
+            ),
+        )
     with pytest.warns(
         UserWarning,
         match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
-    ):
-        with pytest.raises(
-            NotImplementedError,
-            match=re.escape(
-                "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
-            ),
-        ):
-            _ = ml.QuantumLayer(
-                n_photons=2,
-                input_size=5,
-                builder=circ,
-                noise=pcvl.NoiseModel(
-                    g2=0.3,
-                ),
-                measurement_strategy=ml.MeasurementStrategy.probs(
-                    computation_space=ml.ComputationSpace.FOCK
-                ),
-            )
-
-    with pytest.raises(
-        NotImplementedError,
-        match=re.escape(
-            "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2_distinguishable', 'g2']."
-        ),
     ):
         _ = ml.QuantumLayer(
             n_photons=2,
             input_size=5,
             builder=circ,
             noise=pcvl.NoiseModel(
-                indistinguishability=0.3,
                 g2=0.3,
-                g2_distinguishable=True,
             ),
             measurement_strategy=ml.MeasurementStrategy.probs(
                 computation_space=ml.ComputationSpace.FOCK
             ),
         )
+
     with pytest.raises(
         NotImplementedError,
         match=re.escape(
@@ -411,13 +380,13 @@ def test_impossible_noise():
         UserWarning,
         match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
     ):
-        with pytest.raises(
-            NotImplementedError,
-            match=re.escape(
-                "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
-            ),
-        ):
-            _ = ml.QuantumLayer(n_photons=2, input_size=5, builder=circ, noise=noise)
+        _ = ml.QuantumLayer(
+            n_photons=2,
+            input_size=5,
+            builder=circ,
+            noise=noise,
+            computation_space=ml.ComputationSpace.FOCK,
+        )
 
     # Verify that g2_distinguishable was auto-corrected
     assert noise.g2_distinguishable is False
@@ -968,7 +937,7 @@ def test_g2_with_probs_no_longer_raises_not_implemented():
         n_photons=2,
         input_size=2,
         builder=circ,
-        noise=pcvl.NoiseModel(g2=0.05),
+        noise=pcvl.NoiseModel(indistinguishability=0.3, g2=0.05),
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
@@ -1008,7 +977,9 @@ def test_g2_indistinguishable_with_probs_no_longer_raises():
         n_photons=2,
         input_size=2,
         builder=circ,
-        noise=pcvl.NoiseModel(g2=0.05, g2_distinguishable=True),
+        noise=pcvl.NoiseModel(
+            indistinguishability=0.7, g2=0.05, g2_distinguishable=True
+        ),
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),

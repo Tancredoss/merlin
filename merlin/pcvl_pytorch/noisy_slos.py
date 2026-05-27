@@ -201,7 +201,7 @@ class NoisyG2SLOSComputeGraph:
                 torch.zeros(
                     Combinadics(
                         scheme="fock", n=self.n_photons + num_photons_added, m=self.m
-                    )
+                    ).compute_space_size()
                 ),
                 n_modes=self.m,
                 n_photons=self.n_photons,

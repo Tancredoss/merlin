@@ -14,6 +14,7 @@ import pytest
 import torch
 import numpy as np
 import perceval as pcvl
+from copy import deepcopy
 
 from merlin import ComputationSpace, CircuitBuilder
 from merlin.core import SectoredDistribution
@@ -94,8 +95,8 @@ class TestG2SectorStructure:
         # Check each sector exists and is accessible
         for i, sector in enumerate(result.sectors):
             assert hasattr(sector, "probs")
-            assert isinstance(sector.probs, torch.Tensor)
-            assert sector.probs.shape[0] > 0
+            assert isinstance(sector.tensor, torch.Tensor)
+            assert sector.tensor.shape[0] > 0
 
     def test_g2_zero_single_sector(self, unitary_2mode):
         """g2=0 returns single sector matching pure SLOS."""
@@ -124,7 +125,7 @@ class TestG2SectorStructure:
         # With g2=0, should have single sector
         assert len(result.sectors) >= 1
         # First sector probabilities should match pure SLOS
-        sector_0_probs = result.sectors[0].probs
+        sector_0_probs = result.sectors[0].tensor
         assert torch.allclose(probs_pure, sector_0_probs, atol=1e-5)
 
 
@@ -151,7 +152,7 @@ class TestG2ProbabilityNormalization:
         # Sum all probabilities across all sectors
         total_prob = 0.0
         for sector in result.sectors:
-            total_prob += sector.probs.sum().item()
+            total_prob += sector.tensor.sum().item()
 
         assert np.isclose(total_prob, 1.0, atol=1e-5)
 
@@ -175,7 +176,7 @@ class TestG2ProbabilityNormalization:
             result = noisy_slos.compute_probs(unitary_3mode, state)
             assert isinstance(result, SectoredDistribution)
 
-            total = sum(sector.probs.sum().item() for sector in result.sectors)
+            total = sum(sector.tensor.sum().item() for sector in result.sectors)
             assert np.isclose(total, 1.0, atol=1e-5)
 
 
@@ -274,7 +275,7 @@ class TestG2ExtraPhotonDistribution:
 
         # Second sector should be for 3 photons
         second_sector = result.sectors[1]
-        assert second_sector.probs.shape[0] > 0
+        assert second_sector.tensor.shape[0] > 0
 
 
 class TestG2Gradients:
@@ -300,7 +301,7 @@ class TestG2Gradients:
         assert isinstance(result, SectoredDistribution)
 
         # Get first sector probability sum
-        prob_sum = result.sectors[0].probs.sum()
+        prob_sum = result.sectors[0].tensor.sum()
         prob_sum.backward()
 
         # Unitary should have gradients
@@ -318,7 +319,7 @@ class TestG2PercevalComparison:
             source={
                 "g2": 0.1,
                 "g2_distinguishable": True,
-                "indistinguishability": 1.0,
+                "indistinguishability": 0.9,
             },
             circuit=None,
             post_measurement=None,
@@ -334,15 +335,20 @@ class TestG2PercevalComparison:
         assert isinstance(result_merlin, SectoredDistribution)
 
         # Get Perceval reference for comparison
-        experiment = pcvl.Experiment(simple_bs_circuit)
-        experiment.noise = pcvl.NoiseModel(
-            g2=0.1, g2_distinguishable=True, indistinguishability=1.0
+        noise = pcvl.NoiseModel(
+            g2=0.1, g2_distinguishable=True, indistinguishability=0.9
         )
-        perceval_result = experiment.probs_svd()
+        source = pcvl.Source.from_noise_model(noise)
+        backend = pcvl.BackendFactory.get_backend("SLOS")
+        sim = pcvl.Simulator(backend)
+        sim.set_circuit(deepcopy(simple_bs_circuit))
+        perceval_result = sim.probs_svd((source, pcvl.BasicState([1, 1])))["results"]
 
         # Basic sanity checks
         assert len(result_merlin.sectors) > 0
-        assert sum(s.probs.sum().item() for s in result_merlin.sectors) > 0
+        assert sum(s.tensor.sum().item() for s in result_merlin.sectors) > 0
+        # Perceval result should also be non-empty
+        assert len(perceval_result) > 0
 
     def test_against_perceval_indistinguishable(self, simple_bs_circuit):
         """g2_distinguishable=False output has multi-sector structure."""
@@ -394,5 +400,5 @@ class TestG2PercevalComparison:
         assert isinstance(result_merlin, SectoredDistribution)
 
         # Verify total probability is reasonable
-        total_merlin = sum(s.probs.sum().item() for s in result_merlin.sectors)
+        total_merlin = sum(s.tensor.sum().item() for s in result_merlin.sectors)
         assert np.isclose(total_merlin, 1.0, atol=1e-5)
