@@ -572,17 +572,22 @@ def test_probabilities_strategy_applies_transforms_and_sampling():
     def apply_detectors(dist: torch.Tensor) -> torch.Tensor:
         return dist + 1.0
 
-    def sample_fn(dist: torch.Tensor, shots: int) -> torch.Tensor:
-        assert torch.allclose(dist, torch.tensor([3.0]))
-        assert shots == 5
-        return dist * 0 + shots
+    # Create a mock sampler with the expected interface
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            assert torch.allclose(dist, torch.tensor([3.0]))
+            assert shots == 5
+            return dist * 0 + shots
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
 
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=True,
         effective_shots=5,
-        sample_fn=sample_fn,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -602,15 +607,20 @@ def test_probabilities_strategy_skips_sampling_when_zero_shots():
     def apply_detectors(dist: torch.Tensor) -> torch.Tensor:
         return dist * 2.0
 
-    def sample_fn(dist: torch.Tensor, shots: int) -> torch.Tensor:
-        raise AssertionError("Sampling should not be called when shots are zero.")
+    # Create a mock sampler that should not be called
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            raise AssertionError("Sampling should not be called when shots are zero.")
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            raise AssertionError("Sampling should not be called when shots are zero.")
 
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=True,
         effective_shots=0,
-        sample_fn=sample_fn,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -630,17 +640,22 @@ def test_mode_expectations_strategy_skips_sampling_when_disabled():
     def apply_detectors(dist: torch.Tensor) -> torch.Tensor:
         return dist - 1.0
 
-    def sample_fn(dist: torch.Tensor, shots: int) -> torch.Tensor:
-        nonlocal sample_called
-        sample_called = True
-        return dist
+    # Create a mock sampler
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            nonlocal sample_called
+            sample_called = True
+            return dist
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
 
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=False,
         effective_shots=10,
-        sample_fn=sample_fn,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -734,12 +749,19 @@ def test_partial_measurement_strategy_applies_photon_loss_before_detectors():
             }
         ]
 
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=False,
         effective_shots=0,
-        sample_fn=lambda dist, shots: dist,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -762,12 +784,19 @@ def test_partial_measurement_strategy_applies_grouping_to_tensor():
             }
         ]
 
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
     result = strategy.process(
         distribution=torch.tensor([1.0]),
         amplitudes=torch.tensor([0.25]),
         apply_sampling=False,
         effective_shots=0,
-        sample_fn=lambda dist, shots: dist,
+        sampler=MockSampler(),
         apply_photon_loss=lambda amps: amps,
         apply_detectors=apply_detectors,
         grouping=grouping,

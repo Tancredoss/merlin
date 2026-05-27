@@ -12,6 +12,8 @@ subsets, and the corresponding probability distributions are convolved back
 together to obtain the final noisy output distribution.
 """
 
+from __future__ import annotations
+
 import os
 import warnings
 from collections.abc import Sequence
@@ -54,7 +56,9 @@ class NoisyG2SLOSComputeGraph:
         self.noise_groups = noise_groups
         self.indistinguishability = noise_groups.source.get("indistinguishability", 1.0)
 
-        self.g2_distinguishable = noise_groups.source.get("g2_distinguishable", None)
+        self.g2_distinguishable = noise_groups.source.get("g2_distinguishable", False)
+        if self.g2_distinguishable is None:
+            self.g2_distinguishable = False
         self.g2 = noise_groups.source.get("g2", 0.0)
 
         self.m = m

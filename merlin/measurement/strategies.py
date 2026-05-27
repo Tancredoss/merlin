@@ -78,7 +78,7 @@ class BaseMeasurementStrategy:
         amplitudes: torch.Tensor,
         apply_sampling: bool,
         effective_shots: int,
-        sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
+        sampler: SamplingProcess,
         apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
         apply_detectors: Callable[[torch.Tensor], torch.Tensor],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
@@ -95,8 +95,8 @@ class BaseMeasurementStrategy:
             Whether sampling should be applied.
         effective_shots : int
             Effective number of shots used for sampling.
-        sample_fn : Callable[[torch.Tensor, int], torch.Tensor]
-            Sampling function.
+        sampler : SamplingProcess
+            Sampling process object providing sampling methods.
         apply_photon_loss : Callable[[torch.Tensor], torch.Tensor]
             Photon-loss transform.
         apply_detectors : Callable[[torch.Tensor], torch.Tensor]
@@ -173,7 +173,13 @@ class ModeExpectationsStrategy(DistributionStrategy):
 class AmplitudesStrategy(BaseMeasurementStrategy):
     """New API: return raw amplitudes (sampling is not supported)."""
 
-    def process(self, *, amplitudes: torch.Tensor, **kwargs: object) -> torch.Tensor:
+    def process(
+        self,
+        *,
+        amplitudes: torch.Tensor,
+        sampler: SamplingProcess | None = None,
+        **kwargs: object
+    ) -> torch.Tensor:
         # Amplitudes bypass detectors, photon loss, and sampling.
         apply_sampling = bool(kwargs.get("apply_sampling", False))
         if apply_sampling:
@@ -203,7 +209,7 @@ class PartialMeasurementStrategy(BaseMeasurementStrategy):
         amplitudes: torch.Tensor,
         apply_sampling: bool,
         effective_shots: int,
-        sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
+        sampler: SamplingProcess,
         apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
         apply_detectors: Callable[[torch.Tensor], torch.Tensor],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,

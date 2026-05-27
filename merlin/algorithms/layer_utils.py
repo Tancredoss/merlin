@@ -731,14 +731,7 @@ def setup_noise_and_detectors(
 
     # Not implemented errors
     if noise_groups is not None:
-        noises_not_implemented_source = []
         noises_not_implemented_circuit = []
-        if noise_groups.source is not None:
-            if "g2_distinguishable" in noise_groups.source:
-                noises_not_implemented_source.append("g2_distinguishable")
-
-            if "g2" in noise_groups.source:
-                noises_not_implemented_source.append("g2")
 
         if noise_groups.circuit is not None:
             if "phase_imprecision" in noise_groups.circuit:
@@ -746,17 +739,8 @@ def setup_noise_and_detectors(
 
             if "phase_error" in noise_groups.circuit:
                 noises_not_implemented_circuit.append("phase_error")
-        if len(noises_not_implemented_source) > 0:
-            if len(noises_not_implemented_circuit) > 0:
-                raise NotImplementedError(
-                    f"The following noises are not implemented yet for the QuantumLayer. Source noises: {noises_not_implemented_source}. Circuit noises: {noises_not_implemented_circuit}."
-                )
-            else:
-                raise NotImplementedError(
-                    f"The following noises are not implemented yet for the QuantumLayer. Source noises: {noises_not_implemented_source}."
-                )
 
-        elif len(noises_not_implemented_circuit) > 0:
+        if len(noises_not_implemented_circuit) > 0:
             raise NotImplementedError(
                 f"The following noises are not implemented yet for the QuantumLayer. Circuit noises: {noises_not_implemented_circuit}."
             )
