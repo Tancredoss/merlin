@@ -47,10 +47,12 @@ class ValidatedLayerConfig:
         try:
             self.circuit: pcvl.ACircuit = config_to_verify["circuit"]
         except KeyError:
-            raise KeyError(f"There must be a key 'circuit' in the configs dictionary")
+            raise KeyError(
+                f"There must be a key 'circuit' in the configs dictionary that is associated with a perceval.ACircuit"
+            )
         if not isinstance(self.circuit, pcvl.ACircuit):
             raise ValueError(
-                f"The 'circuit' key of the config dictionary must be a Perceval ACircuit, got {type(self.circuit)}"
+                f"The 'circuit' key of the config dictionary must be a perceval.ACircuit, got {type(self.circuit)}"
             )
 
         # input_state
@@ -60,7 +62,7 @@ class ValidatedLayerConfig:
             ]
         except KeyError:
             raise KeyError(
-                "There must be a key 'input_state' in the configs dictionary"
+                "There must be a key 'input_state' in the configs dictionary that is associated to None or a Sequence[Integral]."
             )
 
         if self.input_state is not None:
