@@ -983,7 +983,8 @@ class QuantumLayer(MerlinModule):
         else:
             # The `amplitudes` are already probabilities in the noisy case
             # In g2 noise case, amplitudes is SectoredDistribution; use it as distribution
-            distribution = amplitudes
+            distribution: torch.Tensor | SectoredDistribution = amplitudes
+            # mypy handling
             # For noisy g2 case, set amplitudes to empty tensor since no raw amplitudes exist
             if isinstance(amplitudes, SectoredDistribution):
                 amplitudes = torch.tensor([], dtype=torch.complex128)
