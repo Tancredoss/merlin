@@ -21,6 +21,7 @@ from merlin.core import SectoredDistribution, SectorResult
 from merlin.pcvl_pytorch.noisy_slos import NoisyG2SLOSComputeGraph
 from merlin.pcvl_pytorch.slos_torchscript import SLOSComputeGraph
 from merlin.algorithms.layer_utils import NoiseGroups
+from merlin.core.process import ComputationProcess
 from merlin.pcvl_pytorch.locirc_to_tensor import CircuitConverter
 
 
@@ -727,3 +728,195 @@ class TestG2PercevalComparison:
         ]
 
         self._perceval_to_merlin_probs(perceval_result, result_merlin, n_photons=3, m=4)
+
+
+class TestG2AmplitudeEncodingMultipleActiveIndices:
+    """Test ComputationProcess.compute(amplitude_encoding=True) with g2 noise and multiple active states.
+
+    Each test builds a superposition tensor covering multiple Fock basis states
+    (multiple ``active_indices``) and verifies that the resulting
+    ``SectoredDistribution`` equals the |c_i|^2-weighted mixture of per-state
+    Perceval outputs.  This exercises the multi-active-indices loop in
+    ``ComputationProcess.compute()`` (the ``NoisyG2SLOSComputeGraph`` branch).
+
+    Mapping strategy: identical to ``TestG2PercevalComparison``.
+    """
+
+    @staticmethod
+    def _weighted_perceval_combined(
+        sim: pcvl.Simulator,
+        source: pcvl.Source,
+        states: list[tuple[int, ...]],
+        weights: list[float],
+    ) -> dict:
+        """Return the |c_i|^2-weighted mixture of per-state Perceval outputs.
+
+        Parameters
+        ----------
+        sim : pcvl.Simulator
+            Configured Perceval simulator (circuit already set).
+        source : pcvl.Source
+            Noise source built from the same NoiseModel.
+        states : list[tuple[int, ...]]
+            Fock input states corresponding to each superposition term.
+        weights : list[float]
+            |c_i|^2 mixture weights; must sum to 1.
+
+        Returns
+        -------
+        dict
+            Combined ``{BasicState: probability}`` mapping.
+        """
+        combined: dict = {}
+        for state, weight in zip(states, weights, strict=True):
+            result = sim.probs_svd((source, pcvl.BasicState(list(state))))["results"]
+            for bs, prob in result.items():
+                combined[bs] = combined.get(bs, 0.0) + weight * prob
+        return combined
+
+    @staticmethod
+    def _assert_combined_matches_merlin(
+        combined: dict,
+        result_merlin: SectoredDistribution,
+        n_photons: int,
+        m: int,
+    ) -> None:
+        """Assert each combined Perceval probability matches the Merlin sector value."""
+        for state, perceval_prob in combined.items():
+            occupations = tuple(state)
+            n = sum(occupations)
+            sector_idx = n - n_photons
+            assert (
+                0 <= sector_idx < len(result_merlin.sectors)
+            ), f"State {occupations} with {n} photons has no corresponding Merlin sector"
+            combo = Combinadics("fock", n=n, m=m)
+            tensor_idx = combo.fock_to_index(occupations)
+            merlin_prob = (
+                result_merlin.sectors[sector_idx].tensor.squeeze()[tensor_idx].item()
+            )
+            assert (
+                abs(merlin_prob - perceval_prob) < 1e-4
+            ), f"State {occupations}: Merlin={merlin_prob:.6f}, Perceval={perceval_prob:.6f}"
+
+    def _make_superposition(
+        self,
+        active_states: list[tuple[int, ...]],
+        weights: list[float],
+        n_photons: int,
+        m: int,
+    ) -> torch.Tensor:
+        """Build a 1-D complex superposition tensor for the given Fock states.
+
+        Parameters
+        ----------
+        active_states : list[tuple[int, ...]]
+            Fock states to superpose.
+        weights : list[float]
+            |c_i|^2 values; must sum to 1.
+        n_photons : int
+            Photon number of each state.
+        m : int
+            Number of modes.
+
+        Returns
+        -------
+        torch.Tensor
+            1-D complex64 tensor of length ``Combinadics('fock', n, m).compute_space_size()``.
+        """
+        combo = Combinadics("fock", n=n_photons, m=m)
+        superposition = torch.zeros(combo.compute_space_size(), dtype=torch.complex64)
+        for state, w in zip(active_states, weights, strict=True):
+            superposition[combo.fock_to_index(state)] = torch.tensor(
+                w, dtype=torch.float32
+            ).sqrt()
+        return superposition
+
+    def test_distinguishable_two_active_states(self, circuit):
+        """g2_distinguishable=True: superposition of two Fock states matches weighted Perceval mixture."""
+        n_photons, m = 2, 4
+        active_states = [(1, 0, 1, 0), (0, 1, 0, 1)]
+        weights = [0.6, 0.4]
+
+        noise_groups = NoiseGroups(
+            source={"g2": 0.1, "g2_distinguishable": True, "indistinguishability": 0.9},
+            circuit=None,
+            post_measurement=None,
+        )
+        proc = ComputationProcess(
+            circuit=circuit,
+            input_state=self._make_superposition(active_states, weights, n_photons, m),
+            trainable_parameters=[],
+            input_parameters=[],
+            n_photons=n_photons,
+            computation_space=ComputationSpace.FOCK,
+            noise_groups=noise_groups,
+        )
+        result = proc.compute([], amplitude_encoding=True)
+        assert isinstance(result, SectoredDistribution)
+
+        noise = pcvl.NoiseModel(g2=0.1, g2_distinguishable=True, indistinguishability=0.9)
+        source = pcvl.Source.from_noise_model(noise)
+        sim = pcvl.Simulator(pcvl.BackendFactory.get_backend("SLOS"))
+        sim.set_circuit(deepcopy(circuit))
+        combined = self._weighted_perceval_combined(sim, source, active_states, weights)
+        self._assert_combined_matches_merlin(combined, result, n_photons=n_photons, m=m)
+
+    def test_indistinguishable_two_active_states(self, circuit):
+        """g2_distinguishable=False: superposition of two Fock states matches weighted Perceval mixture."""
+        n_photons, m = 2, 4
+        active_states = [(1, 1, 0, 0), (0, 0, 1, 1)]
+        weights = [0.5, 0.5]
+
+        noise_groups = NoiseGroups(
+            source={"g2": 0.2, "g2_distinguishable": False, "indistinguishability": 0.9},
+            circuit=None,
+            post_measurement=None,
+        )
+        proc = ComputationProcess(
+            circuit=circuit,
+            input_state=self._make_superposition(active_states, weights, n_photons, m),
+            trainable_parameters=[],
+            input_parameters=[],
+            n_photons=n_photons,
+            computation_space=ComputationSpace.FOCK,
+            noise_groups=noise_groups,
+        )
+        result = proc.compute([], amplitude_encoding=True)
+        assert isinstance(result, SectoredDistribution)
+
+        noise = pcvl.NoiseModel(g2=0.2, g2_distinguishable=False, indistinguishability=0.9)
+        source = pcvl.Source.from_noise_model(noise)
+        sim = pcvl.Simulator(pcvl.BackendFactory.get_backend("SLOS"))
+        sim.set_circuit(deepcopy(circuit))
+        combined = self._weighted_perceval_combined(sim, source, active_states, weights)
+        self._assert_combined_matches_merlin(combined, result, n_photons=n_photons, m=m)
+
+    def test_three_active_states(self, circuit):
+        """Three active Fock states: SectoredDistribution equals weighted Perceval mixture."""
+        n_photons, m = 2, 4
+        active_states = [(1, 0, 1, 0), (0, 1, 0, 1), (1, 1, 0, 0)]
+        weights = [0.5, 0.3, 0.2]
+
+        noise_groups = NoiseGroups(
+            source={"g2": 0.15, "g2_distinguishable": True, "indistinguishability": 0.85},
+            circuit=None,
+            post_measurement=None,
+        )
+        proc = ComputationProcess(
+            circuit=circuit,
+            input_state=self._make_superposition(active_states, weights, n_photons, m),
+            trainable_parameters=[],
+            input_parameters=[],
+            n_photons=n_photons,
+            computation_space=ComputationSpace.FOCK,
+            noise_groups=noise_groups,
+        )
+        result = proc.compute([], amplitude_encoding=True)
+        assert isinstance(result, SectoredDistribution)
+
+        noise = pcvl.NoiseModel(g2=0.15, g2_distinguishable=True, indistinguishability=0.85)
+        source = pcvl.Source.from_noise_model(noise)
+        sim = pcvl.Simulator(pcvl.BackendFactory.get_backend("SLOS"))
+        sim.set_circuit(deepcopy(circuit))
+        combined = self._weighted_perceval_combined(sim, source, active_states, weights)
+        self._assert_combined_matches_merlin(combined, result, n_photons=n_photons, m=m)

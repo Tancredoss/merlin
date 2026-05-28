@@ -218,59 +218,33 @@ class ComputationProcess(AbstractComputationProcess):
                 active_indices = torch.nonzero(active_mask, as_tuple=True)[0].tolist()
                 # If there is g2 noise, the data needs to be treated per photon sector
                 if isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph):
-                    probs_per_state = []
+                    output_distribution: SectoredDistribution | None = None
                     for idx in active_indices:
                         input_fock_state = self.simulation_graph.mapped_keys[idx]
                         probs = self.simulation_graph.compute_probs(
                             unitary, input_fock_state
                         )
+
                         for sector in probs.sectors:
                             if sector.tensor.ndim == 1:
                                 sector.tensor = sector.tensor.unsqueeze(0)
-                        probs_per_state.append(probs)
-
-                    photon_sectors_to_analyze = list(
-                        range(
-                            self.simulation_graph.n_photons,
-                            (2 * self.simulation_graph.n_photons) + 1,
-                        )
-                    )
-                    output_sectors = []
-                    for photon_number in photon_sectors_to_analyze:
-                        probs_per_state_per_photon_number = [
-                            dist.get_sector(photon_number).tensor
-                            for dist in probs_per_state
-                        ]
-                        # probs_stacked: [n_active, unitary_batch, n_output_states]
-                        probs_stacked = torch.stack(
-                            probs_per_state_per_photon_number, dim=0
-                        )
-                        # selected_weights: [input_batch, n_active]
-                        selected_weights = weights[:, active_indices].to(
-                            probs_stacked.dtype
-                        )
-                        # mixed_probs: [input_batch, unitary_batch, n_output_states]
-                        mixed_probs = torch.einsum(
-                            "is,sbo->ibo", selected_weights, probs_stacked
-                        )
-
-                        if mixed_probs.shape[1] == 1:
-                            mixed_probs = mixed_probs.squeeze(
-                                1
-                            )  # [input_batch, n_output_states]
-
-                        output_sectors.append(
-                            SectorResult(
-                                mixed_probs,
-                                n_modes=probs_per_state[0].sectors[0].n_modes,
-                                n_photons=photon_number,
-                                computation_space=probs_per_state[0]
-                                .sectors[0]
-                                .computation_space,
-                                keys=probs_per_state[0].sectors[0].keys,
+                            selected_weights = weights[:, idx].to(sector.tensor.dtype)
+                            sector.tensor = torch.einsum(
+                                "i,bo->ibo", selected_weights, sector.tensor
                             )
-                        )
-                    return SectoredDistribution(tuple(output_sectors))
+                            if sector.tensor.shape[1] == 1:
+                                sector.tensor = sector.tensor.squeeze(1)
+
+                        if output_distribution is None:
+                            output_distribution = probs
+                        else:
+                            for sector in output_distribution.sectors:
+                                sector.tensor = (
+                                    sector.tensor
+                                    + probs.get_sector(sector.n_photons).tensor
+                                )
+
+                    return output_distribution
                 else:
                     tensor_probs_per_state: list[torch.Tensor] = []
                     for idx in active_indices:
