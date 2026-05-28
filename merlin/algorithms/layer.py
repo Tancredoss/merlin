@@ -1042,7 +1042,7 @@ class QuantumLayer(MerlinModule):
         inferred_state: torch.Tensor | None,
         parameter_batch_dim: int,
         simultaneous_processes: int | None,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | SectoredDistribution:
         """Select the computation path based on the encoding mode and input state."""
         # Checking if there is source noise
         source_noise = False if self._noise_groups is None else True

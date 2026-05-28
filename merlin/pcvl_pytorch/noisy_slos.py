@@ -172,7 +172,9 @@ class NoisyG2SLOSComputeGraph:
 
         # Getting the non-g2 probs and the one hot runs for g2_distinguishable photons
         if self.g2_distinguishable:
-            keys_regular, probs_regular = self._slos_graphs.compute_probs(
+            # Cast for mypy: _slos_graphs is single NoisySLOSComputeGraph when g2_distinguishable is True
+            single_graph = cast(NoisySLOSComputeGraph, self._slos_graphs)
+            keys_regular, probs_regular = single_graph.compute_probs(
                 unitary, input_state
             )
             # Generate one-hot states for each active mode and compute their probs
@@ -181,14 +183,14 @@ class NoisyG2SLOSComputeGraph:
                 if input_state[mode_idx] > 0:  # Only for active modes
                     one_hot_state = [0] * len(input_state)
                     one_hot_state[mode_idx] = 1
-                    keys_one_hot, probs_one_hot = self._slos_graphs._slos_graphs[
+                    keys_one_hot, probs_one_hot = single_graph._slos_graphs[
                         0
                     ].compute_probs(unitary, one_hot_state)
                     one_hot_slos_graphs[mode_idx] = (keys_one_hot, probs_one_hot)
         else:
             # Cast for mypy: _slos_graphs is list when g2_distinguishable is False
-            self._slos_graphs = cast(list[NoisySLOSComputeGraph], self._slos_graphs)
-            probs_regular = self._slos_graphs[0].compute_probs(unitary, input_state)
+            slos_graphs_list = cast(list[NoisySLOSComputeGraph], self._slos_graphs)
+            probs_regular = slos_graphs_list[0].compute_probs(unitary, input_state)
 
         # Getting the photon combinations
         extra_photons_combinations = self._get_extra_photon_combinations(input_state)
@@ -268,8 +270,11 @@ class NoisyG2SLOSComputeGraph:
                         input_state_to_run = list(input_state)
                         for photon in combination:
                             input_state_to_run[photon] += 1
-                        probs = self._slos_graphs[num_photons_added].compute_probs(
-                            unitary, input_state_to_run
+                        probs = cast(
+                            torch.Tensor,
+                            slos_graphs_list[num_photons_added].compute_probs(
+                                unitary, input_state_to_run
+                            ),
                         )
 
                     sector.tensor = sector.tensor + weight_k * probs

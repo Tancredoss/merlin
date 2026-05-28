@@ -272,7 +272,7 @@ class ComputationProcess(AbstractComputationProcess):
                         )
                     return SectoredDistribution(tuple(output_sectors))
                 else:
-                    probs_per_state: list[torch.Tensor] = []
+                    tensor_probs_per_state: list[torch.Tensor] = []
                     for idx in active_indices:
                         input_fock_state = self.simulation_graph.mapped_keys[idx]
                         _, probs = self.simulation_graph.compute_probs(
@@ -280,10 +280,10 @@ class ComputationProcess(AbstractComputationProcess):
                         )
                         if probs.ndim == 1:
                             probs = probs.unsqueeze(0)
-                        probs_per_state.append(probs)
+                        tensor_probs_per_state.append(probs)
 
                     # probs_stacked: [n_active, unitary_batch, n_output_states]
-                    probs_stacked = torch.stack(probs_per_state, dim=0)
+                    probs_stacked = torch.stack(tensor_probs_per_state, dim=0)
                     # selected_weights: [input_batch, n_active]
                     selected_weights = weights[:, active_indices].to(
                         probs_stacked.dtype
