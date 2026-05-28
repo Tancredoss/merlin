@@ -7,7 +7,7 @@ import zlib
 from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, cast, Protocol, runtime_checkable
 from numbers import Integral
 
 import numpy as np
@@ -85,28 +85,34 @@ class ValidatedLayerConfig:
 
         # input_param_order
         try:
-            self.input_param_order: Sequence[str] = config_to_verify[
+            self.input_param_order: Sequence[str] | None = config_to_verify[
                 "input_param_order"
             ]
         except KeyError:
-            raise KeyError(
-                f"There must be a key 'input_param_order' in the configs dictionary"
-            )
-        if not isinstance(self.input_param_order, Sequence):
-            raise ValueError(
-                f"'input_state' must be a sequence of strings, got {type(self.input_param_order).__name__}"
-            )
+            self.input_param_order = None
+        if self.input_param_order is not None:
+            if not isinstance(self.input_param_order, Sequence):
+                raise ValueError(
+                    f"'input_state' must be a sequence of strings or None, got {type(self.input_param_order).__name__}"
+                )
 
-        bad_types = {
-            type(x).__name__ for x in self.input_param_order if not isinstance(x, str)
-        }
+            bad_types = {
+                type(x).__name__
+                for x in self.input_param_order
+                if not isinstance(x, str)
+            }
 
-        if bad_types:
-            raise ValueError(
-                f"'input_param_order' must contain only integers. "
-                f"Got sequence type {type(self.input_param_order).__name__} "
-                f"with non-integer element types: {sorted(bad_types)}"
-            )
+            if bad_types:
+                raise ValueError(
+                    f"'input_param_order' must contain only strings. "
+                    f"Got sequence type {type(self.input_param_order).__name__} "
+                    f"with non-integer element types: {sorted(bad_types)}"
+                )
+
+
+@runtime_checkable
+class SupportsExportConfig(Protocol):
+    def export_config(self) -> dict: ...
 
 
 class MerlinProcessor:
@@ -633,10 +639,14 @@ class MerlinProcessor:
         if input_tensor.is_cuda:
             input_tensor = input_tensor.cpu()
 
-        cache = self._layer_cache.get(id(layer))
+        cache = self._layer_cache.get(layer.uid)
         if cache is None:
-            config = ValidatedLayerConfig(cast(Any, layer).export_config())
-            self._layer_cache[id(layer)] = {"config": config}
+            if not isinstance(layer, SupportsExportConfig):
+                raise TypeError(
+                    "The layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|None, 'input_param_order': Sequence[str]|None}."
+                )
+            config = ValidatedLayerConfig(layer.export_config())
+            self._layer_cache[layer.uid] = {"config": config}
         else:
             config = cache["config"]
 
@@ -1309,10 +1319,11 @@ class MerlinProcessor:
         ValueError
             If ``input`` is not one- or two-dimensional.
         """
-        if not hasattr(layer, "export_config") or not callable(
-            cast(Any, layer).export_config
-        ):
-            raise TypeError("layer must provide export_config() for shot estimation")
+        if not isinstance(layer, SupportsExportConfig):
+            raise TypeError(
+                "For shot estimation, the layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|None, 'input_param_order': Sequence[str]|None}."
+            )
+        config = ValidatedLayerConfig(layer.export_config())
 
         if input.dim() == 1:
             x = input.unsqueeze(0)
@@ -1321,7 +1332,11 @@ class MerlinProcessor:
         else:
             raise ValueError("input must be 1D or 2D tensor")
 
-        config = ValidatedLayerConfig(cast(Any, layer).export_config())
+        if not isinstance(layer, SupportsExportConfig):
+            raise TypeError(
+                "The layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|None, 'input_param_order': Sequence[str]|None}."
+            )
+        config = ValidatedLayerConfig(layer.export_config())
         child_rp = self._create_fresh_rp()
         child_rp.set_circuit(config.circuit)
 
