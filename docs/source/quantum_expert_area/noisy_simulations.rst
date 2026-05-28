@@ -88,7 +88,7 @@ For noisy simulations, there are a couple of rules that need to be followed:
 1. All noisy simulations must be run with the probabilities measurement strategy.
 2. Noisy simulations cannot use ``return_object=True``.
 3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning.
-4. Noisy simulation with ``g2>0`` can not use a grouping strategy. Indeed, since this noise creates input states with more phtons than expected, multiple photon sectors are explored. The fock spaces explored are m modes and n_photons to 2*n_photons that all have different space dimensions. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult` objects of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector.
+4. Noisy simulation with ``g2>0`` cannot use a grouping strategy. Indeed, since this noise creates input states with more photons than expected, multiple photon sectors are explored. The fock spaces explored are m modes and n_photons to 2*n_photons that all have different space dimensions. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult` objects of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector.
 
 
 g2_distinguishable parameter

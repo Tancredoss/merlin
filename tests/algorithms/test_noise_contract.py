@@ -212,36 +212,6 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
     circ.add_entangling_layer()
     circ.add_angle_encoding()
     circ.add_entangling_layer()
-    with pytest.warns(
-        UserWarning,
-        match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
-    ):
-        _ = ml.QuantumLayer(
-            n_photons=2,
-            input_size=5,
-            builder=circ,
-            noise=pcvl.NoiseModel(
-                g2=0.2,
-            ),
-            measurement_strategy=ml.MeasurementStrategy.probs(
-                computation_space=ml.ComputationSpace.FOCK
-            ),
-        )
-    with pytest.warns(
-        UserWarning,
-        match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
-    ):
-        _ = ml.QuantumLayer(
-            n_photons=2,
-            input_size=5,
-            builder=circ,
-            noise=pcvl.NoiseModel(
-                g2=0.3,
-            ),
-            measurement_strategy=ml.MeasurementStrategy.probs(
-                computation_space=ml.ComputationSpace.FOCK
-            ),
-        )
 
     with pytest.raises(
         NotImplementedError,

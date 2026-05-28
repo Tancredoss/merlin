@@ -96,10 +96,8 @@ class SectoredDistribution:
 
     sectors: tuple[SectorResult, ...]
 
-    # get_sector(n_photons), photon_counts, total_probability()
-
     def __post_init__(self) -> None:
-        """Sort sectors by photon number after initialization."""
+        """Create the photon number to sector index map."""
         self._photon_map = {
             self.sectors[i].n_photons: i for i in range(len(self.sectors))
         }
@@ -111,7 +109,7 @@ class SectoredDistribution:
         return self.sectors[self._photon_map[n_photons]]
 
     def total_probability(self) -> float:
-        """Return the SectorResult associated with n_photons."""
+        """Returns the total probability across the sectors."""
         total_prob = 0.0
         for sector in self.sectors:
             total_prob += sector.tensor.sum().item()

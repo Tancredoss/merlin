@@ -174,7 +174,7 @@ class SamplingProcess:
                 one_dimension_vector = sector.tensor
                 if one_dimension_vector.dim() == 1:
                     augment_input = True
-                    one_dimension_vector.unsqueeze(0)
+                    one_dimension_vector = one_dimension_vector.unsqueeze(0)
                 else:
                     augment_input = False
                 indexes.append((0, one_dimension_vector.size(1)))
