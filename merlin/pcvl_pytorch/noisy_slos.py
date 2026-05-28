@@ -191,9 +191,17 @@ class NoisyG2SLOSComputeGraph:
         extra_photons_combinations = self._get_extra_photon_combinations(input_state)
 
         # Calculating for each sector
+        num_input_photons = sum(input_state)
+        # Convert g2 = g^(2)(0) second-order coherence to per-source emission
+        # probability p.  The two are related by g^(2)(0) = 2p/(1+p)^2, so:
+        #   p = ((1 - g2) - sqrt(1 - 2*g2)) / g2,  valid for g2 in [0, 0.5].
+        # For small g2, p ≈ g2/2 (L'Hôpital).  At g2=0 the limit is p=0.
+        _g2 = self.g2 if isinstance(self.g2, torch.Tensor) else torch.tensor(float(self.g2))
+        _disc = (1.0 - 2.0 * _g2).clamp(min=0.0)
+        p_emit = ((1.0 - _g2) - _disc.sqrt()) / _g2.clamp(min=1e-15)
         for num_photons_added in range(len(extra_photons_combinations)):
-            weight_k = (self.g2 ** (num_photons_added)) * (
-                (1 - self.g2) ** (len(input_state) - num_photons_added)
+            weight_k = (p_emit ** num_photons_added) * (
+                (1 - p_emit) ** (num_input_photons - num_photons_added)
             )
 
             # Creating the n_photons + num_photons_added sector
@@ -230,7 +238,14 @@ class NoisyG2SLOSComputeGraph:
                         fock_states_list = [
                             tuple(state.tolist()) for state in fock_states
                         ]
-                        key_to_idx = {key: idx for idx, key in enumerate(keys)}
+                        keys_as_tuples = (
+                            [tuple(k.tolist()) for k in keys]
+                            if isinstance(keys, torch.Tensor)
+                            else [tuple(k) for k in keys]
+                        )
+                        key_to_idx = {
+                            key: idx for idx, key in enumerate(keys_as_tuples)
+                        }
 
                         reordered_probs = torch.zeros_like(probs)
                         for fock_idx, fock_state in enumerate(fock_states_list):

@@ -226,7 +226,6 @@ class TestG2ProbabilityNormalization:
         total_prob = 0.0
         for sector in result.sectors:
             total_prob += sector.tensor.sum().item()
-            print(sector.tensor)
 
         assert np.isclose(total_prob, 1.0, atol=1e-5)
 
@@ -257,9 +256,31 @@ class TestG2ProbabilityNormalization:
 class TestG2DistinguishabilityModes:
     """Test distinguishability modes (g2_distinguishable True/False)."""
 
-    def test_distinguishable_different_from_indistinguishable(self, unitary):
-        """Different output for g2_distinguishable=True vs False."""
-        # Test with distinguishable photons
+    def test_distinguishable_different_from_indistinguishable(self):
+        """Different output for g2_distinguishable=True vs False.
+
+        The 4×4 DFT unitary is used directly so the circuit is guaranteed to
+        be maximally mixing, making HOM bunching visible.  With a near-identity
+        circuit photons never scatter between modes, and both modes collapse to
+        the same result regardless of the g2_distinguishable flag.
+
+        g2_distinguishable=False: the extra photon bunches in the same mode as
+        the source photon and runs through SLOS together with the other photons
+        (quantum interference active).
+        g2_distinguishable=True: the extra photon is fully distinguishable and
+        its output distribution is convolved classically with the base SLOS.
+        The DFT unitary ensures these two paths produce different sector
+        distributions.
+        """
+        # 4×4 DFT: U_{jk} = exp(2πijk/4) / 2 — maximally mixing, unitary.
+        n = 4
+        idx = torch.arange(n, dtype=torch.float32)
+        dft = (
+            torch.exp(2j * torch.pi * idx[:, None] * idx[None, :] / n) / n**0.5
+        ).to(torch.complex64)
+        u_tensor = dft.unsqueeze(0)  # [1, 4, 4]
+
+        # Test with distinguishable extra photons (classical convolution)
         groups_dist = NoiseGroups(
             source={
                 "g2": 0.25,
@@ -275,9 +296,9 @@ class TestG2DistinguishabilityModes:
             n_photons=3,
             computation_space=ComputationSpace.FOCK,
         )
-        result_dist = noisy_slos_dist.compute_probs(unitary(), [1, 1, 1, 0])
+        result_dist = noisy_slos_dist.compute_probs(u_tensor, [1, 1, 1, 0])
 
-        # Test with indistinguishable photons
+        # Test with indistinguishable extra photons (HOM active)
         groups_indist = NoiseGroups(
             source={
                 "g2": 0.25,
@@ -293,7 +314,7 @@ class TestG2DistinguishabilityModes:
             n_photons=3,
             computation_space=ComputationSpace.FOCK,
         )
-        result_indist = noisy_slos_indist.compute_probs(unitary(), [1, 1, 1, 0])
+        result_indist = noisy_slos_indist.compute_probs(u_tensor, [1, 1, 1, 0])
 
         # Both should be SectoredDistribution
         assert isinstance(result_dist, SectoredDistribution)
@@ -303,25 +324,26 @@ class TestG2DistinguishabilityModes:
         assert len(result_dist.sectors) == len(result_indist.sectors)
         assert len(result_dist.sectors) == 4
 
-        # Verify they are actually different across sectors
-        sectors_differ = False
-        for sector_indist, sector_dist in zip(
-            result_indist.sectors, result_dist.sectors
-        ):
-            if not torch.allclose(sector_indist.tensor, sector_dist.tensor, atol=1e-6):
-                sectors_differ = True
-                break
+        # Sector 0 is identical (same base SLOS, indist=1.0).
+        # Sectors 1+ must differ: with the DFT unitary, HOM bunching changes
+        # the output of SLOS([2,1,1,0]) relative to the classical convolution
+        # conv(SLOS([1,1,1,0]), SLOS([1,0,0,0])).
+        sectors_higher_differ = any(
+            not torch.allclose(si.tensor, sd.tensor, atol=1e-6)
+            for si, sd in zip(result_indist.sectors[1:], result_dist.sectors[1:])
+        )
         assert (
-            sectors_differ
-        ), "Distinguishable and indistinguishable modes should produce different results"
+            sectors_higher_differ
+        ), "Extra-photon sectors must differ between distinguishable and indistinguishable modes"
 
     def test_indistinguishable_bunched_delegate(self, unitary):
         """g2_distinguishable=False: augmented input has the expected mode occupation.
 
         With a single extra photon added to a single-photon input [1,0,0,0]
-        (g2=1.0 puts all probability in sector 1) and indistinguishability=1.0
-        (NoisySLOS reduces to pure SLOS), the sector-1 distribution must equal
-        the pure SLOS output for the augmented input [2,0,0,0].
+        (g2=0.5, the maximum of g^(2)(0), gives p_emit=1.0 so all probability
+        is in sector 1) and indistinguishability=1.0 (NoisySLOS reduces to pure
+        SLOS), the sector-1 distribution must equal the pure SLOS output for
+        the augmented input [2,0,0,0].
 
         This confirms that the extra photon is bunched into mode 0—the same
         mode occupied by the original photon—rather than being placed in a
@@ -339,11 +361,12 @@ class TestG2DistinguishabilityModes:
         )
         _, probs_augmented = slos_augmented.compute_probs(unitary_tensor, [2, 0, 0, 0])
 
-        # g2=1.0 → weight_0=(1-1)^1=0, weight_1=1^1*(1-1)^0=1 (sector 1 carries everything)
+        # g2=0.5 → p_emit=1.0 → weight_0=(1-p)^1=0, weight_1=p*(1-p)^0=1 (sector 1 carries everything)
+        # (g2=0.5 is the maximum valid value of the second-order coherence; it gives p_emit=1.0)
         # indistinguishability=1.0 → NoisySLOSComputeGraph ≡ pure SLOS
         groups = NoiseGroups(
             source={
-                "g2": 1.0,
+                "g2": 0.5,
                 "g2_distinguishable": False,
                 "indistinguishability": 1.0,
             },
@@ -392,8 +415,9 @@ class TestG2ExtraPhotonDistribution:
     def test_distinguishable_extra_photon_distribution(self, unitary):
         """g2_distinguishable=True, single g2 event in mode m: extra-photon marginal = |U[:,m]|².
 
-        For n_photons=1, input=[e_m] (photon only in mode 0), g2=1.0 (all
-        weight in sector 1), g2_distinguishable=True, indistinguishability=1.0:
+        For n_photons=1, input=[e_m] (photon only in mode 0), g2=0.5 (the
+        maximum of g^(2)(0) giving p_emit=1.0 so all weight is in sector 1),
+        g2_distinguishable=True, indistinguishability=1.0:
 
         sector-1 = conv(P_regular, P_onehot_m) where both equal |U[:,m]|².
 
@@ -414,10 +438,11 @@ class TestG2ExtraPhotonDistribution:
 
         unitary_tensor = unitary()
 
-        # g2=1.0 → weight_0=0, weight_1=1 (sector 1 carries everything)
+        # g2=0.5 → p_emit=1.0 → weight_0=0, weight_1=1 (sector 1 carries everything)
+        # (g2=0.5 is the maximum valid value of g^(2)(0), corresponding to p_emit=1.0)
         # indistinguishability=1.0 → regular probs = pure SLOS = |U[:,m]|²
         groups = NoiseGroups(
-            source={"g2": 1.0, "g2_distinguishable": True, "indistinguishability": 1.0},
+            source={"g2": 0.5, "g2_distinguishable": True, "indistinguishability": 1.0},
             circuit=None,
             post_measurement=None,
         )
@@ -504,8 +529,10 @@ class TestG2Gradients:
             # Override with the differentiable tensor so autograd tracks g2.
             noisy_slos.g2 = g2.squeeze()
             result = noisy_slos.compute_probs(unitary_tensor, [1, 1, 0, 0])
-            # Each sector sum equals C(n,k)*g2^k*(1-g2)^(n-k), so the
-            # vector has non-zero Jacobian entries w.r.t. g2.
+            # Each sector sum equals C(n,k)*p_emit^k*(1-p_emit)^(n-k) where
+            # p_emit = p_emit(g2) is the per-source emission probability derived
+            # from the second-order coherence g^(2)(0)=2p/(1+p)^2.  The vector
+            # has non-zero Jacobian entries w.r.t. g2.
             return torch.stack([s.tensor.sum() for s in result.sectors])
 
         g2_input = torch.tensor([0.2], dtype=torch.float64, requires_grad=True)
