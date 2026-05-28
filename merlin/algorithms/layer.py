@@ -42,9 +42,9 @@ from ..core.computation_space import ComputationSpace
 from ..core.partial_measurement import PartialMeasurement
 from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
+from ..core.sectored_distribution import SectoredDistribution
 from ..core.state import StatePattern, generate_state
 from ..core.state_vector import StateVector
-from ..core.sectored_distribution import SectoredDistribution
 from ..measurement import OutputMapper
 from ..measurement.autodiff import AutoDiffProcess
 from ..measurement.detectors import DetectorTransform
@@ -797,7 +797,13 @@ class QuantumLayer(MerlinModule):
         shots: int | None = None,
         sampling_method: str | None = None,
         simultaneous_processes: int | None = None,
-    ) -> torch.Tensor | PartialMeasurement | StateVector | ProbabilityDistribution:
+    ) -> (
+        torch.Tensor
+        | PartialMeasurement
+        | StateVector
+        | ProbabilityDistribution
+        | SectoredDistribution
+    ):
         """Forward pass through the quantum layer.
 
         Encoding is inferred from the input type:
@@ -820,7 +826,7 @@ class QuantumLayer(MerlinModule):
 
         Returns
         -------
-        torch.Tensor | PartialMeasurement | merlin.core.state_vector.StateVector | ProbabilityDistribution
+        torch.Tensor | PartialMeasurement | merlin.core.state_vector.StateVector | ProbabilityDistribution | SectoredDistribution
             Output after measurement mapping.
             Depending on the return_object argument and measurement strategy defined in the input, the output
             type will be different. Check the constructor for more details.

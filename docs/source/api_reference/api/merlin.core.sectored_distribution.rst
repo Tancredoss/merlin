@@ -1,4 +1,4 @@
-merlin.core.probability_distribution
+merlin.core.sectored_distribution
 ====================================
 
 .. automodule:: merlin.core.sectored_distribution
