@@ -41,6 +41,15 @@ class BackendCapabilities:
     available_commands: tuple[str]
 
 
+_ALLOWED_STATE_TYPES = (
+    pcvl.StateVector,
+    pcvl.FockState,
+    pcvl.NoisyFockState,
+    pcvl.BasicState,
+    pcvl.LogicalState,
+)
+
+
 class ValidatedLayerConfig:
     def __init__(self, config_to_verify: dict):
         # circuit
@@ -57,33 +66,33 @@ class ValidatedLayerConfig:
 
         # input_state
         try:
-            self.input_state: Sequence[Integral] | None = config_to_verify[
-                "input_state"
-            ]
+            self.input_state: pcvl.ACircuit = config_to_verify["input_state"]
         except KeyError:
             raise KeyError(
-                "There must be a key 'input_state' in the configs dictionary that is associated to None or a Sequence[Integral]."
+                f"There must be a key 'input_state' in the configs dictionary that is associated with a Sequence[Integral], a Perceval State object or None."
             )
-
         if self.input_state is not None:
-            if not isinstance(self.input_state, Sequence):
+            if isinstance(self.input_state, _ALLOWED_STATE_TYPES):
+                pass
+            elif not isinstance(self.input_state, Sequence):
                 raise ValueError(
-                    f"'input_state' must be a sequence of integers or None, "
-                    f"got {type(self.input_state).__name__}"
+                    "'input_state' must be None, a sequence of integers, "
+                    "or an Perceval state object "
+                    f"(got {type(self.input_state).__name__})"
                 )
+            else:
+                bad_types = {
+                    type(x).__name__
+                    for x in self.input_state
+                    if not isinstance(x, Integral)
+                }
 
-            bad_types = {
-                type(x).__name__
-                for x in self.input_state
-                if not isinstance(x, Integral)
-            }
-
-            if bad_types:
-                raise ValueError(
-                    f"'input_state' must contain only integers. "
-                    f"Got sequence type {type(self.input_state).__name__} "
-                    f"with non-integer element types: {sorted(bad_types)}"
-                )
+                if bad_types:
+                    raise ValueError(
+                        f"'input_state' must contain only integers when it is a sequence. "
+                        f"Got sequence type {type(self.input_state).__name__} "
+                        f"with non-integer element types: {sorted(bad_types)}"
+                    )
 
         # input_param_order
         try:
@@ -95,7 +104,7 @@ class ValidatedLayerConfig:
         if self.input_param_order is not None:
             if not isinstance(self.input_param_order, Sequence):
                 raise ValueError(
-                    f"'input_state' must be a sequence of strings or None, got {type(self.input_param_order).__name__}"
+                    f"'input_param_order' must be a sequence of strings or None, got {type(self.input_param_order).__name__}"
                 )
 
             bad_types = {
@@ -645,7 +654,7 @@ class MerlinProcessor:
         if cache is None:
             if not isinstance(layer, SupportsExportConfig):
                 raise TypeError(
-                    "The layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|None, 'input_param_order': Sequence[str]|None}."
+                    "The layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|'perceval state object'|None, 'input_param_order': Sequence[str]|None}."
                 )
             config = ValidatedLayerConfig(layer.export_config())
             self._layer_cache[layer.uid] = {"config": config}
@@ -1323,7 +1332,7 @@ class MerlinProcessor:
         """
         if not isinstance(layer, SupportsExportConfig):
             raise TypeError(
-                "For shot estimation, the layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|None, 'input_param_order': Sequence[str]|None}."
+                "For shot estimation, the layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|'perceval state object'|None, 'input_param_order': Sequence[str]|None}."
             )
         config = ValidatedLayerConfig(layer.export_config())
 
@@ -1336,7 +1345,7 @@ class MerlinProcessor:
 
         if not isinstance(layer, SupportsExportConfig):
             raise TypeError(
-                "The layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|None, 'input_param_order': Sequence[str]|None}."
+                "The layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, Sequence[Integral]|'perceval state object'|None, 'input_param_order': Sequence[str]|None}."
             )
         config = ValidatedLayerConfig(layer.export_config())
         child_rp = self._create_fresh_rp()
