@@ -30,7 +30,7 @@ from typing import Literal, overload
 import perceval as pcvl
 import torch
 
-from merlin.core.sectored_distribution import SectoredDistribution, SectorResult
+from merlin.core.sectored_distribution import SectoredDistribution
 from merlin.pcvl_pytorch.noisy_slos import (
     NoisyG2SLOSComputeGraph,
     NoisySLOSComputeGraph,
