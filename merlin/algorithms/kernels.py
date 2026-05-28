@@ -993,9 +993,17 @@ class FidelityKernel(MerlinModule):
             all_circuits = U_forward[upper_idx[0]] @ U_adjoint[upper_idx[1]]
 
         # Distribution for every evaluated circuit
-        _, probabilities = self._slos_graph.compute_probs(
+        result = self._slos_graph.compute_probs(
             all_circuits, self.input_state
         )
+
+        # Handle both tuple return (SLOSComputeGraph) and SectoredDistribution return (NoisyG2SLOSComputeGraph)
+        from ..core.sectored_distribution import SectoredDistribution
+
+        if isinstance(result, SectoredDistribution):
+            raise NotImplementedError("Kernels do not currently support g2 noise models")
+
+        _, probabilities = result
 
         if probabilities.ndim == 1:
             probabilities = probabilities.unsqueeze(0)
@@ -1086,9 +1094,17 @@ class FidelityKernel(MerlinModule):
         U_adjoint = U_adjoint.conj().T
 
         kernel_unitary = U @ U_adjoint
-        _, probabilities = self._slos_graph.compute_probs(
+        result = self._slos_graph.compute_probs(
             kernel_unitary, self.input_state
         )
+
+        # Handle both tuple return (SLOSComputeGraph) and SectoredDistribution return (NoisyG2SLOSComputeGraph)
+        from ..core.sectored_distribution import SectoredDistribution
+
+        if isinstance(result, SectoredDistribution):
+            raise NotImplementedError("Kernels do not currently support g2 noise models")
+
+        _, probabilities = result
         if probabilities.ndim == 1:
             probabilities = probabilities.unsqueeze(0)
         probabilities = probabilities.to(dtype=self.dtype, device=self.device)

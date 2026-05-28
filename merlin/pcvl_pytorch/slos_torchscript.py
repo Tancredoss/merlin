@@ -1126,7 +1126,7 @@ def build_slos_distribution_computegraph(
     if computation_space is None:
         computation_space = ComputationSpace.UNBUNCHED
 
-    compute_graph: SLOSComputeGraph | NoisySLOSComputeGraph
+    compute_graph: SLOSComputeGraph | NoisySLOSComputeGraph | NoisyG2SLOSComputeGraph
 
     # If there is no source noise, use the regular SLOS graph
     # No noise at all

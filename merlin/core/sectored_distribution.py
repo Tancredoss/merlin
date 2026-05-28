@@ -104,7 +104,6 @@ class SectoredDistribution:
             self.sectors[i].n_photons: i for i in range(len(self.sectors))
         }
 
-    @property
     def get_sector(self, n_photons: int) -> SectorResult:
         """Return the SectorResult associated with n_photons."""
         if n_photons not in self._photon_map.keys():
@@ -113,7 +112,7 @@ class SectoredDistribution:
 
     def total_probability(self) -> float:
         """Return the SectorResult associated with n_photons."""
-        total_prob = 0
+        total_prob = 0.0
         for sector in self.sectors:
             total_prob += sector.tensor.sum().item()
         return total_prob
@@ -136,7 +135,7 @@ class SectoredDistribution:
         new_sectors = []
         for sector in self.sectors:
             new_sectors.append(sector.to(*args, **kwargs))
-        return SectoredDistribution(new_sectors)
+        return SectoredDistribution(tuple(new_sectors))
 
     def clone(self) -> SectoredDistribution:
         """Return a cloned SectoredDistribution with metadata and logical performance preserved.
@@ -149,7 +148,7 @@ class SectoredDistribution:
         new_sectors = []
         for sector in self.sectors:
             new_sectors.append(sector.clone())
-        return SectoredDistribution(new_sectors)
+        return SectoredDistribution(tuple(new_sectors))
 
     def detach(self) -> SectoredDistribution:
         """Return a detached ``SectoredDistribution`` sharing data without gradients.
@@ -162,7 +161,7 @@ class SectoredDistribution:
         new_sectors = []
         for sector in self.sectors:
             new_sectors.append(sector.detach())
-        return SectoredDistribution(new_sectors)
+        return SectoredDistribution(tuple(new_sectors))
 
     def requires_grad_(self, requires_grad: bool = True) -> SectoredDistribution:
         """Set ``requires_grad`` on underlying tensors and return self.

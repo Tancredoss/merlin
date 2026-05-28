@@ -104,7 +104,7 @@ class NoisyG2SLOSComputeGraph:
                     for n_i in range(1, (2 * self.n_photons) + 1)
                 ],
             )
-            self._slos_graphs = [
+            self._slos_graphs: list[NoisySLOSComputeGraph] | NoisySLOSComputeGraph = [
                 NoisySLOSComputeGraph(
                     noise_groups=noise_groups,
                     m=self.m,

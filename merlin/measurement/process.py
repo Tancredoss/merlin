@@ -237,7 +237,7 @@ class SamplingProcess:
                     :, index_splits[0] : index_splits[1]
                 ]
 
-        return SectoredDistribution(sectors)
+        return SectoredDistribution(tuple(sectors))
 
 
 def partial_measurement(

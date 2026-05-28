@@ -129,7 +129,7 @@ class DistributionStrategy(BaseMeasurementStrategy):
         apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
         apply_detectors: Callable[[torch.Tensor], torch.Tensor],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | SectoredDistribution:
         # Distribution strategies apply detector/noise transforms before sampling.
         if isinstance(distribution, SectoredDistribution):
             sample_fn = sampler.pcvl_sampler_g2

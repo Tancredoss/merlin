@@ -219,7 +219,7 @@ class ComputationProcess(AbstractComputationProcess):
                     probs_per_state = []
                     for idx in active_indices:
                         input_fock_state = self.simulation_graph.mapped_keys[idx]
-                        _, probs = self.simulation_graph.compute_probs(
+                        probs = self.simulation_graph.compute_probs(
                             unitary, input_fock_state
                         )
                         for sector in probs.sectors:
@@ -268,7 +268,7 @@ class ComputationProcess(AbstractComputationProcess):
                                 keys=probs_per_state[0].sectors[0].keys,
                             )
                         )
-                    return SectoredDistribution(output_sectors)
+                    return SectoredDistribution(tuple(output_sectors))
                 else:
                     probs_per_state = []
                     for idx in active_indices:
