@@ -30,11 +30,12 @@ from typing import Literal, overload
 import perceval as pcvl
 import torch
 
-from merlin.pcvl_pytorch.noisy_slos import (
-    NoisySLOSComputeGraph,
-    NoisyG2SLOSComputeGraph,
-)
 from merlin.core.sectored_distribution import SectoredDistribution, SectorResult
+from merlin.pcvl_pytorch.noisy_slos import (
+    NoisyG2SLOSComputeGraph,
+    NoisySLOSComputeGraph,
+)
+
 from ..algorithms.layer_utils import NoiseGroups
 from ..pcvl_pytorch import (
     CircuitConverter,
@@ -226,13 +227,12 @@ class ComputationProcess(AbstractComputationProcess):
                                 sector.tensor = sector.tensor.unsqueeze(0)
                         probs_per_state.append(probs)
 
-                    photon_sectors_to_analyze = [
-                        i
-                        for i in range(
+                    photon_sectors_to_analyze = list(
+                        range(
                             self.simulation_graph.n_photons,
                             (2 * self.simulation_graph.n_photons) + 1,
                         )
-                    ]
+                    )
                     output_sectors = []
                     for photon_number in photon_sectors_to_analyze:
                         probs_per_state_per_photon_number = [

@@ -51,6 +51,6 @@ Modules
    merlin.core.probability_distribution
    merlin.core.process
    merlin.core.merlin_processor
-   merlin.cire.sectored_distribution
+   merlin.core.sectored_distribution
    merlin.core.state
    merlin.core.state_vector

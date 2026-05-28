@@ -31,11 +31,11 @@ from enum import Enum
 from typing import TYPE_CHECKING, ClassVar, TypeAlias
 
 import torch
-from merlin.measurement.process import SamplingProcess
+
 from merlin.core.computation_space import ComputationSpace
 from merlin.core.partial_measurement import PartialMeasurement
 from merlin.core.sectored_distribution import SectoredDistribution
-from merlin.measurement.process import partial_measurement
+from merlin.measurement.process import SamplingProcess, partial_measurement
 from merlin.utils.deprecations import warn_deprecated_enum_access
 from merlin.utils.grouping import LexGrouping, ModGrouping
 

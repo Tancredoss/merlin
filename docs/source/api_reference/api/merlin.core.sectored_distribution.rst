@@ -7,7 +7,7 @@ merlin.core.probability_distribution
 .. currentmodule:: merlin.core.sectored_distribution
 
 SectoredDistribution
--------------
+------------------------
 
 .. autoclass:: SectoredDistribution
    :members:

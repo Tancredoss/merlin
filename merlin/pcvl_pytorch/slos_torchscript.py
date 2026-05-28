@@ -39,8 +39,8 @@ import torch.jit as jit
 from merlin.algorithms.layer_utils import NoiseGroups
 from merlin.core.computation_space import ComputationSpace
 from merlin.pcvl_pytorch.noisy_slos import (
-    NoisySLOSComputeGraph,
     NoisyG2SLOSComputeGraph,
+    NoisySLOSComputeGraph,
 )
 from merlin.utils.deprecations import raise_no_bunching_deprecated
 from merlin.utils.dtypes import resolve_float_complex

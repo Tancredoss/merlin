@@ -21,7 +21,7 @@
 # SOFTWARE.
 
 from .locirc_to_tensor import CircuitConverter
-from .noisy_slos import NoisySLOSComputeGraph, NoisyG2SLOSComputeGraph
+from .noisy_slos import NoisyG2SLOSComputeGraph, NoisySLOSComputeGraph
 from .slos_torchscript import build_slos_distribution_computegraph
 
 __all__ = [

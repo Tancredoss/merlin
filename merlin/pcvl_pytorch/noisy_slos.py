@@ -196,11 +196,15 @@ class NoisyG2SLOSComputeGraph:
         # probability p.  The two are related by g^(2)(0) = 2p/(1+p)^2, so:
         #   p = ((1 - g2) - sqrt(1 - 2*g2)) / g2,  valid for g2 in [0, 0.5].
         # For small g2, p ≈ g2/2 (L'Hôpital).  At g2=0 the limit is p=0.
-        _g2 = self.g2 if isinstance(self.g2, torch.Tensor) else torch.tensor(float(self.g2))
+        _g2 = (
+            self.g2
+            if isinstance(self.g2, torch.Tensor)
+            else torch.tensor(float(self.g2))
+        )
         _disc = (1.0 - 2.0 * _g2).clamp(min=0.0)
         p_emit = ((1.0 - _g2) - _disc.sqrt()) / _g2.clamp(min=1e-15)
         for num_photons_added in range(len(extra_photons_combinations)):
-            weight_k = (p_emit ** num_photons_added) * (
+            weight_k = (p_emit**num_photons_added) * (
                 (1 - p_emit) ** (num_input_photons - num_photons_added)
             )
 
@@ -228,7 +232,7 @@ class NoisyG2SLOSComputeGraph:
                         all_distributions = [
                             (keys_regular, probs_regular)
                         ] + distributions_to_convolve
-                        keys_list, probs_list = zip(*all_distributions)
+                        keys_list, probs_list = zip(*all_distributions, strict=True)
                         keys, probs = convolve_distributions(keys_list, *probs_list)
 
                         # Reorder probs to match Fock order
@@ -270,7 +274,7 @@ class NoisyG2SLOSComputeGraph:
             sector_outputs.append(sector)
         return SectoredDistribution(sector_outputs)
 
-    def to(self, device: str | torch.device) -> "NoisyG2SLOSComputeGraph":
+    def to(self, device: str | torch.device) -> NoisyG2SLOSComputeGraph:
         """Move cached tensors and subgraphs to a specific device.
 
         Parameters
@@ -517,7 +521,7 @@ class NoisySLOSComputeGraph:
             return keys, probs
         return probs
 
-    def to(self, device: str | torch.device) -> "NoisySLOSComputeGraph":
+    def to(self, device: str | torch.device) -> NoisySLOSComputeGraph:
         """Move cached tensors and subgraphs to a specific device.
 
         Parameters
@@ -673,7 +677,7 @@ class _InputStateNoisySLOSComputeGraph:
         }
 
     def compute_probs(
-        self, unitary: torch.Tensor, slos_graphs: list["SLOSComputeGraph"]
+        self, unitary: torch.Tensor, slos_graphs: list[SLOSComputeGraph]
     ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
         """Compute noisy probabilities for the cached input state.
 

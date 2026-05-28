@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import torch
 from dataclasses import dataclass
 
-from .probability_distribution import ProbabilityDistribution
+import torch
+
 from .computation_space import ComputationSpace
 
 
@@ -29,8 +29,8 @@ class SectorResult:
 
         Returns
         -------
-        StateVector
-            Converted state vector.
+        SectorResult
+            Converted sector result.
         """
         new_tensor = self.tensor.to(*args, **kwargs)
         return SectorResult(
@@ -46,8 +46,8 @@ class SectorResult:
 
         Returns
         -------
-        StateVector
-            Cloned state vector.
+        SectorResult
+            Cloned sector result.
         """
         return SectorResult(
             self.tensor.clone(),
@@ -62,8 +62,8 @@ class SectorResult:
 
         Returns
         -------
-        StateVector
-            Detached state vector.
+        SectorResult
+            Detached sector result.
         """
         return SectorResult(
             self.tensor.detach(),
@@ -83,7 +83,7 @@ class SectorResult:
 
         Returns
         -------
-        StateVector
+        SectorResult
             The updated instance.
         """
         self.tensor.requires_grad_(requires_grad)

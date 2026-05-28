@@ -226,7 +226,7 @@ class SamplingProcess:
 
         # Reformatting the output
         sectors = []
-        for sector, index_splits in zip(distribution.sectors, indexes):
+        for sector, index_splits in zip(distribution.sectors, indexes, strict=True):
             sectors.append(sector.clone())
             if augment_input:
                 sectors[-1].tensor = one_dimension_counts[
