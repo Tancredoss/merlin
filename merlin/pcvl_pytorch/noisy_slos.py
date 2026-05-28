@@ -104,7 +104,7 @@ class NoisyG2SLOSComputeGraph:
                     for n_i in range(1, (2 * self.n_photons) + 1)
                 ],
             )
-            self._slos_graphs: list[NoisySLOSComputeGraph] | NoisySLOSComputeGraph = [
+            self._slos_graphs: list[NoisySLOSComputeGraph] = [
                 NoisySLOSComputeGraph(
                     noise_groups=noise_groups,
                     m=self.m,
@@ -138,7 +138,7 @@ class NoisyG2SLOSComputeGraph:
         input_state: list[int] | tuple[int, ...],
     ) -> list[list[tuple[int]]]:
         num_photons = sum(input_state)
-        output = [[]]
+        output: list[list[tuple[int]]] = [[]]
 
         # Convert to tensor if not already
         if not isinstance(input_state, Tensor):
@@ -185,7 +185,9 @@ class NoisyG2SLOSComputeGraph:
                     ].compute_probs(unitary, one_hot_state)
                     one_hot_slos_graphs[mode_idx] = (keys_one_hot, probs_one_hot)
         else:
-            probs_regular = self._slos_graphs[0].compute_probs(unitary, input_state)
+            # Cast for mypy: _slos_graphs is list when g2_distinguishable is False
+            slos_graphs_list = cast(list[NoisySLOSComputeGraph], self._slos_graphs)
+            probs_regular = slos_graphs_list[0].compute_probs(unitary, input_state)
 
         # Getting the photon combinations
         extra_photons_combinations = self._get_extra_photon_combinations(input_state)

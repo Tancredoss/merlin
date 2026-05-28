@@ -132,7 +132,6 @@ class DistributionStrategy(BaseMeasurementStrategy):
     ) -> torch.Tensor | SectoredDistribution:
         # Distribution strategies apply detector/noise transforms before sampling.
         if isinstance(distribution, SectoredDistribution):
-            sample_fn = sampler.pcvl_sampler_g2
             if grouping:
                 raise RuntimeError(
                     f"A grouping strategy can not be applied to the output of a simulation with g2 noise. Indeed, since this noise creates input states with more phtons than expected, multiple photon sectors are explored. The fock spaces explored are m={distribution.sectors[0].n_modes} modes and n_photons={min(distribution._photon_map.keys())} to 2*n_photons={max(distribution._photon_map.keys())} that all have different space dimensions. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult`s of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector."
@@ -142,17 +141,18 @@ class DistributionStrategy(BaseMeasurementStrategy):
                 sector_result.tensor = apply_detectors(sector_result.tensor)
 
             if apply_sampling and effective_shots > 0:
-                distribution = sample_fn(distribution, effective_shots)
+                distribution = sampler.pcvl_sampler_g2(distribution, effective_shots)
+            # Return SectoredDistribution cast to match base class type annotation
+            return distribution  # type: ignore[return-value]
         else:
-            sample_fn = sampler.pcvl_sampler
             distribution = apply_photon_loss(distribution)
             distribution = apply_detectors(distribution)
 
             if apply_sampling and effective_shots > 0:
-                distribution = sample_fn(distribution, effective_shots)
+                distribution = sampler.pcvl_sampler(distribution, effective_shots)
             if grouping is not None:
                 return grouping(distribution)
-        return distribution
+            return distribution
 
 
 class ProbabilitiesStrategy(DistributionStrategy):
