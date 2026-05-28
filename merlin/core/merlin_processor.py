@@ -4,10 +4,11 @@ import time
 import uuid
 import warnings
 import zlib
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, cast
+from numbers import Integral
 
 import numpy as np
 import perceval as pcvl
@@ -38,6 +39,74 @@ class BackendCapabilities:
 
     name: str
     available_commands: tuple[str]
+
+
+class ValidatedLayerConfig:
+    def __init__(self, config_to_verify: dict):
+        # circuit
+        try:
+            self.circuit: pcvl.ACircuit = config_to_verify["circuit"]
+        except KeyError:
+            raise KeyError(f"There must be a key 'circuit' in the configs dictionary")
+        if not isinstance(self.circuit, pcvl.ACircuit):
+            raise ValueError(
+                f"The 'circuit' key of the config dictionary must be a Perceval ACircuit, got {type(self.circuit)}"
+            )
+
+        # input_state
+        try:
+            self.input_state: Sequence[Integral] | None = config_to_verify[
+                "input_state"
+            ]
+        except KeyError:
+            raise KeyError(
+                "There must be a key 'input_state' in the configs dictionary"
+            )
+
+        if self.input_state is not None:
+            if not isinstance(self.input_state, Sequence):
+                raise ValueError(
+                    f"'input_state' must be a sequence of integers or None, "
+                    f"got {type(self.input_state).__name__}"
+                )
+
+            bad_types = {
+                type(x).__name__
+                for x in self.input_state
+                if not isinstance(x, Integral)
+            }
+
+            if bad_types:
+                raise ValueError(
+                    f"'input_state' must contain only integers. "
+                    f"Got sequence type {type(self.input_state).__name__} "
+                    f"with non-integer element types: {sorted(bad_types)}"
+                )
+
+        # input_param_order
+        try:
+            self.input_param_order: Sequence[str] = config_to_verify[
+                "input_param_order"
+            ]
+        except KeyError:
+            raise KeyError(
+                f"There must be a key 'input_param_order' in the configs dictionary"
+            )
+        if not isinstance(self.input_param_order, Sequence):
+            raise ValueError(
+                f"'input_state' must be a sequence of strings, got {type(self.input_param_order).__name__}"
+            )
+
+        bad_types = {
+            type(x).__name__ for x in self.input_param_order if not isinstance(x, str)
+        }
+
+        if bad_types:
+            raise ValueError(
+                f"'input_param_order' must contain only integers. "
+                f"Got sequence type {type(self.input_param_order).__name__} "
+                f"with non-integer element types: {sorted(bad_types)}"
+            )
 
 
 class MerlinProcessor:
@@ -566,7 +635,7 @@ class MerlinProcessor:
 
         cache = self._layer_cache.get(id(layer))
         if cache is None:
-            config = cast(Any, layer).export_config()
+            config = ValidatedLayerConfig(cast(Any, layer).export_config())
             self._layer_cache[id(layer)] = {"config": config}
         else:
             config = cache["config"]
@@ -586,7 +655,7 @@ class MerlinProcessor:
     def _run_chunks_pooled(
         self,
         layer: MerlinModule,
-        config: dict,
+        config: ValidatedLayerConfig,
         input_tensor: torch.Tensor,
         chunks: list[tuple[int, int]],
         nsample: int | None,
@@ -655,7 +724,7 @@ class MerlinProcessor:
     def _run_chunk(
         self,
         layer: MerlinModule,
-        config: dict,
+        config: ValidatedLayerConfig,
         input_chunk: torch.Tensor,
         nsample: int | None,
         state: dict,
@@ -706,11 +775,11 @@ class MerlinProcessor:
             # Build a fresh RemoteProcessor and Sampler on each attempt so that
             # a corrupted RP doesn't poison retries.
             rp = self._create_fresh_rp()
-            rp.set_circuit(config["circuit"])
-            if config.get("input_state"):
-                input_state = pcvl.BasicState(config["input_state"])
+            rp.set_circuit(config.circuit)
+            if config.input_state:
+                input_state = pcvl.BasicState(config.input_state)
                 rp.with_input(input_state)
-                n_photons = sum(config["input_state"])
+                n_photons = sum(config.input_state)
                 rp.min_detected_photons_filter(n_photons)
 
             max_shots_arg = (
@@ -1055,9 +1124,9 @@ class MerlinProcessor:
         for child in children:
             yield from self._iter_layers_in_order(child)
 
-    def _extract_input_params(self, config: dict) -> list[str]:
+    def _extract_input_params(self, config: ValidatedLayerConfig) -> list[str]:
         """Extract circuit parameter names that correspond to model inputs."""
-        return list(config["input_param_order"])
+        return list(config.input_param_order)
 
     def _process_batch_results(
         self,
@@ -1252,14 +1321,14 @@ class MerlinProcessor:
         else:
             raise ValueError("input must be 1D or 2D tensor")
 
-        config = cast(Any, layer).export_config()
+        config = ValidatedLayerConfig(cast(Any, layer).export_config())
         child_rp = self._create_fresh_rp()
-        child_rp.set_circuit(config["circuit"])
+        child_rp.set_circuit(config.circuit)
 
-        if config.get("input_state"):
-            input_state = pcvl.BasicState(config["input_state"])
+        if config.input_state:
+            input_state = pcvl.BasicState(config.input_state)
             child_rp.with_input(input_state)
-            n_photons = sum(config["input_state"])
+            n_photons = sum(config.input_state)
             child_rp.min_detected_photons_filter(n_photons)
 
         input_param_names = self._extract_input_params(config)
