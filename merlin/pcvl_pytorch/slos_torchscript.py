@@ -1314,7 +1314,7 @@ def compute_slos_distribution(
         dtype=dtype,
         index_photons=index_photons,
     )
-    if isinstance(graph, NoisySLOSComputeGraph):
+    if isinstance(graph, (NoisySLOSComputeGraph, NoisyG2SLOSComputeGraph)):
         raise RuntimeError(
             "compute_slos_distribution does not support source-noise graphs; "
             "build a noisy graph explicitly and use compute_probs instead."
@@ -1349,7 +1349,7 @@ if __name__ == "__main__":
         graph = build_slos_distribution_computegraph(m, n_photons, dtype=dtype)
         build_time = time.time() - start_time
 
-        if isinstance(graph, NoisySLOSComputeGraph):
+        if isinstance(graph, (NoisySLOSComputeGraph, NoisyG2SLOSComputeGraph)):
             raise RuntimeError(
                 "Example expected a non-noisy SLOSComputeGraph, but a noisy graph was built."
             )

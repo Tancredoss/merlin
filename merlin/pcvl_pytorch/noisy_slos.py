@@ -80,6 +80,7 @@ class NoisyG2SLOSComputeGraph:
             build_slos_distribution_computegraph as build_slos_graph,
         )
 
+        self._slos_graphs: NoisySLOSComputeGraph | list[NoisySLOSComputeGraph]
         if self.g2_distinguishable:
             self._slos_graphs = NoisySLOSComputeGraph(
                 noise_groups=noise_groups,
@@ -104,7 +105,7 @@ class NoisyG2SLOSComputeGraph:
                     for n_i in range(1, (2 * self.n_photons) + 1)
                 ],
             )
-            self._slos_graphs: list[NoisySLOSComputeGraph] = [
+            self._slos_graphs = [
                 NoisySLOSComputeGraph(
                     noise_groups=noise_groups,
                     m=self.m,
@@ -186,8 +187,8 @@ class NoisyG2SLOSComputeGraph:
                     one_hot_slos_graphs[mode_idx] = (keys_one_hot, probs_one_hot)
         else:
             # Cast for mypy: _slos_graphs is list when g2_distinguishable is False
-            slos_graphs_list = cast(list[NoisySLOSComputeGraph], self._slos_graphs)
-            probs_regular = slos_graphs_list[0].compute_probs(unitary, input_state)
+            self._slos_graphs = cast(list[NoisySLOSComputeGraph], self._slos_graphs)
+            probs_regular = self._slos_graphs[0].compute_probs(unitary, input_state)
 
         # Getting the photon combinations
         extra_photons_combinations = self._get_extra_photon_combinations(input_state)
@@ -264,7 +265,7 @@ class NoisyG2SLOSComputeGraph:
                         probs = reordered_probs
 
                     else:
-                        input_state_to_run = input_state.copy()
+                        input_state_to_run = list(input_state)
                         for photon in combination:
                             input_state_to_run[photon] += 1
                         probs = self._slos_graphs[num_photons_added].compute_probs(
@@ -274,7 +275,7 @@ class NoisyG2SLOSComputeGraph:
                     sector.tensor = sector.tensor + weight_k * probs
 
             sector_outputs.append(sector)
-        return SectoredDistribution(sector_outputs)
+        return SectoredDistribution(tuple(sector_outputs))
 
     def to(self, device: str | torch.device) -> NoisyG2SLOSComputeGraph:
         """Move cached tensors and subgraphs to a specific device.

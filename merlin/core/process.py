@@ -183,7 +183,7 @@ class ComputationProcess(AbstractComputationProcess):
         self,
         parameters: list[torch.Tensor],
         amplitude_encoding: bool = False,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | SectoredDistribution:
         """Compute output amplitudes for the configured input state.
 
         Parameters
@@ -196,8 +196,10 @@ class ComputationProcess(AbstractComputationProcess):
 
         Returns
         -------
-        torch.Tensor
-            Output probabilities if the simulation is noisy and amplitudes otherwise produced by the simulation graph.
+        torch.Tensor | SectoredDistribution
+            Output probabilities if the simulation is noisy (a
+            :class:`~merlin.core.sectored_distribution.SectoredDistribution` when g2
+            noise is present) and amplitudes otherwise produced by the simulation graph.
         """
         # Generate unitary matrix from parameters
 
@@ -270,7 +272,7 @@ class ComputationProcess(AbstractComputationProcess):
                         )
                     return SectoredDistribution(tuple(output_sectors))
                 else:
-                    probs_per_state = []
+                    probs_per_state: list[torch.Tensor] = []
                     for idx in active_indices:
                         input_fock_state = self.simulation_graph.mapped_keys[idx]
                         _, probs = self.simulation_graph.compute_probs(

@@ -82,7 +82,7 @@ class BaseMeasurementStrategy:
         apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
         apply_detectors: Callable[[torch.Tensor], torch.Tensor],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    ) -> torch.Tensor | PartialMeasurement:
+    ) -> torch.Tensor | PartialMeasurement | SectoredDistribution:
         """Return the processed result for the selected measurement strategy.
 
         Parameters
