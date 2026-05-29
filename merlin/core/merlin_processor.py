@@ -8,7 +8,7 @@ from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from numbers import Integral
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any, Literal, Protocol, cast, runtime_checkable
 
 import numpy as np
 import perceval as pcvl
@@ -221,7 +221,7 @@ class ValidatedLayerConfig:
                 pass
 
             else:
-                input_state_sequence: Sequence[Integral] | False = check_sequence(
+                input_state_sequence: Sequence[Integral] | Literal[False] = check_sequence(
                     self.input_state
                 )
                 if input_state_sequence is False:
@@ -254,7 +254,7 @@ class ValidatedLayerConfig:
                 "There must be a key 'input_param_order' in the configs dictionary that is associated with a Sequence[str] or None."
             )
         if self.input_param_order is not None:
-            input_param_order_sequence: Sequence[str] | False = check_sequence(
+            input_param_order_sequence: Sequence[str] | Literal[False] = check_sequence(
                 self.input_param_order
             )
             if input_param_order_sequence is False:
