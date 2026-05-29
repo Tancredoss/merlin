@@ -946,9 +946,10 @@ class KernelCircuitBuilder:
         """
         feature_map = self.build_feature_map()
 
-        # Generate default input state if not provided
+        # TODO: In release 0.5.x, remove KernelCircuitBuilder default
+        # input_state generation and let FidelityKernel infer it directly.
         if input_state is None:
-            n_modes = self._n_modes or max(self._input_size or 2, 4)
+            n_modes = feature_map.circuit.m
             n_photons = self._n_photons or (self._input_size or 2)
             input_state = list(generate_state(n_modes, n_photons, StatePattern.SPACED))
 
@@ -1463,10 +1464,10 @@ class FidelityKernel(MerlinModule):
         ``feature_map.circuit.m``.
     n_photons : int | None
         Number of photons to place in the input state when ``input_state`` is
-        ``None``.  If ``n_photons * 2 <= m`` (where ``m`` is the number of
+        ``None``. If ``n_photons <= ceil(m / 2)`` (where ``m`` is the number of
         circuit modes), photons are spread in the alternating pattern
-        ``[1, 0, 1, 0, ...]``; otherwise all even positions are filled first
-        and then odd positions are filled left to right
+        ``[1, 0, 1, 0, ...]``; otherwise all alternating positions are filled
+        first and then remaining positions are filled left to right
         (e.g. 4 photons in 6 modes → ``[1, 1, 1, 0, 1, 0]``), and a
         ``UserWarning`` is emitted.  If ``input_state`` is also provided,
         ``sum(input_state)`` must equal ``n_photons``, otherwise a
@@ -1553,10 +1554,11 @@ class FidelityKernel(MerlinModule):
         n_photons : int | None
             Number of photons used to derive ``input_state`` when
             ``input_state`` is ``None``.  Must satisfy
-            ``1 <= n_photons <= feature_map.circuit.m``.  If
-            ``n_photons * 2 <= m``, an alternating state is produced;
-            otherwise all even positions are filled first, then odd positions
-            are filled left to right, and a ``UserWarning`` is emitted.
+            ``1 <= n_photons <= feature_map.circuit.m``. If
+            ``n_photons <= ceil(m / 2)``, an alternating state is produced;
+            otherwise all alternating positions are filled first, then the
+            remaining positions are filled left to right, and a ``UserWarning``
+            is emitted.
             If ``input_state`` is also provided, its photon count must equal
             ``n_photons``.  Default is ``None``.
         shots : int | None
@@ -1622,7 +1624,7 @@ class FidelityKernel(MerlinModule):
                 )
         # We infer the input states if not given
         elif input_state is None:
-            # If n_photons is not given, we default to the alternating pattern with m/2 photons
+            # If n_photons is not given, default to all alternating positions.
             if n_photons is None:
                 input_state = [1 if i % 2 == 0 else 0 for i in range(m)]
             # Otherwise, we generate the input state based on n_photons and m
@@ -1633,20 +1635,21 @@ class FidelityKernel(MerlinModule):
                         f"n_photons must be between 1 and {m} (the number of "
                         f"circuit modes), got {n_photons}."
                     )
-                # We have less than m/2 photons, so we can place them in the alternating pattern
-                if n_photons * 2 <= m:
+                alternating_slot_count = (m + 1) // 2
+                if n_photons <= alternating_slot_count:
                     state = [0] * m
                     for i in range(n_photons):
                         state[2 * i] = 1
                     input_state = state
-                # More photons than even positions: fill all even positions first,
-                # then continue filling odd positions left to right.
+                # More photons than alternating positions: fill them first,
+                # then continue filling remaining positions left to right.
                 else:
                     warnings.warn(
-                        f"n_photons={n_photons} exceeds half the number of modes "
-                        f"({m}). Even positions are filled first, then odd positions "
-                        "are filled left to right, which may not correspond to a "
-                        "physically realistic hardware configuration.",
+                        f"n_photons={n_photons} exceeds the {alternating_slot_count} "
+                        "available alternating positions. Alternating positions "
+                        "are filled first, then remaining positions are filled "
+                        "left to right, which may not correspond to a physically "
+                        "realistic hardware configuration.",
                         UserWarning,
                         stacklevel=2,
                     )
@@ -1729,10 +1732,10 @@ class FidelityKernel(MerlinModule):
         Returns
         -------
         list[int]
-            The input Fock state passed at construction time, as stored by
-            the internal :class:`_CCInvQuantumLayer` backend.
+            Copy of the input Fock state used by the internal
+            :class:`_CCInvQuantumLayer` backend.
         """
-        return self._quantum_layer._kernel_input_state
+        return list(self._quantum_layer._kernel_input_state)
 
     def forward(
         self,

@@ -315,6 +315,14 @@ class TestFidelityKernel:
         assert self.quantum_kernel.force_psd
         assert not self.quantum_kernel.is_trainable
 
+    def test_input_state_property_returns_copy(self):
+        input_state = self.quantum_kernel.input_state
+        input_state[0] = 0
+
+        assert self.quantum_kernel.input_state == [2, 0]
+        assert self.quantum_kernel.input_state is not input_state
+        assert self.quantum_kernel._quantum_layer._kernel_input_state == [2, 0]
+
     def test_fidelity_kernel_with_trainable_feature_map(self):
         theta = pcvl.P("theta")
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
@@ -673,23 +681,30 @@ class TestFidelityKernelInputStateDerivation:
     # ------------------------------------------------------------------
 
     def test_n_photons_alternating_pattern(self):
-        """n_photons <= m/2 produces an alternating state with exactly n_photons."""
+        """n_photons below the alternating slot count uses alternating positions."""
         fm = self._make_feature_map(6)
         kernel = FidelityKernel(feature_map=fm, n_photons=2)
         assert kernel.input_state == [1, 0, 1, 0, 0, 0]
         assert sum(kernel.input_state) == 2
 
     def test_n_photons_fills_all_alternating_positions(self):
-        """n_photons == m/2 exactly fills the alternating pattern."""
+        """n_photons == ceil(m / 2) exactly fills the alternating pattern."""
         fm = self._make_feature_map(6)
         kernel = FidelityKernel(feature_map=fm, n_photons=3)
         assert kernel.input_state == [1, 0, 1, 0, 1, 0]
         assert sum(kernel.input_state) == 3
 
+    def test_n_photons_fills_all_odd_mode_alternating_positions_without_warning(self):
+        """n_photons == ceil(m / 2) exactly fills an odd-mode alternating pattern."""
+        fm = self._make_feature_map(5)
+        kernel = FidelityKernel(feature_map=fm, n_photons=3)
+        assert kernel.input_state == [1, 0, 1, 0, 1]
+        assert sum(kernel.input_state) == 3
+
     def test_n_photons_overflow_fills_even_then_odd(self):
-        """n_photons > m/2 fills even positions first, then odd left to right."""
+        """n_photons above the alternating slot count fills remaining positions."""
         fm = self._make_feature_map(6)
-        with pytest.warns(UserWarning, match="Even positions are filled first"):
+        with pytest.warns(UserWarning, match="Alternating positions are filled first"):
             kernel = FidelityKernel(feature_map=fm, n_photons=4)
         assert kernel.input_state == [1, 1, 1, 0, 1, 0]
         assert sum(kernel.input_state) == 4
@@ -697,7 +712,7 @@ class TestFidelityKernelInputStateDerivation:
     def test_n_photons_all_modes_warns(self):
         """n_photons == m fills all modes and warns."""
         fm = self._make_feature_map(4)
-        with pytest.warns(UserWarning, match="Even positions are filled first"):
+        with pytest.warns(UserWarning, match="Alternating positions are filled first"):
             kernel = FidelityKernel(
                 feature_map=fm,
                 n_photons=4,
@@ -1148,6 +1163,15 @@ class TestKernelCircuitBuilder:
         assert len(kernel.input_state) == 4
         assert sum(kernel.input_state) == 2
         assert kernel.input_state == [1, 0, 1, 0]
+
+    def test_builder_build_fidelity_kernel_uses_feature_map_mode_count(self):
+        """Default builder kernel state length follows the built feature map."""
+        builder = KernelCircuitBuilder()
+        kernel = builder.input_size(4).build_fidelity_kernel()
+
+        assert kernel.input_size == 4
+        assert kernel.feature_map.circuit.m == 5
+        assert len(kernel.input_state) == 5
 
     def test_builder_fidelity_kernel_with_custom_input_state(self):
         """Test building FidelityKernel with custom input state."""
