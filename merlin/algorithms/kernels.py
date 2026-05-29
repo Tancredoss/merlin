@@ -1732,8 +1732,7 @@ class FidelityKernel(MerlinModule):
         Returns
         -------
         list[int]
-            Copy of the input Fock state used by the internal
-            :class:`_CCInvQuantumLayer` backend.
+            Copy of the input Fock state used by the kernel backend.
         """
         return list(self._quantum_layer._kernel_input_state)
 
@@ -1956,7 +1955,7 @@ class FidelityKernel(MerlinModule):
         -------
         int
             Number of encoded circuit input parameters expected by the
-            internal :class:`_CCInvQuantumLayer` backend.
+            kernel backend.
 
         Warns
         -----
