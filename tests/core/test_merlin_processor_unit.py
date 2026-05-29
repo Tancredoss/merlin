@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from concurrent.futures import CancelledError
@@ -52,6 +53,39 @@ class FakeSampler:
         self.probs = FakeCommand()
         self.sample_count = FakeCommand()
         self.samples = FakeCommand()
+
+
+class FakePerceval12Command(FakeCommand):
+    """Sampler command with a Perceval 1.2-style private request payload."""
+
+    def __init__(self, iterator) -> None:
+        super().__init__()
+        self._request_data = {"payload": {"iterator": iterator}}
+
+    def execute_async(self, **kwargs):
+        """Serialize the payload before recording the async execution call."""
+        json.dumps(self._request_data["payload"])
+        return super().execute_async(**kwargs)
+
+
+class FakePerceval12Iterator:
+    """Small stand-in for Perceval 1.2 ParameterIterator."""
+
+    def __init__(self) -> None:
+        self.iterations = [{"circuit_params": {"px1": 0.25}}]
+
+    def __bool__(self) -> bool:
+        return True
+
+
+class FakePerceval12Sampler:
+    """Sampler fake whose commands expose a Perceval 1.2 iterator payload."""
+
+    def __init__(self) -> None:
+        self._iterator = FakePerceval12Iterator()
+        self.probs = FakePerceval12Command(self._iterator)
+        self.sample_count = FakePerceval12Command(self._iterator)
+        self.samples = FakePerceval12Command(self._iterator)
 
 
 @dataclass
@@ -267,6 +301,24 @@ def test_session_path_stores_backend_capabilities():
         proc = MerlinProcessor(session=session)
 
     assert proc.backend_capabilities.name == "perceval-qpu:scaleway"
+    assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
+
+
+def test_session_path_does_not_require_remote_processor_token():
+    """ISession authentication should stay owned by the session object."""
+    session = MagicMock(spec=ISession)
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.name = "perceval-qpu:scaleway"
+    remote_processor.available_commands = ["probs", "sample_count"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value=None) as extract:
+        proc = MerlinProcessor(session=session)
+
+    extract.assert_not_called()
+    assert proc.session is session
+    assert proc.remote_processor is None
     assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
 
 
@@ -627,6 +679,27 @@ def test_submit_job_uses_sample_count_when_sampling_requested():
     assert sampler.sample_count.execute_kwargs == {"max_samples": 37}
     assert sampler.sample_count.name == "job:sample_count"
     assert sampler.probs.executed is False
+
+
+def test_submit_job_serializes_perceval_12_parameter_iterator_payload():
+    """Perceval 1.2 sampler iterations must be JSON-serializable for Scaleway."""
+    proc = make_processor(["sample_count"])
+    sampler = FakePerceval12Sampler()
+
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=37,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+
+    assert returned_job is sampler.sample_count
+    assert is_probability is False
+    assert sampler.sample_count.executed is True
+    assert sampler.sample_count.execute_kwargs == {"max_samples": 37}
+    assert sampler.sample_count._request_data["payload"]["iterator"] == [
+        {"circuit_params": {"px1": 0.25}}
+    ]
 
 
 def test_submit_job_falls_back_to_samples_when_sample_count_is_unavailable():

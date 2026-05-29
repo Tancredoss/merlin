@@ -485,18 +485,19 @@ class MerlinProcessor:
                 stacklevel=2,
             )
 
-        # Auto-extract the token from the RP's handler when not
-        # explicitly provided, so cloned RPs inherit it.
-        if self._token is None:
-            self._token = self._extract_rp_token(remote_processor)
+        if self.session is None:
+            # Auto-extract the token from the RP's handler when not
+            # explicitly provided, so cloned RPs inherit it.
+            if self._token is None:
+                self._token = self._extract_rp_token(remote_processor)
 
-        if self._token is None:
-            raise ValueError(
-                "Could not extract auth token from RemoteProcessor. "
-                "Either pass token= to MerlinProcessor or call "
-                "RemoteConfig.set_token() before constructing the "
-                "RemoteProcessor."
-            )
+            if self._token is None:
+                raise ValueError(
+                    "Could not extract auth token from RemoteProcessor. "
+                    "Either pass token= to MerlinProcessor or call "
+                    "RemoteConfig.set_token() before constructing the "
+                    "RemoteProcessor."
+                )
 
         self.microbatch_size = microbatch_size
         self.default_timeout = float(timeout)
@@ -1070,6 +1071,7 @@ class MerlinProcessor:
             cmd = "probs"
             if job_base_label:
                 job.name = _capped_name(job_base_label, cmd)
+            self._ensure_serializable_sampler_iterator(job, sampler)
             return job.execute_async(), is_probability
 
         use_shots = self.DEFAULT_SHOTS_PER_CALL if nsample is None else int(nsample)
@@ -1086,7 +1088,42 @@ class MerlinProcessor:
 
         if job_base_label:
             job.name = _capped_name(job_base_label, cmd)
+        self._ensure_serializable_sampler_iterator(job, sampler)
         return job.execute_async(max_samples=use_shots), is_probability
+
+    @staticmethod
+    def _ensure_serializable_sampler_iterator(job: RemoteJob, sampler: Sampler) -> None:
+        """Replace Perceval 1.2 iterator objects with JSON-serializable data.
+
+        Parameters
+        ----------
+        job : RemoteJob
+            Prepared Perceval remote job whose private request payload may contain
+            a sampler iterator.
+        sampler : Sampler
+            Perceval sampler used to prepare the job.
+
+        Notes
+        -----
+        Perceval 1.1 stores sampler iterations as a plain list. Perceval 1.2
+        stores them in a ``ParameterIterator`` object, but the Scaleway session
+        handler still serializes ``payload["payload"]`` with ``json.dumps``.
+        Until Perceval exposes a public serializer for that object, Merlin
+        normalizes the remote-job payload back to the list shape accepted by the
+        cloud side.
+        """
+        iterator = getattr(sampler, "_iterator", None)
+        iterations = getattr(iterator, "iterations", None)
+        if not iterations:
+            return
+
+        request_data = getattr(job, "_request_data", None)
+        if not isinstance(request_data, dict):
+            return
+
+        payload = request_data.get("payload")
+        if isinstance(payload, dict) and payload.get("iterator") is iterator:
+            payload["iterator"] = list(iterations)
 
     def _poll_job(
         self,
