@@ -8,7 +8,7 @@ from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from numbers import Integral
-from typing import Any, Literal, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 import numpy as np
 import perceval as pcvl
