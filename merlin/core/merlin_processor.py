@@ -221,20 +221,21 @@ class ValidatedLayerConfig:
                 pass
 
             else:
-                input_state_sequence = check_sequence(self.input_state)
-                if not input_state_sequence:
+                input_state_sequence: Sequence[Integral] | False = check_sequence(
+                    self.input_state
+                )
+                if input_state_sequence is False:
                     raise ValueError(
                         "'input_state' must be None, a sequence of integers, "
                         "or an Perceval state object "
                         f"(got {type(self.input_state).__name__})."
                     )
-                else:
-                    self.input_state = input_state_sequence
-                    bad_types = {
-                        type(x).__name__
-                        for x in self.input_state
-                        if not isinstance(x, Integral)
-                    }
+                self.input_state = input_state_sequence
+                bad_types = {
+                    type(x).__name__
+                    for x in self.input_state
+                    if not isinstance(x, Integral)
+                }
 
                     if bad_types:
                         raise ValueError(
@@ -253,8 +254,10 @@ class ValidatedLayerConfig:
                 "There must be a key 'input_param_order' in the configs dictionary that is associated with a Sequence[str] or None."
             )
         if self.input_param_order is not None:
-            input_param_order_sequence = check_sequence(self.input_param_order)
-            if not input_param_order_sequence:
+            input_param_order_sequence: Sequence[str] | False = check_sequence(
+                self.input_param_order
+            )
+            if input_param_order_sequence is False:
                 raise ValueError(
                     f"'input_param_order' must be a sequence of strings or None, got {type(self.input_param_order).__name__}."
                 )
@@ -509,7 +512,7 @@ class MerlinProcessor:
         self.chunk_concurrency = max(1, int(chunk_concurrency))
 
         # Caches & global tracking
-        self._layer_cache: dict[int, dict] = {}
+        self._layer_cache: dict[uuid.UUID, dict[str, Any]] = {}
         self._job_history: list[RemoteJob] = []
 
         # Lifecycle/cancellation
