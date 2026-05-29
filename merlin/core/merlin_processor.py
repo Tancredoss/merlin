@@ -50,7 +50,7 @@ _ALLOWED_STATE_TYPES = (
 )
 
 
-def check_sequence(input: Any) -> bool | Sequence:
+def check_sequence(input: Any) -> Sequence[Any] | None:
     """
     Check whether an object can be treated as a sequence.
 
@@ -61,14 +61,14 @@ def check_sequence(input: Any) -> bool | Sequence:
 
     Returns
     -------
-    Sequence | bool
+    Sequence | None
         The original object if it is an instance of
         ``collections.abc.Sequence``.
 
         Otherwise, if the object is iterable, a tuple containing its
         elements.
 
-        Returns ``False`` if the object is not iterable.
+        Returns None if the object is not iterable.
 
     Notes
     -----
@@ -89,17 +89,15 @@ def check_sequence(input: Any) -> bool | Sequence:
     (1, 2, 3)
 
     >>> check_sequence(42)
-    False
+    None
     """
 
-    if isinstance(input, Sequence):
+    if isinstance(input, Sequence) and not isinstance(input, (str, bytes)):
         return input
     try:
-        values = tuple(input)
+        return tuple(input)
     except TypeError:
-        return False
-
-    return values
+        return None
 
 
 class ValidatedLayerConfig:
@@ -221,10 +219,10 @@ class ValidatedLayerConfig:
                 pass
 
             else:
-                input_state_sequence: Sequence[Integral] | bool = check_sequence(
+                input_state_sequence: Sequence[Integral] | None = check_sequence(
                     self.input_state
                 )
-                if input_state_sequence is False:
+                if input_state_sequence is None:
                     raise ValueError(
                         "'input_state' must be None, a sequence of integers, "
                         "or an Perceval state object "
@@ -254,10 +252,10 @@ class ValidatedLayerConfig:
                 "There must be a key 'input_param_order' in the configs dictionary that is associated with a Sequence[str] or None."
             )
         if self.input_param_order is not None:
-            input_param_order_sequence: Sequence[str] | bool = check_sequence(
+            input_param_order_sequence: Sequence[str] | None = check_sequence(
                 self.input_param_order
             )
-            if input_param_order_sequence is False:
+            if input_param_order_sequence is None:
                 raise ValueError(
                     f"'input_param_order' must be a sequence of strings or None, got {type(self.input_param_order).__name__}."
                 )
