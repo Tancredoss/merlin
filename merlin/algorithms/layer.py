@@ -471,7 +471,7 @@ class QuantumLayer(MerlinModule):
                 if "g2" in self._noise_groups.source:
                     g2_noise = True
         if g2_noise:
-            raw_keys = cast(
+            raw_keys_per_n = cast(
                 list[list[tuple[int, ...]]],
                 [
                     list(keys_per_n)
@@ -481,17 +481,17 @@ class QuantumLayer(MerlinModule):
             self._raw_output_keys = cast(
                 list[list[tuple[int, ...]]],
                 [
-                    [self._normalize_output_key(key) for key in raw_keys_per_n]
-                    for raw_keys_per_n in raw_keys
+                    [self._normalize_output_key(key) for key in raw_keys]
+                    for raw_keys in raw_keys_per_n
                 ],
             )
         else:
-            raw_keys = cast(
+            flat_raw_keys = cast(
                 list[tuple[int, ...]],
                 self.computation_process.simulation_graph.mapped_keys,
             )
             self._raw_output_keys = [
-                self._normalize_output_key(key) for key in raw_keys
+                self._normalize_output_key(key) for key in flat_raw_keys
             ]
         self._initialize_photon_loss_transform()
         self._initialize_detector_transform()
@@ -585,17 +585,20 @@ class QuantumLayer(MerlinModule):
 
         kind = _resolve_measurement_kind(measurement_strategy)
 
+        flat_keys: list[tuple[int, ...]] | None = None
         if kind == MeasurementKind.AMPLITUDES:
             if (
                 isinstance(self._raw_output_keys, list)
                 and self._raw_output_keys
                 and isinstance(self._raw_output_keys[0], list)
             ):
-                keys = cast(list[list[tuple[int, ...]]], self._raw_output_keys)
-                dist_size = sum(len(key) for key in keys)
+                nested_amplitude_keys = cast(
+                    list[list[tuple[int, ...]]], self._raw_output_keys
+                )
+                dist_size = sum(len(key) for key in nested_amplitude_keys)
             else:
-                keys = cast(list[tuple[int, ...]], self._raw_output_keys)
-                dist_size = len(keys)
+                flat_keys = cast(list[tuple[int, ...]], self._raw_output_keys)
+                dist_size = len(flat_keys)
         else:
             if (
                 isinstance(self._raw_output_keys, list)
@@ -603,17 +606,21 @@ class QuantumLayer(MerlinModule):
                 and isinstance(self._raw_output_keys[0], list)
             ):
                 if self._detector_is_identity:
-                    keys = cast(list[list[tuple[int, ...]]], self._photon_loss_keys)
+                    nested_detector_keys = cast(
+                        list[list[tuple[int, ...]]], self._photon_loss_keys
+                    )
                 else:
-                    keys = cast(list[list[tuple[int, ...]]], self._detector_keys)
-                dist_size = sum(len(key) for key in keys)
+                    nested_detector_keys = cast(
+                        list[list[tuple[int, ...]]], self._detector_keys
+                    )
+                dist_size = sum(len(key) for key in nested_detector_keys)
             else:
-                keys = (
+                flat_keys = (
                     cast(list[tuple[int, ...]], self._photon_loss_keys)
                     if self._detector_is_identity
                     else cast(list[tuple[int, ...]], self._detector_keys)
                 )
-                dist_size = len(keys)
+                dist_size = len(flat_keys)
 
         # Determine output size (upstream model)
         if kind == MeasurementKind.PROBABILITIES:
@@ -650,7 +657,8 @@ class QuantumLayer(MerlinModule):
         if kind == MeasurementKind.PARTIAL or source_noise:
             self.measurement_mapping = nn.Identity()
         else:
-            measurement_keys = cast(list[tuple[int, ...]], keys)
+            assert flat_keys is not None
+            measurement_keys = flat_keys
             self.measurement_mapping = OutputMapper.create_mapping(
                 measurement_strategy,
                 self.computation_process.computation_space,
@@ -1420,8 +1428,12 @@ class QuantumLayer(MerlinModule):
             ]
             self._detector_is_identity = all(detector_transform_identities)
         else:
-            detector_transform = DetectorTransform(
+            flat_photon_loss_keys = cast(
+                Iterable[Sequence[int]],
                 self._photon_loss_keys,
+            )
+            detector_transform = DetectorTransform(
+                flat_photon_loss_keys,
                 detectors,
                 dtype=self.dtype,
                 device=self.device,
