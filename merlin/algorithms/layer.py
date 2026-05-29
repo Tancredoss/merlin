@@ -62,7 +62,6 @@ from ..utils.deprecations import (
 )
 from ..utils.grouping import ModGrouping
 from ..utils.normalization import normalize_probabilities_and_amplitudes
-from ..utils.combinadics import Combinadics
 from .layer_utils import (
     InitializationContext,
     apply_angle_encoding,
@@ -588,8 +587,8 @@ class QuantumLayer(MerlinModule):
                 and self._raw_output_keys
                 and isinstance(self._raw_output_keys[0], list)
             ):
-                keys = list(list(raw_keys) for raw_keys in self._raw_output_keys)
-                dist_size = sum([len(key) for key in keys])
+                keys = [list(raw_keys) for raw_keys in self._raw_output_keys]
+                dist_size = sum(len(key) for key in keys)
             else:
                 keys = list(self._raw_output_keys)
                 dist_size = len(keys)
@@ -600,10 +599,10 @@ class QuantumLayer(MerlinModule):
                 and isinstance(self._raw_output_keys[0], list)
             ):
                 if self._detector_is_identity:
-                    keys = list(list(raw_keys) for raw_keys in self._photon_loss_keys)
+                    keys = [list(raw_keys) for raw_keys in self._photon_loss_keys]
                 else:
-                    keys = list(list(raw_keys) for raw_keys in self._detector_keys)
-                dist_size = sum([len(key) for key in keys])
+                    keys = [list(raw_keys) for raw_keys in self._detector_keys]
+                dist_size = sum(len(key) for key in keys)
             else:
                 keys = (
                     list(self._photon_loss_keys)
@@ -1290,7 +1289,7 @@ class QuantumLayer(MerlinModule):
                 and self._raw_output_keys
                 and isinstance(self._raw_output_keys[0], list)
             ):
-                return list([list(keys) for keys in self._raw_output_keys])
+                return [list(keys) for keys in self._raw_output_keys]
             else:
                 return list(self._raw_output_keys)
         if self._detector_is_identity:
@@ -1299,7 +1298,7 @@ class QuantumLayer(MerlinModule):
                 and self._raw_output_keys
                 and isinstance(self._raw_output_keys[0], list)
             ):
-                return list([list(keys) for keys in self._photon_loss_keys])
+                return [list(keys) for keys in self._photon_loss_keys]
             else:
                 return list(self._photon_loss_keys)
         if (
@@ -1307,7 +1306,7 @@ class QuantumLayer(MerlinModule):
             and self._raw_output_keys
             and isinstance(self._raw_output_keys[0], list)
         ):
-            return list([list(keys) for keys in self._detector_keys])
+            return [list(keys) for keys in self._detector_keys]
         return list(self._detector_keys)
 
     @property

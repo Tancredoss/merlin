@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 import torch
 
-from .computation_space import ComputationSpace
 from ..utils.combinadics import Combinadics
+from .computation_space import ComputationSpace
 
 
 @dataclass
