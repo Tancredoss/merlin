@@ -250,7 +250,7 @@ class ValidatedLayerConfig:
             ]
         except KeyError:
             raise KeyError(
-                f"There must be a key 'input_param_order' in the configs dictionary that is associated with a Sequence[str] or None."
+                "There must be a key 'input_param_order' in the configs dictionary that is associated with a Sequence[str] or None."
             )
         if self.input_param_order is not None:
             input_param_order_sequence = check_sequence(self.input_param_order)
