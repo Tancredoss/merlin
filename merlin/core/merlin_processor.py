@@ -565,9 +565,6 @@ class MerlinProcessor:
         with self._lock:
             if self._closed:
                 raise RuntimeError("MerlinProcessor is closed")
-        # Start session lifecycle if provided
-        if self.session is not None and hasattr(self.session, "__enter__"):
-            self.session.__enter__()
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -576,8 +573,6 @@ class MerlinProcessor:
             self.cancel_all()
         finally:
             # End session lifecycle if provided
-            if self.session is not None and hasattr(self.session, "__exit__"):
-                suppress_exception = bool(self.session.__exit__(exc_type, exc, tb))
             with self._lock:
                 self._closed = True
         return suppress_exception

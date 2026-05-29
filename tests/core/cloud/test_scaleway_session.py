@@ -97,73 +97,76 @@ class TestScalewaySessionBasic:
         # Verify backwards-compatible attributes are set
         assert proc.session is not None or proc.remote_processor is not None
 
-    def test_confirm_backend_has_probs(self, scaleway_session):
-        """Confirm backend has probs in available_commands."""
-        proc = MerlinProcessor(session=scaleway_session)
-        
-        # Check available commands
-        print(f"\nBackend available_commands: {proc.available_commands}")
-        print(f"Backend capabilities: {proc.backend_capabilities.available_commands}")
-        
-        # Confirm probs is available
-        assert "probs" in proc.available_commands, \
-            f"'probs' not in available commands: {proc.available_commands}"
-        assert "probs" in proc.backend_capabilities.available_commands, \
-            f"'probs' not in backend capabilities: {proc.backend_capabilities.available_commands}"
+    # Uncomment when there is a probs backend
+    # def test_confirm_backend_has_probs(self, scaleway_session_probs):
+    #     """Confirm backend has probs in available_commands."""
+    #     proc = MerlinProcessor(session=scaleway_session_probs)
 
-    def test_simple_forward_probs_zero(self, scaleway_session):
-        """Basic synchronous forward pass with nsample=0 should use probs."""
-        proc = MerlinProcessor(
-            session=scaleway_session,
-            microbatch_size=32,
-            timeout=300.0,
-            max_shots_per_call=100,
-        )
-        
-        # Confirm probs is available
-        print(f"\nAvailable commands: {proc.available_commands}")
-        assert "probs" in proc.available_commands, "probs not available"
+    #     # Check available commands
+    #     print(f"\nBackend available_commands: {proc.available_commands}")
+    #     print(f"Backend capabilities: {proc.backend_capabilities.available_commands}")
 
-        q = _make_layer(
-            6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
-        )
-        X = torch.rand(4, 2)
-        
-        print("Running forward with nsample=0 - should use PROBS command")
-        y = proc.forward(q, X, nsample=0)
+    #     # Confirm probs is available
+    #     assert (
+    #         "probs" in proc.available_commands
+    #     ), f"'probs' not in available commands: {proc.available_commands}"
+    #     assert (
+    #         "probs" in proc.backend_capabilities.available_commands
+    #     ), f"'probs' not in backend capabilities: {proc.backend_capabilities.available_commands}"
 
-        expected_output_size = comb(6, 2)  # 15
-        assert y.shape == (4, expected_output_size)
-        # Output should be normalized probabilities
-        assert torch.all(y >= 0)
-        assert torch.allclose(y.sum(dim=1), torch.ones(4), atol=0.001)
+    # def test_simple_forward_probs_zero(self, scaleway_session_probs):
+    #     """Basic synchronous forward pass with nsample=0 should use probs."""
+    #     proc = MerlinProcessor(
+    #         session=scaleway_session_probs,
+    #         microbatch_size=32,
+    #         timeout=300.0,
+    #         max_shots_per_call=100,
+    #     )
 
-    def test_simple_forward_probs_None(self, scaleway_session):
-        """Basic synchronous forward pass with nsample=None should use probs."""
-        proc = MerlinProcessor(
-            session=scaleway_session,
-            microbatch_size=32,
-            timeout=300.0,
-            max_shots_per_call=100,
-        )
-        
-        # Confirm probs is available
-        print(f"\nAvailable commands: {proc.available_commands}")
-        assert "probs" in proc.available_commands, "probs not available"
+    #     # Confirm probs is available
+    #     print(f"\nAvailable commands: {proc.available_commands}")
+    #     assert "probs" in proc.available_commands, "probs not available"
 
-        q = _make_layer(
-            6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
-        )
-        X = torch.rand(4, 2)
-        
-        print("Running forward with nsample=None - should use PROBS command")
-        y = proc.forward(q, X, nsample=None)
+    #     q = _make_layer(
+    #         6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
+    #     )
+    #     X = torch.rand(4, 2)
 
-        expected_output_size = comb(6, 2)  # 15
-        assert y.shape == (4, expected_output_size)
-        # Output should be normalized probabilities
-        assert torch.all(y >= 0)
-        assert torch.allclose(y.sum(dim=1), torch.ones(4), atol=0.001)
+    #     print("Running forward with nsample=0 - should use PROBS command")
+    #     y = proc.forward(q, X, nsample=0)
+
+    #     expected_output_size = comb(6, 2)  # 15
+    #     assert y.shape == (4, expected_output_size)
+    #     # Output should be normalized probabilities
+    #     assert torch.all(y >= 0)
+    #     assert torch.allclose(y.sum(dim=1), torch.ones(4), atol=0.001)
+
+    # def test_simple_forward_probs_None(self, scaleway_session_probs):
+    #     """Basic synchronous forward pass with nsample=None should use probs."""
+    #     proc = MerlinProcessor(
+    #         session=scaleway_session_probs,
+    #         microbatch_size=32,
+    #         timeout=300.0,
+    #         max_shots_per_call=100,
+    #     )
+
+    #     # Confirm probs is available
+    #     print(f"\nAvailable commands: {proc.available_commands}")
+    #     assert "probs" in proc.available_commands, "probs not available"
+
+    #     q = _make_layer(
+    #         6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
+    #     )
+    #     X = torch.rand(4, 2)
+
+    #     print("Running forward with nsample=None - should use PROBS command")
+    #     y = proc.forward(q, X, nsample=None)
+
+    #     expected_output_size = comb(6, 2)  # 15
+    #     assert y.shape == (4, expected_output_size)
+    #     # Output should be normalized probabilities
+    #     assert torch.all(y >= 0)
+    #     assert torch.allclose(y.sum(dim=1), torch.ones(4), atol=0.001)
 
     def test_simple_forward_sample(self, scaleway_session):
         """Basic synchronous forward pass with nsample=1000 should use sample_count."""
@@ -173,7 +176,7 @@ class TestScalewaySessionBasic:
             timeout=300.0,
             max_shots_per_call=100,
         )
-        
+
         # Check available commands
         print(f"\nAvailable commands: {proc.available_commands}")
 
@@ -181,9 +184,10 @@ class TestScalewaySessionBasic:
             6, 2, input_size=2, computation_space=ComputationSpace.UNBUNCHED
         )
         X = torch.rand(4, 2)
-        
+
         print("Running forward with nsample=1000 - should use SAMPLE_COUNT command")
-        y = proc.forward(q, X, nsample=1000)
+        with pytest.warns(UserWarning, match=r"Number of samples requested"):
+            y = proc.forward(q, X, nsample=1000)
 
         expected_output_size = comb(6, 2)  # 15
         assert y.shape == (4, expected_output_size)

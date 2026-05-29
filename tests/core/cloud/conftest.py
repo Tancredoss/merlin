@@ -143,3 +143,26 @@ def scaleway_session(scaleway_credentials):
         max_duration_s=600,
     ) as session:
         yield session
+
+
+# Uncomment when there is a probs backend
+# @pytest.fixture(scope="module")
+# def scaleway_session_probs(scaleway_credentials):
+#     """
+#     Provide a Scaleway Session for testing.
+
+#     Uses EMU-ASCELLA-6PQ platform with reasonable timeouts for testing.
+#     The session is shared across all tests in a module to avoid
+#     repeatedly creating/destroying sessions.
+#     """
+#     scw = pytest.importorskip("perceval.providers.scaleway")
+
+#     with scw.Session(
+#         "SIM-SLOS",
+#         project_id=scaleway_credentials["project_id"],
+#         token=scaleway_credentials["token"],
+#         deduplication_id="merlin-test-session",
+#         max_idle_duration_s=300,
+#         max_duration_s=600,
+#     ) as session:
+#         yield session
