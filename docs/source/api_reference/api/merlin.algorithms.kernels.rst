@@ -16,13 +16,18 @@ merlin.algorithms.kernels module
    :undoc-members:
    :show-inheritance:
 
+Deprecations
+------------
+
+.. warning:: *Deprecated since version 0.4:*
+   :class:`KernelCircuitBuilder` is deprecated and will be removed in release
+   0.5. Use :class:`~merlin.builder.circuit_builder.CircuitBuilder` with
+   :class:`FeatureMap` and :class:`FidelityKernel` directly instead.
+
 .. autoclass:: KernelCircuitBuilder
    :members:
    :undoc-members:
    :show-inheritance:
-
-Deprecations
-------------
 
 .. warning:: *Deprecated since version 0.3:*
    The ``no_bunching`` flag accepted by legacy kernel constructors is removed
@@ -63,14 +68,16 @@ Quickstart: Fidelity kernel in a few lines
 
     import torch
     from merlin import ComputationSpace
-    from merlin.algorithms.kernels import FidelityKernel
+    from merlin.algorithms.kernels import FeatureMap, FidelityKernel
 
-    # Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
-    kernel = FidelityKernel.simple(
-        input_size=2,
-        n_modes=4,               # Here the number of modes is optional, if n_modes is not given, n_modes=input_size+1
-        shots=0,                 # exact probabilities (no sampling)
-        computation_space=ComputationSpace.FOCK,       # allow bunched outcomes if needed
+    # FeatureMap.simple builds a default photonic circuit (n_modes = input_size + 1)
+    feature_map = FeatureMap.simple(input_size=2)
+
+    kernel = FidelityKernel(
+        feature_map=feature_map,
+        input_state=[1, 0, 1],
+        shots=0,
+        computation_space=ComputationSpace.FOCK,
         dtype=torch.float32,
         device=torch.device("cpu"),
     )
@@ -79,8 +86,8 @@ Quickstart: Fidelity kernel in a few lines
     X_train = torch.rand(10, 2)
     X_test = torch.rand(5, 2)
 
-    K_train = kernel(X_train)               # (N, N)
-    K_test = kernel(X_test, X_train)        # (M, N)
+    K_train = kernel(X_train)           # (N, N)
+    K_test = kernel(X_test, X_train)    # (M, N)
 
 Custom experiment with FeatureMap
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -127,10 +134,18 @@ Use with scikit-learn (precomputed kernel)
 
     import torch
     from sklearn.svm import SVC
-    from merlin.algorithms.kernels import FidelityKernel
+    from merlin.algorithms.kernels import FeatureMap, FidelityKernel
+    from merlin.builder import CircuitBuilder
 
-    # Build kernel and compute Gram matrices
-    kernel = FidelityKernel.simple(input_size=4, n_modes=6)
+    # Build a kernel with 4 input features in 5 modes
+    builder = CircuitBuilder(n_modes=5)
+    builder.add_superpositions(depth=1)
+    builder.add_angle_encoding(modes=[0, 1, 2, 3], name="input")
+    builder.add_superpositions(depth=1)
+
+    feature_map = FeatureMap(builder=builder, input_size=4, input_parameters=None)
+    kernel = FidelityKernel(feature_map=feature_map, input_state=[1, 0, 1, 0, 1])
+
     K_train = kernel(X_train)
     K_test = kernel(X_test, X_train)
 
