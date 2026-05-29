@@ -79,8 +79,12 @@ class BaseMeasurementStrategy:
         apply_sampling: bool,
         effective_shots: int,
         sampler: SamplingProcess,
-        apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
-        apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        apply_photon_loss: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
+        apply_detectors: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> torch.Tensor | PartialMeasurement | SectoredDistribution:
         """Return the processed result for the selected measurement strategy.
@@ -128,8 +132,12 @@ class DistributionStrategy(BaseMeasurementStrategy):
         apply_sampling: bool,
         effective_shots: int,
         sampler: SamplingProcess,
-        apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
-        apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        apply_photon_loss: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
+        apply_detectors: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> torch.Tensor | SectoredDistribution:
         # Distribution strategies apply detector/noise transforms before sampling.
@@ -204,8 +212,12 @@ class PartialMeasurementStrategy(BaseMeasurementStrategy):
         apply_sampling: bool,
         effective_shots: int,
         sampler: SamplingProcess,
-        apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
-        apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        apply_photon_loss: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
+        apply_detectors: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> PartialMeasurement:
         if apply_sampling and effective_shots > 0:

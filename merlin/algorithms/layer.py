@@ -372,7 +372,8 @@ class QuantumLayer(MerlinModule):
         self._photon_loss_transform: (
             list[PhotonLossTransform] | PhotonLossTransform | None
         ) = None
-        self._detector_keys: list[tuple[int, ...]] = []
+        self._photon_loss_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]] = []
+        self._detector_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]] = []
         self._raw_output_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]] = []
         self._detector_is_identity = True
         self._output_size = 0
@@ -590,7 +591,7 @@ class QuantumLayer(MerlinModule):
                 keys = [list(raw_keys) for raw_keys in self._raw_output_keys]
                 dist_size = sum(len(key) for key in keys)
             else:
-                keys = list(self._raw_output_keys)
+                keys = cast(list[tuple[int, ...]], self._raw_output_keys)
                 dist_size = len(keys)
         else:
             if (
@@ -605,9 +606,9 @@ class QuantumLayer(MerlinModule):
                 dist_size = sum(len(key) for key in keys)
             else:
                 keys = (
-                    list(self._photon_loss_keys)
+                    cast(list[tuple[int, ...]], self._photon_loss_keys)
                     if self._detector_is_identity
-                    else list(self._detector_keys)
+                    else cast(list[tuple[int, ...]], self._detector_keys)
                 )
                 dist_size = len(keys)
 
@@ -646,10 +647,11 @@ class QuantumLayer(MerlinModule):
         if kind == MeasurementKind.PARTIAL or source_noise:
             self.measurement_mapping = nn.Identity()
         else:
+            measurement_keys = cast(list[tuple[int, ...]], keys)
             self.measurement_mapping = OutputMapper.create_mapping(
                 measurement_strategy,
                 self.computation_process.computation_space,
-                keys,
+                measurement_keys,
                 dtype=self.dtype,
             )
 
@@ -1291,7 +1293,7 @@ class QuantumLayer(MerlinModule):
             ):
                 return [list(keys) for keys in self._raw_output_keys]
             else:
-                return list(self._raw_output_keys)
+                return cast(list[tuple[int, ...]], self._raw_output_keys)
         if self._detector_is_identity:
             if (
                 isinstance(self._raw_output_keys, list)
@@ -1300,14 +1302,14 @@ class QuantumLayer(MerlinModule):
             ):
                 return [list(keys) for keys in self._photon_loss_keys]
             else:
-                return list(self._photon_loss_keys)
+                return cast(list[tuple[int, ...]], self._photon_loss_keys)
         if (
             isinstance(self._raw_output_keys, list)
             and self._raw_output_keys
             and isinstance(self._raw_output_keys[0], list)
         ):
             return [list(keys) for keys in self._detector_keys]
-        return list(self._detector_keys)
+        return cast(list[tuple[int, ...]], self._detector_keys)
 
     @property
     def output_size(self) -> int:
@@ -1343,7 +1345,7 @@ class QuantumLayer(MerlinModule):
             self._photon_loss_is_identity = all(photon_loss_identities)
         else:
             self._photon_loss_transform = PhotonLossTransform(
-                self._raw_output_keys,
+                cast(list[tuple[int, ...]], self._raw_output_keys),
                 self._photon_survival_probs,
                 dtype=self.dtype,
                 device=self.device,
@@ -1441,14 +1443,20 @@ class QuantumLayer(MerlinModule):
             )
         if self._photon_loss_is_identity:
             return distribution
-        if isinstance(self._detector_transform, Sequence):
-            distribution_copy = distribution.clone()
-            for i in range(len(distribution_copy.sectors)):
-                index = distribution_copy.sectors[i].n_photons - self.n_photons
-                distribution_copy.sectors[i].tensor = self._photon_loss_transform[
-                    index
-                ](distribution_copy.sectors[i].tensor)
-            return distribution_copy
+        if isinstance(distribution, SectoredDistribution):
+            if isinstance(self._photon_loss_transform, Sequence):
+                distribution_copy = distribution.clone()
+                for i, sector in enumerate(distribution_copy.sectors):
+                    index = sector.n_photons - self.n_photons
+                    distribution_copy.sectors[i].tensor = self._photon_loss_transform[
+                        index
+                    ](sector.tensor)
+                return distribution_copy
+            return self._photon_loss_transform(distribution)
+        if isinstance(self._photon_loss_transform, Sequence):
+            raise RuntimeError(
+                "Invalid photon-loss transform for non-sectored distribution."
+            )
         return self._photon_loss_transform(distribution)
 
     def _apply_detector_transform(
@@ -1460,14 +1468,20 @@ class QuantumLayer(MerlinModule):
             )
         if self._detector_is_identity:
             return distribution
+        if isinstance(distribution, SectoredDistribution):
+            if isinstance(self._detector_transform, Sequence):
+                distribution_copy = distribution.clone()
+                for i, sector in enumerate(distribution_copy.sectors):
+                    index = sector.n_photons - self.n_photons
+                    distribution_copy.sectors[i].tensor = self._detector_transform[
+                        index
+                    ](sector.tensor)
+                return distribution_copy
+            return self._detector_transform(distribution)
         if isinstance(self._detector_transform, Sequence):
-            distribution_copy = distribution.clone()
-            for i in range(len(distribution_copy.sectors)):
-                index = distribution_copy.sectors[i].n_photons - self.n_photons
-                distribution_copy.sectors[i].tensor = self._detector_transform[index](
-                    distribution_copy.sectors[i].tensor
-                )
-            return distribution_copy
+            raise RuntimeError(
+                "Invalid detector transform for non-sectored distribution."
+            )
         return self._detector_transform(distribution)
 
     # =====================  EXPORT API FOR REMOTE PROCESSORS  =====================

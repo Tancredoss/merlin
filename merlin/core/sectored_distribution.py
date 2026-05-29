@@ -119,9 +119,11 @@ class SectoredDistribution:
 
     def total_probability(self) -> torch.Tensor:
         """Returns the total probability across the sectors."""
-        total_prob = 0.0
+        total_prob = torch.zeros(
+            (), dtype=self.sectors[0].tensor.dtype, device=self.sectors[0].tensor.device
+        )
         for sector in self.sectors:
-            total_prob += sector.tensor.sum()
+            total_prob = total_prob + sector.tensor.sum()
         return total_prob
 
     def to(self, *args, **kwargs) -> SectoredDistribution:
