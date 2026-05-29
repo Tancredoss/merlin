@@ -221,8 +221,8 @@ class ValidatedLayerConfig:
                 pass
 
             else:
-                input_state_sequence: Sequence[Integral] | Literal[False] = (
-                    check_sequence(self.input_state)
+                input_state_sequence: Sequence[Integral] | bool = check_sequence(
+                    self.input_state
                 )
                 if input_state_sequence is False:
                     raise ValueError(
@@ -254,7 +254,7 @@ class ValidatedLayerConfig:
                 "There must be a key 'input_param_order' in the configs dictionary that is associated with a Sequence[str] or None."
             )
         if self.input_param_order is not None:
-            input_param_order_sequence: Sequence[str] | Literal[False] = check_sequence(
+            input_param_order_sequence: Sequence[str] | bool = check_sequence(
                 self.input_param_order
             )
             if input_param_order_sequence is False:
