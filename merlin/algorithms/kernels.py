@@ -716,10 +716,24 @@ class FeatureMap:
 class KernelCircuitBuilder:
     """Builder for creating photonic quantum kernel circuits.
 
+    .. warning:: *Deprecated since version 0.4:*
+        ``KernelCircuitBuilder`` is deprecated and will be removed in release 0.5.
+        Use :class:`~merlin.builder.circuit_builder.CircuitBuilder` with
+        :class:`FeatureMap` and :class:`FidelityKernel` directly instead::
+
+            builder = CircuitBuilder(n_modes=3)
+            builder.add_entangling_layer(name="U1")
+            builder.add_angle_encoding(modes=[0, 1], name="input")
+            builder.add_entangling_layer(name="U2")
+            feature_map = FeatureMap(builder=builder, input_size=2)
+            kernel = FidelityKernel(feature_map=feature_map, input_state=[1, 0, 1])
+
     This class provides a fluent interface for building quantum kernel circuits
     with various configurations, inspired by the core.layer architecture.
     """
 
+    # TODO: In release 0.5.x, remove KernelCircuitBuilder.
+    @sanitize_parameters
     def __init__(self) -> None:
         self._input_size: int | None = None
         self._n_modes: int | None = None
@@ -858,8 +872,14 @@ class KernelCircuitBuilder:
         self._angle_encoding_scale = scale
         return self
 
+    # TODO: In release 0.5.x, remove KernelCircuitBuilder.build_feature_map.
+    @sanitize_parameters
     def build_feature_map(self) -> FeatureMap:
         """Build and return a :class:`FeatureMap` instance.
+
+        .. warning:: *Deprecated since version 0.4:*
+            Use :class:`~merlin.builder.circuit_builder.CircuitBuilder` with
+            :class:`FeatureMap` directly instead.
 
         Returns
         -------
@@ -910,6 +930,7 @@ class KernelCircuitBuilder:
             device=self._device,
         )
 
+    # TODO: In release 0.5.x, remove KernelCircuitBuilder.build_fidelity_kernel.
     @sanitize_parameters
     def build_fidelity_kernel(
         self,
@@ -921,6 +942,10 @@ class KernelCircuitBuilder:
         force_psd: bool = True,
     ) -> "FidelityKernel":
         """Build and return a :class:`~merlin.algorithms.kernels.FidelityKernel` instance.
+
+        .. warning:: *Deprecated since version 0.4:*
+            Use :class:`~merlin.builder.circuit_builder.CircuitBuilder` with
+            :class:`FeatureMap` and :class:`FidelityKernel` directly instead.
 
         Parameters
         ----------

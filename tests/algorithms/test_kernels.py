@@ -1116,6 +1116,21 @@ class TestKernelCircuitBuilder:
         with pytest.raises(ValueError, match="Input size must be specified"):
             builder.n_modes(4).build_feature_map()
 
+    def test_deprecation_warning_on_init(self):
+        """KernelCircuitBuilder emits DeprecationWarning on instantiation."""
+        with pytest.warns(DeprecationWarning, match="KernelCircuitBuilder is deprecated"):
+            KernelCircuitBuilder()
+
+    def test_deprecation_warning_build_feature_map(self):
+        """build_feature_map emits DeprecationWarning."""
+        with pytest.warns(DeprecationWarning, match="KernelCircuitBuilder"):
+            KernelCircuitBuilder().input_size(2).build_feature_map()
+
+    def test_deprecation_warning_build_fidelity_kernel(self):
+        """build_fidelity_kernel emits DeprecationWarning."""
+        with pytest.warns(DeprecationWarning, match="KernelCircuitBuilder"):
+            KernelCircuitBuilder().input_size(2).n_modes(4).build_fidelity_kernel()
+
 
 class TestKernelConstructionConsistency:
     """Test integration using the supported circuit construction APIs."""
