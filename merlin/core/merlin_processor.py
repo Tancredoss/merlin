@@ -7,8 +7,8 @@ import zlib
 from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any, cast, Protocol, runtime_checkable
 from numbers import Integral
+from typing import Any, Protocol, cast, runtime_checkable
 
 import numpy as np
 import perceval as pcvl
@@ -50,49 +50,198 @@ _ALLOWED_STATE_TYPES = (
 )
 
 
+def check_sequence(input: Any) -> bool | Sequence:
+    """
+    Check whether an object can be treated as a sequence.
+
+    Parameters
+    ----------
+    input : Any
+        Object to validate.
+
+    Returns
+    -------
+    Sequence | bool
+        The original object if it is an instance of
+        ``collections.abc.Sequence``.
+
+        Otherwise, if the object is iterable, a tuple containing its
+        elements.
+
+        Returns ``False`` if the object is not iterable.
+
+    Notes
+    -----
+    This helper accepts objects that are not instances of
+    ``collections.abc.Sequence`` but can be iterated over, such as
+    NumPy arrays and PyTorch tensors. Such objects are converted to
+    tuples before being returned.
+
+    Examples
+    --------
+    >>> check_sequence([1, 2, 3])
+    [1, 2, 3]
+
+    >>> check_sequence((1, 2, 3))
+    (1, 2, 3)
+
+    >>> check_sequence(np.array([1, 2, 3]))
+    (1, 2, 3)
+
+    >>> check_sequence(42)
+    False
+    """
+
+    if isinstance(input, Sequence):
+        return input
+    try:
+        values = tuple(input)
+    except TypeError:
+        return False
+
+    return values
+
+
 class ValidatedLayerConfig:
+    """
+    Validate and normalize the configuration dictionary returned by
+    ``export_config()``.
+
+    Parameters
+    ----------
+    config_to_verify : dict
+        Configuration dictionary containing the layer definition.
+
+    Attributes
+    ----------
+    circuit : pcvl.ACircuit
+        Perceval circuit associated with the layer.
+
+    input_state : Sequence[Integral] | pcvl.BasicState | pcvl.StateVector | pcvl.BSDistribution | pcvl.SVDistribution | None
+        Input state for the circuit. May be ``None``, a sequence of integers,
+        or one of the supported Perceval state objects. Sequence-like inputs
+        are normalized through ``check_sequence()``.
+
+    input_param_order : Sequence[str] | None
+        Ordered names of the circuit parameters expected by the layer.
+        Sequence-like inputs are normalized through ``check_sequence()``.
+
+    Raises
+    ------
+    KeyError
+        If one of the required configuration keys is missing:
+
+        - ``"circuit"``
+        - ``"input_state"``
+        - ``"input_param_order"``
+
+    ValueError
+        If:
+
+        - ``circuit`` is not a ``pcvl.ACircuit``.
+        - ``input_state`` is neither ``None``, a supported Perceval state
+          object, nor a sequence.
+        - ``input_state`` is a sequence containing non-integer elements.
+        - ``input_param_order`` is neither ``None`` nor a sequence.
+        - ``input_param_order`` contains non-string elements.
+
+    Notes
+    -----
+    Sequence validation relies on ``check_sequence()``. Accepted sequence
+    implementations may include Python sequences as well as array-like objects
+    supported by that helper.
+    """
+
     def __init__(self, config_to_verify: dict):
+        """
+        Validate and normalize a layer configuration dictionary.
+
+        Parameters
+        ----------
+        config_to_verify : dict
+            Configuration dictionary containing the following required keys:
+
+            - ``"circuit"``: a ``pcvl.ACircuit`` instance.
+            - ``"input_state"``: ``None``, a sequence of integers, or a supported
+            Perceval state object.
+            - ``"input_param_order"``: ``None`` or a sequence of strings.
+
+        Raises
+        ------
+        KeyError
+            If one of the required keys is missing from ``config_to_verify``.
+
+        ValueError
+            If:
+
+            - ``config_to_verify["circuit"]`` is not a ``pcvl.ACircuit``.
+            - ``config_to_verify["input_state"]`` is neither ``None``, a valid
+            Perceval state object, nor a sequence.
+            - ``config_to_verify["input_state"]`` contains non-integer elements.
+            - ``config_to_verify["input_param_order"]`` is neither ``None`` nor a
+            sequence.
+            - ``config_to_verify["input_param_order"]`` contains non-string
+            elements.
+
+        Notes
+        -----
+        Sequence-like inputs are normalized using ``check_sequence()``. Objects
+        that are iterable but not instances of ``collections.abc.Sequence``
+        (e.g. NumPy arrays or PyTorch tensors) may therefore be accepted and
+        converted to tuples.
+        """
         # circuit
         try:
             self.circuit: pcvl.ACircuit = config_to_verify["circuit"]
         except KeyError:
             raise KeyError(
-                f"There must be a key 'circuit' in the configs dictionary that is associated with a perceval.ACircuit"
+                "There must be a key 'circuit' in the configs dictionary that is associated with a perceval.ACircuit."
             )
         if not isinstance(self.circuit, pcvl.ACircuit):
             raise ValueError(
-                f"The 'circuit' key of the config dictionary must be a perceval.ACircuit, got {type(self.circuit)}"
+                f"The 'circuit' key of the config dictionary must be a perceval.ACircuit, got {type(self.circuit)}."
             )
 
         # input_state
         try:
-            self.input_state: pcvl.ACircuit = config_to_verify["input_state"]
+            self.input_state: (
+                Sequence[Integral]
+                | pcvl.BasicState
+                | pcvl.StateVector
+                | pcvl.BSDistribution
+                | pcvl.SVDistribution
+                | None
+            ) = config_to_verify["input_state"]
         except KeyError:
             raise KeyError(
-                f"There must be a key 'input_state' in the configs dictionary that is associated with a Sequence[Integral], a Perceval State object or None."
+                "There must be a key 'input_state' in the configs dictionary that is associated with a Sequence[Integral], a Perceval State object or None."
             )
         if self.input_state is not None:
             if isinstance(self.input_state, _ALLOWED_STATE_TYPES):
                 pass
-            elif not isinstance(self.input_state, Sequence):
-                raise ValueError(
-                    "'input_state' must be None, a sequence of integers, "
-                    "or an Perceval state object "
-                    f"(got {type(self.input_state).__name__})"
-                )
-            else:
-                bad_types = {
-                    type(x).__name__
-                    for x in self.input_state
-                    if not isinstance(x, Integral)
-                }
 
-                if bad_types:
+            else:
+                input_state_sequence = check_sequence(self.input_state)
+                if not input_state_sequence:
                     raise ValueError(
-                        f"'input_state' must contain only integers when it is a sequence. "
-                        f"Got sequence type {type(self.input_state).__name__} "
-                        f"with non-integer element types: {sorted(bad_types)}"
+                        "'input_state' must be None, a sequence of integers, "
+                        "or an Perceval state object "
+                        f"(got {type(self.input_state).__name__})."
                     )
+                else:
+                    self.input_state = input_state_sequence
+                    bad_types = {
+                        type(x).__name__
+                        for x in self.input_state
+                        if not isinstance(x, Integral)
+                    }
+
+                    if bad_types:
+                        raise ValueError(
+                            f"'input_state' must contain only integers when it is a sequence. "
+                            f"Got sequence type {type(self.input_state).__name__} "
+                            f"with non-integer element types: {sorted(bad_types)}."
+                        )
 
         # input_param_order
         try:
@@ -100,13 +249,16 @@ class ValidatedLayerConfig:
                 "input_param_order"
             ]
         except KeyError:
-            self.input_param_order = None
+            raise KeyError(
+                f"There must be a key 'input_param_order' in the configs dictionary that is associated with a Sequence[str] or None."
+            )
         if self.input_param_order is not None:
-            if not isinstance(self.input_param_order, Sequence):
+            input_param_order_sequence = check_sequence(self.input_param_order)
+            if not input_param_order_sequence:
                 raise ValueError(
-                    f"'input_param_order' must be a sequence of strings or None, got {type(self.input_param_order).__name__}"
+                    f"'input_param_order' must be a sequence of strings or None, got {type(self.input_param_order).__name__}."
                 )
-
+            self.input_param_order = input_param_order_sequence
             bad_types = {
                 type(x).__name__
                 for x in self.input_param_order
@@ -117,13 +269,40 @@ class ValidatedLayerConfig:
                 raise ValueError(
                     f"'input_param_order' must contain only strings. "
                     f"Got sequence type {type(self.input_param_order).__name__} "
-                    f"with non-integer element types: {sorted(bad_types)}"
+                    f"with non-integer element types: {sorted(bad_types)}."
                 )
 
 
 @runtime_checkable
 class SupportsExportConfig(Protocol):
-    def export_config(self) -> dict: ...
+    """
+    Protocol for objects that can export their configuration as a dictionary.
+
+    Implementations must provide an ``export_config()`` method returning a
+    dictionary containing the information required to reconstruct or validate
+    the object's configuration.
+
+    Notes
+    -----
+    This protocol is marked as ``@runtime_checkable``, allowing runtime checks
+    with ``isinstance()`` and ``issubclass()``.
+
+    Examples
+    --------
+    >>> isinstance(obj, SupportsExportConfig)
+    True
+    """
+
+    def export_config(self) -> dict:
+        """
+        Export the object's configuration.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the configuration of the object.
+        """
+        ...
 
 
 class MerlinProcessor:
