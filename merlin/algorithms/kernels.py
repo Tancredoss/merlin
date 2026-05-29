@@ -1456,8 +1456,21 @@ class FidelityKernel(MerlinModule):
     ----------
     feature_map : FeatureMap
         Feature map object that encodes a given datapoint within its circuit.
-    input_state : list[int]
-        Input state into the circuit.
+    input_state : list[int] | None
+        Input Fock state occupation list. If ``None``, the state is derived
+        from ``n_photons`` when given, otherwise defaults to an alternating
+        single-photon state ``[1, 0, 1, 0, ...]`` of length
+        ``feature_map.circuit.m``.
+    n_photons : int | None
+        Number of photons to place in the input state when ``input_state`` is
+        ``None``.  If ``n_photons * 2 <= m`` (where ``m`` is the number of
+        circuit modes), photons are spread in the alternating pattern
+        ``[1, 0, 1, 0, ...]``; otherwise all even positions are filled first
+        and then odd positions are filled left to right
+        (e.g. 4 photons in 6 modes → ``[1, 1, 1, 0, 1, 0]``), and a
+        ``UserWarning`` is emitted.  If ``input_state`` is also provided,
+        ``sum(input_state)`` must equal ``n_photons``, otherwise a
+        ``ValueError`` is raised.  Default: ``None``.
     shots : int | None
         Number of circuit shots. If ``None``, the exact transition
         probabilities are returned. Default: ``None``.
@@ -1515,8 +1528,9 @@ class FidelityKernel(MerlinModule):
     def __init__(
         self,
         feature_map: FeatureMap,
-        input_state: list[int],
+        input_state: list[int] | None = None,
         *,
+        n_photons: int | None = None,
         shots: int | None = None,
         sampling_method: str = "multinomial",
         computation_space: ComputationSpace | str | None = None,
@@ -1531,8 +1545,20 @@ class FidelityKernel(MerlinModule):
         feature_map : FeatureMap
             Feature-map descriptor that provides the circuit or experiment,
             parameter prefixes, input size, dtype, and device.
-        input_state : list[int]
-            Input Fock state occupation list.
+        input_state : list[int] | None
+            Input Fock state occupation list. If ``None``, the state is derived
+            from ``n_photons`` when given, otherwise defaults to an alternating
+            single-photon state ``[1, 0, 1, 0, ...]`` of length
+            ``feature_map.circuit.m``.
+        n_photons : int | None
+            Number of photons used to derive ``input_state`` when
+            ``input_state`` is ``None``.  Must satisfy
+            ``1 <= n_photons <= feature_map.circuit.m``.  If
+            ``n_photons * 2 <= m``, an alternating state is produced;
+            otherwise all even positions are filled first, then odd positions
+            are filled left to right, and a ``UserWarning`` is emitted.
+            If ``input_state`` is also provided, its photon count must equal
+            ``n_photons``.  Default is ``None``.
         shots : int | None
             Number of pseudo-sampling shots. If omitted or ``None``, exact
             probabilities are used. Default is ``None``.
@@ -1568,7 +1594,6 @@ class FidelityKernel(MerlinModule):
             computation_space = ComputationSpace.coerce(computation_space)
         self.computation_space = computation_space
         self.feature_map = feature_map
-        self.input_state = input_state
         self.shots = shots or 0
         self.sampling_method = sampling_method
         self.no_bunching = self.computation_space is not ComputationSpace.FOCK
@@ -1586,6 +1611,53 @@ class FidelityKernel(MerlinModule):
             self.dtype = to_torch_dtype(dtype, default=feature_map.dtype)
         self.input_size = self.feature_map.input_size
         backend_input_size = self._resolve_backend_input_size()
+
+        m = self.feature_map.circuit.m
+        # Validate that the provided input state and n_photons are compatible if both are given
+        if input_state is not None and n_photons is not None:
+            if sum(input_state) != n_photons:
+                raise ValueError(
+                    f"n_photons={n_photons} does not match the photon count "
+                    f"{sum(input_state)} of the provided input_state."
+                )
+        # We infer the input states if not given
+        elif input_state is None:
+            # If n_photons is not given, we default to the alternating pattern with m/2 photons
+            if n_photons is None:
+                input_state = [1 if i % 2 == 0 else 0 for i in range(m)]
+            # Otherwise, we generate the input state based on n_photons and m
+            else:
+                # Validation of n_photons
+                if n_photons <= 0 or n_photons > m:
+                    raise ValueError(
+                        f"n_photons must be between 1 and {m} (the number of "
+                        f"circuit modes), got {n_photons}."
+                    )
+                # We have less than m/2 photons, so we can place them in the alternating pattern
+                if n_photons * 2 <= m:
+                    state = [0] * m
+                    for i in range(n_photons):
+                        state[2 * i] = 1
+                    input_state = state
+                # More photons than even positions: fill all even positions first,
+                # then continue filling odd positions left to right.
+                else:
+                    warnings.warn(
+                        f"n_photons={n_photons} exceeds half the number of modes "
+                        f"({m}). Even positions are filled first, then odd positions "
+                        "are filled left to right, which may not correspond to a "
+                        "physically realistic hardware configuration.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    state = [1 if i % 2 == 0 else 0 for i in range(m)]
+                    remaining = n_photons - sum(state)
+                    for i in range(1, m, 2):
+                        if remaining <= 0:
+                            break
+                        state[i] = 1
+                        remaining -= 1
+                    input_state = state
 
         if self.feature_map.circuit.m != len(input_state):
             raise ValueError("Input state length does not match circuit size.")
@@ -1649,6 +1721,18 @@ class FidelityKernel(MerlinModule):
         )
 
         self.is_trainable = feature_map.is_trainable
+
+    @property
+    def input_state(self) -> list[int]:
+        """Input Fock state occupation list used for kernel evaluation.
+
+        Returns
+        -------
+        list[int]
+            The input Fock state passed at construction time, as stored by
+            the internal :class:`_CCInvQuantumLayer` backend.
+        """
+        return self._quantum_layer._kernel_input_state
 
     def forward(
         self,

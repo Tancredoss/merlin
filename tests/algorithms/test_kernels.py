@@ -638,6 +638,126 @@ class TestFidelityKernel:
         )
 
 
+class TestFidelityKernelInputStateDerivation:
+    """Tests for automatic input_state derivation and n_photons parameter."""
+
+    def _make_feature_map(self, n_modes: int) -> FeatureMap:
+        params = [pcvl.P(f"x{i}") for i in range(n_modes)]
+        circuit = pcvl.Circuit(n_modes)
+        for p in params:
+            circuit //= pcvl.PS(p)
+        return FeatureMap(
+            circuit=circuit,
+            input_size=n_modes,
+            input_parameters="x",
+        )
+
+    # ------------------------------------------------------------------
+    # input_state=None (no n_photons)
+    # ------------------------------------------------------------------
+
+    def test_default_input_state_is_alternating(self):
+        """input_state=None defaults to [1, 0, 1, 0, ...] of length circuit.m."""
+        fm = self._make_feature_map(4)
+        kernel = FidelityKernel(feature_map=fm)
+        assert kernel.input_state == [1, 0, 1, 0]
+
+    def test_default_input_state_odd_modes(self):
+        """For odd mode count, alternating default ends on 1."""
+        fm = self._make_feature_map(5)
+        kernel = FidelityKernel(feature_map=fm)
+        assert kernel.input_state == [1, 0, 1, 0, 1]
+
+    # ------------------------------------------------------------------
+    # n_photons with input_state=None
+    # ------------------------------------------------------------------
+
+    def test_n_photons_alternating_pattern(self):
+        """n_photons <= m/2 produces an alternating state with exactly n_photons."""
+        fm = self._make_feature_map(6)
+        kernel = FidelityKernel(feature_map=fm, n_photons=2)
+        assert kernel.input_state == [1, 0, 1, 0, 0, 0]
+        assert sum(kernel.input_state) == 2
+
+    def test_n_photons_fills_all_alternating_positions(self):
+        """n_photons == m/2 exactly fills the alternating pattern."""
+        fm = self._make_feature_map(6)
+        kernel = FidelityKernel(feature_map=fm, n_photons=3)
+        assert kernel.input_state == [1, 0, 1, 0, 1, 0]
+        assert sum(kernel.input_state) == 3
+
+    def test_n_photons_overflow_fills_even_then_odd(self):
+        """n_photons > m/2 fills even positions first, then odd left to right."""
+        fm = self._make_feature_map(6)
+        with pytest.warns(UserWarning, match="Even positions are filled first"):
+            kernel = FidelityKernel(feature_map=fm, n_photons=4)
+        assert kernel.input_state == [1, 1, 1, 0, 1, 0]
+        assert sum(kernel.input_state) == 4
+
+    def test_n_photons_all_modes_warns(self):
+        """n_photons == m fills all modes and warns."""
+        fm = self._make_feature_map(4)
+        with pytest.warns(UserWarning, match="Even positions are filled first"):
+            kernel = FidelityKernel(
+                feature_map=fm,
+                n_photons=4,
+                computation_space=ComputationSpace.FOCK,
+            )
+        assert kernel.input_state == [1, 1, 1, 1]
+
+    def test_n_photons_one_photon(self):
+        """n_photons=1 places a single photon in mode 0."""
+        fm = self._make_feature_map(4)
+        kernel = FidelityKernel(feature_map=fm, n_photons=1)
+        assert kernel.input_state == [1, 0, 0, 0]
+
+    # ------------------------------------------------------------------
+    # n_photons with explicit input_state
+    # ------------------------------------------------------------------
+
+    def test_n_photons_matches_input_state_accepted(self):
+        """Providing matching n_photons and input_state is accepted."""
+        fm = self._make_feature_map(4)
+        kernel = FidelityKernel(
+            feature_map=fm,
+            input_state=[1, 0, 1, 0],
+            n_photons=2,
+        )
+        assert kernel.input_state == [1, 0, 1, 0]
+
+    def test_n_photons_mismatch_input_state_raises(self):
+        """n_photons that disagrees with sum(input_state) raises ValueError."""
+        fm = self._make_feature_map(4)
+        with pytest.raises(ValueError, match="n_photons=3 does not match"):
+            FidelityKernel(
+                feature_map=fm,
+                input_state=[1, 0, 1, 0],
+                n_photons=3,
+            )
+
+    # ------------------------------------------------------------------
+    # Invalid n_photons values
+    # ------------------------------------------------------------------
+
+    def test_n_photons_zero_raises(self):
+        """n_photons=0 raises ValueError."""
+        fm = self._make_feature_map(4)
+        with pytest.raises(ValueError, match="n_photons must be between"):
+            FidelityKernel(feature_map=fm, n_photons=0)
+
+    def test_n_photons_negative_raises(self):
+        """Negative n_photons raises ValueError."""
+        fm = self._make_feature_map(4)
+        with pytest.raises(ValueError, match="n_photons must be between"):
+            FidelityKernel(feature_map=fm, n_photons=-1)
+
+    def test_n_photons_exceeds_modes_raises(self):
+        """n_photons > m raises ValueError."""
+        fm = self._make_feature_map(4)
+        with pytest.raises(ValueError, match="n_photons must be between"):
+            FidelityKernel(feature_map=fm, n_photons=5)
+
+
 class TestFeatureMapDescriptor:
     """FeatureMap descriptor behavior used by the new FidelityKernel path."""
 
