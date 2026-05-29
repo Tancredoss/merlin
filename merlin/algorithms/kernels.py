@@ -667,8 +667,9 @@ class FeatureMap:
         n_modes : int | None
             .. warning:: *Deprecated since version 0.4:*
                 Passing ``n_modes`` is deprecated and will be removed in
-                release 0.5. The number of modes is fixed to
-                ``input_size + 1``. Use
+                release 0.5. The value is still honoured in 0.4, but in
+                0.5 the mode count will be fixed to ``input_size + 1``
+                and this parameter will be removed. Use
                 :class:`~merlin.builder.circuit_builder.CircuitBuilder`
                 directly if you need a different mode count.
 
@@ -1785,8 +1786,9 @@ class FidelityKernel(MerlinModule):
         n_modes : int | None
             .. warning:: *Deprecated since version 0.4:*
                 Passing ``n_modes`` is deprecated and will be removed in
-                release 0.5. The number of modes is fixed to
-                ``input_size + 1``. Use
+                release 0.5. The value is still honoured in 0.4, but in
+                0.5 the mode count will be fixed to ``input_size + 1``
+                and this parameter will be removed. Use
                 :class:`~merlin.builder.circuit_builder.CircuitBuilder`
                 directly if you need a different mode count.
 
@@ -1807,11 +1809,17 @@ class FidelityKernel(MerlinModule):
         # TODO: In release 0.5.x, remove n_modes handling; always use input_size + 1.
         state_size = n_modes if n_modes is not None else input_size + 1
 
-        # Suppress the DeprecationWarning from FeatureMap.simple when n_modes is
-        # forwarded: FidelityKernel.simple already warned the caller via its own
-        # registry entry, so a second warning would be confusing.
+        # Suppress only the duplicate n_modes DeprecationWarning from FeatureMap.simple
+        # when n_modes is forwarded: FidelityKernel.simple already warned the caller via
+        # its own registry entry, so a second warning would be confusing. A targeted
+        # filter is used so that any other DeprecationWarnings added to FeatureMap.simple
+        # later are still surfaced.
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
+            warnings.filterwarnings(
+                "ignore",
+                message="The number of modes is fixed",
+                category=DeprecationWarning,
+            )
             feature_map = FeatureMap.simple(
                 input_size=input_size,
                 n_modes=n_modes,
