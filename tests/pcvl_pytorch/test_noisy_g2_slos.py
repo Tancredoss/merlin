@@ -854,7 +854,9 @@ class TestG2AmplitudeEncodingMultipleActiveIndices:
         result = proc.compute([], amplitude_encoding=True)
         assert isinstance(result, SectoredDistribution)
 
-        noise = pcvl.NoiseModel(g2=0.1, g2_distinguishable=True, indistinguishability=0.9)
+        noise = pcvl.NoiseModel(
+            g2=0.1, g2_distinguishable=True, indistinguishability=0.9
+        )
         source = pcvl.Source.from_noise_model(noise)
         sim = pcvl.Simulator(pcvl.BackendFactory.get_backend("SLOS"))
         sim.set_circuit(deepcopy(circuit))
@@ -868,7 +870,11 @@ class TestG2AmplitudeEncodingMultipleActiveIndices:
         weights = [0.5, 0.5]
 
         noise_groups = NoiseGroups(
-            source={"g2": 0.2, "g2_distinguishable": False, "indistinguishability": 0.9},
+            source={
+                "g2": 0.2,
+                "g2_distinguishable": False,
+                "indistinguishability": 0.9,
+            },
             circuit=None,
             post_measurement=None,
         )
@@ -884,7 +890,9 @@ class TestG2AmplitudeEncodingMultipleActiveIndices:
         result = proc.compute([], amplitude_encoding=True)
         assert isinstance(result, SectoredDistribution)
 
-        noise = pcvl.NoiseModel(g2=0.2, g2_distinguishable=False, indistinguishability=0.9)
+        noise = pcvl.NoiseModel(
+            g2=0.2, g2_distinguishable=False, indistinguishability=0.9
+        )
         source = pcvl.Source.from_noise_model(noise)
         sim = pcvl.Simulator(pcvl.BackendFactory.get_backend("SLOS"))
         sim.set_circuit(deepcopy(circuit))
@@ -898,7 +906,11 @@ class TestG2AmplitudeEncodingMultipleActiveIndices:
         weights = [0.5, 0.3, 0.2]
 
         noise_groups = NoiseGroups(
-            source={"g2": 0.15, "g2_distinguishable": True, "indistinguishability": 0.85},
+            source={
+                "g2": 0.15,
+                "g2_distinguishable": True,
+                "indistinguishability": 0.85,
+            },
             circuit=None,
             post_measurement=None,
         )
@@ -914,9 +926,93 @@ class TestG2AmplitudeEncodingMultipleActiveIndices:
         result = proc.compute([], amplitude_encoding=True)
         assert isinstance(result, SectoredDistribution)
 
-        noise = pcvl.NoiseModel(g2=0.15, g2_distinguishable=True, indistinguishability=0.85)
+        noise = pcvl.NoiseModel(
+            g2=0.15, g2_distinguishable=True, indistinguishability=0.85
+        )
         source = pcvl.Source.from_noise_model(noise)
         sim = pcvl.Simulator(pcvl.BackendFactory.get_backend("SLOS"))
         sim.set_circuit(deepcopy(circuit))
         combined = self._weighted_perceval_combined(sim, source, active_states, weights)
         self._assert_combined_matches_merlin(combined, result, n_photons=n_photons, m=m)
+
+
+def _identity_unitary(n_modes: int) -> torch.Tensor:
+    """Return an identity unitary with Merlin's default complex dtype."""
+    return torch.eye(n_modes, dtype=torch.complex64)
+
+
+def _g2_groups(
+    *,
+    g2: float = 0.1,
+    g2_distinguishable: bool = False,
+) -> NoiseGroups:
+    """Return a minimal source-noise group for direct graph tests."""
+    return NoiseGroups(
+        source={
+            "g2": g2,
+            "g2_distinguishable": g2_distinguishable,
+            "indistinguishability": 1.0,
+        },
+        circuit=None,
+        post_measurement=None,
+    )
+
+
+def test_g2_sector_results_include_fock_basis_keys() -> None:
+    """Check that each g2 output sector carries its Fock basis metadata.
+
+    Correct result: every ``SectorResult.keys`` tuple should contain exactly the
+    Fock basis states matching ``sector.tensor`` for that sector's photon count
+    and mode count.
+
+    Branch result: ``SectorResult.keys`` is empty, so downstream code cannot
+    safely apply per-sector transforms or interpret probabilities by basis key.
+    """
+    graph = NoisyG2SLOSComputeGraph(
+        _g2_groups(),
+        m=3,
+        n_photons=2,
+        computation_space=ComputationSpace.FOCK,
+    )
+
+    result = graph.compute_probs(_identity_unitary(3), [1, 1, 0])
+
+    assert isinstance(result, SectoredDistribution)
+    for sector in result.sectors:
+        expected_keys = tuple(
+            tuple(state)
+            for state in Combinadics(
+                "fock", n=sector.n_photons, m=sector.n_modes
+            ).enumerate_states()
+        )
+        assert sector.keys == expected_keys
+
+
+def test_sectored_total_probability_stays_in_autograd() -> None:
+    """Check that total probability remains differentiable.
+
+    Correct result: ``SectoredDistribution.total_probability()`` should return a
+    tensor connected to each sector tensor so callers can use it in losses and
+    call ``backward()``.
+
+    Branch result: the helper uses ``.item()``, returns a Python float, and
+    detaches the total from autograd.
+    """
+    sector_1 = SectorResult(
+        torch.tensor([0.2, 0.3], requires_grad=True),
+        n_modes=2,
+        n_photons=1,
+    )
+    sector_2 = SectorResult(
+        torch.tensor([0.5], requires_grad=True),
+        n_modes=2,
+        n_photons=2,
+    )
+    distribution = SectoredDistribution((sector_1, sector_2))
+
+    total = distribution.total_probability()
+
+    assert isinstance(total, torch.Tensor)
+    total.backward()
+    assert sector_1.tensor.grad is not None
+    assert sector_2.tensor.grad is not None

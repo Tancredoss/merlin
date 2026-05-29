@@ -5,17 +5,26 @@ from dataclasses import dataclass
 import torch
 
 from .computation_space import ComputationSpace
+from ..utils.combinadics import Combinadics
 
 
 @dataclass
 class SectorResult:
-    """One photon-number sector of a probability output."""
+    """One photon-number sector of a probability output. If keys are not given, the Combinatics.enumerate_states will be used."""
 
     tensor: torch.Tensor
     n_modes: int
     n_photons: int
     computation_space: ComputationSpace = ComputationSpace.FOCK
     keys: tuple[tuple[int, ...], ...] = ()
+
+    def __post_init__(self) -> None:
+        """Create the photon number to sector index map."""
+        self.keys = tuple(
+            Combinadics(
+                scheme="fock", n=self.n_photons, m=self.n_modes
+            ).enumerate_states()
+        )
 
     def to(self, *args, **kwargs) -> SectorResult:
         """Return a new state vector moved or cast via ``torch.Tensor.to``.
@@ -108,11 +117,11 @@ class SectoredDistribution:
             raise ValueError("No SectorResult with that number of photons")
         return self.sectors[self._photon_map[n_photons]]
 
-    def total_probability(self) -> float:
+    def total_probability(self) -> torch.Tensor:
         """Returns the total probability across the sectors."""
         total_prob = 0.0
         for sector in self.sectors:
-            total_prob += sector.tensor.sum().item()
+            total_prob += sector.tensor.sum()
         return total_prob
 
     def to(self, *args, **kwargs) -> SectoredDistribution:
