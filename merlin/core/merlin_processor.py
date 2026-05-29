@@ -221,8 +221,8 @@ class ValidatedLayerConfig:
                 pass
 
             else:
-                input_state_sequence: Sequence[Integral] | Literal[False] = check_sequence(
-                    self.input_state
+                input_state_sequence: Sequence[Integral] | Literal[False] = (
+                    check_sequence(self.input_state)
                 )
                 if input_state_sequence is False:
                     raise ValueError(
