@@ -1356,7 +1356,7 @@ class TestQuantumLayer:
 
             assert has_trainable_params, "Model should have trainable parameters"
 
-    def test_g2_with_photon_loss_forward_applies_loss_per_sector() -> None:
+    def test_g2_with_photon_loss_forward_applies_loss_per_sector(self) -> None:
         """Check that photon loss is applied with the correct basis for every sector.
 
         Correct result: a layer with both ``g2`` and post-measurement loss should

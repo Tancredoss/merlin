@@ -128,10 +128,13 @@ class NoisyG2SLOSComputeGraph:
         }
 
         self.mapped_keys = [
-            tuple(state)
-            for state in Combinadics(
-                self.computation_space.casefold(), n=self.n_photons, m=self.m
-            ).enumerate_states()
+            [
+                tuple(state)
+                for state in Combinadics(
+                    self.computation_space.casefold(), n=self.n_photons + i, m=self.m
+                ).enumerate_states()
+            ]
+            for i in range(self.n_photons + 1)
         ]
 
     def _get_extra_photon_combinations(

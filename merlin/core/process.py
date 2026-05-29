@@ -220,7 +220,7 @@ class ComputationProcess(AbstractComputationProcess):
                 if isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph):
                     output_distribution: SectoredDistribution | None = None
                     for idx in active_indices:
-                        input_fock_state = self.simulation_graph.mapped_keys[idx]
+                        input_fock_state = self.simulation_graph.mapped_keys[0][idx]
                         probs = self.simulation_graph.compute_probs(
                             unitary, input_fock_state
                         )
