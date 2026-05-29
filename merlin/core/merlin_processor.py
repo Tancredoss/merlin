@@ -237,12 +237,12 @@ class ValidatedLayerConfig:
                     if not isinstance(x, Integral)
                 }
 
-                    if bad_types:
-                        raise ValueError(
-                            f"'input_state' must contain only integers when it is a sequence. "
-                            f"Got sequence type {type(self.input_state).__name__} "
-                            f"with non-integer element types: {sorted(bad_types)}."
-                        )
+                if bad_types:
+                    raise ValueError(
+                        f"'input_state' must contain only integers when it is a sequence. "
+                        f"Got sequence type {type(self.input_state).__name__} "
+                        f"with non-integer element types: {sorted(bad_types)}."
+                    )
 
         # input_param_order
         try:
