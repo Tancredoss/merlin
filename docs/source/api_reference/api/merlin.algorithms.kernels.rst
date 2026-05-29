@@ -70,16 +70,16 @@ Quickstart: Fidelity kernel in a few lines
     from merlin import ComputationSpace
     from merlin.algorithms.kernels import FeatureMap, FidelityKernel
 
-    # FeatureMap.simple builds a default photonic circuit (n_modes = input_size + 1)
-    feature_map = FeatureMap.simple(input_size=2)
-
-    kernel = FidelityKernel(
-        feature_map=feature_map,
-        input_state=[1, 0, 1],
-        shots=0,
-        computation_space=ComputationSpace.FOCK,
+    # Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
+    feature_map = FeatureMap.simple(
+        input_size=2,
         dtype=torch.float32,
         device=torch.device("cpu"),
+    )
+    kernel = FidelityKernel(
+        feature_map=feature_map,
+        shots=0,                 # exact probabilities (no sampling)
+        computation_space=ComputationSpace.FOCK,       # allow bunched outcomes if needed
     )
 
     # X_train: (N, 2), X_test: (M, 2)
