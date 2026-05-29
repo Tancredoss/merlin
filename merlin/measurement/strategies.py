@@ -228,7 +228,10 @@ class PartialMeasurementStrategy(BaseMeasurementStrategy):
         # Cast to ensure type narrowing for the apply_photon_loss and apply_detectors calls.
         amplitudes_tensor = cast(torch.Tensor, amplitudes)
         # Apply photon loss before detectors to match detector basis configuration.
-        amplitudes_tensor = apply_photon_loss(amplitudes_tensor)
+        amplitudes_tensor = cast(
+            torch.Tensor,
+            apply_photon_loss(amplitudes_tensor),
+        )
         detector_output = apply_detectors(amplitudes_tensor)
         if not isinstance(detector_output, list):
             raise TypeError(

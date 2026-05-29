@@ -478,10 +478,13 @@ class QuantumLayer(MerlinModule):
                     for keys_per_n in self.computation_process.simulation_graph.mapped_keys
                 ],
             )
-            self._raw_output_keys = [
-                [self._normalize_output_key(key) for key in raw_keys_per_n]
-                for raw_keys_per_n in raw_keys
-            ]
+            self._raw_output_keys = cast(
+                list[list[tuple[int, ...]]],
+                [
+                    [self._normalize_output_key(key) for key in raw_keys_per_n]
+                    for raw_keys_per_n in raw_keys
+                ],
+            )
         else:
             raw_keys = cast(
                 list[tuple[int, ...]],
@@ -588,7 +591,7 @@ class QuantumLayer(MerlinModule):
                 and self._raw_output_keys
                 and isinstance(self._raw_output_keys[0], list)
             ):
-                keys = [list(raw_keys) for raw_keys in self._raw_output_keys]
+                keys = cast(list[list[tuple[int, ...]]], self._raw_output_keys)
                 dist_size = sum(len(key) for key in keys)
             else:
                 keys = cast(list[tuple[int, ...]], self._raw_output_keys)
@@ -600,9 +603,9 @@ class QuantumLayer(MerlinModule):
                 and isinstance(self._raw_output_keys[0], list)
             ):
                 if self._detector_is_identity:
-                    keys = [list(raw_keys) for raw_keys in self._photon_loss_keys]
+                    keys = cast(list[list[tuple[int, ...]]], self._photon_loss_keys)
                 else:
-                    keys = [list(raw_keys) for raw_keys in self._detector_keys]
+                    keys = cast(list[list[tuple[int, ...]]], self._detector_keys)
                 dist_size = sum(len(key) for key in keys)
             else:
                 keys = (
@@ -1291,7 +1294,7 @@ class QuantumLayer(MerlinModule):
                 and self._raw_output_keys
                 and isinstance(self._raw_output_keys[0], list)
             ):
-                return [list(keys) for keys in self._raw_output_keys]
+                return cast(list[list[tuple[int, ...]]], self._raw_output_keys)
             else:
                 return cast(list[tuple[int, ...]], self._raw_output_keys)
         if self._detector_is_identity:
@@ -1300,7 +1303,7 @@ class QuantumLayer(MerlinModule):
                 and self._raw_output_keys
                 and isinstance(self._raw_output_keys[0], list)
             ):
-                return [list(keys) for keys in self._photon_loss_keys]
+                return cast(list[list[tuple[int, ...]]], self._photon_loss_keys)
             else:
                 return cast(list[tuple[int, ...]], self._photon_loss_keys)
         if (
@@ -1308,7 +1311,7 @@ class QuantumLayer(MerlinModule):
             and self._raw_output_keys
             and isinstance(self._raw_output_keys[0], list)
         ):
-            return [list(keys) for keys in self._detector_keys]
+            return cast(list[list[tuple[int, ...]]], self._detector_keys)
         return cast(list[tuple[int, ...]], self._detector_keys)
 
     @property
@@ -1383,10 +1386,10 @@ class QuantumLayer(MerlinModule):
                 raise ValueError(
                     "Partial measurement requires at least one measured mode."
                 )
-            if g2_noise is True:
-                n_modes = len(self._photon_loss_keys[0][0])
+            if g2_noise is True and isinstance(self._photon_loss_keys[0], list):
+                n_modes = len(cast(tuple[int, ...], self._photon_loss_keys[0][0]))
             else:
-                n_modes = len(self._photon_loss_keys[0])
+                n_modes = len(cast(tuple[int, ...], self._photon_loss_keys[0]))
             self.measurement_strategy.validate_modes(n_modes)
             measured = set(self.measurement_strategy.measured_modes)
             detectors = [
@@ -1395,23 +1398,25 @@ class QuantumLayer(MerlinModule):
             ]
             partial = True
         if g2_noise:
-            detector_transform = [
+            detector_transform_list: list[DetectorTransform] = [
                 DetectorTransform(
-                    photon_loss_key,
+                    cast(Iterable[Sequence[int]], photon_loss_key),
                     detectors,
                     dtype=self.dtype,
                     device=self.device,
                     partial_measurement=partial,
                 )
-                for photon_loss_key in self._photon_loss_keys
+                for photon_loss_key in cast(
+                    list[list[tuple[int, ...]]], self._photon_loss_keys
+                )
             ]
-            self._detector_transform = detector_transform
+            self._detector_transform = detector_transform_list
             self._detector_keys = [
                 detector_transform_per_n.output_keys
-                for detector_transform_per_n in self._detector_transform
+                for detector_transform_per_n in detector_transform_list
             ]
             detector_transform_identities = [
-                transform.is_identity for transform in self._detector_transform
+                transform.is_identity for transform in detector_transform_list
             ]
             self._detector_is_identity = all(detector_transform_identities)
         else:
