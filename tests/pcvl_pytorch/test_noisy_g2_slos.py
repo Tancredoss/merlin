@@ -1025,8 +1025,6 @@ def test_sectored_total_probability_stays_in_autograd() -> None:
 
 
 # Tests added after review
-
-
 def _g2_layer_with_loss() -> QuantumLayer:
     """Build a g2 layer whose photon-loss transform changes each sector basis."""
     with pytest.warns(UserWarning, match="g2_distinguishable must be False"):
@@ -1052,9 +1050,6 @@ def test_sector_result_preserves_explicit_basis_keys() -> None:
     can live in a different output basis from the fixed ``n_photons`` Fock basis.
     For example, loss from a one-photon sector can include the vacuum key
     ``(0, 0, 0)``. The container needs to preserve those transform-produced keys.
-
-    Current result: ``SectorResult.__post_init__`` always regenerates the fixed
-    one-photon Fock basis and discards the explicit keys supplied by the caller.
     """
     transformed_basis_keys = ((1, 0, 0), (0, 0, 0))
 
@@ -1075,10 +1070,6 @@ def test_g2_with_photon_loss_keeps_sector_keys_aligned_with_tensor() -> None:
     ``SectorResult.keys`` tuple should describe the transformed tensor basis.
     Therefore ``len(sector.keys)`` should equal ``sector.tensor.shape[-1]`` for
     every returned sector.
-
-    Current result: the tensor is transformed into the photon-loss output basis,
-    but the sector still carries the pre-loss fixed-photon Fock keys. The first
-    sector demonstrates the mismatch with a tensor length of 10 and only 6 keys.
     """
     output = _g2_layer_with_loss()()
 
@@ -1092,10 +1083,6 @@ def test_g2_layer_to_moves_per_sector_transforms() -> None:
 
     Correct result: calling ``layer.to("cpu")`` should move the g2 simulation
     graph and each per-sector photon-loss/detector transform without raising.
-
-    Current result: the g2 path stores transforms in lists, but
-    ``QuantumLayer.to()`` calls ``range()`` on those lists, raising ``TypeError``
-    before the transforms are moved.
     """
     layer = _g2_layer_with_loss()
 
