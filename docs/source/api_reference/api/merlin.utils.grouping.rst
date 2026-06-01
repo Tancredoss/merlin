@@ -15,8 +15,3 @@ merlin.utils.grouping module
    :members:
    :undoc-members:
    :show-inheritance:
-
-.. autoclass:: OccupancyGrouping
-   :members:
-   :undoc-members:
-   :show-inheritance:

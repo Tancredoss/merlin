@@ -26,6 +26,12 @@ Factory methods (preferred):
    # Full measurement probabilities
    strategy = MeasurementStrategy.probs(ComputationSpace.FOCK)
 
+   # Collapse count-resolved Fock outputs to occupied/unoccupied readout bins
+   strategy = MeasurementStrategy.probs(
+       ComputationSpace.FOCK,
+       occupancy_readout=True,
+   )
+
    # Per-mode expectations
    strategy = MeasurementStrategy.mode_expectations(ComputationSpace.UNBUNCHED)
 

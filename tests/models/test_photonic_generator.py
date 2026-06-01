@@ -113,14 +113,12 @@ class PartialProbabilityAdapter(ML.OutputAdapter):
         return output.tensor[:, :1]
 
 
-def _reference_state_to_int(key: tuple[int, ...], *, pnr: bool) -> int:
+def _reference_state_to_int(key: tuple[int, ...]) -> int:
     """Return the reproduced QGAN integer code for an output key."""
     mode_count = len(key)
     result = 0
     for index, count in enumerate(key):
-        if pnr:
-            result += count * (mode_count + 1) ** (mode_count - index)
-        elif count != 0:
+        if count != 0:
             result += 2 ** (mode_count - index)
     return result
 
@@ -139,13 +137,55 @@ def _reference_center_crop_or_pad(x: torch.Tensor, size: int) -> torch.Tensor:
     return torch.nn.functional.pad(x, (left, right))
 
 
+def _reference_occupancy_outputs(
+    output_keys: list[tuple[int, ...]],
+    raw_results_list: list[torch.Tensor],
+) -> tuple[tuple[torch.Tensor, ...], tuple[tuple[int, ...], ...]]:
+    """Return the reproduced QGAN occupancy regrouping for tensor outputs."""
+    rev_map: dict[int, list[tuple[int, ...]]] = {}
+    possible_outputs: list[int] = []
+    for key in output_keys:
+        int_state = _reference_state_to_int(key)
+        rev_map.setdefault(int_state, []).append(key)
+        if int_state not in possible_outputs:
+            possible_outputs.append(int_state)
+
+    output_map: dict[tuple[int, ...], int] = {}
+    grouped_keys = []
+    for index, int_state in enumerate(sorted(possible_outputs)):
+        keys = rev_map[int_state]
+        grouped_keys.append(tuple(1 if count > 0 else 0 for count in keys[0]))
+        for key in keys:
+            output_map[key] = index
+
+    bin_count = len(grouped_keys)
+    group_indices = [output_map[key] for key in output_keys]
+
+    grouped_outputs = []
+    for result in raw_results_list:
+        idx = torch.tensor(group_indices, dtype=torch.long, device=result.device)
+        grouped = torch.zeros(
+            result.shape[0],
+            bin_count,
+            dtype=result.dtype,
+            device=result.device,
+        )
+        grouped.index_add_(1, idx, result)
+        total_count = grouped.sum(dim=1, keepdim=True)
+        grouped = torch.where(
+            total_count > 0,
+            grouped / total_count.clamp_min(torch.finfo(grouped.dtype).eps),
+            grouped,
+        )
+        grouped_outputs.append(grouped)
+
+    return tuple(grouped_outputs), tuple(grouped_keys)
+
+
 def _reference_dist_to_image(
     output_keys: list[tuple[int, ...]],
     raw_results_list: list[torch.Tensor],
     image_size: int,
-    *,
-    pnr: bool,
-    lossy: bool,
 ) -> torch.Tensor:
     """Test-only proxy for reproduced photonic_QGAN output conversion.
 
@@ -153,45 +193,11 @@ def _reference_dist_to_image(
     uncommitted script under ``docs``. This helper keeps only the deterministic
     regroup/crop/normalize contract in the unit suite.
     """
-    if pnr or not lossy:
-        possible_state_keys = output_keys
-    else:
-        possible_state_keys = [
-            key for key in output_keys if all(count < 2 for count in key)
-        ]
-
-    rev_map: dict[int, list[tuple[int, ...]]] = {}
-    possible_outputs: list[int] = []
-    for key in possible_state_keys:
-        int_state = _reference_state_to_int(key, pnr=pnr)
-        rev_map.setdefault(int_state, []).append(key)
-        if int_state not in possible_outputs:
-            possible_outputs.append(int_state)
-
-    output_map: dict[tuple[int, ...], int] = {}
-    for index, int_state in enumerate(sorted(possible_outputs)):
-        for key in rev_map[int_state]:
-            output_map[key] = index
-
-    bin_count = max(output_map.values()) + 1
+    grouped_outputs, _ = _reference_occupancy_outputs(output_keys, raw_results_list)
     expected_size = image_size * image_size // len(raw_results_list)
-    kept_columns = [index for index, key in enumerate(output_keys) if key in output_map]
-    group_indices = [output_map[key] for key in output_keys if key in output_map]
 
     patches = []
-    for result in raw_results_list:
-        col_idx = torch.tensor(kept_columns, dtype=torch.long, device=result.device)
-        idx = torch.tensor(group_indices, dtype=torch.long, device=result.device)
-        mapped = result.index_select(1, col_idx)
-        grouped = torch.zeros(
-            result.shape[0],
-            bin_count,
-            dtype=result.dtype,
-            device=result.device,
-        )
-        grouped.index_add_(1, idx, mapped)
-        total_count = mapped.sum(dim=1, keepdim=True)
-        grouped = grouped / total_count.clamp_min(torch.finfo(grouped.dtype).eps)
+    for grouped in grouped_outputs:
         patch = _reference_center_crop_or_pad(grouped, expected_size)
         max_values = patch.max(dim=1, keepdim=True).values
         patches.append(patch / (max_values + 1e-8))
@@ -605,10 +611,10 @@ def test_image_adapter_rejects_patch_normalization_without_headwise():
         ML.ImageAdapter(shape=(2, 3), normalize_patches=True)
 
 
-def test_generator_with_occupancy_grouping_uses_grouped_measurement_keys():
+def test_generator_with_occupancy_readout_uses_reduced_measurement_keys():
     strategy = ML.MeasurementStrategy.probs(
         computation_space=ML.ComputationSpace.FOCK,
-        grouping=ML.OccupancyGrouping(),
+        occupancy_readout=True,
     )
     layer = _make_layer(input_size=2, measurement_strategy=strategy)
     generator = ML.PhotonicGenerator(
@@ -630,14 +636,7 @@ def test_generator_with_occupancy_grouping_uses_grouped_measurement_keys():
         assert len(measurements.output_keys[head_index]) == head_output.shape[1]
 
 
-@pytest.mark.parametrize(
-    ("pnr", "lossy"),
-    [(True, False), (False, False), (False, True), (True, True)],
-)
-def test_occupancy_grouping_image_pipeline_matches_reference_dist_to_image(
-    pnr: bool,
-    lossy: bool,
-):
+def test_occupancy_readout_image_pipeline_matches_reference_dist_to_image():
     output_keys = [(2, 0), (1, 0), (0, 2), (0, 1), (1, 1), (0, 0)]
     raw_results_list = [
         torch.tensor([
@@ -653,16 +652,11 @@ def test_occupancy_grouping_image_pipeline_matches_reference_dist_to_image(
         output_keys,
         raw_results_list,
         image_size=4,
-        pnr=pnr,
-        lossy=lossy,
     )
-    grouping_kwargs: dict[str, int | bool] = {}
-    if not pnr:
-        grouping_kwargs["collapse_counts"] = True
-    if lossy and not pnr:
-        grouping_kwargs["max_count_per_mode"] = 1
-    grouping = ML.OccupancyGrouping(output_keys=output_keys, **grouping_kwargs)
-    grouped_outputs = tuple(grouping(result) for result in raw_results_list)
+    grouped_outputs, grouped_keys = _reference_occupancy_outputs(
+        output_keys,
+        raw_results_list,
+    )
     adapter = ML.ImageAdapter(
         shape=(1, 4, 4),
         headwise=True,
@@ -672,7 +666,7 @@ def test_occupancy_grouping_image_pipeline_matches_reference_dist_to_image(
     output = adapter(
         GeneratorMeasurements(
             outputs=grouped_outputs,
-            output_keys=(grouping.output_keys, grouping.output_keys),
+            output_keys=(grouped_keys, grouped_keys),
         )
     ).reshape(reference.shape)
 

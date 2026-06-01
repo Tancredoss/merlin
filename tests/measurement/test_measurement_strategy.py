@@ -22,7 +22,7 @@
 
 
 import warnings
-from typing import Any
+from typing import Any, cast
 
 import perceval as pcvl
 import pytest
@@ -40,7 +40,38 @@ from merlin.measurement.strategies import (
     ProbabilitiesStrategy,
     resolve_measurement_strategy,
 )
-from merlin.utils.grouping import LexGrouping, ModGrouping, OccupancyGrouping
+from merlin.utils.grouping import LexGrouping, ModGrouping
+
+
+def _reference_occupancy_readout(
+    output_keys: list[tuple[int, ...]],
+    probabilities: torch.Tensor,
+) -> tuple[tuple[tuple[int, ...], ...], torch.Tensor]:
+    """Collapse count-resolved probabilities to binary occupancy keys."""
+    occupancy_keys = [
+        tuple(1 if count > 0 else 0 for count in key) for key in output_keys
+    ]
+    grouped_keys = tuple(sorted(set(occupancy_keys)))
+    key_to_group = {key: index for index, key in enumerate(grouped_keys)}
+    group_indices = torch.tensor(
+        [key_to_group[key] for key in occupancy_keys],
+        dtype=torch.long,
+        device=probabilities.device,
+    )
+    grouped = torch.zeros(
+        probabilities.shape[0],
+        len(grouped_keys),
+        dtype=probabilities.dtype,
+        device=probabilities.device,
+    )
+    grouped.index_add_(1, group_indices, probabilities)
+    mass = grouped.sum(dim=1, keepdim=True)
+    grouped = torch.where(
+        mass > 0,
+        grouped / mass.clamp_min(torch.finfo(grouped.dtype).eps),
+        grouped,
+    )
+    return grouped_keys, grouped
 
 
 class TestQuantumLayerMeasurementStrategy:
@@ -440,8 +471,8 @@ class TestQuantumLayerMeasurementStrategy:
                 reference = grouping(legacy_output)
             assert torch.allclose(output, reference, atol=1e-6)
 
-    def test_occupancy_grouping_binds_to_strategy_output_keys(self):
-        """OccupancyGrouping should bind to layer keys and update metadata."""
+    def test_occupancy_readout_binds_to_strategy_output_keys(self):
+        """Occupancy readout should bind to layer keys and update metadata."""
         torch.manual_seed(0)
 
         builder = ML.CircuitBuilder(n_modes=4)
@@ -464,20 +495,52 @@ class TestQuantumLayerMeasurementStrategy:
             builder=builder,
             measurement_strategy=MeasurementStrategy.probs(
                 computation_space=ComputationSpace.FOCK,
-                grouping=OccupancyGrouping(),
+                occupancy_readout=True,
             ),
         )
         grouped_layer.load_state_dict(ungrouped_layer.state_dict())
 
         ungrouped_output = ungrouped_layer(x)
-        reference_grouping = OccupancyGrouping(ungrouped_layer.output_keys)
-        reference = reference_grouping(ungrouped_output)
+        reference_keys, reference = _reference_occupancy_readout(
+            ungrouped_layer.output_keys,
+            ungrouped_output,
+        )
         output = grouped_layer(x)
 
-        assert grouped_layer.output_size == reference_grouping.output_size
-        assert tuple(grouped_layer.output_keys) == reference_grouping.output_keys
+        assert grouped_layer.output_size == len(reference_keys)
+        assert tuple(grouped_layer.output_keys) == reference_keys
         assert output.shape == (2, grouped_layer.output_size)
         assert torch.allclose(output, reference, atol=1e-6)
+
+    def test_occupancy_readout_requires_fock_space(self):
+        """Occupancy readout is only defined for count-resolved Fock keys."""
+        with pytest.raises(ValueError, match="FOCK"):
+            MeasurementStrategy.probs(
+                computation_space=ComputationSpace.UNBUNCHED,
+                occupancy_readout=True,
+            )
+        with pytest.raises(ValueError, match="FOCK"):
+            MeasurementStrategy.probs(
+                computation_space=ComputationSpace.DUAL_RAIL,
+                occupancy_readout=True,
+            )
+
+    def test_occupancy_readout_rejects_grouping(self):
+        """Occupancy readout owns key-aware reduction and rejects extra grouping."""
+        with pytest.raises(ValueError, match="grouping"):
+            MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK,
+                grouping=LexGrouping(4, 2),
+                occupancy_readout=True,
+            )
+
+    def test_occupancy_readout_requires_bool(self):
+        """Invalid readout flags should fail at strategy construction."""
+        with pytest.raises(TypeError, match="occupancy_readout"):
+            MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK,
+                occupancy_readout=cast(bool, 1),
+            )
 
 
 def test_resolve_measurement_strategy():
