@@ -197,7 +197,7 @@ Interactive Exploration
 
 The notebook demonstrates the MerLin ``PhotonicGenerator`` path with repeated
 quantum heads, Fock-space occupancy readout, headwise image adaptation, and an
-Adam-based GAN training step matching the optimizer structure used in the
+Adam-based GAN training routine matching the optimizer structure used in the
 reproduced implementation.
 
 Additional notebooks in reproduced-papers project:
