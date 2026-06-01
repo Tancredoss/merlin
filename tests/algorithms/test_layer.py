@@ -304,10 +304,12 @@ class TestQuantumLayer:
 
         amplitude = torch.rand(len(layer.output_keys))
         remaining_input = torch.rand(2)
-        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input([
-            amplitude,
-            remaining_input,
-        ])
+        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input(
+            [
+                amplitude,
+                remaining_input,
+            ]
+        )
 
         assert saved_state is original_state
         assert remaining[0] is remaining_input
@@ -348,10 +350,12 @@ class TestQuantumLayer:
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
 
-        params, batch_dim = layer._prepare_classical_parameters([
-            torch.rand(2, 2),
-            torch.rand(2, 2),
-        ])
+        params, batch_dim = layer._prepare_classical_parameters(
+            [
+                torch.rand(2, 2),
+                torch.rand(2, 2),
+            ]
+        )
 
         assert batch_dim == 2
         assert len(params) >= 2
@@ -939,9 +943,9 @@ class TestQuantumLayer:
         assert model[1].out_features == 3
         # Check that it has trainable parameters (only in Linear layer)
         trainable_params_layer = [p for p in layer.parameters() if p.requires_grad]
-        assert len(trainable_params_layer) == 0, (
-            "Layer should have no trainable parameters"
-        )
+        assert (
+            len(trainable_params_layer) == 0
+        ), "Layer should have no trainable parameters"
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         assert len(trainable_params) > 0, "Model should have trainable parameters"
 
@@ -2178,12 +2182,12 @@ def test_memristive_state_dict_round_trip_preserves_state_and_history():
     restored = _layer(_builder_with_memristor(with_inputs=True), input_size=2)
     restored.load_state_dict(torch.load(buffer, weights_only=True))
 
-    assert torch.allclose(restored.memristive_state[0], state_before), (
-        "memristive_state was not preserved across a state_dict round-trip"
-    )
-    assert len(restored.memristive_history[0]) == history_len_before, (
-        "memristive_history length was not preserved across a state_dict round-trip"
-    )
+    assert torch.allclose(
+        restored.memristive_state[0], state_before
+    ), "memristive_state was not preserved across a state_dict round-trip"
+    assert (
+        len(restored.memristive_history[0]) == history_len_before
+    ), "memristive_history length was not preserved across a state_dict round-trip"
 
 
 def test_memristive_state_dict_round_trip_as_submodule():
@@ -2446,9 +2450,9 @@ def test_memristive_works_with_typed_objects_and_cloning_protects_gradients():
     loss_sv = output_sv_typed.tensor.abs().sum()
     loss_sv.backward()
     assert input_data.grad is not None
-    assert torch.any(input_data.grad != 0), (
-        "Gradients should flow through StateVector output"
-    )
+    assert torch.any(
+        input_data.grad != 0
+    ), "Gradients should flow through StateVector output"
 
     # Verify memristive history accumulated (one forward pass = one state)
     assert len(layer_statevector_typed.memristive_history[0]) >= 1
@@ -2463,9 +2467,7 @@ def test_memristive_works_with_typed_objects_and_cloning_protects_gradients():
     # Verify output is NOT modified by the update rule (cloning protected it)
     assert not torch.allclose(
         output_pd_typed.tensor, torch.full_like(output_pd_typed.tensor, 999.0)
-    ), (
-        "ProbabilityDistribution output was incorrectly modified by memristive update rule"
-    )
+    ), "ProbabilityDistribution output was incorrectly modified by memristive update rule"
     assert output_pd_typed.tensor.requires_grad
 
     # Compute loss and backward for ProbabilityDistribution
@@ -2599,9 +2601,9 @@ def test_detach_at_each_forward_false_allows_full_gradient_history():
     outputs = [layer(input_batch) for input_batch in inputs]
 
     # Verify memristive history accumulated
-    assert len(layer.memristive_history[0]) == 6, (
-        f"Expected 6 history entries, got {len(layer.memristive_history[0])}"
-    )
+    assert (
+        len(layer.memristive_history[0]) == 6
+    ), f"Expected 6 history entries, got {len(layer.memristive_history[0])}"
 
     # Compute loss from the last output and backpropagate
     loss = outputs[-1][:, 0].sum()
@@ -2616,9 +2618,9 @@ def test_detach_at_each_forward_false_allows_full_gradient_history():
 
     # All inputs should have non-zero gradients (full history retained)
     for i, grad_norm in enumerate(grad_norms):
-        assert grad_norm > 1e-8, (
-            f"Input {i} should have non-zero gradient with full history, got {grad_norm}"
-        )
+        assert (
+            grad_norm > 1e-8
+        ), f"Input {i} should have non-zero gradient with full history, got {grad_norm}"
 
 
 def test_detach_at_each_forward_is_boolean_flag():
@@ -2714,9 +2716,9 @@ def test_mixed_memristors_with_different_detach_settings():
         assert state.grad_fn is None, "Detached memristor states should have no grad_fn"
 
     # Second memristor (full grad) should retain gradients
-    assert layer.memristive_history[1][-1].grad_fn is not None, (
-        "Non-detached memristor should retain gradients"
-    )
+    assert (
+        layer.memristive_history[1][-1].grad_fn is not None
+    ), "Non-detached memristor should retain gradients"
 
 
 def test_detach_at_each_forward_false_has_larger_gradients_than_true():
@@ -2761,9 +2763,9 @@ def test_detach_at_each_forward_false_has_larger_gradients_than_true():
 
     # Earlier inputs should have larger or equal gradients with full history
     for i in range(N - 1):  # All except last
-        assert grads_full[i] >= grads_detached[i] * 0.9, (
-            "Full gradient flow should have larger or equal gradients for earlier inputs"
-        )
+        assert (
+            grads_full[i] >= grads_detached[i] * 0.9
+        ), "Full gradient flow should have larger or equal gradients for earlier inputs"
 
 
 def test_reset_properly_detaches_or_keeps_initial_state():
@@ -2777,12 +2779,12 @@ def test_reset_properly_detaches_or_keeps_initial_state():
     # Test with detach=True
     layer_detached = _make_memristive_layer(detach_at_each_forward=True)
     layer_detached.reset(batch_size=1)
-    assert layer_detached.memristive_state[0].grad_fn is None, (
-        "Initial state should be detached with detach_at_each_forward=True"
-    )
-    assert layer_detached.memristive_history[0][0].grad_fn is None, (
-        "Initial history state should be detached with detach_at_each_forward=True"
-    )
+    assert (
+        layer_detached.memristive_state[0].grad_fn is None
+    ), "Initial state should be detached with detach_at_each_forward=True"
+    assert (
+        layer_detached.memristive_history[0][0].grad_fn is None
+    ), "Initial history state should be detached with detach_at_each_forward=True"
 
     # Test with detach=False
     layer_full = _make_memristive_layer(detach_at_each_forward=False)
@@ -2791,9 +2793,9 @@ def test_reset_properly_detaches_or_keeps_initial_state():
     # But after first forward it should retain gradients
     inp = torch.randn(1, 2, requires_grad=True)
     layer_full(inp)
-    assert layer_full.memristive_state[0].grad_fn is not None, (
-        "State should retain gradients after forward with detach_at_each_forward=False"
-    )
+    assert (
+        layer_full.memristive_state[0].grad_fn is not None
+    ), "State should retain gradients after forward with detach_at_each_forward=False"
 
 
 def test_detach_at_each_forward_with_batch_dimension():
@@ -2884,3 +2886,6 @@ def test_long_sequence_with_manual_sliding_window_detach():
     )
     for index, grad_norm in enumerate(grad_norms[n_steps - k :], start=n_steps - k):
         assert grad_norm > 1e-8, f"Input {index} should remain in the TBPTT window"
+
+    for index, grad_norm in enumerate(grad_norms[: n_steps - k]):
+        assert grad_norm < 1e-8, f"Input {index} should not be in the TBPTT window"
