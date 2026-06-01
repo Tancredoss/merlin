@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from concurrent.futures import CancelledError
@@ -15,7 +16,19 @@ from perceval.runtime import RemoteProcessor
 from perceval.runtime.session import ISession
 
 import merlin.core.merlin_processor as merlin_processor_module
-from merlin.core.merlin_processor import BackendCapabilities, MerlinProcessor
+from merlin.core.merlin_processor import (
+    BackendCapabilities,
+    MerlinProcessor,
+    ValidatedLayerConfig,
+    SupportsExportConfig,
+)
+from collections.abc import Sequence
+from numbers import Integral
+import perceval as pcvl
+import numpy as np
+import re
+from merlin.core.circuit import Circuit
+from merlin.core.state_vector import StateVector
 
 
 class FakeCommand:
@@ -40,6 +53,39 @@ class FakeSampler:
         self.probs = FakeCommand()
         self.sample_count = FakeCommand()
         self.samples = FakeCommand()
+
+
+class FakePerceval12Command(FakeCommand):
+    """Sampler command with a Perceval 1.2-style private request payload."""
+
+    def __init__(self, iterator) -> None:
+        super().__init__()
+        self._request_data = {"payload": {"iterator": iterator}}
+
+    def execute_async(self, **kwargs):
+        """Serialize the payload before recording the async execution call."""
+        json.dumps(self._request_data["payload"])
+        return super().execute_async(**kwargs)
+
+
+class FakePerceval12Iterator:
+    """Small stand-in for Perceval 1.2 ParameterIterator."""
+
+    def __init__(self) -> None:
+        self.iterations = [{"circuit_params": {"px1": 0.25}}]
+
+    def __bool__(self) -> bool:
+        return True
+
+
+class FakePerceval12Sampler:
+    """Sampler fake whose commands expose a Perceval 1.2 iterator payload."""
+
+    def __init__(self) -> None:
+        self._iterator = FakePerceval12Iterator()
+        self.probs = FakePerceval12Command(self._iterator)
+        self.sample_count = FakePerceval12Command(self._iterator)
+        self.samples = FakePerceval12Command(self._iterator)
 
 
 @dataclass
@@ -122,6 +168,8 @@ def make_processor(available_commands: list[str]) -> MerlinProcessor:
     )
     proc._lock = threading.Lock()
     proc._active_jobs = set()
+    proc._layer_cache = {}
+    proc.microbatch_size = 32
     return proc
 
 
@@ -256,6 +304,24 @@ def test_session_path_stores_backend_capabilities():
     assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
 
 
+def test_session_path_does_not_require_remote_processor_token():
+    """ISession authentication should stay owned by the session object."""
+    session = MagicMock(spec=ISession)
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.name = "perceval-qpu:scaleway"
+    remote_processor.available_commands = ["probs", "sample_count"]
+    remote_processor.proxies = None
+    session.build_remote_processor.return_value = remote_processor
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value=None) as extract:
+        proc = MerlinProcessor(session=session)
+
+    extract.assert_not_called()
+    assert proc.session is session
+    assert proc.remote_processor is None
+    assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
+
+
 def test_remote_processor_path_copies_available_commands():
     """RemoteProcessor construction freezes the current command-detection path."""
     remote_processor = MagicMock(spec=RemoteProcessor)
@@ -281,7 +347,7 @@ def test_session_path_with_empty_commands_and_sampling_only():
     session.build_remote_processor.return_value = remote_processor
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
         with pytest.warns(
-            UserWarning, match="Remote processor has no available commands"
+            UserWarning, match=r"Remote processor has no available commands"
         ):
             proc = MerlinProcessor(session=session)
     sampler = FakeSampler()
@@ -615,6 +681,27 @@ def test_submit_job_uses_sample_count_when_sampling_requested():
     assert sampler.probs.executed is False
 
 
+def test_submit_job_serializes_perceval_12_parameter_iterator_payload():
+    """Perceval 1.2 sampler iterations must be JSON-serializable for Scaleway."""
+    proc = make_processor(["sample_count"])
+    sampler = FakePerceval12Sampler()
+
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=37,
+        job_base_label="job",
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+
+    assert returned_job is sampler.sample_count
+    assert is_probability is False
+    assert sampler.sample_count.executed is True
+    assert sampler.sample_count.execute_kwargs == {"max_samples": 37}
+    assert sampler.sample_count._request_data["payload"]["iterator"] == [
+        {"circuit_params": {"px1": 0.25}}
+    ]
+
+
 def test_submit_job_falls_back_to_samples_when_sample_count_is_unavailable():
     """Backends without sample_count currently use samples for sampled jobs."""
     proc = make_processor(["samples"])
@@ -693,7 +780,7 @@ def test_poll_job_failed_status_raises_with_stop_message_and_job_id():
     )
     proc._active_jobs.add(job)
 
-    with pytest.raises(RuntimeError, match="hardware rejected job.*job-failed"):
+    with pytest.raises(RuntimeError, match=r"hardware rejected job.*job-failed"):
         proc._poll_job(job, make_state(), None, 1, object(), None)
 
     assert job not in proc._active_jobs
@@ -706,7 +793,7 @@ def test_poll_job_cancel_request_cancels_remote_job():
     state = make_state()
     state["cancel_requested"] = True
 
-    with pytest.raises(CancelledError, match="Remote call was cancelled"):
+    with pytest.raises(CancelledError, match=r"Remote call was cancelled"):
         proc._poll_job(job, state, None, 1, object(), None)
 
     assert job.cancelled is True
@@ -717,7 +804,7 @@ def test_poll_job_timeout_cancels_remote_job():
     proc = make_poll_processor()
     job = FakeJob(is_complete=False)
 
-    with pytest.raises(TimeoutError, match="remote cancel issued"):
+    with pytest.raises(TimeoutError, match=r"remote cancel issued"):
         proc._poll_job(job, make_state(), time.time() - 1.0, 1, object(), None)
 
     assert job.cancelled is True
@@ -733,7 +820,7 @@ def test_poll_job_cancel_requested_stop_message_raises_cancelled_error():
     )
     proc._active_jobs.add(job)
 
-    with pytest.raises(CancelledError, match="Remote call was cancelled"):
+    with pytest.raises(CancelledError, match=r"Remote call was cancelled"):
         proc._poll_job(job, make_state(), None, 1, object(), None)
 
     assert job not in proc._active_jobs
@@ -745,7 +832,7 @@ def test_poll_job_cancel_requested_get_results_exception_raises_cancelled_error(
     job = FakeJob(result_events=[RuntimeError("Cancel requested on backend")])
     proc._active_jobs.add(job)
 
-    with pytest.raises(CancelledError, match="Remote call was cancelled"):
+    with pytest.raises(CancelledError, match=r"Remote call was cancelled"):
         proc._poll_job(job, make_state(), None, 1, object(), None)
 
     assert job not in proc._active_jobs
@@ -777,7 +864,7 @@ def test_poll_job_retries_complete_non_dict_payloads_then_fails(monkeypatch):
     job = FakeJob(job_id="job-nondict", result_events=[["not", "a", "dict"]])
     proc._active_jobs.add(job)
 
-    with pytest.raises(RuntimeError, match="not a dict after 60 re-polls"):
+    with pytest.raises(RuntimeError, match=r"not a dict after 60 re-polls"):
         proc._poll_job(job, make_state(), None, 1, object(), None)
 
     assert job.get_results_calls == 60
@@ -788,7 +875,7 @@ def test_process_batch_results_rejects_missing_payload():
     """A missing backend payload currently raises a runtime failure."""
     proc = make_processor(["probs"])
 
-    with pytest.raises(RuntimeError, match="returned no results"):
+    with pytest.raises(RuntimeError, match=r"returned no results"):
         proc._process_batch_results(None, 1, FakeLayer())
 
 
@@ -796,7 +883,7 @@ def test_process_batch_results_rejects_non_dict_payload():
     """A non-dict backend payload currently raises a runtime failure."""
     proc = make_processor(["probs"])
 
-    with pytest.raises(RuntimeError, match="Unexpected remote results type"):
+    with pytest.raises(RuntimeError, match=r"Unexpected remote results type"):
         proc._process_batch_results(["not", "a", "dict"], 1, FakeLayer())
 
 
@@ -1041,3 +1128,326 @@ def test_create_fresh_rp_remote_processor_path_with_cloning_disabled():
 
     mock_clone.assert_called_once_with(original_rp)
     assert fresh_rp is mock_clone.return_value
+
+
+def test_different_valid_configs():
+    # BasicState input
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_state": pcvl.BasicState("|1,0>"),
+        "input_param_order": ["px", "el", "s"],
+    }
+    v_config = ValidatedLayerConfig(config)
+    assert isinstance(v_config.circuit, pcvl.Circuit)
+    assert v_config.circuit == config["circuit"]
+    assert isinstance(v_config.input_state, pcvl.BasicState)
+    assert v_config.input_state == config["input_state"]
+    assert isinstance(v_config.input_param_order, Sequence)
+    for i in v_config.input_param_order:
+        assert isinstance(i, str)
+    assert v_config.input_param_order == config["input_param_order"]
+
+    # StateVector input
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_state": pcvl.StateVector("|1,0>"),
+        "input_param_order": ["px", "el", "s"],
+    }
+    v_config = ValidatedLayerConfig(config)
+    assert isinstance(v_config.circuit, pcvl.Circuit)
+    assert v_config.circuit == config["circuit"]
+    assert isinstance(v_config.input_state, pcvl.StateVector)
+    assert v_config.input_state == config["input_state"]
+    assert isinstance(v_config.input_param_order, Sequence)
+    for i in v_config.input_param_order:
+        assert isinstance(i, str)
+    assert v_config.input_param_order == config["input_param_order"]
+
+    # FockState input
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_state": pcvl.FockState("|1,0>"),
+        "input_param_order": ["px", "el", "s"],
+    }
+    v_config = ValidatedLayerConfig(config)
+    assert isinstance(v_config.circuit, pcvl.Circuit)
+    assert v_config.circuit == config["circuit"]
+    assert isinstance(v_config.input_state, pcvl.FockState)
+    assert v_config.input_state == config["input_state"]
+    assert isinstance(v_config.input_param_order, Sequence)
+    for i in v_config.input_param_order:
+        assert isinstance(i, str)
+    assert v_config.input_param_order == config["input_param_order"]
+
+    # NoisyFockState input
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_state": pcvl.NoisyFockState(pcvl.FockState([1, 0])),
+        "input_param_order": ["px", "el", "s"],
+    }
+    v_config = ValidatedLayerConfig(config)
+    assert isinstance(v_config.circuit, pcvl.Circuit)
+    assert v_config.circuit == config["circuit"]
+    assert isinstance(v_config.input_state, pcvl.NoisyFockState)
+    assert v_config.input_state == config["input_state"]
+    assert isinstance(v_config.input_param_order, Sequence)
+    for i in v_config.input_param_order:
+        assert isinstance(i, str)
+    assert v_config.input_param_order == config["input_param_order"]
+
+    # LogicalState input
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_state": pcvl.LogicalState([1, 0]),
+        "input_param_order": ["px", "el", "s"],
+    }
+    v_config = ValidatedLayerConfig(config)
+    assert isinstance(v_config.circuit, pcvl.Circuit)
+    assert v_config.circuit == config["circuit"]
+    assert isinstance(v_config.input_state, pcvl.LogicalState)
+    assert v_config.input_state == config["input_state"]
+    assert isinstance(v_config.input_param_order, Sequence)
+    for i in v_config.input_param_order:
+        assert isinstance(i, str)
+    assert v_config.input_param_order == config["input_param_order"]
+
+    # Sequence input list
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_state": [1, 0],
+        "input_param_order": ["px", "el", "s"],
+    }
+    v_config = ValidatedLayerConfig(config)
+    assert isinstance(v_config.circuit, pcvl.Circuit)
+    assert v_config.circuit == config["circuit"]
+    assert isinstance(v_config.input_state, Sequence)
+    for i in v_config.input_state:
+        assert isinstance(i, Integral)
+    assert v_config.input_state == config["input_state"]
+    assert isinstance(v_config.input_param_order, Sequence)
+    for i in v_config.input_param_order:
+        assert isinstance(i, str)
+    assert v_config.input_param_order == config["input_param_order"]
+
+    # Sequence input torch ints as tuple
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_state": tuple([torch.tensor(1).item(), torch.tensor(0).item()]),
+        "input_param_order": ["px", "el", "s"],
+    }
+    v_config = ValidatedLayerConfig(config)
+    assert isinstance(v_config.circuit, pcvl.Circuit)
+    assert v_config.circuit == config["circuit"]
+    assert isinstance(v_config.input_state, Sequence)
+    for i in v_config.input_state:
+        assert isinstance(i, Integral)
+    assert v_config.input_state == config["input_state"]
+    assert isinstance(v_config.input_param_order, Sequence)
+    for i in v_config.input_param_order:
+        assert isinstance(i, str)
+    assert v_config.input_param_order == config["input_param_order"]
+
+    # Sequence input array
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_state": np.array([1, 0]),
+        "input_param_order": ["px", "el", "s"],
+    }
+    v_config = ValidatedLayerConfig(config)
+    assert isinstance(v_config.circuit, pcvl.Circuit)
+    assert v_config.circuit == config["circuit"]
+    assert isinstance(v_config.input_state, Sequence)
+    for i in v_config.input_state:
+        assert isinstance(i, Integral)
+    assert v_config.input_state == tuple(config["input_state"])
+    assert isinstance(v_config.input_param_order, Sequence)
+    for i in v_config.input_param_order:
+        assert isinstance(i, str)
+    assert v_config.input_param_order == config["input_param_order"]
+
+
+def test_missing_required_fiels_in_configs():
+    # Missing Circuit
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_state": pcvl.BasicState("|1,0>"),
+        "input_param_order": ["px", "el", "s"],
+    }
+
+    # Missing Circuit
+    config = {
+        "input_state": pcvl.BasicState("|1,0>"),
+        "input_param_order": ["px", "el", "s"],
+    }
+    with pytest.raises(
+        KeyError,
+        match=r"There must be a key 'circuit' in the configs dictionary that is associated with a perceval.ACircuit.",
+    ):
+        v_config = ValidatedLayerConfig(config)
+
+    # Missing State
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_param_order": ["px", "el", "s"],
+    }
+    with pytest.raises(
+        KeyError,
+        match=r".*There must be a key 'input_state' in the configs dictionary.*",
+    ):
+        v_config = ValidatedLayerConfig(config)
+
+    # Missing input param order
+    config = {
+        "circuit": pcvl.Circuit(m=2, name="Circuit"),
+        "input_state": pcvl.BasicState("|1,0>"),
+    }
+    with pytest.raises(
+        KeyError,
+        match=r".*There must be a key 'input_param_order' in the configs dictionary that is associated with a Sequence\[str\] or None\..*",
+    ):
+        v_config = ValidatedLayerConfig(config)
+
+
+def test_wrong_types_config():
+    # Bad Circuit
+    config = {
+        "circuit": None,
+        "input_state": pcvl.BasicState("|1,0>"),
+        "input_param_order": ["px", "el", "s"],
+    }
+    with pytest.raises(
+        ValueError,
+        match=r"The 'circuit' key of the config dictionary must be a perceval.ACircuit",
+    ):
+        v_config = ValidatedLayerConfig(config)
+
+    config = {
+        "circuit": Circuit(n_modes=2, components=[pcvl.components.BS()]),
+        "input_state": pcvl.BasicState("|1,0>"),
+        "input_param_order": ["px", "el", "s"],
+    }
+    with pytest.raises(
+        ValueError,
+        match=r"The 'circuit' key of the config dictionary must be a perceval.ACircuit",
+    ):
+        v_config = ValidatedLayerConfig(config)
+
+    # input_state
+    config = {
+        "circuit": pcvl.Circuit(m=2),
+        "input_state": [1.1, 2.0],
+        "input_param_order": ["px", "el", "s"],
+    }
+    with pytest.raises(
+        ValueError,
+        match=r"'input_state' must contain only integers when it is a sequence.",
+    ):
+        v_config = ValidatedLayerConfig(config)
+
+    config = {
+        "circuit": pcvl.Circuit(m=2),
+        "input_state": StateVector(torch.tensor([1, 0]), n_modes=2, n_photons=1),
+        "input_param_order": ["px", "el", "s"],
+    }
+    with pytest.raises(
+        ValueError,
+        match=r"'input_state' must be None, a sequence of integers, or an Perceval state object.",
+    ):
+        v_config = ValidatedLayerConfig(config)
+
+    # input_param_order
+    config = {
+        "circuit": pcvl.Circuit(m=2),
+        "input_state": [2, 0],
+        "input_param_order": 3,
+    }
+    with pytest.raises(
+        ValueError,
+        match=r"'input_param_order' must be a sequence of strings or None, got int.",
+    ):
+        v_config = ValidatedLayerConfig(config)
+
+    config = {
+        "circuit": pcvl.Circuit(m=2),
+        "input_state": [1, 2],
+        "input_param_order": [11, 2, 1],
+    }
+    with pytest.raises(
+        ValueError,
+        match=r"'input_param_order' must contain only strings.",
+    ):
+        v_config = ValidatedLayerConfig(config)
+
+
+def test_has_export_config():
+    class GoodLayer:
+        def __init__(self):
+            pass
+
+        def export_config():
+            return {
+                "circuit": pcvl.Circuit(m=2, name="Circuit"),
+                "input_state": [1, 0],
+                "input_param_order": ["px", "el", "s"],
+            }
+
+    class BadLayer:
+        def __init__(self):
+            pass
+
+    assert isinstance(GoodLayer(), SupportsExportConfig)
+    assert not isinstance(BadLayer(), SupportsExportConfig)
+
+
+def test_offload_quantum_layer_with_chunking_validates_and_caches_export_config():
+    proc = make_processor(["probs", "sample_count"])
+
+    class LayerWithExportConfig:
+        uid = 42
+
+        def __init__(self) -> None:
+            self.export_config_calls = 0
+
+        def export_config(self):
+            self.export_config_calls += 1
+            return {
+                "circuit": pcvl.Circuit(m=2, name="Circuit"),
+                "input_state": [1, 0],
+                "input_param_order": ["px", "el", "s"],
+            }
+
+    layer = LayerWithExportConfig()
+
+    def fake_run_chunks_pooled(
+        layer_arg, config, input_tensor, chunks, nsample, state, deadline
+    ):
+        assert layer_arg is layer
+        assert isinstance(config, ValidatedLayerConfig)
+        assert isinstance(config.circuit, pcvl.Circuit)
+        assert config.input_param_order == ["px", "el", "s"]
+        return torch.tensor([[1.0]])
+
+    proc._run_chunks_pooled = fake_run_chunks_pooled
+
+    result = proc._offload_quantum_layer_with_chunking(
+        layer,
+        torch.zeros(1, 2),
+        None,
+        {},
+        None,
+    )
+
+    assert torch.equal(result, torch.tensor([[1.0]]))
+    assert layer.export_config_calls == 1
+    assert layer.uid in proc._layer_cache
+    assert isinstance(proc._layer_cache[layer.uid]["config"], ValidatedLayerConfig)
+
+    # Calling again should reuse the cached config and not call export_config again.
+    proc._offload_quantum_layer_with_chunking(
+        layer,
+        torch.zeros(1, 2),
+        None,
+        {},
+        None,
+    )
+    assert layer.export_config_calls == 1
