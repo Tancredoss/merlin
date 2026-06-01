@@ -15,7 +15,7 @@ import perceval as pcvl
 import torch
 import torch.nn as nn
 from perceval.algorithm import Sampler
-from perceval.runtime import RemoteJob, RemoteProcessor
+from perceval.runtime import AProcessor, RemoteJob, RemoteProcessor
 from perceval.runtime.session import ISession
 from torch.futures import Future
 
@@ -310,14 +310,14 @@ class MerlinProcessor:
     """RPC-style processor for quantum execution.
 
     Offloads :class:`~merlin.algorithms.module.MerlinModule` leaves (e.g.
-    QuantumLayer) to a remote Perceval backend while keeping classical layers local.
+    QuantumLayer) to a Perceval backend while keeping classical layers local.
     Automatically handles batching, chunking, concurrency control, timeouts, and
     job cancellation.
 
     **Key Features**
 
     - Torch-friendly asynchronous execution via ``Future[torch.Tensor]``.
-    - Cloud offload of quantum leaves only; non-quantum leaves run locally.
+    - Perceval backend offload of quantum leaves only; non-quantum leaves run locally.
     - Batch **chunking** (``microbatch_size``) and **parallel** submission per leaf
       (``chunk_concurrency``).
     - Cancellation support, both per future and globally.
@@ -339,13 +339,17 @@ class MerlinProcessor:
 
     Parameters
     ----------
+    processor : AProcessor | None
+        Perceval processor entry point. Local, non-remote processors are stored
+        for the local backend path. RemoteProcessor instances passed here are
+        normalized to the remote processor path.
     remote_processor : RemoteProcessor | None
         Perceval remote processor used in the legacy path. Cloned per chunk
         for thread safety.
     session : ISession | None
         Perceval session (e.g. Scaleway) used to build remote processors.
         ``session.build_remote_processor()`` is called per chunk. Exactly one of
-        ``remote_processor`` or ``session`` must be provided.
+        ``processor``, ``remote_processor``, or ``session`` must be provided.
     microbatch_size : int
         Maximum number of inputs submitted in a single remote chunk.
         Default: 32.
@@ -373,6 +377,7 @@ class MerlinProcessor:
 
     def __init__(
         self,
+        processor: AProcessor | None = None,
         remote_processor: RemoteProcessor | None = None,
         session: ISession | None = None,
         microbatch_size: int = 32,
@@ -381,33 +386,45 @@ class MerlinProcessor:
         chunk_concurrency: int = 1,
         token: str | None = None,
     ):
-        """Initialize the remote Merlin processor.
+        """Initialize the Merlin processor backend.
 
         Backend capabilities (available commands) are extracted once at initialization
         and stored in :attr:`backend_capabilities` for the lifetime of the processor.
         These determine whether execution uses exact probabilities or sampling.
 
-        **Dual-Path Backends**
+        **Backend Paths**
 
-        The processor supports two paths for remote execution:
+        The processor supports three backend entry points:
 
-        1. **RemoteProcessor path** (``remote_processor`` provided):
+        1. **AProcessor path** (``processor`` provided):
+            Primary Perceval entry point. Local processors are stored as the
+            local backend for the local execution path. RemoteProcessor
+            instances are normalized to the RemoteProcessor path.
+        2. **RemoteProcessor path** (``remote_processor`` provided):
             Legacy Quandela Cloud. The RP is stored and cloned per chunk.
-        2. **ISession path** (``session`` provided):
+        3. **ISession path** (``session`` provided):
             Preferred for Scaleway and future session-based providers.
             ``session.build_remote_processor()`` is called per chunk.
-        Both paths expose backend capabilities via :attr:`backend_capabilities`,
-        which drive the probability vs sampling decision in :meth:`forward` and
-        :meth:`forward_async`.
+        All paths expose backend capabilities via :attr:`backend_capabilities`,
+        which drive the probability vs sampling decision. The active route is
+        stored in :attr:`backend_kind`.
 
         Parameters
         ----------
+        processor : AProcessor | None
+            Perceval ``AProcessor``. Local processors use the local backend and
+            do not require remote token extraction. RemoteProcessor instances
+            passed here use the existing remote backend. Exactly one of
+            ``processor``, ``remote_processor``, or ``session`` must be
+            provided. Default: None.
         remote_processor : RemoteProcessor | None
             Perceval ``RemoteProcessor`` (simulator or QPU-backed). Exactly
-            one of ``remote_processor`` or ``session`` must be provided. Default: None.
+            one of ``processor``, ``remote_processor``, or ``session`` must be
+            provided. Default: None.
         session : ISession | None
             Perceval session (e.g. ``pcvl.providers.scaleway.Session``).
-            Exactly one of ``remote_processor`` or ``session`` must be provided. Default: None.
+            Exactly one of ``processor``, ``remote_processor``, or ``session``
+            must be provided. Default: None.
         microbatch_size : int
             Maximum number of inputs submitted in a single remote chunk. Default: 32.
         timeout : float
@@ -429,49 +446,86 @@ class MerlinProcessor:
         Raises
         ------
         TypeError
-            If neither or both of ``remote_processor`` and ``session`` are
-            provided, or if their types are invalid.
+            If exactly one backend is not provided, if a backend type is
+            invalid, or if ``processor`` is a remote AProcessor subclass other
+            than RemoteProcessor.
         ValueError
             If no token can be resolved from the RemoteProcessor or explicitly
             provided.
         """
-        # ── Validate: exactly one of the two must be provided ──
-        if remote_processor is not None and session is not None:
-            raise TypeError("Provide either 'remote_processor' or 'session', not both.")
-        if remote_processor is None and session is None:
-            raise TypeError("One of 'remote_processor' or 'session' must be provided.")
+        n_backends = sum(
+            backend is not None for backend in (processor, remote_processor, session)
+        )
+        if n_backends == 0:
+            raise TypeError(
+                "Exactly one of 'processor', 'remote_processor', or 'session' "
+                "must be provided."
+            )
+        if n_backends > 1:
+            raise TypeError(
+                "'processor', 'remote_processor', and 'session' are mutually "
+                "exclusive; provide exactly one."
+            )
 
+        self.processor: AProcessor | None = None
         self.session: ISession | None = None
         self.remote_processor: RemoteProcessor | None = None
+        self.backend_kind: str
         self._token: str | None = token
+        capability_processor: AProcessor | None = None
 
-        if session is not None:
-            # ── ISession path ──
-            if not isinstance(session, ISession):
-                raise TypeError(f"Expected ISession, got {type(session)}")
-            self.session = session
+        if processor is not None:
+            if not isinstance(processor, AProcessor):
+                raise TypeError(f"Expected AProcessor, got {type(processor)}")
+            if isinstance(processor, RemoteProcessor):
+                remote_processor = processor
+            elif processor.is_remote:
+                raise TypeError(
+                    "Unsupported remote AProcessor subclass "
+                    f"{type(processor)}; pass a RemoteProcessor or ISession instead."
+                )
+            else:
+                if not callable(getattr(processor, "copy", None)):
+                    raise TypeError(
+                        "Local AProcessor backends must provide copy() for "
+                        "per-chunk isolation."
+                    )
+                self.processor = processor
+                self.backend_kind = "local_processor"
+                capability_processor = processor
 
-            # Build ONE initial processor to extract metadata (backend name, available commands).
-            # Fresh processors will be created per chunk via _create_fresh_rp().
-            _init_rp = self.session.build_remote_processor()
-            remote_processor = _init_rp
+        if self.processor is None:
+            if session is not None:
+                # ── ISession path ──
+                if not isinstance(session, ISession):
+                    raise TypeError(f"Expected ISession, got {type(session)}")
+                self.session = session
+                self.backend_kind = "session"
 
-        assert remote_processor is not None  # for type checker
-        if not isinstance(remote_processor, RemoteProcessor):
-            raise TypeError(f"Expected RemoteProcessor, got {type(remote_processor)}")
+                # Build ONE initial processor to extract metadata (backend name, available commands).
+                # Fresh processors will be created per chunk via _create_fresh_rp().
+                _init_rp = self.session.build_remote_processor()
+                remote_processor = _init_rp
+            else:
+                self.backend_kind = "remote_processor"
 
-        # Store RemoteProcessor only for the non-session path.
-        # Session path will call _create_fresh_rp() to build per-chunk processors.
-        if self.session is None:
-            self.remote_processor = remote_processor
+            assert remote_processor is not None  # for type checker
+            if not isinstance(remote_processor, RemoteProcessor):
+                raise TypeError(
+                    f"Expected RemoteProcessor, got {type(remote_processor)}"
+                )
+
+            # Store RemoteProcessor only for the non-session path.
+            # Session path will call _create_fresh_rp() to build per-chunk processors.
+            if self.session is None:
+                self.remote_processor = remote_processor
+            capability_processor = remote_processor
+
+        assert capability_processor is not None
 
         # Extract backend capabilities (name and available commands)
-        backend_name = getattr(remote_processor, "name", "unknown")
-        available_cmds = (
-            getattr(remote_processor, "available_commands", [])
-            if hasattr(remote_processor, "available_commands")
-            else []
-        )
+        backend_name = capability_processor.name
+        available_cmds = capability_processor.available_commands
         self.backend_capabilities = BackendCapabilities(
             name=backend_name,
             available_commands=tuple(available_cmds),
@@ -479,13 +533,18 @@ class MerlinProcessor:
 
         # Check if commands list is empty and warn
         if not self.backend_capabilities.available_commands:
+            backend_label = (
+                "Local processor"
+                if self.backend_kind == "local_processor"
+                else "Remote processor"
+            )
             warnings.warn(
-                "Remote processor has no available commands. "
+                f"{backend_label} has no available commands. "
                 "Ensure the platform is properly configured.",
                 stacklevel=2,
             )
 
-        if self.session is None:
+        if self.backend_kind == "remote_processor":
             # Auto-extract the token from the RP's handler when not
             # explicitly provided, so cloned RPs inherit it.
             if self._token is None:

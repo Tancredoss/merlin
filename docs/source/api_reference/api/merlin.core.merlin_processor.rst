@@ -7,23 +7,28 @@ MerlinProcessor API Reference
 Overview
 ========
 :class:`MerlinProcessor` is an RPC-style bridge that offloads **quantum leaves**
-(e.g., layers exposing ``export_config()``) to a remote backend, while keeping
-classical layers local. It supports two backend paths:
+(e.g., layers exposing ``export_config()``) to a Perceval backend, while keeping
+classical layers local. It supports these backend entry points:
 
+* **Perceval** ``perceval.runtime.AProcessor`` — the primary constructor
+  argument. Local, non-remote processors are accepted at construction time;
+  local execution dispatch is added by the follow-up AProcessor implementation
+  steps.
 * **Perceval** :class:`~pcvl.RemoteProcessor` — the original
-  Quandela Cloud path.
+  Quandela Cloud path. Passing a RemoteProcessor through ``processor=`` routes
+  to this same path.
 * **Perceval** `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v1.2/providers.html#scaleway>`_ — the preferred path
   for Scaleway-hosted platforms (and any future session-based providers).
 
-Both paths support batched execution with chunking, limited intra-leaf
-concurrency, per-call/global timeouts, cooperative cancellation, and a
+The remote execution paths support batched execution with chunking, limited
+intra-leaf concurrency, per-call/global timeouts, cooperative cancellation, and a
 Torch-friendly async interface returning :class:`torch.futures.Future`.
 
 Key Capabilities
 ----------------
 * Automatic traversal of a PyTorch module; offloads only **quantum leaves**.
 * Batch **chunking** (``microbatch_size``) and **parallel** submission per leaf
-  (``chunk_concurrency``). Works identically for both backend paths.
+  (``chunk_concurrency``). Works identically for the remote execution paths.
 * **Synchronous** (``forward``) and **asynchronous** (``forward_async``) APIs.
 * **Cancellation** of a single call or **all** calls in flight.
 * **Timeouts** that cancel in-flight cloud jobs.
@@ -71,11 +76,16 @@ BackendCapabilities
 
 MerlinProcessor
 ---------------
-.. class:: MerlinProcessor(remote_processor=None, session=None, microbatch_size=32, timeout=3600.0, max_shots_per_call=None, chunk_concurrency=1)
+.. class:: MerlinProcessor(processor=None, remote_processor=None, session=None, microbatch_size=32, timeout=3600.0, max_shots_per_call=None, chunk_concurrency=1)
 
-   Create a processor that offloads quantum leaves to a remote backend.
-   Exactly **one** of ``remote_processor`` or ``session`` must be provided.
+   Create a processor that offloads quantum leaves to a Perceval backend.
+   Exactly **one** of ``processor``, ``remote_processor``, or ``session`` must
+   be provided.
 
+   :param processor: Perceval ``perceval.runtime.AProcessor``. Local processors
+      are stored as the local backend and do not require remote token
+      extraction. RemoteProcessor instances passed here are normalized to the
+      existing remote backend. Type: ``AProcessor | None``.
    :param remote_processor: Authenticated Perceval
       :class:`~pcvl.RemoteProcessor` (simulator or QPU-backed).
       Merlin clones it per chunk so concurrent jobs have independent state.
@@ -94,8 +104,9 @@ MerlinProcessor
    :param int chunk_concurrency: Max number of chunk jobs in flight **per
       quantum leaf** during a single call. ``>=1`` (default: 1, i.e., serial).
 
-   :raises TypeError: If both or neither of ``remote_processor`` and ``session``
-      are provided, or if the provided argument is not the expected type.
+   :raises TypeError: If exactly one backend is not provided, if the provided
+      argument is not the expected type, or if ``processor`` is an unsupported
+      remote AProcessor subclass.
 
    **Attributes**
 
@@ -104,6 +115,11 @@ MerlinProcessor
       :class:`BackendCapabilities` — Encapsulates backend name and available
       commands extracted at initialization time. This is the primary way to
       access backend capabilities.
+
+   .. attribute:: backend_kind
+
+      ``str`` — Active backend route: ``"local_processor"``,
+      ``"remote_processor"``, or ``"session"``.
 
    .. attribute:: backend_name
 
@@ -117,15 +133,21 @@ MerlinProcessor
       ``backend_capabilities.available_commands``. Commands exposed by the
       backend (e.g., ``"probs"``, ``"sample_count"``, ``"samples"``).
 
+   .. attribute:: processor
+
+      ``AProcessor | None`` — set when constructed with a local, non-remote
+      ``processor``; ``None`` for remote and session paths.
+
    .. attribute:: remote_processor
 
       ``RemoteProcessor | None`` — set when constructed with
-      ``remote_processor``; ``None`` for the session path.
+      ``remote_processor`` or a RemoteProcessor passed through ``processor``;
+      ``None`` for local and session paths.
 
    .. attribute:: session
 
       ``ISession | None`` — set when constructed with ``session``;
-      ``None`` for the RemoteProcessor path.
+      ``None`` for local and RemoteProcessor paths.
 
    .. attribute:: microbatch_size
                   default_timeout

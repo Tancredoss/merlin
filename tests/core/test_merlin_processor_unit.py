@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
-from perceval.runtime import RemoteProcessor
+from perceval.runtime import AProcessor, RemoteProcessor
 from perceval.runtime.session import ISession
 
 import merlin.core.merlin_processor as merlin_processor_module
@@ -193,6 +193,33 @@ def make_state() -> dict:
     return {"cancel_requested": False, "job_ids": []}
 
 
+def make_local_aprocessor(
+    available_commands: list[str] | None = None,
+) -> AProcessor:
+    """Build a local AProcessor mock for constructor-routing tests."""
+    processor = MagicMock(spec=AProcessor)
+    processor.is_remote = False
+    processor.name = "local:slos"
+    processor.available_commands = ["probs"] if available_commands is None else list(
+        available_commands
+    )
+    processor.copy = MagicMock(return_value=processor)
+    return processor
+
+
+def make_remote_processor_mock(
+    available_commands: list[str] | None = None,
+) -> RemoteProcessor:
+    """Build a RemoteProcessor mock for constructor-routing tests."""
+    remote_processor = MagicMock(spec=RemoteProcessor)
+    remote_processor.name = "sim:slos"
+    remote_processor.available_commands = (
+        ["probs"] if available_commands is None else list(available_commands)
+    )
+    remote_processor.proxies = None
+    return remote_processor
+
+
 # ────── Tests for BackendCapabilities ──────
 
 
@@ -236,6 +263,173 @@ def test_backend_capabilities_repr():
 
 
 # ────── Tests for MerlinProcessor with BackendCapabilities ──────
+
+
+def test_merlinprocessor_accepts_local_aprocessor_backend():
+    """Local AProcessor path stores the processor and backend kind."""
+    local_processor = make_local_aprocessor(["probs", "sample_count"])
+
+    proc = MerlinProcessor(processor=local_processor)
+
+    assert proc.processor is local_processor
+    assert proc.remote_processor is None
+    assert proc.session is None
+    assert proc.backend_kind == "local_processor"
+    assert proc.backend_capabilities.name == "local:slos"
+    assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
+
+
+def test_merlinprocessor_rejects_non_aprocessor_processor_backend():
+    """processor= rejects objects outside the Perceval AProcessor hierarchy."""
+    with pytest.raises(TypeError, match="Expected AProcessor"):
+        MerlinProcessor(processor=object())
+
+
+def test_merlinprocessor_rejects_missing_backend():
+    """Exactly one explicit backend is required."""
+    with pytest.raises(TypeError, match="Exactly one"):
+        MerlinProcessor()
+
+
+def test_merlinprocessor_accepts_remote_processor_through_processor_argument():
+    """RemoteProcessor passed through processor= is accepted."""
+    remote_processor = make_remote_processor_mock(["probs", "sample_count"])
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(processor=remote_processor)
+
+    assert proc.processor is None
+    assert proc.remote_processor is remote_processor
+    assert proc.session is None
+    assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
+
+
+def test_merlinprocessor_routes_remote_processor_argument_to_remote_backend():
+    """RemoteProcessor passed through processor= uses the remote backend kind."""
+    remote_processor = make_remote_processor_mock(["probs"])
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(processor=remote_processor)
+
+    assert proc.backend_kind == "remote_processor"
+
+
+def test_merlinprocessor_accepts_remote_processor_through_remote_processor_argument():
+    """Existing remote_processor= construction remains supported."""
+    remote_processor = make_remote_processor_mock(["probs"])
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(remote_processor=remote_processor)
+
+    assert proc.processor is None
+    assert proc.remote_processor is remote_processor
+    assert proc.session is None
+    assert proc.backend_kind == "remote_processor"
+
+
+def test_merlinprocessor_accepts_session_backend():
+    """Existing session= construction remains supported."""
+    session = MagicMock(spec=ISession)
+    remote_processor = make_remote_processor_mock(["probs", "sample_count"])
+    session.build_remote_processor.return_value = remote_processor
+
+    with patch.object(MerlinProcessor, "_extract_rp_token") as extract:
+        proc = MerlinProcessor(session=session)
+
+    extract.assert_not_called()
+    assert proc.processor is None
+    assert proc.remote_processor is None
+    assert proc.session is session
+    assert proc.backend_kind == "session"
+    assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
+
+
+def test_merlinprocessor_rejects_processor_and_remote_processor_together():
+    """processor= and remote_processor= are mutually exclusive."""
+    local_processor = make_local_aprocessor()
+    remote_processor = make_remote_processor_mock()
+
+    with pytest.raises(TypeError, match="mutually exclusive"):
+        MerlinProcessor(
+            processor=local_processor,
+            remote_processor=remote_processor,
+        )
+
+
+def test_merlinprocessor_rejects_processor_and_session_together():
+    """processor= and session= are mutually exclusive."""
+    local_processor = make_local_aprocessor()
+    session = MagicMock(spec=ISession)
+
+    with pytest.raises(TypeError, match="mutually exclusive"):
+        MerlinProcessor(processor=local_processor, session=session)
+
+
+def test_local_aprocessor_backend_does_not_extract_remote_token():
+    """Local AProcessor path leaves token extraction to remote backends only."""
+    local_processor = make_local_aprocessor(["probs"])
+
+    with patch.object(MerlinProcessor, "_extract_rp_token") as extract:
+        proc = MerlinProcessor(processor=local_processor)
+
+    extract.assert_not_called()
+    assert proc._token is None
+    assert proc.backend_kind == "local_processor"
+
+
+def test_local_aprocessor_backend_uses_available_commands_from_processor():
+    """Local AProcessor capabilities come from processor.available_commands."""
+    local_processor = make_local_aprocessor(["samples"])
+
+    proc = MerlinProcessor(processor=local_processor)
+
+    assert proc.available_commands == ("samples",)
+    assert proc.backend_capabilities.available_commands == ("samples",)
+
+
+def test_remote_processor_argument_copies_available_commands():
+    """processor=RemoteProcessor copies commands like remote_processor=."""
+    remote_processor = make_remote_processor_mock(["sample_count", "samples"])
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(processor=remote_processor)
+
+    assert proc.available_commands == ("sample_count", "samples")
+
+
+def test_remote_processor_argument_extracts_token_like_remote_processor_argument():
+    """processor=RemoteProcessor uses the existing remote token extraction path."""
+    remote_processor = make_remote_processor_mock(["probs"])
+
+    with patch.object(
+        MerlinProcessor, "_extract_rp_token", return_value="test-token"
+    ) as extract:
+        proc = MerlinProcessor(processor=remote_processor)
+
+    extract.assert_called_once_with(remote_processor)
+    assert proc._token == "test-token"
+
+
+def test_merlinprocessor_rejects_unknown_remote_aprocessor_subclass():
+    """Remote AProcessor subclasses must be supported explicitly."""
+    remote_aprocessor = make_local_aprocessor(["probs"])
+    remote_aprocessor.is_remote = True
+
+    with pytest.raises(TypeError, match="Unsupported remote AProcessor subclass"):
+        MerlinProcessor(processor=remote_aprocessor)
+
+
+def test_local_aprocessor_backend_requires_copy_method():
+    """Local AProcessor without copy() raises TypeError."""
+    processor = MagicMock(spec=AProcessor)
+    processor.is_remote = False
+    processor.name = "local:slos"
+    processor.available_commands = ["probs"]
+    # Do not set processor.copy — spec=AProcessor means copy is not accessible,
+    # so getattr(processor, "copy", None) returns None.
+
+    with pytest.raises(TypeError, match="copy\\(\\)"):
+        MerlinProcessor(processor=processor)
 
 
 def test_remote_processor_path_stores_backend_capabilities():
