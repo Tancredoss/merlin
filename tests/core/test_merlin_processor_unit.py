@@ -1252,6 +1252,31 @@ def test_run_chunk_local_executes_real_perceval_processor():
     torch.testing.assert_close(output, torch.tensor([[1.0, 0.0], [1.0, 0.0]]))
 
 
+def test_run_chunk_local_executes_real_clifford_processor_samples():
+    """Local chunk execution handles real Perceval samples results."""
+    pcvl_proc = Processor("CliffordClifford2017")
+    proc = MerlinProcessor(processor=pcvl_proc)
+    layer = FakeLayer(final_keys=[(1, 0), (0, 1)])
+    config = SimpleNamespace(
+        circuit=pcvl.Circuit(2),
+        input_state=[1, 0],
+        input_param_order=[],
+    )
+
+    assert proc.available_commands == ("samples",)
+
+    output = proc._run_chunk_local(
+        layer,
+        config,
+        torch.empty((2, 0)),
+        nsample=8,
+        state=make_state(),
+        deadline=None,
+    )
+
+    torch.testing.assert_close(output, torch.tensor([[1.0, 0.0], [1.0, 0.0]]))
+
+
 def test_submit_job_prefers_probs_when_available_without_samples():
     """Probability-capable backends use probs for exact probability requests."""
     proc = make_processor(["probs", "sample_count"])
@@ -1549,6 +1574,27 @@ def test_process_batch_results_normalizes_counts():
     result = proc._process_batch_results(raw_results, 1, layer)
 
     assert torch.allclose(result, torch.tensor([[0.75, 0.25]]))
+
+
+def test_process_batch_results_normalizes_sample_sequences():
+    """Sequence sample payloads are counted and normalized per row."""
+    proc = make_processor(["samples"])
+    layer = FakeLayer()
+    raw_results = {
+        "results_list": [
+            {
+                "results": [
+                    pcvl.BasicState([1, 0]),
+                    pcvl.BasicState([1, 0]),
+                    pcvl.BasicState([0, 1]),
+                ]
+            }
+        ],
+    }
+
+    result = proc._process_batch_results(raw_results, 1, layer)
+
+    assert torch.allclose(result, torch.tensor([[2 / 3, 1 / 3]]))
 
 
 def test_process_batch_results_passes_probability_payloads_through():

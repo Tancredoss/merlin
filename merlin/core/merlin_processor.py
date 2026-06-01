@@ -1621,7 +1621,9 @@ class MerlinProcessor:
                 if i >= batch_size:
                     break
                 if "results" in result_item:
-                    state_counts = result_item["results"]
+                    state_counts = self._normalize_state_result_counts(
+                        result_item["results"], is_probability
+                    )
                     probs = torch.zeros(dist_size)
                     if state_counts:
                         if valid_states is not None:
@@ -1666,6 +1668,63 @@ class MerlinProcessor:
             output_tensors.append(torch.zeros(dist_size))
 
         return torch.stack(output_tensors[:batch_size])
+
+    def _normalize_state_result_counts(
+        self, state_results: Any, is_probability: bool
+    ) -> dict[Any, float | int]:
+        """Normalize Perceval state results to a state-count mapping.
+
+        Parameters
+        ----------
+        state_results : Any
+            Result object returned by a Perceval sampler command. Probability
+            and ``sample_count`` commands return mapping-like objects, while
+            ``samples`` returns a sequence-like collection of sampled states.
+        is_probability : bool
+            Whether ``state_results`` came from a probability command.
+
+        Returns
+        -------
+        dict[Any, float | int]
+            Mapping from state representation to probability or sample count.
+
+        Raises
+        ------
+        RuntimeError
+            If probability results are not mapping-like, or sample results are
+            neither mapping-like nor iterable state samples.
+        """
+        result_items = getattr(state_results, "items", None)
+        if callable(result_items):
+            return dict(result_items())
+
+        if is_probability:
+            raise RuntimeError(
+                "Probability results must be a mapping of states to probabilities."
+            )
+
+        if isinstance(state_results, (str, bytes)):
+            raise RuntimeError(
+                "Sample results must be a mapping of states to counts or an "
+                "iterable of sampled states."
+            )
+
+        try:
+            sample_iterator = iter(state_results)
+        except TypeError as exc:
+            raise RuntimeError(
+                "Sample results must be a mapping of states to counts or an "
+                "iterable of sampled states."
+            ) from exc
+
+        state_counts: dict[Any, int] = {}
+        for sampled_state in sample_iterator:
+            state_tuple = self._parse_perceval_state(sampled_state)
+            if not state_tuple:
+                continue
+            state_counts[state_tuple] = state_counts.get(state_tuple, 0) + 1
+
+        return state_counts
 
     def _get_state_mapping(
         self, layer: MerlinModule
