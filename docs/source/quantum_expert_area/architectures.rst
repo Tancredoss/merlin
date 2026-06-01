@@ -31,7 +31,7 @@ A typical photonic circuit is defined by:
 - the number and initial positions of photons,
 - and the sequence of optical components applied.
 
- For instance, the following example (from `Perceval Notebook <https://perceval.quandela.net/docs/v1.2/notebooks/Tutorial.html>`_) shows a simple photonic circuit with 4 modes.
+ For instance, the following example (from `Perceval Notebook <https://perceval.quandela.net/docs/v1.2/notebooks/Circuit_Tutorial.html>`_) shows different ways to build simple photonic circuits.
  The circuit includes 6 static beam splitters, 4 [configurable](#parameters-in-photonic-circuits) phase shifters, and 1 permutation.
 
 .. image:: ../_static/img/notebooks_Tutorial_28_0.svg
