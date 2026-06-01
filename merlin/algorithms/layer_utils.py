@@ -983,3 +983,34 @@ def normalize_output_key(
     if isinstance(key, torch.Tensor):
         return tuple(int(v) for v in key.tolist())
     return tuple(int(v) for v in key)
+
+
+def sum_input_elements(input_state) -> float | int:
+    """
+    Calcule la somme des éléments d'un état d'entrée en fonction de sa structure mémoire.
+    """
+    if input_state is None:
+        return 0.0
+
+    # 1. Structures de données classiques (Calcul direct)
+    if isinstance(input_state, torch.Tensor):
+        return torch.sum(input_state).item()
+
+    if isinstance(input_state, (list, tuple)):
+        return sum(input_state)
+
+    # 2. Structures quantiques Perceval (Représentations creuses)
+    if isinstance(input_state, pcvl.BasicState):
+        return input_state.n
+
+    if isinstance(input_state, pcvl.StateVector):
+        return input_state.n
+
+    # 3. Type enveloppe Merlin (merlin.core.state_vector.StateVector)
+    # L'objet enveloppe souvent un tenseur classique pour l'amplitude encoding
+    if type(input_state).__name__ == "StateVector":
+        if hasattr(input_state, 'tensor') and isinstance(input_state.tensor, torch.Tensor):
+            return torch.sum(input_state.tensor).item()
+
+    # Sécurité finale si un type inattendu est injecté
+    raise TypeError(f"Type non pris en charge par le parseur : {type(input_state)}")
