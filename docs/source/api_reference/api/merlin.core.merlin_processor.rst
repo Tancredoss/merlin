@@ -76,7 +76,7 @@ BackendCapabilities
 
 MerlinProcessor
 ---------------
-.. class:: MerlinProcessor(processor=None, remote_processor=None, session=None, microbatch_size=32, timeout=3600.0, max_shots_per_call=None, chunk_concurrency=1)
+.. class:: MerlinProcessor(processor=None, remote_processor=None, session=None, microbatch_size=32, timeout=3600.0, max_shots_per_call=None, chunk_concurrency=1, token=None)
 
    Create a processor that offloads quantum leaves to a Perceval backend.
    Exactly **one** of ``processor``, ``remote_processor``, or ``session`` must
@@ -103,10 +103,17 @@ MerlinProcessor
       Type: ``int | None``.
    :param int chunk_concurrency: Max number of chunk jobs in flight **per
       quantum leaf** during a single call. ``>=1`` (default: 1, i.e., serial).
+   :param token: Optional authentication token forwarded to cloned remote
+      processors. If omitted, Merlin extracts the token from the
+      RemoteProcessor's RPC handler. Ignored for local and session paths.
+      Type: ``str | None``.
 
    :raises TypeError: If exactly one backend is not provided, if the provided
       argument is not the expected type, or if ``processor`` is an unsupported
       remote AProcessor subclass.
+   :raises ValueError: If no authentication token can be resolved on the
+      RemoteProcessor path (neither provided explicitly nor extractable from
+      the processor's RPC handler).
 
    **Attributes**
 

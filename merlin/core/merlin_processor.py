@@ -1113,7 +1113,54 @@ class MerlinProcessor:
         state: dict,
         deadline: float | None,
     ) -> torch.Tensor:
-        """Execute a single local AProcessor chunk with a shallow processor copy."""
+        """Execute a single local AProcessor chunk with a shallow processor copy.
+
+        The processor is shallow-copied before each execution so that
+        ``set_circuit``, ``with_input``, and ``min_detected_photons_filter``
+        calls do not mutate the shared ``self.processor`` instance.  This
+        keeps concurrent chunk calls independent without requiring
+        ``AProcessor`` to expose a ``copy`` method.
+
+        Cancellation and deadline are checked *before* execution (to skip work
+        the caller no longer needs) and *after* execution (to avoid returning
+        stale results when the deadline has passed during a long synchronous
+        run).
+
+        Parameters
+        ----------
+        layer : MerlinModule
+            The quantum leaf being executed.  Used by
+            :meth:`_process_batch_results` to map raw sampler output back to
+            a tensor.
+        config : ValidatedLayerConfig
+            Validated circuit and input configuration extracted from ``layer``.
+        input_chunk : torch.Tensor
+            2D tensor of shape ``(batch_size, n_params)`` containing the
+            circuit parameter values for this chunk.
+        nsample : int | None
+            Number of samples per row.  ``None`` or ``<= 0`` triggers exact
+            probability computation when the backend supports ``"probs"``.
+        state : dict
+            Shared call-state dictionary.  Must contain the key
+            ``"cancel_requested"`` (bool).
+        deadline : float | None
+            Absolute wall-clock deadline (``time.time()`` seconds).  ``None``
+            means no deadline.
+
+        Returns
+        -------
+        torch.Tensor
+            2D output tensor of shape ``(batch_size, n_outputs)`` produced by
+            :meth:`_process_batch_results`.
+
+        Raises
+        ------
+        concurrent.futures.CancelledError
+            If ``state["cancel_requested"]`` is ``True`` before or after
+            execution.
+        TimeoutError
+            If ``deadline`` has elapsed before or after execution.
+        """
         from concurrent.futures import CancelledError
 
         if state.get("cancel_requested"):
