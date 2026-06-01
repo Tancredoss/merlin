@@ -20,6 +20,7 @@ from perceval.runtime import AProcessor, Processor, RemoteProcessor
 from perceval.runtime.session import ISession
 
 import merlin.core.merlin_processor as merlin_processor_module
+from merlin.algorithms.module import MerlinModule
 from merlin.core.circuit import Circuit
 from merlin.core.merlin_processor import (
     BackendCapabilities,
@@ -418,6 +419,15 @@ def test_merlinprocessor_rejects_processor_and_session_together():
 
     with pytest.raises(TypeError, match="mutually exclusive"):
         MerlinProcessor(processor=local_processor, session=session)
+
+
+def test_merlinprocessor_rejects_remote_processor_and_session_together():
+    """remote_processor= and session= are mutually exclusive."""
+    remote_processor = make_remote_processor_mock()
+    session = MagicMock(spec=ISession)
+
+    with pytest.raises(TypeError, match="mutually exclusive"):
+        MerlinProcessor(remote_processor=remote_processor, session=session)
 
 
 def test_local_aprocessor_backend_does_not_extract_remote_token():
@@ -896,6 +906,58 @@ def test_run_chunk_dispatches_local_processor_backend():
     proc._run_chunk_local.assert_called_once_with(
         layer, config, input_chunk, None, state, deadline
     )
+
+
+def test_local_aprocessor_backend_can_execute_quantum_leaf_in_default_path():
+    """forward() routes local AProcessor quantum leaves through _run_chunk_local."""
+
+    class LocalQuantumLeaf(MerlinModule):
+        def __init__(self) -> None:
+            super().__init__()
+            self.uid = "local-leaf"
+
+        def export_config(self):
+            return {
+                "circuit": pcvl.Circuit(m=2),
+                "input_state": [1, 0],
+                "input_param_order": ["theta_0", "theta_1"],
+            }
+
+    proc = MerlinProcessor(
+        processor=make_local_aprocessor(["probs"]),
+        microbatch_size=2,
+        chunk_concurrency=1,
+    )
+    layer = LocalQuantumLeaf()
+    layer.eval()
+    input_tensor = torch.tensor(
+        [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]], dtype=torch.float32
+    )
+    observed_chunks: list[torch.Tensor] = []
+
+    def fake_run_chunk_local(
+        layer_arg,
+        config,
+        input_chunk,
+        nsample,
+        state,
+        deadline,
+    ):
+        assert layer_arg is layer
+        assert isinstance(config, ValidatedLayerConfig)
+        assert nsample is None
+        assert state["cancel_requested"] is False
+        assert deadline is not None
+        observed_chunks.append(input_chunk.clone())
+        return torch.ones(input_chunk.shape[0], 2)
+
+    proc._run_chunk_local = MagicMock(side_effect=fake_run_chunk_local)
+
+    output = proc.forward(layer, input_tensor, timeout=10.0)
+
+    torch.testing.assert_close(output, torch.ones(3, 2))
+    assert proc._run_chunk_local.call_count == 2
+    assert [chunk.shape[0] for chunk in observed_chunks] == [2, 1]
 
 
 def test_run_chunk_local_uses_processor_shallow_copy_per_execution():
