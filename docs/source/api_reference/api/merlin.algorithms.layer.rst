@@ -157,15 +157,15 @@ Fock state (a precise configuration of ``n_photons`` over ``m`` modes) or a supe
 computation space (for example Bell pairs or GHZ states). :class:`~merlin.algorithms.layer.QuantumLayer` accepts the
 following representations:
 
-* `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ – a single configuration such as ``pcvl.BasicState([1, 0, 1, 0])``;
+* `pcvl.BasicState <https://perceval.quandela.net/docs/v1.2/reference/utils/states.html>`_ – a single configuration such as ``pcvl.BasicState([1, 0, 1, 0])``;
 * :class:`~exqalibur.StateVector` – an arbitrary superposition of basic states with complex amplitudes;
 * Python lists/tuples, e.g. ``[1, 0, 1, 0]``. These are accepted as convenience inputs and are immediately converted
-    to a Perceval `perceval.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_.
+    to a Perceval `perceval.BasicState <https://perceval.quandela.net/docs/v1.2/reference/utils/states.html>`_.
 
 .. note::
 
      For Fock/occupation inputs, :class:`~merlin.algorithms.layer.QuantumLayer` stores ``.input_state`` as a Perceval
-     `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_. If you need the raw occupation vector, use ``list(layer.input_state)``.
+     `pcvl.BasicState <https://perceval.quandela.net/docs/v1.2/reference/utils/states.html>`_. If you need the raw occupation vector, use ``list(layer.input_state)``.
 
 When ``input_state`` is passed, the layer always injects that photonic state. In more elaborate pipelines you may want
 to cascade circuits and let the output amplitudes of the previous layer become the input state of the next. Merlin
