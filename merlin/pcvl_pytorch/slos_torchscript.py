@@ -38,7 +38,10 @@ import torch.jit as jit
 
 from merlin.algorithms.layer_utils import NoiseGroups
 from merlin.core.computation_space import ComputationSpace
-from merlin.pcvl_pytorch.noisy_slos import NoisySLOSComputeGraph
+from merlin.pcvl_pytorch.noisy_slos import (
+    NoisyG2SLOSComputeGraph,
+    NoisySLOSComputeGraph,
+)
 from merlin.utils.deprecations import raise_no_bunching_deprecated
 from merlin.utils.dtypes import resolve_float_complex
 from merlin.utils.normalization import (
@@ -1083,7 +1086,7 @@ def build_slos_distribution_computegraph(
     device: torch.device | str | None = None,
     dtype: torch.dtype = torch.float,
     index_photons: list[tuple[int, ...]] | None = None,
-) -> SLOSComputeGraph | NoisySLOSComputeGraph:
+) -> SLOSComputeGraph | NoisySLOSComputeGraph | NoisyG2SLOSComputeGraph:
     """Construct a reusable SLOS computation graph.
 
     Parameters
@@ -1100,7 +1103,7 @@ def build_slos_distribution_computegraph(
     no_bunching : bool | None
         Deprecated legacy flag. Use ``computation_space`` instead.
     keep_keys : bool
-        Whether to keep the list of mapped Fock states. Default is ``True``.
+        Whether to keep the list of mapped Fock states. It does not apply for simulations with g2 noise. Default is ``True``.
     noise_groups : NoiseGroups|None
         The noise groups defined in the creation of the QuantumLayer. Default is None (no noise).
     device : torch.device | str | None
@@ -1112,7 +1115,7 @@ def build_slos_distribution_computegraph(
 
     Returns
     -------
-    SLOSComputeGraph
+    SLOSComputeGraph | NoisySLOSComputeGraph | NoisyG2SLOSComputeGraph
         Pre-built computation graph ready for repeated evaluations.
 
     """
@@ -1123,7 +1126,7 @@ def build_slos_distribution_computegraph(
     if computation_space is None:
         computation_space = ComputationSpace.UNBUNCHED
 
-    compute_graph: SLOSComputeGraph | NoisySLOSComputeGraph
+    compute_graph: SLOSComputeGraph | NoisySLOSComputeGraph | NoisyG2SLOSComputeGraph
 
     # If there is no source noise, use the regular SLOS graph
     # No noise at all
@@ -1151,15 +1154,20 @@ def build_slos_distribution_computegraph(
             index_photons,
         )
     else:
-        compute_graph = NoisySLOSComputeGraph(
-            noise_groups,
-            m,
-            n_photons,
-            computation_space,
-            keep_keys,
-            device,
-            dtype,
-        )
+        if "g2" in noise_groups.source:
+            compute_graph = NoisyG2SLOSComputeGraph(
+                noise_groups, m, n_photons, computation_space, device, dtype
+            )
+        else:
+            compute_graph = NoisySLOSComputeGraph(
+                noise_groups,
+                m,
+                n_photons,
+                computation_space,
+                keep_keys,
+                device,
+                dtype,
+            )
 
     return compute_graph
 
@@ -1306,7 +1314,7 @@ def compute_slos_distribution(
         dtype=dtype,
         index_photons=index_photons,
     )
-    if isinstance(graph, NoisySLOSComputeGraph):
+    if isinstance(graph, (NoisySLOSComputeGraph, NoisyG2SLOSComputeGraph)):
         raise RuntimeError(
             "compute_slos_distribution does not support source-noise graphs; "
             "build a noisy graph explicitly and use compute_probs instead."
@@ -1341,7 +1349,7 @@ if __name__ == "__main__":
         graph = build_slos_distribution_computegraph(m, n_photons, dtype=dtype)
         build_time = time.time() - start_time
 
-        if isinstance(graph, NoisySLOSComputeGraph):
+        if isinstance(graph, (NoisySLOSComputeGraph, NoisyG2SLOSComputeGraph)):
             raise RuntimeError(
                 "Example expected a non-noisy SLOSComputeGraph, but a noisy graph was built."
             )

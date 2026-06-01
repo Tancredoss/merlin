@@ -6,6 +6,11 @@ merlin.pcvl\_pytorch.noisy\_slos module
 
 .. currentmodule:: merlin.pcvl_pytorch.noisy_slos
 
+.. autoclass:: NoisyG2SLOSComputeGraph
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. autoclass:: NoisySLOSComputeGraph
    :members:
    :undoc-members:

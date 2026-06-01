@@ -212,68 +212,7 @@ def test_noisy_layer_with_probs_strategy_raises_not_implemented():
     circ.add_entangling_layer()
     circ.add_angle_encoding()
     circ.add_entangling_layer()
-    with pytest.warns(
-        UserWarning,
-        match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
-    ):
-        with pytest.raises(
-            NotImplementedError,
-            match=re.escape(
-                "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
-            ),
-        ):
-            _ = ml.QuantumLayer(
-                n_photons=2,
-                input_size=5,
-                builder=circ,
-                noise=pcvl.NoiseModel(
-                    g2=0.2,
-                ),
-                measurement_strategy=ml.MeasurementStrategy.probs(
-                    computation_space=ml.ComputationSpace.FOCK
-                ),
-            )
-    with pytest.warns(
-        UserWarning,
-        match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
-    ):
-        with pytest.raises(
-            NotImplementedError,
-            match=re.escape(
-                "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
-            ),
-        ):
-            _ = ml.QuantumLayer(
-                n_photons=2,
-                input_size=5,
-                builder=circ,
-                noise=pcvl.NoiseModel(
-                    g2=0.3,
-                ),
-                measurement_strategy=ml.MeasurementStrategy.probs(
-                    computation_space=ml.ComputationSpace.FOCK
-                ),
-            )
 
-    with pytest.raises(
-        NotImplementedError,
-        match=re.escape(
-            "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2_distinguishable', 'g2']."
-        ),
-    ):
-        _ = ml.QuantumLayer(
-            n_photons=2,
-            input_size=5,
-            builder=circ,
-            noise=pcvl.NoiseModel(
-                indistinguishability=0.3,
-                g2=0.3,
-                g2_distinguishable=True,
-            ),
-            measurement_strategy=ml.MeasurementStrategy.probs(
-                computation_space=ml.ComputationSpace.FOCK
-            ),
-        )
     with pytest.raises(
         NotImplementedError,
         match=re.escape(
@@ -411,13 +350,13 @@ def test_impossible_noise():
         UserWarning,
         match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
     ):
-        with pytest.raises(
-            NotImplementedError,
-            match=re.escape(
-                "The following noises are not implemented yet for the QuantumLayer. Source noises: ['g2']."
-            ),
-        ):
-            _ = ml.QuantumLayer(n_photons=2, input_size=5, builder=circ, noise=noise)
+        _ = ml.QuantumLayer(
+            n_photons=2,
+            input_size=5,
+            builder=circ,
+            noise=noise,
+            computation_space=ml.ComputationSpace.FOCK,
+        )
 
     # Verify that g2_distinguishable was auto-corrected
     assert noise.g2_distinguishable is False
@@ -532,9 +471,7 @@ def test_not_implemented_error_lists_classified_groups():
             )
 
     message = str(exc_info.value)
-    assert "Source" in message
     assert "Circuit" in message
-    assert "g2" in message
     assert "phase_error" in message
 
 
@@ -953,3 +890,162 @@ def test_computation_space_changed():
         assert layer.output_size == 15
         assert layer.input_size == 15
         assert layer(torch.ones(15)).size(0) == 15
+
+
+# Regression tests for g2 implementation (PML-286)
+
+
+def test_g2_with_probs_no_longer_raises_not_implemented():
+    """Regression: NoiseModel(g2=0.05) with probs output no longer raises NotImplementedError."""
+    circ = ml.CircuitBuilder(n_modes=3)
+    circ.add_entangling_layer()
+    circ.add_angle_encoding(modes=[0, 1])
+    circ.add_entangling_layer()
+
+    # Should not raise NotImplementedError anymore
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=2,
+        builder=circ,
+        noise=pcvl.NoiseModel(indistinguishability=0.3, g2=0.05),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    # Should be able to forward pass without error
+    x = torch.randn(1, 2)
+    output = layer(x)
+    assert output is not None
+
+
+def test_g2_indistinguishable_with_probs_no_longer_raises():
+    """Regression: NoiseModel(g2=0.05, g2_distinguishable=False) with probs no longer raises."""
+    circ = ml.CircuitBuilder(n_modes=3)
+    circ.add_entangling_layer()
+    circ.add_angle_encoding(modes=[0, 1])
+    circ.add_entangling_layer()
+
+    # Should not raise NotImplementedError anymore
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=2,
+        builder=circ,
+        noise=pcvl.NoiseModel(g2=0.05, g2_distinguishable=False),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    # Should be able to forward pass without error
+    x = torch.randn(1, 2)
+    output = layer(x)
+    assert output is not None
+
+    # Should not raise NotImplementedError anymore
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=2,
+        builder=circ,
+        noise=pcvl.NoiseModel(
+            indistinguishability=0.7, g2=0.05, g2_distinguishable=True
+        ),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    # Should be able to forward pass without error
+    x = torch.randn(1, 2)
+    output = layer(x)
+    assert output is not None
+
+
+def test_brightness_still_uses_post_measurement_approximation():
+    """Regression: NoiseModel(brightness=0.8) still uses post-measurement approximation path."""
+    circ = ml.CircuitBuilder(n_modes=3)
+    circ.add_entangling_layer()
+    circ.add_angle_encoding(modes=[0, 1])
+
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=2,
+        builder=circ,
+        noise=pcvl.NoiseModel(brightness=0.8),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    # Verify brightness is classified as post_measurement
+    assert "brightness" in layer._noise_groups.post_measurement
+    assert layer._noise_groups.post_measurement["brightness"] == 0.8
+
+    # Should forward without error
+    x = torch.randn(1, 2)
+    output = layer(x)
+    assert output is not None
+
+
+def test_g2_layer_forward_returns_sectored_distribution():
+    """Regression: layer(x) returns SectoredDistribution when g2 > 0."""
+    circ = ml.CircuitBuilder(n_modes=3)
+    circ.add_entangling_layer()
+    circ.add_angle_encoding(modes=[0, 1])
+    circ.add_entangling_layer()
+
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=2,
+        builder=circ,
+        noise=pcvl.NoiseModel(g2=0.1, g2_distinguishable=False),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    x = torch.randn(1, 2)
+    output = layer(x)
+
+    # Output should be SectoredDistribution when g2 > 0
+    from merlin.core import SectoredDistribution
+
+    assert isinstance(output, SectoredDistribution)
+    assert len(output.sectors) > 0
+
+
+def test_g2_gradient_regression():
+    """Regression: loss.backward() completes and layer.thetas.grad is not None for g2 > 0."""
+    circ = ml.CircuitBuilder(n_modes=3)
+    circ.add_entangling_layer(trainable=True)
+    circ.add_angle_encoding(modes=[0, 1])
+    circ.add_entangling_layer(trainable=True)
+
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=2,
+        builder=circ,
+        noise=pcvl.NoiseModel(g2=0.05, g2_distinguishable=False),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    x = torch.randn(1, 2, requires_grad=True)
+    output = layer(x)
+    state = torch.zeros_like(output.sectors[0].tensor)
+    state[0] = 1
+    loss = ((output.sectors[0].tensor - state) ** 2).mean()
+    loss.backward()
+
+    # # Verify gradients are computed
+    assert x.grad is not None
+    assert torch.any(x.grad != 0)
+
+    # Verify layer parameters have gradients
+    for param in layer.parameters():
+        if param.requires_grad:
+            assert param.grad is not None
+
+    for param in layer.thetas:
+        assert param.grad is not None

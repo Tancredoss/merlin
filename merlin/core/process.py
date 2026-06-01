@@ -30,7 +30,11 @@ from typing import Literal, overload
 import perceval as pcvl
 import torch
 
-from merlin.pcvl_pytorch.noisy_slos import NoisySLOSComputeGraph
+from merlin.core.sectored_distribution import SectoredDistribution
+from merlin.pcvl_pytorch.noisy_slos import (
+    NoisyG2SLOSComputeGraph,
+    NoisySLOSComputeGraph,
+)
 
 from ..algorithms.layer_utils import NoiseGroups
 from ..pcvl_pytorch import (
@@ -171,13 +175,15 @@ class ComputationProcess(AbstractComputationProcess):
             device=self.device,
             dtype=self.dtype,
         )
-        self.noisy_simulation = isinstance(self.simulation_graph, NoisySLOSComputeGraph)
+        self.noisy_simulation = isinstance(
+            self.simulation_graph, NoisySLOSComputeGraph
+        ) or isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph)
 
     def compute(
         self,
         parameters: list[torch.Tensor],
         amplitude_encoding: bool = False,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | SectoredDistribution:
         """Compute output amplitudes for the configured input state.
 
         Parameters
@@ -190,8 +196,10 @@ class ComputationProcess(AbstractComputationProcess):
 
         Returns
         -------
-        torch.Tensor
-            Output probabilities if the simulation is noisy and amplitudes otherwise produced by the simulation graph.
+        torch.Tensor | SectoredDistribution
+            Output probabilities if the simulation is noisy (a
+            :class:`~merlin.core.sectored_distribution.SectoredDistribution` when g2
+            noise is present) and amplitudes otherwise produced by the simulation graph.
         """
         # Generate unitary matrix from parameters
 
@@ -208,36 +216,70 @@ class ComputationProcess(AbstractComputationProcess):
 
                 active_mask = torch.any(weights >= 1e-13, dim=0)
                 active_indices = torch.nonzero(active_mask, as_tuple=True)[0].tolist()
+                # If there is g2 noise, the data needs to be treated per photon sector
+                if isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph):
+                    output_distribution: SectoredDistribution | None = None
+                    for idx in active_indices:
+                        input_fock_state = self.simulation_graph.mapped_keys[0][idx]
+                        probs = self.simulation_graph.compute_probs(
+                            unitary, input_fock_state
+                        )
 
-                probs_per_state = []
-                for idx in active_indices:
-                    input_fock_state = self.simulation_graph.mapped_keys[idx]
-                    _, probs = self.simulation_graph.compute_probs(
-                        unitary, input_fock_state
+                        for sector in probs.sectors:
+                            if sector.tensor.ndim == 1:
+                                sector.tensor = sector.tensor.unsqueeze(0)
+                            selected_weights = weights[:, idx].to(sector.tensor.dtype)
+                            sector.tensor = torch.einsum(
+                                "i,bo->ibo", selected_weights, sector.tensor
+                            )
+                            if sector.tensor.shape[1] == 1:
+                                sector.tensor = sector.tensor.squeeze(1)
+
+                        if output_distribution is None:
+                            output_distribution = probs
+                        else:
+                            for sector in output_distribution.sectors:
+                                sector.tensor = (
+                                    sector.tensor
+                                    + probs.get_sector(sector.n_photons).tensor
+                                )
+
+                    return output_distribution
+                else:
+                    tensor_probs_per_state: list[torch.Tensor] = []
+                    for idx in active_indices:
+                        input_fock_state = self.simulation_graph.mapped_keys[idx]
+                        _, probs = self.simulation_graph.compute_probs(
+                            unitary, input_fock_state
+                        )
+                        if probs.ndim == 1:
+                            probs = probs.unsqueeze(0)
+                        tensor_probs_per_state.append(probs)
+
+                    # probs_stacked: [n_active, unitary_batch, n_output_states]
+                    probs_stacked = torch.stack(tensor_probs_per_state, dim=0)
+                    # selected_weights: [input_batch, n_active]
+                    selected_weights = weights[:, active_indices].to(
+                        probs_stacked.dtype
                     )
-                    if probs.ndim == 1:
-                        probs = probs.unsqueeze(0)
-                    probs_per_state.append(probs)
+                    # mixed_probs: [input_batch, unitary_batch, n_output_states]
+                    mixed_probs = torch.einsum(
+                        "is,sbo->ibo", selected_weights, probs_stacked
+                    )
 
-                # probs_stacked: [n_active, unitary_batch, n_output_states]
-                probs_stacked = torch.stack(probs_per_state, dim=0)
-                # selected_weights: [input_batch, n_active]
-                selected_weights = weights[:, active_indices].to(probs_stacked.dtype)
-                # mixed_probs: [input_batch, unitary_batch, n_output_states]
-                mixed_probs = torch.einsum(
-                    "is,sbo->ibo", selected_weights, probs_stacked
-                )
+                    if mixed_probs.shape[1] == 1:
+                        mixed_probs = mixed_probs.squeeze(
+                            1
+                        )  # [input_batch, n_output_states]
 
-                if mixed_probs.shape[1] == 1:
-                    mixed_probs = mixed_probs.squeeze(
-                        1
-                    )  # [input_batch, n_output_states]
-
-                return mixed_probs
+                    return mixed_probs
             else:
-                keys, probs = self.simulation_graph.compute_probs(
-                    unitary, self.input_state
-                )
+                result = self.simulation_graph.compute_probs(unitary, self.input_state)
+                # NoisyG2SLOSComputeGraph returns SectoredDistribution directly
+                if isinstance(result, SectoredDistribution):
+                    return result
+                # NoisySLOSComputeGraph returns (keys, probs) tuple
+                keys, probs = result
                 return probs
         else:
             if isinstance(self.input_state, torch.Tensor):

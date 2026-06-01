@@ -28,13 +28,14 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, ClassVar, TypeAlias
+from typing import TYPE_CHECKING, ClassVar, TypeAlias, cast
 
 import torch
 
 from merlin.core.computation_space import ComputationSpace
 from merlin.core.partial_measurement import PartialMeasurement
-from merlin.measurement.process import partial_measurement
+from merlin.core.sectored_distribution import SectoredDistribution
+from merlin.measurement.process import SamplingProcess, partial_measurement
 from merlin.utils.deprecations import warn_deprecated_enum_access
 from merlin.utils.grouping import LexGrouping, ModGrouping
 
@@ -73,29 +74,35 @@ class BaseMeasurementStrategy:
     def process(
         self,
         *,
-        distribution: torch.Tensor,
-        amplitudes: torch.Tensor,
+        distribution: torch.Tensor | SectoredDistribution,
+        amplitudes: torch.Tensor | SectoredDistribution,
         apply_sampling: bool,
         effective_shots: int,
-        sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
-        apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
-        apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        sampler: SamplingProcess,
+        apply_photon_loss: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
+        apply_detectors: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    ) -> torch.Tensor | PartialMeasurement:
+    ) -> torch.Tensor | PartialMeasurement | SectoredDistribution:
         """Return the processed result for the selected measurement strategy.
 
         Parameters
         ----------
-        distribution : torch.Tensor
-            Probability distribution before final post-processing.
-        amplitudes : torch.Tensor
-            Raw amplitudes before measurement-specific processing.
+        distribution : torch.Tensor | SectoredDistribution
+            Probability distribution before final post-processing, or a sectored
+            distribution in the g2 noise case.
+        amplitudes : torch.Tensor | SectoredDistribution
+            Raw amplitudes before measurement-specific processing, or a sectored
+            distribution in the g2 noise case.
         apply_sampling : bool
             Whether sampling should be applied.
         effective_shots : int
             Effective number of shots used for sampling.
-        sample_fn : Callable[[torch.Tensor, int], torch.Tensor]
-            Sampling function.
+        sampler : SamplingProcess
+            Sampling process object providing sampling methods.
         apply_photon_loss : Callable[[torch.Tensor], torch.Tensor]
             Photon-loss transform.
         apply_detectors : Callable[[torch.Tensor], torch.Tensor]
@@ -105,7 +112,7 @@ class BaseMeasurementStrategy:
 
         Returns
         -------
-        torch.Tensor | PartialMeasurement
+        torch.Tensor | PartialMeasurement | SectoredDistribution
             Processed measurement result.
         """
         raise NotImplementedError
@@ -120,24 +127,37 @@ class DistributionStrategy(BaseMeasurementStrategy):
     def process(
         self,
         *,
-        distribution: torch.Tensor,
-        amplitudes: torch.Tensor,
+        distribution: torch.Tensor | SectoredDistribution,
+        amplitudes: torch.Tensor | SectoredDistribution,
         apply_sampling: bool,
         effective_shots: int,
-        sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
-        apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
-        apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        sampler: SamplingProcess,
+        apply_photon_loss: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
+        apply_detectors: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | SectoredDistribution:
         # Distribution strategies apply detector/noise transforms before sampling.
         distribution = apply_photon_loss(distribution)
         distribution = apply_detectors(distribution)
-
-        if apply_sampling and effective_shots > 0:
-            distribution = sample_fn(distribution, effective_shots)
-        if grouping is not None:
-            return grouping(distribution)
-        return distribution
+        if isinstance(distribution, SectoredDistribution):
+            if grouping:
+                raise RuntimeError(
+                    f"A grouping strategy cannot be applied to the output of a simulation with g2 noise. Indeed, since this noise creates input states with more photons than expected, multiple photon sectors are explored. The fock spaces explored are m={distribution.sectors[0].n_modes} modes and n_photons={min(distribution._photon_map.keys())} to 2*n_photons={max(distribution._photon_map.keys())} that all have different space dimensions. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult`s of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector."
+                )
+            if apply_sampling and effective_shots > 0:
+                distribution = sampler.pcvl_sampler_g2(distribution, effective_shots)
+            # Return SectoredDistribution cast to match base class type annotation
+            return distribution  # type: ignore[return-value]
+        else:
+            if apply_sampling and effective_shots > 0:
+                distribution = sampler.pcvl_sampler(distribution, effective_shots)
+            if grouping is not None:
+                return grouping(distribution)
+            return distribution
 
 
 class ProbabilitiesStrategy(DistributionStrategy):
@@ -155,7 +175,13 @@ class ModeExpectationsStrategy(DistributionStrategy):
 class AmplitudesStrategy(BaseMeasurementStrategy):
     """New API: return raw amplitudes (sampling is not supported)."""
 
-    def process(self, *, amplitudes: torch.Tensor, **kwargs: object) -> torch.Tensor:
+    def process(
+        self,
+        *,
+        amplitudes: torch.Tensor | SectoredDistribution,
+        sampler: SamplingProcess | None = None,
+        **kwargs: object,
+    ) -> torch.Tensor | SectoredDistribution:
         # Amplitudes bypass detectors, photon loss, and sampling.
         apply_sampling = bool(kwargs.get("apply_sampling", False))
         if apply_sampling:
@@ -181,22 +207,32 @@ class PartialMeasurementStrategy(BaseMeasurementStrategy):
     def process(
         self,
         *,
-        distribution: torch.Tensor,
-        amplitudes: torch.Tensor,
+        distribution: torch.Tensor | SectoredDistribution,
+        amplitudes: torch.Tensor | SectoredDistribution,
         apply_sampling: bool,
         effective_shots: int,
-        sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
-        apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
-        apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        sampler: SamplingProcess,
+        apply_photon_loss: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
+        apply_detectors: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> PartialMeasurement:
         if apply_sampling and effective_shots > 0:
             raise RuntimeError(
                 "Sampling cannot be applied when measurement_strategy=MeasurementStrategy.partial()."
             )
+        # In partial measurement, amplitudes should always be Tensor, not SectoredDistribution.
+        # Cast to ensure type narrowing for the apply_photon_loss and apply_detectors calls.
+        amplitudes_tensor = cast(torch.Tensor, amplitudes)
         # Apply photon loss before detectors to match detector basis configuration.
-        amplitudes = apply_photon_loss(amplitudes)
-        detector_output = apply_detectors(amplitudes)
+        amplitudes_tensor = cast(
+            torch.Tensor,
+            apply_photon_loss(amplitudes_tensor),
+        )
+        detector_output = apply_detectors(amplitudes_tensor)
         if not isinstance(detector_output, list):
             raise TypeError(
                 "Partial measurement expects detector output in partial_measurement mode."

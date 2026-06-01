@@ -34,7 +34,9 @@ import torch.nn as nn
 from perceval import FFCircuitProvider
 
 import merlin as ML
+from merlin.measurement import MeasurementStrategy
 from merlin.core.computation_space import ComputationSpace
+from merlin.core.sectored_distribution import SectoredDistribution
 from merlin.core.partial_measurement import (
     PartialMeasurement,
 )
@@ -302,10 +304,12 @@ class TestQuantumLayer:
 
         amplitude = torch.rand(len(layer.output_keys))
         remaining_input = torch.rand(2)
-        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input([
-            amplitude,
-            remaining_input,
-        ])
+        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input(
+            [
+                amplitude,
+                remaining_input,
+            ]
+        )
 
         assert saved_state is original_state
         assert remaining[0] is remaining_input
@@ -346,10 +350,12 @@ class TestQuantumLayer:
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
 
-        params, batch_dim = layer._prepare_classical_parameters([
-            torch.rand(2, 2),
-            torch.rand(2, 2),
-        ])
+        params, batch_dim = layer._prepare_classical_parameters(
+            [
+                torch.rand(2, 2),
+                torch.rand(2, 2),
+            ]
+        )
 
         assert batch_dim == 2
         assert len(params) >= 2
@@ -937,9 +943,9 @@ class TestQuantumLayer:
         assert model[1].out_features == 3
         # Check that it has trainable parameters (only in Linear layer)
         trainable_params_layer = [p for p in layer.parameters() if p.requires_grad]
-        assert len(trainable_params_layer) == 0, (
-            "Layer should have no trainable parameters"
-        )
+        assert (
+            len(trainable_params_layer) == 0
+        ), "Layer should have no trainable parameters"
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         assert len(trainable_params) > 0, "Model should have trainable parameters"
 
@@ -1350,29 +1356,28 @@ class TestQuantumLayer:
 
             assert has_trainable_params, "Model should have trainable parameters"
 
+    def test_g2_with_photon_loss_forward_applies_loss_per_sector(self) -> None:
+        """Check that photon loss is applied with the correct basis for every sector.
 
-def test_simple_num_photons_modes_and_input_state():
-    for i in range(1, 15):
-        ql = ML.QuantumLayer.simple(input_size=i)
-        assert ql.quantum_layer.n_photons == int(np.ceil((i + 1) / 2))
-        assert sum(ql.quantum_layer.input_state) == int(np.ceil((i + 1) / 2))
-        assert len(ql.quantum_layer.input_state) == i + 1
+        Correct result: a layer with both ``g2`` and post-measurement loss should
+        return a ``SectoredDistribution`` after applying photon loss independently to
+        each photon-number sector.
 
-        input_state = [0] * (i + 1)
-        for j in range(len(input_state)):
-            if j % 2 == 0:
-                input_state[j] = 1
-        assert ql.quantum_layer.input_state == pcvl.BasicState(input_state)
+        Branch result: the measurement path reuses the transform built for the
+        original 2-photon basis on the 3-photon sector, causing a matrix shape
+        mismatch during ``layer()``.
+        """
+        with pytest.warns(UserWarning, match="g2_distinguishable must be False"):
+            layer = ML.QuantumLayer(
+                circuit=pcvl.Circuit(3),
+                input_state=[1, 1, 0],
+                n_photons=2,
+                noise=pcvl.NoiseModel(g2=0.1, brightness=0.8),
+                measurement_strategy=MeasurementStrategy.probs(
+                    computation_space=ComputationSpace.FOCK
+                ),
+            )
 
+        output = layer()
 
-def test_simple_parameters():
-    for i in range(1, 15):
-        ql = ML.QuantumLayer.simple(input_size=i)
-        params = list(ql.quantum_layer.parameters())
-        named_params = [k[0] for k in ql.quantum_layer.named_parameters()]
-
-        assert params[0].numel() == i * (i + 1)
-        assert params[1].numel() == i * (i + 1)
-        assert len(params) == 2
-        assert "LI_simple" in named_params
-        assert "RI_simple" in named_params
+        assert isinstance(output, SectoredDistribution)

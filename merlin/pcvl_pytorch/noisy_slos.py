@@ -12,6 +12,8 @@ subsets, and the corresponding probability distributions are convolved back
 together to obtain the final noisy output distribution.
 """
 
+from __future__ import annotations
+
 import os
 import warnings
 from collections.abc import Sequence
@@ -24,11 +26,327 @@ from torch import Tensor
 
 from merlin.algorithms.layer_utils import NoiseGroups
 from merlin.core.computation_space import ComputationSpace
+from merlin.core.sectored_distribution import SectoredDistribution, SectorResult
 from merlin.utils.combinadics import Combinadics
 from merlin.utils.dtypes import resolve_float_complex
 
 if TYPE_CHECKING:
     from merlin.pcvl_pytorch.slos_torchscript import SLOSComputeGraph
+
+
+class NoisyG2SLOSComputeGraph:
+    def __init__(
+        self,
+        noise_groups: NoiseGroups | None,
+        m: int,
+        n_photons: int,
+        computation_space: ComputationSpace = ComputationSpace.FOCK,
+        device: str | torch.device | None = None,
+        dtype: torch.dtype = torch.float,
+    ) -> None:
+        if noise_groups is None:
+            raise RuntimeError(
+                "The NoisyG2SLOSComputeGraph should only be used if there is g2 noise in the circuit."
+            )
+        if noise_groups.source is None:
+            raise RuntimeError(
+                "The NoisyG2SLOSComputeGraph should only be used if there is g2 noise in the circuit."
+            )
+
+        self.noise_groups = noise_groups
+        self.indistinguishability = noise_groups.source.get("indistinguishability", 1.0)
+
+        self.g2_distinguishable = noise_groups.source.get("g2_distinguishable", False)
+        if self.g2_distinguishable is None:
+            self.g2_distinguishable = False
+        self.g2 = noise_groups.source.get("g2", 0.0)
+
+        self.m = m
+        self.n_photons = n_photons
+
+        self.device = device
+        self.dtype = dtype
+
+        self.computation_space = computation_space
+        if not self.computation_space == ComputationSpace.FOCK:
+            warnings.warn(
+                "Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
+                UserWarning,
+                stacklevel=2,
+            )
+            self.computation_space = ComputationSpace.FOCK
+
+        from .slos_torchscript import (
+            build_slos_distribution_computegraph as build_slos_graph,
+        )
+
+        self._slos_graphs: NoisySLOSComputeGraph | list[NoisySLOSComputeGraph]
+        if self.g2_distinguishable:
+            self._slos_graphs = NoisySLOSComputeGraph(
+                noise_groups=noise_groups,
+                m=self.m,
+                n_photons=self.n_photons,
+                computation_space=self.computation_space,
+                keep_keys=True,
+                device=device,
+                dtype=dtype,
+            )
+        else:
+            regular_slos_graphs: list[SLOSComputeGraph] = cast(
+                list["SLOSComputeGraph"],
+                [
+                    build_slos_graph(
+                        self.m,
+                        n_i,
+                        computation_space=self.computation_space,
+                        device=device,
+                        dtype=dtype,
+                    )
+                    for n_i in range(1, (2 * self.n_photons) + 1)
+                ],
+            )
+            self._slos_graphs = [
+                NoisySLOSComputeGraph(
+                    noise_groups=noise_groups,
+                    m=self.m,
+                    n_photons=self.n_photons + i,
+                    computation_space=self.computation_space,
+                    keep_keys=False,
+                    device=device,
+                    dtype=dtype,
+                    _slos_graphs=regular_slos_graphs[: n_photons + i],
+                )
+                for i in range(self.n_photons + 1)
+            ]
+
+        # All fock states associated with each photon number n
+        self._fock_states_per_n = {
+            i: torch.tensor(Combinadics("fock", n=i, m=self.m).enumerate_states()).to(
+                device
+            )
+            for i in range(1, 2 * self.n_photons + 1)
+        }
+
+        self.mapped_keys = [
+            [
+                tuple(state)
+                for state in Combinadics(
+                    self.computation_space.casefold(), n=self.n_photons + i, m=self.m
+                ).enumerate_states()
+            ]
+            for i in range(self.n_photons + 1)
+        ]
+
+    def _get_extra_photon_combinations(
+        self,
+        input_state: list[int] | tuple[int, ...],
+    ) -> list[list[tuple[int, ...]]]:
+        num_photons = sum(input_state)
+        output: list[list[tuple[int, ...]]] = [[]]
+
+        # Convert to tensor if not already
+        if not isinstance(input_state, Tensor):
+            input_state_tensor = torch.tensor(list(input_state), dtype=torch.int32)
+        else:
+            input_state_tensor = input_state.int()
+
+        positions = torch.arange(len(input_state_tensor), dtype=torch.long).to(
+            self.device
+        )
+        photon_positions = torch.repeat_interleave(positions, input_state_tensor).to(
+            self.device
+        )
+
+        for i in range(1, num_photons + 1):
+            output.append(list(combinations(photon_positions.tolist(), i)))
+
+        return output
+
+    def compute_probs(
+        self,
+        unitary: torch.Tensor,
+        input_state: list[int] | tuple[int, ...],
+    ) -> SectoredDistribution:
+
+        sector_outputs = []
+
+        if unitary.size(0) == unitary.size(1) and unitary.ndim == 2:
+            unitary = unitary.unsqueeze(0)
+
+        # Getting the non-g2 probs and the one hot runs for g2_distinguishable photons
+        if self.g2_distinguishable:
+            # Cast for mypy: _slos_graphs is single NoisySLOSComputeGraph when g2_distinguishable is True
+            single_graph = cast(NoisySLOSComputeGraph, self._slos_graphs)
+            keys_regular, probs_regular = single_graph.compute_probs(
+                unitary, input_state
+            )
+            # Generate one-hot states for each active mode and compute their probs
+            one_hot_slos_graphs = {}
+            for mode_idx in range(len(input_state)):
+                if input_state[mode_idx] > 0:  # Only for active modes
+                    one_hot_state = [0] * len(input_state)
+                    one_hot_state[mode_idx] = 1
+                    keys_one_hot, probs_one_hot = single_graph._slos_graphs[
+                        0
+                    ].compute_probs(unitary, one_hot_state)
+                    one_hot_slos_graphs[mode_idx] = (keys_one_hot, probs_one_hot)
+        else:
+            # Cast for mypy: _slos_graphs is list when g2_distinguishable is False
+            slos_graphs_list = cast(list[NoisySLOSComputeGraph], self._slos_graphs)
+            probs_regular = slos_graphs_list[0].compute_probs(unitary, input_state)
+
+        # Getting the photon combinations
+        extra_photons_combinations = self._get_extra_photon_combinations(input_state)
+
+        # Calculating for each sector
+        num_input_photons = sum(input_state)
+        # Convert g2 = g^(2)(0) second-order coherence to per-source emission
+        # probability p.  The two are related by g^(2)(0) = 2p/(1+p)^2, so:
+        #   p = ((1 - g2) - sqrt(1 - 2*g2)) / g2,  valid for g2 in [0, 0.5].
+        # For small g2, p ≈ g2/2 (L'Hôpital).  At g2=0 the limit is p=0.
+        _g2 = torch.as_tensor(self.g2, device=self.device, dtype=self.dtype)
+        _disc = (1.0 - 2.0 * _g2).clamp(min=0.0)
+        p_emit = ((1.0 - _g2) - _disc.sqrt()) / _g2.clamp(min=1e-15)
+        for num_photons_added in range(len(extra_photons_combinations)):
+            weight_k = (p_emit**num_photons_added) * (
+                (1 - p_emit) ** (num_input_photons - num_photons_added)
+            )
+
+            # Creating the n_photons + num_photons_added sector
+            sector = SectorResult(
+                torch.zeros(
+                    Combinadics(
+                        scheme="fock", n=self.n_photons + num_photons_added, m=self.m
+                    ).compute_space_size(),
+                    dtype=self.dtype,
+                    device=self.device,
+                ),
+                n_modes=self.m,
+                n_photons=self.n_photons + num_photons_added,
+            )
+
+            # For each combination in the sector
+            if num_photons_added == 0:
+                sector.tensor = sector.tensor + weight_k * probs_regular
+            else:
+                for combination in extra_photons_combinations[num_photons_added]:
+                    if self.g2_distinguishable:
+                        distributions_to_convolve = [
+                            one_hot_slos_graphs[photon] for photon in combination
+                        ]
+                        # Convolve probs_regular with all one-hot distributions
+                        all_distributions = [
+                            (keys_regular, probs_regular)
+                        ] + distributions_to_convolve
+                        keys_list, probs_list = zip(*all_distributions, strict=True)
+                        keys, probs = convolve_distributions(keys_list, *probs_list)
+
+                        # Reorder probs to match Fock order
+                        fock_states = self._fock_states_per_n[
+                            self.n_photons + num_photons_added
+                        ]
+                        fock_states_list = [
+                            tuple(state.tolist()) for state in fock_states
+                        ]
+                        keys_as_tuples = (
+                            [tuple(k.tolist()) for k in keys]
+                            if isinstance(keys, torch.Tensor)
+                            else [tuple(k) for k in keys]
+                        )
+                        key_to_idx = {
+                            key: idx for idx, key in enumerate(keys_as_tuples)
+                        }
+
+                        reordered_probs = torch.zeros_like(probs)
+                        for fock_idx, fock_state in enumerate(fock_states_list):
+                            if fock_state in key_to_idx:
+                                conv_idx = key_to_idx[fock_state]
+                                if probs.ndim == 1:
+                                    reordered_probs[fock_idx] = probs[conv_idx]
+                                else:
+                                    reordered_probs[:, fock_idx] = probs[:, conv_idx]
+                        probs = reordered_probs
+
+                    else:
+                        input_state_to_run = list(input_state)
+                        for photon in combination:
+                            input_state_to_run[photon] += 1
+                        probs = cast(
+                            torch.Tensor,
+                            slos_graphs_list[num_photons_added].compute_probs(
+                                unitary, input_state_to_run
+                            ),
+                        )
+
+                    sector.tensor = sector.tensor + weight_k * probs
+
+            sector_outputs.append(sector)
+        return SectoredDistribution(tuple(sector_outputs))
+
+    def to(self, device: str | torch.device) -> NoisyG2SLOSComputeGraph:
+        """Move cached tensors and subgraphs to a specific device.
+
+        Parameters
+        ----------
+        device : str | torch.device
+            Target device.
+
+        Returns
+        -------
+        NoisyG2SLOSComputeGraph
+            The graph instance moved to ``device``.
+
+        Raises
+        ------
+        TypeError
+            If ``device`` is neither a string nor a ``torch.device``.
+        """
+        if isinstance(device, str):
+            self.device = torch.device(device)
+        elif isinstance(device, torch.device):
+            self.device = device
+        else:
+            raise TypeError(
+                f"Expected a string or torch.device, but got {type(device).__name__}"
+            )
+
+        # Move fock states tensors to device
+        self._fock_states_per_n = {
+            n: states.to(self.device) for n, states in self._fock_states_per_n.items()
+        }
+
+        # Move SLOS graphs to device (handle both single graph and list cases)
+        if isinstance(self._slos_graphs, NoisySLOSComputeGraph):
+            self._slos_graphs.to(self.device)
+        else:
+            for graph in self._slos_graphs:
+                graph.to(self.device)
+
+        return self
+
+    def save(self, path: str | os.PathLike[str]) -> None:
+        """Save the noisy g2 SLOS graph configuration to disk.
+
+        Parameters
+        ----------
+        path : str | os.PathLike[str]
+            Destination path for the serialized graph metadata.
+        """
+        dir_path = os.path.dirname(path)
+        if dir_path and not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        metadata = {
+            "noise_groups": self.noise_groups,
+            "m": self.m,
+            "n_photons": self.n_photons,
+            "computation_space": self.computation_space.value,
+            "g2_distinguishable": self.g2_distinguishable,
+            "g2": float(self.g2),
+            "dtype_str": str(self.dtype),
+        }
+
+        torch.save({"metadata": metadata}, path)
 
 
 class NoisySLOSComputeGraph:
@@ -75,6 +393,7 @@ class NoisySLOSComputeGraph:
         keep_keys: bool = True,
         device: str | torch.device | None = None,
         dtype: torch.dtype = torch.float,
+        _slos_graphs: list[SLOSComputeGraph] | None = None,
     ) -> None:
         if noise_groups is None:
             raise RuntimeError(
@@ -121,18 +440,22 @@ class NoisySLOSComputeGraph:
             build_slos_distribution_computegraph as build_slos_graph,
         )
 
-        self._slos_graphs: list[SLOSComputeGraph] = cast(
-            list["SLOSComputeGraph"],
-            [
-                build_slos_graph(
-                    self.m,
-                    n_i,
-                    computation_space=self.computation_space,
-                    device=device,
-                    dtype=dtype,
-                )
-                for n_i in range(1, self.n_photons + 1)
-            ],
+        self._slos_graphs: list[SLOSComputeGraph] = (
+            cast(
+                list["SLOSComputeGraph"],
+                [
+                    build_slos_graph(
+                        self.m,
+                        n_i,
+                        computation_space=self.computation_space,
+                        device=device,
+                        dtype=dtype,
+                    )
+                    for n_i in range(1, self.n_photons + 1)
+                ],
+            )
+            if _slos_graphs is None
+            else _slos_graphs
         )
 
     def compute_probs(
@@ -207,7 +530,7 @@ class NoisySLOSComputeGraph:
             return keys, probs
         return probs
 
-    def to(self, device: str | torch.device) -> "NoisySLOSComputeGraph":
+    def to(self, device: str | torch.device) -> NoisySLOSComputeGraph:
         """Move cached tensors and subgraphs to a specific device.
 
         Parameters
@@ -363,7 +686,7 @@ class _InputStateNoisySLOSComputeGraph:
         }
 
     def compute_probs(
-        self, unitary: torch.Tensor, slos_graphs: list["SLOSComputeGraph"]
+        self, unitary: torch.Tensor, slos_graphs: list[SLOSComputeGraph]
     ) -> tuple[list[tuple[int, ...]], torch.Tensor]:
         """Compute noisy probabilities for the cached input state.
 
@@ -389,7 +712,6 @@ class _InputStateNoisySLOSComputeGraph:
         for state in self._obb_input_states:
             key = tuple(state.tolist())
             n = sum(key)
-
             _, probs = slos_graphs[n - 1].compute_probs(unitary, state)
 
             if probs.ndim == 1:
