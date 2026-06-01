@@ -1188,9 +1188,9 @@ class MerlinProcessor:
         from concurrent.futures import CancelledError
 
         if state.get("cancel_requested"):
-            raise CancelledError("Remote call was cancelled")
+            raise CancelledError("Local call was cancelled")
         if deadline is not None and time.time() >= deadline:
-            raise TimeoutError("Remote call timed out (remote cancel issued)")
+            raise TimeoutError("Local call timed out")
 
         assert self.processor is not None
 
@@ -1236,9 +1236,9 @@ class MerlinProcessor:
                 raw_results = sampler.sample_count.execute_sync(max_samples=use_shots)
 
         if state.get("cancel_requested"):
-            raise CancelledError("Remote call was cancelled")
+            raise CancelledError("Local call was cancelled")
         if deadline is not None and time.time() >= deadline:
-            raise TimeoutError("Remote call timed out (remote cancel issued)")
+            raise TimeoutError("Local call timed out")
 
         return self._process_batch_results(
             raw_results, batch_size, layer, nsample, is_probability

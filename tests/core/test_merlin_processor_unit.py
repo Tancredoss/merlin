@@ -1142,7 +1142,7 @@ def test_run_chunk_local_raises_cancelled_before_execution():
 
     with (
         patch.object(merlin_processor_module.copy, "copy") as copy_processor,
-        pytest.raises(CancelledError, match="Remote call was cancelled"),
+        pytest.raises(CancelledError, match="Local call was cancelled"),
     ):
         proc._run_chunk_local(
             FakeLayer(),
@@ -1163,7 +1163,7 @@ def test_run_chunk_local_raises_timeout_before_execution():
 
     with (
         patch.object(merlin_processor_module.copy, "copy") as copy_processor,
-        pytest.raises(TimeoutError, match="Remote call timed out"),
+        pytest.raises(TimeoutError, match="Local call timed out"),
     ):
         proc._run_chunk_local(
             FakeLayer(),
@@ -1189,7 +1189,7 @@ def test_run_chunk_local_raises_cancelled_after_execution():
 
     with (
         patch.object(merlin_processor_module, "Sampler", return_value=sampler),
-        pytest.raises(CancelledError, match="Remote call was cancelled"),
+        pytest.raises(CancelledError, match="Local call was cancelled"),
     ):
         proc._run_chunk_local(
             FakeLayer(),
@@ -1215,7 +1215,7 @@ def test_run_chunk_local_raises_timeout_after_execution(monkeypatch):
 
     with (
         patch.object(merlin_processor_module, "Sampler", return_value=sampler),
-        pytest.raises(TimeoutError, match="Remote call timed out"),
+        pytest.raises(TimeoutError, match="Local call timed out"),
     ):
         proc._run_chunk_local(
             FakeLayer(),
