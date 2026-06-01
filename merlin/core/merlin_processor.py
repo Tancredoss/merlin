@@ -1717,7 +1717,7 @@ class MerlinProcessor:
                 "iterable of sampled states."
             ) from exc
 
-        state_counts: dict[Any, int] = {}
+        state_counts: dict[Any, float | int] = {}
         for sampled_state in sample_iterator:
             state_tuple = self._parse_perceval_state(sampled_state)
             if not state_tuple:
