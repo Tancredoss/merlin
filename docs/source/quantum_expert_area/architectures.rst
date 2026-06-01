@@ -31,8 +31,8 @@ A typical photonic circuit is defined by:
 - the number and initial positions of photons,
 - and the sequence of optical components applied.
 
-For instance in the following example (from `Perceval Notebook <https://perceval.quandela.net/docs/v1.2/notebooks/Tutorial.html>`))
-shows a simple photonic circuit with 4 modes. The circuit includes 6 static beam splitters, 4 [configurable](#parameters-in-photonic-circuits) phase shifters, and 1 permutation.
+ For instance, the following example (from `Perceval Notebook <https://perceval.quandela.net/docs/v1.2/notebooks/Tutorial.html>`_) shows a simple photonic circuit with 4 modes.
+ The circuit includes 6 static beam splitters, 4 [configurable](#parameters-in-photonic-circuits) phase shifters, and 1 permutation.
 
 .. image:: ../_static/img/notebooks_Tutorial_28_0.svg
    :alt: Example of a photonic circuit
@@ -113,7 +113,7 @@ Advanced circuits are **feedforward architectures**, where the output of one cir
 This allows for **dynamic adjustment** of parameters in downstream circuits based on intermediate measurement results.
 
 For instance, the following circuit (from this `notebook <https://perceval.quandela.net/docs/v1.2/notebooks/Quantum_teleportation_feed_forward.html>`) illustrates a feedforward architecture where photons are measured on two modes after
-the first interferemoter (with blue background) and the results are used to configure the second interferometer \(U(FFC))\). A second operation of
+the first interferometer (with blue background) and the results are used to configure the second interferometer \(U(FFC))\). A second operation of
 feedforward is shown on the right side of the figure, where the results of the measurement of the two first modes are used
 to reconfigure the phase shifter on the last mode.
 

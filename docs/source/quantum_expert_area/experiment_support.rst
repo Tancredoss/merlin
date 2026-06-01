@@ -71,7 +71,7 @@ The default value for brightness and transmittance during noise model initializa
 Detector Support
 ----------------
 
-Perceval's `Dectectors <https://perceval.quandela.net/docs/v1.2/reference/components/detector.html>`_ are used to detect the number of photons on each mode. Indeed, every detector detects for one mode. Perceval exposes several detector families:
+Perceval's `Detectors <https://perceval.quandela.net/docs/v1.2/reference/components/detector.html>`_ are used to detect the number of photons on each mode. Indeed, every detector detects for one mode. Perceval exposes several detector families:
 
 ``pcvl.Detector.pnr()``
     Ideal photon-number-resolving detector. This detector detects any number of photons present. Leaves the Fock basis unchanged.
