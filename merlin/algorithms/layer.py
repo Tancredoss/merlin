@@ -1255,7 +1255,7 @@ class QuantumLayer(MerlinModule):
             # Photon loss Module
             if self._photon_loss_transform is not None:
                 if isinstance(self._photon_loss_transform, Sequence):
-                    for i in range(self._photon_loss_transform):
+                    for i in range(len(self._photon_loss_transform)):
                         self._photon_loss_transform[i] = self._photon_loss_transform[
                             i
                         ].to(device)
@@ -1264,7 +1264,7 @@ class QuantumLayer(MerlinModule):
             # Detector Module
             if self._detector_transform is not None:
                 if isinstance(self._detector_transform, Sequence):
-                    for i in range(self._detector_transform):
+                    for i in range(len(self._detector_transform)):
                         self._detector_transform[i] = self._detector_transform[i].to(
                             device
                         )
@@ -1468,6 +1468,9 @@ class QuantumLayer(MerlinModule):
                     distribution_copy.sectors[i].tensor = self._photon_loss_transform[
                         index
                     ](sector.tensor)
+                    distribution_copy.sectors[i].keys = tuple(
+                        self._photon_loss_transform[index].output_keys
+                    )
                 return distribution_copy
             return self._photon_loss_transform(distribution)
         if isinstance(self._photon_loss_transform, Sequence):
@@ -1493,6 +1496,9 @@ class QuantumLayer(MerlinModule):
                     distribution_copy.sectors[i].tensor = self._detector_transform[
                         index
                     ](sector.tensor)
+                    distribution_copy.sectors[i].keys = tuple(
+                        self._detector_transform[index].output_keys
+                    )
                 return distribution_copy
             return self._detector_transform(distribution)
         if isinstance(self._detector_transform, Sequence):

@@ -16,7 +16,13 @@ import numpy as np
 import perceval as pcvl
 from copy import deepcopy
 
-from merlin import ComputationSpace, CircuitBuilder, Combinadics
+from merlin import (
+    ComputationSpace,
+    CircuitBuilder,
+    Combinadics,
+    MeasurementStrategy,
+    QuantumLayer,
+)
 from merlin.core import SectoredDistribution, SectorResult
 from merlin.pcvl_pytorch.noisy_slos import NoisyG2SLOSComputeGraph
 from merlin.pcvl_pytorch.slos_torchscript import SLOSComputeGraph
@@ -1016,3 +1022,81 @@ def test_sectored_total_probability_stays_in_autograd() -> None:
     total.backward()
     assert sector_1.tensor.grad is not None
     assert sector_2.tensor.grad is not None
+
+
+# Tests added after review
+
+
+def _g2_layer_with_loss() -> QuantumLayer:
+    """Build a g2 layer whose photon-loss transform changes each sector basis."""
+    with pytest.warns(UserWarning, match="g2_distinguishable must be False"):
+        return QuantumLayer(
+            circuit=pcvl.Circuit(3),
+            input_state=[1, 1, 0],
+            n_photons=2,
+            noise=pcvl.NoiseModel(g2=0.1, brightness=0.8),
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK
+            ),
+        )
+
+
+def test_sector_result_preserves_explicit_basis_keys() -> None:
+    """Check that explicit sector basis metadata is not overwritten.
+
+    Correct result: when a caller passes ``keys=...`` to ``SectorResult``, those
+    keys should remain attached to the sector. Auto-generating Fock keys is useful
+    only when ``keys`` is omitted.
+
+    Why this matters: after photon loss or detector transforms, a sector tensor
+    can live in a different output basis from the fixed ``n_photons`` Fock basis.
+    For example, loss from a one-photon sector can include the vacuum key
+    ``(0, 0, 0)``. The container needs to preserve those transform-produced keys.
+
+    Current result: ``SectorResult.__post_init__`` always regenerates the fixed
+    one-photon Fock basis and discards the explicit keys supplied by the caller.
+    """
+    transformed_basis_keys = ((1, 0, 0), (0, 0, 0))
+
+    sector = SectorResult(
+        torch.ones(len(transformed_basis_keys)),
+        n_modes=3,
+        n_photons=1,
+        keys=transformed_basis_keys,
+    )
+
+    assert sector.keys == transformed_basis_keys
+
+
+def test_g2_with_photon_loss_keeps_sector_keys_aligned_with_tensor() -> None:
+    """Check transformed g2 sectors expose keys for their returned tensors.
+
+    Correct result: after photon loss is applied per sector, each
+    ``SectorResult.keys`` tuple should describe the transformed tensor basis.
+    Therefore ``len(sector.keys)`` should equal ``sector.tensor.shape[-1]`` for
+    every returned sector.
+
+    Current result: the tensor is transformed into the photon-loss output basis,
+    but the sector still carries the pre-loss fixed-photon Fock keys. The first
+    sector demonstrates the mismatch with a tensor length of 10 and only 6 keys.
+    """
+    output = _g2_layer_with_loss()()
+
+    assert isinstance(output, SectoredDistribution)
+    for sector in output.sectors:
+        assert sector.tensor.shape[-1] == len(sector.keys)
+
+
+def test_g2_layer_to_moves_per_sector_transforms() -> None:
+    """Check ``QuantumLayer.to()`` works with g2 per-sector transforms.
+
+    Correct result: calling ``layer.to("cpu")`` should move the g2 simulation
+    graph and each per-sector photon-loss/detector transform without raising.
+
+    Current result: the g2 path stores transforms in lists, but
+    ``QuantumLayer.to()`` calls ``range()`` on those lists, raising ``TypeError``
+    before the transforms are moved.
+    """
+    layer = _g2_layer_with_loss()
+
+    layer.to("cpu")

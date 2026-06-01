@@ -16,15 +16,16 @@ class SectorResult:
     n_modes: int
     n_photons: int
     computation_space: ComputationSpace = ComputationSpace.FOCK
-    keys: tuple[tuple[int, ...], ...] = ()
+    keys: tuple[tuple[int, ...], ...] | None = None
 
     def __post_init__(self) -> None:
         """Create the photon number to sector index map."""
-        self.keys = tuple(
-            Combinadics(
-                scheme="fock", n=self.n_photons, m=self.n_modes
-            ).enumerate_states()
-        )
+        if self.keys is None:
+            self.keys = tuple(
+                Combinadics(
+                    scheme="fock", n=self.n_photons, m=self.n_modes
+                ).enumerate_states()
+            )
 
     def to(self, *args, **kwargs) -> SectorResult:
         """Return a new state vector moved or cast via ``torch.Tensor.to``.
