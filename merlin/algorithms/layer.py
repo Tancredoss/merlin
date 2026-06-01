@@ -1792,6 +1792,44 @@ class QuantumLayer(MerlinModule):
         if runtime_state is not None or self._memristive_metadata:
             self._restore_memristive_runtime_state(runtime_state)
 
+    def detach_memristive_state(self, *, clear_history: bool = False) -> None:
+        """Detach the current memristive state without resetting its value.
+
+        This method is intended for manual truncated backpropagation through
+        time. It cuts the autograd graph carried by the live recurrent
+        memristive state, so future forward passes keep using the same
+        numerical state values without backpropagating through earlier
+        recurrence updates.
+
+        Parameters
+        ----------
+        clear_history : bool
+            Whether to replace each memristive history with only the detached
+            current state. If ``False``, the history length is preserved but
+            stored tensors are detached. Default value is ``False``.
+
+        Returns
+        -------
+        None
+            The layer is updated in place.
+        """
+        if len(self.memristive_state) == 0:
+            return
+
+        self.memristive_state = [state.detach() for state in self.memristive_state]
+
+        if clear_history:
+            self.memristive_history = [[state] for state in self.memristive_state]
+            return
+
+        for index, history in enumerate(self.memristive_history):
+            if len(history) == 0:
+                self.memristive_history[index] = [self.memristive_state[index]]
+                continue
+
+            self.memristive_history[index] = [state.detach() for state in history]
+            self.memristive_history[index][-1] = self.memristive_state[index]
+
     def reset(self, batch_size: int = 1) -> None:
         """Resets the memristors to their initial state while clearing the history.
 

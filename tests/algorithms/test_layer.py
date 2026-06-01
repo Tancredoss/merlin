@@ -304,12 +304,10 @@ class TestQuantumLayer:
 
         amplitude = torch.rand(len(layer.output_keys))
         remaining_input = torch.rand(2)
-        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input(
-            [
-                amplitude,
-                remaining_input,
-            ]
-        )
+        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input([
+            amplitude,
+            remaining_input,
+        ])
 
         assert saved_state is original_state
         assert remaining[0] is remaining_input
@@ -350,12 +348,10 @@ class TestQuantumLayer:
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
 
-        params, batch_dim = layer._prepare_classical_parameters(
-            [
-                torch.rand(2, 2),
-                torch.rand(2, 2),
-            ]
-        )
+        params, batch_dim = layer._prepare_classical_parameters([
+            torch.rand(2, 2),
+            torch.rand(2, 2),
+        ])
 
         assert batch_dim == 2
         assert len(params) >= 2
@@ -943,9 +939,9 @@ class TestQuantumLayer:
         assert model[1].out_features == 3
         # Check that it has trainable parameters (only in Linear layer)
         trainable_params_layer = [p for p in layer.parameters() if p.requires_grad]
-        assert (
-            len(trainable_params_layer) == 0
-        ), "Layer should have no trainable parameters"
+        assert len(trainable_params_layer) == 0, (
+            "Layer should have no trainable parameters"
+        )
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         assert len(trainable_params) > 0, "Model should have trainable parameters"
 
@@ -2182,12 +2178,12 @@ def test_memristive_state_dict_round_trip_preserves_state_and_history():
     restored = _layer(_builder_with_memristor(with_inputs=True), input_size=2)
     restored.load_state_dict(torch.load(buffer, weights_only=True))
 
-    assert torch.allclose(
-        restored.memristive_state[0], state_before
-    ), "memristive_state was not preserved across a state_dict round-trip"
-    assert (
-        len(restored.memristive_history[0]) == history_len_before
-    ), "memristive_history length was not preserved across a state_dict round-trip"
+    assert torch.allclose(restored.memristive_state[0], state_before), (
+        "memristive_state was not preserved across a state_dict round-trip"
+    )
+    assert len(restored.memristive_history[0]) == history_len_before, (
+        "memristive_history length was not preserved across a state_dict round-trip"
+    )
 
 
 def test_memristive_state_dict_round_trip_as_submodule():
@@ -2450,9 +2446,9 @@ def test_memristive_works_with_typed_objects_and_cloning_protects_gradients():
     loss_sv = output_sv_typed.tensor.abs().sum()
     loss_sv.backward()
     assert input_data.grad is not None
-    assert torch.any(
-        input_data.grad != 0
-    ), "Gradients should flow through StateVector output"
+    assert torch.any(input_data.grad != 0), (
+        "Gradients should flow through StateVector output"
+    )
 
     # Verify memristive history accumulated (one forward pass = one state)
     assert len(layer_statevector_typed.memristive_history[0]) >= 1
@@ -2467,7 +2463,9 @@ def test_memristive_works_with_typed_objects_and_cloning_protects_gradients():
     # Verify output is NOT modified by the update rule (cloning protected it)
     assert not torch.allclose(
         output_pd_typed.tensor, torch.full_like(output_pd_typed.tensor, 999.0)
-    ), "ProbabilityDistribution output was incorrectly modified by memristive update rule"
+    ), (
+        "ProbabilityDistribution output was incorrectly modified by memristive update rule"
+    )
     assert output_pd_typed.tensor.requires_grad
 
     # Compute loss and backward for ProbabilityDistribution
@@ -2601,9 +2599,9 @@ def test_detach_at_each_forward_false_allows_full_gradient_history():
     outputs = [layer(input_batch) for input_batch in inputs]
 
     # Verify memristive history accumulated
-    assert (
-        len(layer.memristive_history[0]) == 6
-    ), f"Expected 6 history entries, got {len(layer.memristive_history[0])}"
+    assert len(layer.memristive_history[0]) == 6, (
+        f"Expected 6 history entries, got {len(layer.memristive_history[0])}"
+    )
 
     # Compute loss from the last output and backpropagate
     loss = outputs[-1][:, 0].sum()
@@ -2618,9 +2616,9 @@ def test_detach_at_each_forward_false_allows_full_gradient_history():
 
     # All inputs should have non-zero gradients (full history retained)
     for i, grad_norm in enumerate(grad_norms):
-        assert (
-            grad_norm > 1e-8
-        ), f"Input {i} should have non-zero gradient with full history, got {grad_norm}"
+        assert grad_norm > 1e-8, (
+            f"Input {i} should have non-zero gradient with full history, got {grad_norm}"
+        )
 
 
 def test_detach_at_each_forward_is_boolean_flag():
@@ -2716,9 +2714,9 @@ def test_mixed_memristors_with_different_detach_settings():
         assert state.grad_fn is None, "Detached memristor states should have no grad_fn"
 
     # Second memristor (full grad) should retain gradients
-    assert (
-        layer.memristive_history[1][-1].grad_fn is not None
-    ), "Non-detached memristor should retain gradients"
+    assert layer.memristive_history[1][-1].grad_fn is not None, (
+        "Non-detached memristor should retain gradients"
+    )
 
 
 def test_detach_at_each_forward_false_has_larger_gradients_than_true():
@@ -2763,9 +2761,9 @@ def test_detach_at_each_forward_false_has_larger_gradients_than_true():
 
     # Earlier inputs should have larger or equal gradients with full history
     for i in range(N - 1):  # All except last
-        assert (
-            grads_full[i] >= grads_detached[i] * 0.9
-        ), f"Full gradient flow should have larger or equal gradients for earlier inputs"
+        assert grads_full[i] >= grads_detached[i] * 0.9, (
+            "Full gradient flow should have larger or equal gradients for earlier inputs"
+        )
 
 
 def test_reset_properly_detaches_or_keeps_initial_state():
@@ -2779,12 +2777,12 @@ def test_reset_properly_detaches_or_keeps_initial_state():
     # Test with detach=True
     layer_detached = _make_memristive_layer(detach_at_each_forward=True)
     layer_detached.reset(batch_size=1)
-    assert (
-        layer_detached.memristive_state[0].grad_fn is None
-    ), "Initial state should be detached with detach_at_each_forward=True"
-    assert (
-        layer_detached.memristive_history[0][0].grad_fn is None
-    ), "Initial history state should be detached with detach_at_each_forward=True"
+    assert layer_detached.memristive_state[0].grad_fn is None, (
+        "Initial state should be detached with detach_at_each_forward=True"
+    )
+    assert layer_detached.memristive_history[0][0].grad_fn is None, (
+        "Initial history state should be detached with detach_at_each_forward=True"
+    )
 
     # Test with detach=False
     layer_full = _make_memristive_layer(detach_at_each_forward=False)
@@ -2792,10 +2790,10 @@ def test_reset_properly_detaches_or_keeps_initial_state():
     # Initial state is typically created without grad by default
     # But after first forward it should retain gradients
     inp = torch.randn(1, 2, requires_grad=True)
-    out = layer_full(inp)
-    assert (
-        layer_full.memristive_state[0].grad_fn is not None
-    ), "State should retain gradients after forward with detach_at_each_forward=False"
+    layer_full(inp)
+    assert layer_full.memristive_state[0].grad_fn is not None, (
+        "State should retain gradients after forward with detach_at_each_forward=False"
+    )
 
 
 def test_detach_at_each_forward_with_batch_dimension():
@@ -2824,76 +2822,65 @@ def test_detach_at_each_forward_with_batch_dimension():
         ), f"Gradient shape mismatch for input {i}"
 
 
-def test_long_sequence_with_manual_sliding_window_detach():
-    """Long sequence with manual sliding window: detach during forward loop.
-
-    This test demonstrates a practical use case where a user runs many forward
-    passes (N=100) and manually detaches the history during the loop to implement
-    a truncated BPTT sliding window of k steps. Detaching must happen DURING the
-    loop, not after, to affect the computational graph of subsequent forwards.
-    """
-
-    def update_rule(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
-        scalar_output = output.mean(dim=1)
-        return torch.exp(state - scalar_output)
-
+def test_detach_memristive_state_preserves_history_by_default():
+    """Manual detach should cut graph edges while preserving history values."""
     torch.manual_seed(6)
-
-    builder = ML.CircuitBuilder(n_modes=3)
-    builder.add_entangling_layer()
-    builder.add_memristive_ps(
-        mode=1,
-        update_rule=update_rule,
-        initial_state=1.2,
-        detach_at_each_forward=False,
-    )
-    builder.add_angle_encoding(modes=[0, 2])
-    builder.add_entangling_layer()
-
-    layer = ML.QuantumLayer(
-        builder=builder,
-        n_photons=3,
-        input_size=2,
-        measurement_strategy=ML.MeasurementStrategy.probs(
-            computation_space=ML.ComputationSpace.FOCK
-        ),
-    )
+    layer = _make_memristive_layer(detach_at_each_forward=False)
     layer.reset(batch_size=1)
 
-    N = 100
+    for _ in range(3):
+        layer(torch.randn(1, 2, requires_grad=True))
+
+    history_before = [state.clone() for state in layer.memristive_history[0]]
+    history_len_before = len(layer.memristive_history[0])
+
+    layer.detach_memristive_state()
+
+    assert len(layer.memristive_history[0]) == history_len_before
+    assert layer.memristive_state[0].grad_fn is None
+    assert layer.memristive_history[0][-1] is layer.memristive_state[0]
+
+    for state_before, state_after in zip(
+        history_before,
+        layer.memristive_history[0],
+        strict=True,
+    ):
+        assert state_after.grad_fn is None
+        assert torch.allclose(state_after, state_before)
+
+
+def test_long_sequence_with_manual_sliding_window_detach():
+    """Manual TBPTT should cut gradients before the chosen chunk boundary."""
+    torch.manual_seed(7)
+    layer = _make_memristive_layer(detach_at_each_forward=False)
+    layer.reset(batch_size=1)
+
+    n_steps = 8
     k = 3
-
     inputs = []
+    outputs = []
 
-    for t in range(N):
-        inp = torch.randn(1, 2, requires_grad=True)
-        inputs.append(inp)
-        out = layer(inp)
+    for timestep in range(n_steps):
+        input_batch = torch.randn(1, 2, requires_grad=True)
+        inputs.append(input_batch)
+        outputs.append(layer(input_batch))
 
-        if N - t == k + 1:
-            for i in range(len(layer.memristive_history)):
-                for j in range(len(layer.memristive_history[i])):
-                    layer.memristive_history[i][j] = layer.memristive_history[i][j].detach()
+        if timestep == n_steps - k - 1:
+            layer.detach_memristive_state(clear_history=True)
 
-    assert (
-        len(layer.memristive_history[0]) == N + 1
-    ), f"Expected {N + 1} history entries, got {len(layer.memristive_history[0])}"
+    assert len(layer.memristive_history[0]) == k + 1
 
-    # Verify only last k timesteps have gradients in computational graph
-    for i, history in enumerate(layer.memristive_history):
-        for j, state in enumerate(history):
-            has_grad = state.grad_fn is not None
-            steps_back = len(history) - j - 1
-            
-            if steps_back < k:
-                assert (
-                    has_grad
-                ), f"Expected gradients for last {k} steps, but step {j} has no grad_fn"
-            else:
-                assert (
-                    not has_grad
-                ), f"Expected no gradients before last {k} steps, but step {j} has grad_fn"
-
-    # Backward pass
-    loss = out.sum()
+    loss = outputs[-1][:, 0].sum()
     loss.backward()
+
+    grad_norms = [
+        0.0 if input_batch.grad is None else input_batch.grad.abs().max().item()
+        for input_batch in inputs
+    ]
+
+    assert grad_norms[: n_steps - k] == pytest.approx(
+        [0.0] * (n_steps - k),
+        abs=1e-8,
+    )
+    for index, grad_norm in enumerate(grad_norms[n_steps - k :], start=n_steps - k):
+        assert grad_norm > 1e-8, f"Input {index} should remain in the TBPTT window"
