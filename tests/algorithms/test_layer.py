@@ -42,6 +42,8 @@ from merlin.core.partial_measurement import (
 )
 from merlin.core.probability_distribution import ProbabilityDistribution
 from merlin.core.state_vector import StateVector
+from merlin.algorithms.layer import QuantumLayer
+from merlin.measurement.strategies import MeasurementStrategy
 
 
 class TestQuantumLayer:
@@ -2361,6 +2363,7 @@ def test_batch_size_mismatch_raises_before_first_memristive_update():
     ] == history_lengths_before
 
 
+<<<<<<< HEAD
 def test_memristive_works_with_typed_objects_and_cloning_protects_gradients():
     """Memristive updates with typed objects must not break gradients via cloning.
 
@@ -2889,3 +2892,49 @@ def test_long_sequence_with_manual_sliding_window_detach():
 
     for index, grad_norm in enumerate(grad_norms[: n_steps - k]):
         assert grad_norm < 1e-8, f"Input {index} should not be in the TBPTT window"
+=======
+# def test_quantum_layer_photon_count_mismatch_tensor():
+#     with pytest.raises(ValueError, match="number of photons doesn't fit input state"):
+#         QuantumLayer(
+#             input_size=0,
+#             circuit=pcvl.Circuit(3),
+#             input_state=torch.tensor([1., 1., 0.]), 
+#             n_photons=1,
+#             measurement_strategy=MeasurementStrategy.probs(),
+#         )
+
+# def test_quantum_layer_photon_count_mismatch_list():
+#     with pytest.raises(ValueError, match="number of photons doesn't fit input state"):
+#         QuantumLayer(
+#             input_size=0,
+#             circuit=pcvl.Circuit(3),
+#             input_state=[1., 1., 1.], 
+#             n_photons=1,
+#             measurement_strategy=MeasurementStrategy.probs(),)
+# def test_quantum_layer_photon_count_mismatch_StateVector():
+#     with pytest.raises(ValueError, match="number of photons doesn't fit input state"):
+#         QuantumLayer(
+#             input_size=0,
+#             circuit=pcvl.Circuit(3),
+#             input_state=pcvl.StateVector("|1,0,1>"), 
+#             n_photons=1,
+#             measurement_strategy=MeasurementStrategy.probs(),)
+
+# def test_quantum_layer_photon_count_mismatch_BasicState():
+#     with pytest.raises(ValueError, match="number of photons doesn't fit input state"):
+#         QuantumLayer(
+#             input_size=0,
+#             circuit=pcvl.Circuit(3),
+#             input_state=pcvl.BasicState("|1,0,1>"), 
+#             n_photons=1,
+#             measurement_strategy=MeasurementStrategy.probs(),)
+        
+# def test_quantum_layer_photon_count_mismatch_StateVector_superposition():
+#     with pytest.raises(ValueError, match="number of photons doesn't fit input state"):
+#         QuantumLayer(
+#             input_size=0,
+#             circuit=pcvl.Circuit(3),
+#             input_state=pcvl.StateVector("|1,0,1>")+pcvl.StateVector("|0,1,1>"), 
+#             n_photons=1,
+#             measurement_strategy=MeasurementStrategy.probs(),)
+>>>>>>> b1ab8ba7 (bugfix : solved raiseValueError input_state incompatible with n_photon, still need to know why 7 test fails)
