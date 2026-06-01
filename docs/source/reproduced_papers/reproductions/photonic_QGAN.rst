@@ -193,9 +193,14 @@ With this implementation:
 Interactive Exploration
 =======================
 
-Notebook status in this docs repository: dedicated ``photonic_QGAN`` notebook page is not yet published under ``docs/source/notebooks/reproduced_papers``.
+**Jupyter Notebook**: :doc:`../../notebooks/reproduced_papers/photonic_QGAN`
 
-Available notebooks in reproduced-papers project:
+The notebook demonstrates the MerLin ``PhotonicGenerator`` path with repeated
+quantum heads, Fock-space occupancy readout, headwise image adaptation, and an
+Adam-based GAN training step matching the optimizer structure used in the
+reproduced implementation.
+
+Additional notebooks in reproduced-papers project:
 
 * ``notebooks/qgan_digits.ipynb``
 * ``notebooks/qgan_ideal.ipynb``
@@ -209,6 +214,12 @@ Available notebooks in reproduced-papers project:
    :width: 85%
 
    Photonic QGAN overview figure.
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   ../../notebooks/reproduced_papers/photonic_QGAN
 
 Extensions and Future Work
 ==========================
