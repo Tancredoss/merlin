@@ -28,14 +28,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class BackendCapabilities:
-    """Encapsulates backend capabilities extracted from RemoteProcessor.
+    """Encapsulate Perceval backend capabilities.
 
     Attributes
     ----------
     name : str
         Backend platform name (e.g., "sim:slos", "perceval-qpu:scaleway").
     available_commands : tuple[str]
-        Immutable snapshot of supported remote commands (e.g., ["probs", "sample_count"]).
+        Immutable snapshot of supported commands (e.g., ["probs", "sample_count"]).
     """
 
     name: str
@@ -313,7 +313,7 @@ class MerlinProcessor:
     Offloads :class:`~merlin.algorithms.module.MerlinModule` leaves (e.g.
     QuantumLayer) to a Perceval backend while keeping classical layers local.
     Automatically handles batching, chunking, concurrency control, timeouts, and
-    job cancellation.
+    cooperative cancellation.
 
     **Key Features**
 
@@ -322,9 +322,11 @@ class MerlinProcessor:
     - Batch **chunking** (``microbatch_size``) and **parallel** submission per leaf
       (``chunk_concurrency``).
     - Cancellation support, both per future and globally.
-    - Global timeouts that cancel in-flight jobs.
-    - Fresh ``RemoteProcessor`` per chunk/attempt (no shared RPC handlers across threads).
-    - Descriptive cloud job names (<= 50 chars) for traceability.
+    - Global timeouts that cancel in-flight remote jobs and check local jobs
+      before and after synchronous execution.
+    - Isolated backend object per chunk/attempt: local processors are
+      shallow-copied, and remote processors are cloned or built from a session.
+    - Descriptive cloud job names (<= 50 chars) for remote chunk traceability.
 
     **Execution Model**
 
@@ -342,23 +344,24 @@ class MerlinProcessor:
     ----------
     processor : AProcessor | None
         Perceval processor entry point. Local, non-remote processors are stored
-        for the local backend path. RemoteProcessor instances passed here are
+        for the local backend path, shallow-copied per chunk, and do not require
+        remote token extraction. RemoteProcessor instances passed here are
         normalized to the remote processor path.
     remote_processor : RemoteProcessor | None
-        Perceval remote processor used in the legacy path. Cloned per chunk
+        Perceval remote processor used in the direct remote path. Cloned per chunk
         for thread safety.
     session : ISession | None
         Perceval session (e.g. Scaleway) used to build remote processors.
         ``session.build_remote_processor()`` is called per chunk. Exactly one of
         ``processor``, ``remote_processor``, or ``session`` must be provided.
     microbatch_size : int
-        Maximum number of inputs submitted in a single remote chunk.
+        Maximum number of inputs submitted in a single backend chunk.
         Default: 32.
     timeout : float
-        Default wall-time limit in seconds for remote calls. Can be overridden
+        Default wall-time limit in seconds for backend calls. Can be overridden
         per call via ``timeout=...``. Default: 3600.0.
     max_shots_per_call : int | None
-        Hard cap on shots per remote sampler call (only used when sampling,
+        Hard cap on shots per backend sampler call (only used when sampling,
         not with exact probabilities). If ``nsample`` exceeds this cap,
         ``nsample`` is clamped to this value with a warning. If ``None``,
         defaults are used internally. Default: None.
@@ -367,7 +370,19 @@ class MerlinProcessor:
         Default: 1 (serial).
     token : str | None
         Optional authentication token forwarded to cloned remote processors.
-        If not provided, extracted from the processor's RPC handler.
+        If not provided, extracted from the processor's RPC handler. Ignored
+        for local processors.
+
+    Attributes
+    ----------
+    backend_kind : str
+        Active backend route: ``"local_processor"``, ``"remote_processor"``,
+        or ``"session"``.
+    processor : AProcessor | None
+        Local, non-remote Perceval processor used by the local backend route.
+        ``None`` for remote backend routes.
+    backend_capabilities : BackendCapabilities
+        Backend name and command snapshot extracted at initialization.
     """
 
     DEFAULT_MAX_SHOTS: int = 100_000
@@ -399,10 +414,11 @@ class MerlinProcessor:
 
         1. **AProcessor path** (``processor`` provided):
             Primary Perceval entry point. Local processors are stored as the
-            local backend for the local execution path. RemoteProcessor
-            instances are normalized to the RemoteProcessor path.
+            local backend, shallow-copied per chunk, and used without remote
+            token extraction. RemoteProcessor instances are normalized to the
+            RemoteProcessor path.
         2. **RemoteProcessor path** (``remote_processor`` provided):
-            Legacy Quandela Cloud. The RP is stored and cloned per chunk.
+            Direct RemoteProcessor backend. The RP is stored and cloned per chunk.
         3. **ISession path** (``session`` provided):
             Preferred for Scaleway and future session-based providers.
             ``session.build_remote_processor()`` is called per chunk.
@@ -427,22 +443,23 @@ class MerlinProcessor:
             Exactly one of ``processor``, ``remote_processor``, or ``session``
             must be provided. Default: None.
         microbatch_size : int
-            Maximum number of inputs submitted in a single remote chunk. Default: 32.
+            Maximum number of inputs submitted in a single backend chunk. Default: 32.
         timeout : float
-            Default wall-time limit (seconds) for remote calls. Per-call
+            Default wall-time limit (seconds) for backend calls. Per-call
             override via ``timeout=...`` on API methods. Default: 3600.0.
         max_shots_per_call : int | None
-            Hard cap on shots per remote sampler call (only applies when
+            Hard cap on shots per backend sampler call (only applies when
             sampling; ignored for exact probabilities). If ``nsample`` exceeds
             this value in :meth:`forward` or :meth:`forward_async`, ``nsample``
-            is clamped with a warning. if it is None, it will be set to 100 000. Default: None.
+            is clamped with a warning. If it is ``None``, it is set to
+            100 000. Default: None.
         chunk_concurrency : int
             Max number of chunk jobs in flight per quantum leaf during a
             single call. Default: 1 (serial).
         token : str | None
             Optional authentication token forwarded to cloned remote processors.
             If not provided, extracted from the processor's RPC handler.
-            Default: None.
+            Ignored for local processors. Default: None.
 
         Raises
         ------
@@ -451,8 +468,8 @@ class MerlinProcessor:
             invalid, or if ``processor`` is a remote AProcessor subclass other
             than RemoteProcessor.
         ValueError
-            If no token can be resolved from the RemoteProcessor or explicitly
-            provided.
+            If no token can be resolved from the RemoteProcessor path or
+            explicitly provided.
         """
         n_backends = sum(
             backend is not None for backend in (processor, remote_processor, session)
@@ -650,11 +667,11 @@ class MerlinProcessor:
         nsample: int | None = None,
         timeout: float | None = None,
     ) -> torch.Tensor:
-        """Synchronously execute a module, offloading quantum leaves to remote backend.
+        """Synchronously execute a module against the configured Perceval backend.
 
         Convenience wrapper around :meth:`forward_async` that blocks until completion.
         Classic layers run locally; quantum leaves (those with ``export_config()`` and
-        ``should_offload()`` returning ``True``) are submitted to the remote backend.
+        ``should_offload()`` returning ``True``) are submitted to the configured backend.
 
         **Execution Strategy**
 
@@ -671,7 +688,7 @@ class MerlinProcessor:
             Module tree to evaluate. Must be in ``.eval()`` mode.
         input : torch.Tensor
             Input batch ``[B, D]`` or shape required by the first layer.
-            Moved to CPU for remote execution; output is moved back to original
+            Moved to CPU for backend execution; output is moved back to original
             device/dtype.
         nsample : int | None
             Requested samples per input when using sampling. Ignored if backend
@@ -692,7 +709,9 @@ class MerlinProcessor:
         RuntimeError
             If the processor is closed or ``module`` is in training mode.
         TimeoutError
-            If global timeout is exceeded.
+            If global timeout is exceeded. Remote jobs are cancelled
+            best-effort; local synchronous jobs are checked before and after
+            execution.
         """
         fut = self.forward_async(module, input, nsample=nsample, timeout=timeout)
         return fut.wait()
@@ -705,11 +724,12 @@ class MerlinProcessor:
         nsample: int | None = None,
         timeout: float | None = None,
     ) -> Future:
-        """Asynchronously execute a module, offloading quantum leaves to remote backend.
+        """Asynchronously execute a module against the configured Perceval backend.
 
         Returns a ``torch.futures.Future`` that resolves to the output tensor.
         Batch is automatically chunked and submitted with limited concurrency.
-        Each chunk is submitted to a fresh ``RemoteProcessor`` for thread safety.
+        Each chunk uses an isolated backend object: a shallow local processor
+        copy or a fresh ``RemoteProcessor``.
 
         **Execution Strategy**
 
@@ -727,7 +747,7 @@ class MerlinProcessor:
             Module tree to evaluate. Must be in ``.eval()`` mode.
         input : torch.Tensor
             Input batch ``[B, D]`` or shape required by the first layer.
-            Moved to CPU for remote execution; output is moved back to original
+            Moved to CPU for backend execution; output is moved back to original
             device/dtype.
         nsample : int | None
             Requested samples per input when using sampling. Ignored if backend
@@ -742,7 +762,8 @@ class MerlinProcessor:
         Future
             ``torch.futures.Future[torch.Tensor]`` with extra attributes:
 
-            - ``future.job_ids: list[str]`` — accumulates job IDs across chunks.
+            - ``future.job_ids: list[str]`` — accumulates remote job IDs
+              across chunks.
             - ``future.status() -> dict`` — current progress and state:
               ``{"state", "progress", "message", "chunks_total", "chunks_done", "active_chunks"}``.
             - ``future.cancel_remote() -> None`` — cooperatively cancel; awaiting
@@ -753,7 +774,9 @@ class MerlinProcessor:
         RuntimeError
             If the processor is closed or ``module`` is in training mode.
         TimeoutError
-            If global timeout is exceeded; in-flight jobs are cancelled.
+            If global timeout is exceeded. Remote jobs are cancelled
+            best-effort; local synchronous jobs are checked before and after
+            execution.
         concurrent.futures.CancelledError
             If :meth:`future.cancel_remote` is called.
         """
@@ -763,7 +786,7 @@ class MerlinProcessor:
 
         if module.training:
             raise RuntimeError(
-                "Remote quantum execution requires `.eval()` mode. "
+                "Backend quantum execution requires `.eval()` mode. "
                 "Call `module.eval()` before forward."
             )
 
@@ -1090,7 +1113,7 @@ class MerlinProcessor:
         state: dict,
         deadline: float | None,
     ) -> torch.Tensor:
-        """Execute a single local AProcessor chunk synchronously."""
+        """Execute a single local AProcessor chunk with a shallow processor copy."""
         from concurrent.futures import CancelledError
 
         if state.get("cancel_requested"):
@@ -1113,7 +1136,7 @@ class MerlinProcessor:
                 )
             iteration_params.append(circuit_params)
 
-        processor = self.processor.copy()
+        processor = copy.copy(self.processor)
         processor.set_circuit(config.circuit)
         if config.input_state:
             input_state = pcvl.BasicState(config.input_state)

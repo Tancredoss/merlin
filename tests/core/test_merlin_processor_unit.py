@@ -259,7 +259,6 @@ def make_local_aprocessor(
     processor.available_commands = ["probs"] if available_commands is None else list(
         available_commands
     )
-    processor.copy = MagicMock(return_value=processor)
     return processor
 
 
@@ -899,8 +898,8 @@ def test_run_chunk_dispatches_local_processor_backend():
     )
 
 
-def test_run_chunk_local_uses_processor_copy_per_execution():
-    """Local chunk execution clones the processor via its own copy() method."""
+def test_run_chunk_local_uses_processor_shallow_copy_per_execution():
+    """Local chunk execution shallow-copies the processor per run."""
     proc = make_local_chunk_processor(["probs"])
     layer = FakeLayer()
     config = make_local_chunk_config()
@@ -909,15 +908,21 @@ def test_run_chunk_local_uses_processor_copy_per_execution():
     raw_results = {"results_list": [{"results": {"|1,0>": 1.0}}]}
     sampler = FakeSyncSampler(raw_results)
     cloned_processor = MagicMock(name="cloned_processor")
-    proc.processor.copy = MagicMock(return_value=cloned_processor)
 
-    with patch.object(merlin_processor_module, "Sampler", return_value=sampler) as sampler_cls:
+    with (
+        patch.object(
+            merlin_processor_module.copy, "copy", return_value=cloned_processor
+        ) as copy_processor,
+        patch.object(
+            merlin_processor_module, "Sampler", return_value=sampler
+        ) as sampler_cls,
+    ):
         output = proc._run_chunk_local(
             layer, config, input_chunk, None, state, deadline=None
         )
 
     assert output is proc._process_batch_results.return_value
-    proc.processor.copy.assert_called_once_with()
+    copy_processor.assert_called_once_with(proc.processor)
     proc.processor.set_circuit.assert_not_called()
     cloned_processor.set_circuit.assert_called_once_with(config.circuit)
     cloned_processor.with_input.assert_called_once()
@@ -1021,7 +1026,10 @@ def test_run_chunk_local_raises_cancelled_before_execution():
     state = make_state()
     state["cancel_requested"] = True
 
-    with pytest.raises(CancelledError, match="Remote call was cancelled"):
+    with (
+        patch.object(merlin_processor_module.copy, "copy") as copy_processor,
+        pytest.raises(CancelledError, match="Remote call was cancelled"),
+    ):
         proc._run_chunk_local(
             FakeLayer(),
             make_local_chunk_config(),
@@ -1031,7 +1039,7 @@ def test_run_chunk_local_raises_cancelled_before_execution():
             deadline=None,
         )
 
-    proc.processor.copy.assert_not_called()
+    copy_processor.assert_not_called()
     proc._process_batch_results.assert_not_called()
 
 
@@ -1039,7 +1047,10 @@ def test_run_chunk_local_raises_timeout_before_execution():
     """Local chunk execution observes deadlines before starting work."""
     proc = make_local_chunk_processor(["probs"])
 
-    with pytest.raises(TimeoutError, match="Remote call timed out"):
+    with (
+        patch.object(merlin_processor_module.copy, "copy") as copy_processor,
+        pytest.raises(TimeoutError, match="Remote call timed out"),
+    ):
         proc._run_chunk_local(
             FakeLayer(),
             make_local_chunk_config(),
@@ -1049,7 +1060,7 @@ def test_run_chunk_local_raises_timeout_before_execution():
             deadline=time.time() - 1.0,
         )
 
-    proc.processor.copy.assert_not_called()
+    copy_processor.assert_not_called()
     proc._process_batch_results.assert_not_called()
 
 
@@ -1107,7 +1118,6 @@ def test_run_chunk_local_raises_timeout_after_execution(monkeypatch):
 def test_run_chunk_local_executes_real_perceval_processor():
     """Local chunk execution works with a real Perceval Processor."""
     pcvl_proc = Processor("SLOS")
-    pcvl_proc.copy = lambda: Processor("SLOS")
     proc = MerlinProcessor(processor=pcvl_proc)
     layer = FakeLayer(final_keys=[(1, 0), (0, 1)])
     config = SimpleNamespace(

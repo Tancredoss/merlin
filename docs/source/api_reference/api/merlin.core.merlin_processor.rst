@@ -30,11 +30,12 @@ Key Capabilities
   (``chunk_concurrency``).
 * **Synchronous** (``forward``) and **asynchronous** (``forward_async``) APIs.
 * **Cancellation** of a single call or **all** calls in flight.
-* **Timeouts** that cancel in-flight cloud jobs.
-* Per-chunk fresh :class:`~pcvl.RemoteProcessor` objects — cloned
-  from the original (RemoteProcessor path) or built from the session (ISession
-  path) — to avoid cross-thread handler sharing.
-* Stable, descriptive cloud job names (capped to 50 chars).
+* **Timeouts** that cancel in-flight cloud jobs for remote backends and check
+  local jobs before and after synchronous execution.
+* Per-chunk isolated backend objects: local processors are shallow-copied,
+  while :class:`~pcvl.RemoteProcessor` objects are cloned from the original
+  (RemoteProcessor path) or built from the session (ISession path).
+* Stable, descriptive cloud job names (capped to 50 chars) for remote jobs.
 
 .. note::
    Execution is supported both with exact probabilities (if the backend exposes
@@ -49,8 +50,8 @@ BackendCapabilities
 -------------------
 .. class:: BackendCapabilities(name, available_commands)
 
-   Immutable dataclass encapsulating backend capabilities extracted from a
-   RemoteProcessor or ISession.
+   Immutable dataclass encapsulating capabilities extracted from a Perceval
+   backend.
 
    **Attributes**
 
@@ -93,10 +94,10 @@ MerlinProcessor
       object — e.g. from ``pcvl.providers.scaleway.Session``. Merlin calls
       ``session.build_remote_processor()`` per chunk, giving each chunk
       an independent RP. Type: ``ISession | None``.
-   :param int microbatch_size: Maximum **rows per cloud job** (chunk size).
+   :param int microbatch_size: Maximum **rows per backend chunk** (chunk size).
    :param float timeout: Default wall-time limit (seconds) per call. Per-call
       override via ``timeout=...`` on API methods.
-   :param max_shots_per_call: Hard cap on **shots per cloud call**.
+   :param max_shots_per_call: Hard cap on **shots per backend call**.
       If ``None``, a safe default is used internally. If ``nsample`` exceeds
       this cap, Merlin automatically raises it to match.
       Type: ``int | None``.
@@ -177,7 +178,7 @@ Execution APIs
    :param torch.nn.Module module: A Torch module/tree. Leaves exposing
       ``export_config()`` (and not ``force_local=True``) are offloaded.
    :param torch.Tensor input: 2D batch ``[B, D]`` or shape required by the
-      first leaf. Tensors are moved to CPU for remote execution if needed; the
+      first leaf. Tensors are moved to CPU for backend execution if needed; the
       result is moved back to the input's original device/dtype.
    :param int | None nsample: Shots per input when sampling. Ignored if the
       backend supports exact probabilities (``"probs"``).
@@ -186,7 +187,8 @@ Execution APIs
       distribution dimension.
    :rtype: torch.Tensor
    :raises RuntimeError: If ``module`` is in training mode.
-   :raises TimeoutError: On global per-call timeout (remote cancel is issued).
+   :raises TimeoutError: On global per-call timeout. Remote jobs are cancelled
+      best-effort; local synchronous jobs are checked before and after execution.
    :raises concurrent.futures.CancelledError: If the call is cooperatively
       cancelled via the async API.
 
@@ -197,7 +199,7 @@ Execution APIs
 
    **Future extensions**
 
-   * ``future.job_ids: list[str]`` — accumulates job IDs across all chunk jobs.
+   * ``future.job_ids: list[str]`` — accumulates remote job IDs across chunk jobs.
    * ``future.status() -> dict`` — current state/progress/message plus chunk
      counters: ``{"chunks_total", "chunks_done", "active_chunks"}``.
    * ``future.cancel_remote() -> None`` — cooperative cancel; in-flight jobs are
@@ -260,17 +262,19 @@ Batching & Chunking
 ^^^^^^^^^^^^^^^^^^^
 * If ``B > microbatch_size``, the batch is split into chunks of size
   ``<= microbatch_size``. Up to ``chunk_concurrency`` chunk jobs per quantum
-  leaf are submitted in parallel. This applies to both the RemoteProcessor
-  and ISession paths.
-* Failed chunks are retried up to 3 times with exponential backoff.
-  Cancellation and timeout errors propagate immediately without retry.
+  leaf are submitted in parallel. This applies to the local processor,
+  RemoteProcessor, and ISession paths.
+* Remote chunks are retried up to 3 times with exponential backoff. Local
+  synchronous execution propagates errors directly. Cancellation and timeout
+  errors propagate immediately without retry.
 
 Backends & Commands
 ^^^^^^^^^^^^^^^^^^^
 * Backend capabilities (name and available commands) are extracted once at
-  initialization and stored in ``backend_capabilities``. Both the
-  RemoteProcessor path (via the original RP) and ISession path (via the
-  first processor built from the session) use this snapshot.
+  initialization and stored in ``backend_capabilities``. Local processors use
+  their own ``name`` and ``available_commands`` directly. The RemoteProcessor
+  path uses the original RP, and the ISession path uses the first processor
+  built from the session.
 * If the backend exposes ``"probs"`` and  ``nsample`` is None or 0, the processor queries exact probabilities.
 * Otherwise it uses ``"sample_count"`` or ``"samples"`` with
   ``nsample or DEFAULT_SHOTS_PER_CALL``.
@@ -280,7 +284,9 @@ Backends & Commands
 Timeouts & Cancellation
 ^^^^^^^^^^^^^^^^^^^^^^^
 * Per-call timeouts are enforced as **global deadlines**. On expiry,
-  in-flight jobs are cancelled and a :class:`TimeoutError` is raised.
+  in-flight remote jobs are cancelled and a :class:`TimeoutError` is raised.
+  Local synchronous jobs cannot be interrupted mid-call; the deadline is checked
+  before submission and again before results are returned.
 * ``future.cancel_remote()`` performs cooperative cancellation; awaiting the
   future raises :class:`concurrent.futures.CancelledError`.
 
@@ -288,20 +294,22 @@ Job Naming & Traceability
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 * Each chunk job receives a descriptive name of the form
   ``"mer:{layer}:{call_id}:{idx}/{total}:{cmd}"``, sanitized and
-  truncated to 50 characters with a stable hash suffix when necessary.
+  truncated to 50 characters with a stable hash suffix when necessary. Local
+  jobs do not use cloud job names.
 
-Threading & Fresh RPs
-^^^^^^^^^^^^^^^^^^^^^
-* For each chunk attempt, the processor builds a **fresh**
-  :class:`~pcvl.RemoteProcessor`:
+Threading & Isolated Backends
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+* For each chunk attempt, the processor uses an isolated backend object:
 
+  * **Local processor path**: shallow-copies the original
+    ``perceval.runtime.AProcessor``.
   * **RemoteProcessor path**: clones the original RP (independent RPC handler).
   * **ISession path**: calls ``session.build_remote_processor()`` (independent
     RP per chunk). The session's lifecycle is managed by the context manager
     (``__enter__`` and ``__exit__`` delegate to the session if provided).
 
-  This ensures concurrent chunks and retries never share mutable RP state, and
-  session resources are properly initialized and cleaned up.
+  This prevents concurrent chunks and retries from sharing mutable backend
+  state, and session resources are properly initialized and cleaned up.
 
 Return Shapes & Mapping
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -311,6 +319,16 @@ Return Shapes & Mapping
 
 Examples
 ========
+Synchronous execution (local AProcessor)
+----------------------------------------
+.. code-block:: python
+
+   import perceval as pcvl
+
+   local_processor = pcvl.Processor("SLOS")
+   proc = MerlinProcessor(processor=local_processor)
+   y = proc.forward(model, X)
+
 Synchronous execution (RemoteProcessor)
 ----------------------------------------
 .. code-block:: python
@@ -350,8 +368,9 @@ High-throughput chunking
 
 Version Notes
 =============
-* Both ``remote_processor`` and ``session`` paths now support chunking and
-  ``chunk_concurrency``. Each chunk gets an independent ``RemoteProcessor``.
+* The ``processor``, ``remote_processor``, and ``session`` paths support
+  chunking and ``chunk_concurrency``. Local chunks use a shallow AProcessor
+  copy; remote chunks get an independent ``RemoteProcessor``.
 * Default ``chunk_concurrency`` is **1** (serial).
 * The constructor ``timeout`` must be a **float**; use per-call ``timeout=None``
   for an unlimited call.
