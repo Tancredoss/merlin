@@ -208,6 +208,7 @@ def make_processor(available_commands: list[str]) -> MerlinProcessor:
     proc._active_jobs = set()
     proc._layer_cache = {}
     proc.microbatch_size = 32
+    proc.max_shots_per_call = MerlinProcessor.DEFAULT_MAX_SHOTS
     proc.backend_kind = "remote_processor"
     return proc
 
@@ -316,6 +317,25 @@ def test_backend_capabilities_repr():
     assert "BackendCapabilities" in repr_str
     assert "sim:slos" in repr_str
     assert "probs" in repr_str
+
+
+@pytest.mark.parametrize(
+    ("nsample", "max_shots_per_call", "expected"),
+    [
+        (None, MerlinProcessor.DEFAULT_MAX_SHOTS, MerlinProcessor.DEFAULT_SHOTS_PER_CALL),
+        (None, 123, 123),
+        (123, 456, 123),
+        (456, 123, 123),
+    ],
+)
+def test_effective_sample_count_caps_requested_samples(
+    nsample: int | None, max_shots_per_call: int, expected: int
+):
+    """_effective_sample_count caps defaults and explicit requests."""
+    proc = make_processor(["sample_count"])
+    proc.max_shots_per_call = max_shots_per_call
+
+    assert proc._effective_sample_count(nsample) == expected
 
 
 # ────── Tests for MerlinProcessor with BackendCapabilities ──────
@@ -989,7 +1009,9 @@ def test_run_chunk_local_uses_processor_shallow_copy_per_execution():
     cloned_processor.set_circuit.assert_called_once_with(config.circuit)
     cloned_processor.with_input.assert_called_once()
     cloned_processor.min_detected_photons_filter.assert_called_once_with(1)
-    sampler_cls.assert_called_once_with(cloned_processor)
+    sampler_cls.assert_called_once_with(
+        cloned_processor, max_shots_per_call=MerlinProcessor.DEFAULT_MAX_SHOTS
+    )
     assert sampler.cleared is True
     assert sampler.iterations == [
         {"circuit_params": {"theta_0": 0.25, "theta_1": 0.5}},
@@ -1026,6 +1048,36 @@ def test_run_chunk_local_uses_sample_count_when_probs_unavailable():
         "max_samples": MerlinProcessor.DEFAULT_SHOTS_PER_CALL
     }
     assert sampler.probs.executed is False
+    proc._process_batch_results.assert_called_once_with(
+        raw_results, 1, layer, None, False
+    )
+
+
+def test_run_chunk_local_caps_default_sample_count_to_max_shots_per_call():
+    """Local sampling caps default shots when max_shots_per_call is lower."""
+    proc = make_local_chunk_processor(["sample_count"])
+    proc.max_shots_per_call = 123
+    layer = FakeLayer()
+    config = make_local_chunk_config()
+    raw_results = {"results_list": [{"results": {"|1,0>": 3}}]}
+    sampler = FakeSyncSampler(raw_results)
+
+    with patch.object(
+        merlin_processor_module, "Sampler", return_value=sampler
+    ) as sampler_cls:
+        proc._run_chunk_local(
+            layer,
+            config,
+            torch.tensor([[0.25, 0.5]]),
+            nsample=None,
+            state=make_state(),
+            deadline=None,
+        )
+
+    sampler_cls.assert_called_once()
+    assert sampler_cls.call_args.kwargs == {"max_shots_per_call": 123}
+    assert sampler.sample_count.executed is True
+    assert sampler.sample_count.execute_kwargs == {"max_samples": 123}
     proc._process_batch_results.assert_called_once_with(
         raw_results, 1, layer, None, False
     )
@@ -1322,6 +1374,25 @@ def test_submit_job_defaults_to_sample_count_when_commands_are_empty():
     }
     assert sampler.probs.executed is False
     assert sampler.samples.executed is False
+
+
+def test_submit_job_caps_default_sample_count_to_max_shots_per_call():
+    """Remote submission caps default shots when max_shots_per_call is lower."""
+    proc = make_processor(["sample_count"])
+    proc.max_shots_per_call = 123
+    sampler = FakeSampler()
+
+    returned_job, is_probability = proc._submit_job(
+        sampler,
+        nsample=None,
+        job_base_label=None,
+        _capped_name=lambda base, command: f"{base}:{command}",
+    )
+
+    assert returned_job is sampler.sample_count
+    assert is_probability is False
+    assert sampler.sample_count.executed is True
+    assert sampler.sample_count.execute_kwargs == {"max_samples": 123}
 
 
 def test_poll_job_success_processes_dict_payload_and_records_job_id():

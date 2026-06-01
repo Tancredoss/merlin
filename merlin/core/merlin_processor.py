@@ -335,7 +335,8 @@ class MerlinProcessor:
 
     - If the backend exposes ``"probs"`` command and ``nsample`` is None or 0: computes **exact probabilities**.
     - Otherwise: uses **sampling** with ``"sample_count"`` or ``"samples"`` command.
-      Samples per input = ``nsample`` if provided, else ``DEFAULT_SHOTS_PER_CALL``.
+      Samples per input = ``nsample`` if provided, else
+      ``min(DEFAULT_SHOTS_PER_CALL, max_shots_per_call)``.
 
     Backend capabilities are extracted once at initialization and stored in
     :attr:`backend_capabilities`.
@@ -631,6 +632,25 @@ class MerlinProcessor:
 
         return "fock"
 
+    def _effective_sample_count(self, nsample: int | None) -> int:
+        """Return the sample count submitted to a sampling command.
+
+        Parameters
+        ----------
+        nsample : int | None
+            Requested samples per input. If ``None``, the processor default is
+            used.
+
+        Returns
+        -------
+        int
+            Sample count capped by ``max_shots_per_call``.
+        """
+        requested_shots = (
+            self.DEFAULT_SHOTS_PER_CALL if nsample is None else int(nsample)
+        )
+        return min(requested_shots, self.max_shots_per_call)
+
     # ---------------- Public APIs ----------------
 
     def __enter__(self):
@@ -679,8 +699,9 @@ class MerlinProcessor:
 
         - If backend exposes ``"probs"`` command: uses exact probabilities if sample is None or 0.
         - Otherwise: uses sampling; shots = ``nsample`` if provided, else
-          ``DEFAULT_SHOTS_PER_CALL``. If ``nsample`` exceeds ``max_shots_per_call``,
-          a warning is issued and ``nsample`` is clamped.
+          ``min(DEFAULT_SHOTS_PER_CALL, max_shots_per_call)``. If ``nsample``
+          exceeds ``max_shots_per_call``, a warning is issued and ``nsample``
+          is clamped.
 
         Parameters
         ----------
@@ -692,8 +713,9 @@ class MerlinProcessor:
             device/dtype.
         nsample : int | None
             Requested samples per input when using sampling. Ignored if backend
-            supports exact probabilities. If ``None``, ``DEFAULT_SHOTS_PER_CALL``
-            is used. Default: None.
+            supports exact probabilities. If ``None``,
+            ``min(DEFAULT_SHOTS_PER_CALL, max_shots_per_call)`` is used.
+            Default: None.
         timeout : float | None
             Per-call override of the default timeout (seconds). ``None`` or ``0``
             means unlimited. Default: None (uses ``default_timeout``).
@@ -738,8 +760,9 @@ class MerlinProcessor:
         - If backend exposes ``"probs"`` command: uses exact probabilities; ``nsample``
           is ignored. Results are already normalized probabilities.
         - Otherwise: uses sampling; shots = ``nsample`` if provided, else
-          ``DEFAULT_SHOTS_PER_CALL``. If ``nsample`` exceeds ``max_shots_per_call``,
-          a warning is issued and ``nsample`` is clamped.
+          ``min(DEFAULT_SHOTS_PER_CALL, max_shots_per_call)``. If ``nsample``
+          exceeds ``max_shots_per_call``, a warning is issued and ``nsample``
+          is clamped.
 
         Parameters
         ----------
@@ -751,8 +774,9 @@ class MerlinProcessor:
             device/dtype.
         nsample : int | None
             Requested samples per input when using sampling. Ignored if backend
-            supports exact probabilities. If ``None``, ``DEFAULT_SHOTS_PER_CALL``
-            is used. Default: None.
+            supports exact probabilities. If ``None``,
+            ``min(DEFAULT_SHOTS_PER_CALL, max_shots_per_call)`` is used.
+            Default: None.
         timeout : float | None
             Per-call override of the default timeout (seconds). ``None`` or ``0``
             means unlimited. Default: None (uses ``default_timeout``).
@@ -1191,7 +1215,7 @@ class MerlinProcessor:
             n_photons = sum(config.input_state)
             processor.min_detected_photons_filter(n_photons)
 
-        sampler = Sampler(processor)
+        sampler = Sampler(processor, max_shots_per_call=self.max_shots_per_call)
         sampler.clear_iterations()
         for params in iteration_params:
             sampler.add_iteration(circuit_params=params)
@@ -1203,7 +1227,7 @@ class MerlinProcessor:
         if is_probability:
             raw_results = sampler.probs.execute_sync()
         else:
-            use_shots = self.DEFAULT_SHOTS_PER_CALL if nsample is None else int(nsample)
+            use_shots = self._effective_sample_count(nsample)
             if "sample_count" in self.available_commands:
                 raw_results = sampler.sample_count.execute_sync(max_samples=use_shots)
             elif "samples" in self.available_commands:
@@ -1235,7 +1259,8 @@ class MerlinProcessor:
         2. **Sampling** (``"sample_count"`` or ``"samples"`` commands):
            - Used if exact probabilities are not available or ``nsample > 0``.
            - Tries ``"sample_count"`` first, falls back to ``"samples"``.
-           - Number of samples = ``nsample`` if provided, else ``DEFAULT_SHOTS_PER_CALL``.
+           - Number of samples = ``nsample`` if provided, else
+             ``min(DEFAULT_SHOTS_PER_CALL, max_shots_per_call)``.
 
         Parameters
         ----------
@@ -1268,7 +1293,7 @@ class MerlinProcessor:
             self._ensure_serializable_sampler_iterator(job, sampler)
             return job.execute_async(), is_probability
 
-        use_shots = self.DEFAULT_SHOTS_PER_CALL if nsample is None else int(nsample)
+        use_shots = self._effective_sample_count(nsample)
 
         if "sample_count" in self.available_commands:
             job = sampler.sample_count

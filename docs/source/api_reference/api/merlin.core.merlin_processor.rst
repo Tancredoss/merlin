@@ -99,7 +99,7 @@ MerlinProcessor
       override via ``timeout=...`` on API methods.
    :param max_shots_per_call: Hard cap on **shots per backend call**.
       If ``None``, a safe default is used internally. If ``nsample`` exceeds
-      this cap, Merlin automatically raises it to match.
+      this cap, Merlin clamps the submitted sample count to this value.
       Type: ``int | None``.
    :param int chunk_concurrency: Max number of chunk jobs in flight **per
       quantum leaf** during a single call. ``>=1`` (default: 1, i.e., serial).
@@ -284,7 +284,7 @@ Backends & Commands
   built from the session.
 * If the backend exposes ``"probs"`` and  ``nsample`` is None or 0, the processor queries exact probabilities.
 * Otherwise it uses ``"sample_count"`` or ``"samples"`` with
-  ``nsample or DEFAULT_SHOTS_PER_CALL``.
+  ``nsample`` or ``min(DEFAULT_SHOTS_PER_CALL, max_shots_per_call)``.
 * The backward-compatibility properties ``backend_name`` and
   ``available_commands`` provide direct access to the capabilities.
 
@@ -381,7 +381,6 @@ Version Notes
 * Default ``chunk_concurrency`` is **1** (serial).
 * The constructor ``timeout`` must be a **float**; use per-call ``timeout=None``
   for an unlimited call.
-* ``max_shots_per_call`` is automatically raised to match ``nsample`` when
-  needed.
+* ``max_shots_per_call`` caps the submitted sample count when needed.
 * Shots are **user-controlled** (no auto-shot chooser); use the estimator helper
   to plan values ahead of time.

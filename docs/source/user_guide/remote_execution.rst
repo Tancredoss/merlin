@@ -203,9 +203,9 @@ Exactly **one** of ``remote_processor`` or ``session`` must be provided.
 
 * **max_shots_per_call (int | None)**: cap for **each** cloud call's
   ``max_shots_per_call`` parameter on the Perceval ``Sampler``. If ``None``,
-  Merlin uses an internal default (10 000). If the requested ``nsample`` for a
-  call exceeds this cap, Merlin automatically raises it to match so that
-  Perceval does not silently clamp the sample count.
+  Merlin uses an internal cap default (100 000). If the requested ``nsample``
+  for a call exceeds this cap, Merlin clamps the submitted sample count to the
+  cap.
 
 * **chunk_concurrency (int)**: maximum number of **chunks** submitted in
   parallel **per quantum leaf**. Default ``1`` (serial). Increase for higher
@@ -532,8 +532,8 @@ Troubleshooting
   Your backend may be very fast, or your layer ran locally (e.g.,
   ``force_local=True``).
 * **"Lowered max_samples" warning from Perceval**:
-  This means ``nsample`` exceeded ``max_shots_per_call``. Merlin now
-  auto-raises the cap, but if you see this with an older version, set
+  This means ``nsample`` exceeded ``max_shots_per_call``. Merlin clamps the
+  submitted sample count, but if you see this with an older version, set
   ``max_shots_per_call`` >= your ``nsample``.
 * **Timeouts in CI**:
   Backends vary. Make tests resilient to fast or slow responses by polling
