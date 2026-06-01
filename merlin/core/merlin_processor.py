@@ -1,3 +1,4 @@
+import copy
 import logging
 import threading
 import time
@@ -485,11 +486,6 @@ class MerlinProcessor:
                     f"{type(processor)}; pass a RemoteProcessor or ISession instead."
                 )
             else:
-                if not callable(getattr(processor, "copy", None)):
-                    raise TypeError(
-                        "Local AProcessor backends must provide copy() for "
-                        "per-chunk isolation."
-                    )
                 self.processor = processor
                 self.backend_kind = "local_processor"
                 capability_processor = processor
@@ -990,6 +986,11 @@ class MerlinProcessor:
         """Submit a single chunk job with retries and return the mapped tensor."""
         from concurrent.futures import CancelledError
 
+        if self.backend_kind == "local_processor":
+            return self._run_chunk_local(
+                layer, config, input_chunk, nsample, state, deadline
+            )
+
         batch_size = input_chunk.shape[0]
         if self.session is None and batch_size > self.microbatch_size:
             raise ValueError(
@@ -1079,6 +1080,75 @@ class MerlinProcessor:
         raise RuntimeError(
             f"Chunk failed after {self._MAX_CHUNK_RETRIES} attempts"
         ) from last_error
+
+    def _run_chunk_local(
+        self,
+        layer: MerlinModule,
+        config: ValidatedLayerConfig,
+        input_chunk: torch.Tensor,
+        nsample: int | None,
+        state: dict,
+        deadline: float | None,
+    ) -> torch.Tensor:
+        """Execute a single local AProcessor chunk synchronously."""
+        from concurrent.futures import CancelledError
+
+        if state.get("cancel_requested"):
+            raise CancelledError("Remote call was cancelled")
+        if deadline is not None and time.time() >= deadline:
+            raise TimeoutError("Remote call timed out (remote cancel issued)")
+
+        assert self.processor is not None
+
+        batch_size = input_chunk.shape[0]
+        input_param_names = self._extract_input_params(config)
+        input_np = input_chunk.detach().cpu().numpy()
+
+        iteration_params: list[dict[str, float]] = []
+        for i in range(batch_size):
+            circuit_params = {}
+            for j, param_name in enumerate(input_param_names):
+                circuit_params[param_name] = (
+                    float(input_np[i, j]) if j < input_chunk.shape[1] else 0.0
+                )
+            iteration_params.append(circuit_params)
+
+        processor = self.processor.copy()
+        processor.set_circuit(config.circuit)
+        if config.input_state:
+            input_state = pcvl.BasicState(config.input_state)
+            processor.with_input(input_state)
+            n_photons = sum(config.input_state)
+            processor.min_detected_photons_filter(n_photons)
+
+        sampler = Sampler(processor)
+        sampler.clear_iterations()
+        for params in iteration_params:
+            sampler.add_iteration(circuit_params=params)
+
+        is_probability = ("probs" in self.available_commands) and (
+            nsample is None or int(nsample) <= 0
+        )
+
+        if is_probability:
+            raw_results = sampler.probs.execute_sync()
+        else:
+            use_shots = self.DEFAULT_SHOTS_PER_CALL if nsample is None else int(nsample)
+            if "sample_count" in self.available_commands:
+                raw_results = sampler.sample_count.execute_sync(max_samples=use_shots)
+            elif "samples" in self.available_commands:
+                raw_results = sampler.samples.execute_sync(max_samples=use_shots)
+            else:
+                raw_results = sampler.sample_count.execute_sync(max_samples=use_shots)
+
+        if state.get("cancel_requested"):
+            raise CancelledError("Remote call was cancelled")
+        if deadline is not None and time.time() >= deadline:
+            raise TimeoutError("Remote call timed out (remote cancel issued)")
+
+        return self._process_batch_results(
+            raw_results, batch_size, layer, nsample, is_probability
+        )
 
     def _submit_job(self, sampler, nsample, job_base_label, _capped_name):
         """Submit a job to the sampler, selecting command based on backend capabilities.

@@ -11,24 +11,23 @@ Overview
 classical layers local. It supports these backend entry points:
 
 * **Perceval** ``perceval.runtime.AProcessor`` — the primary constructor
-  argument. Local, non-remote processors are accepted at construction time;
-  local execution dispatch is added by the follow-up AProcessor implementation
-  steps.
+  argument. Local, non-remote processors execute through synchronous Perceval
+  local jobs.
 * **Perceval** :class:`~pcvl.RemoteProcessor` — the original
   Quandela Cloud path. Passing a RemoteProcessor through ``processor=`` routes
   to this same path.
 * **Perceval** `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v1.2/providers.html#scaleway>`_ — the preferred path
   for Scaleway-hosted platforms (and any future session-based providers).
 
-The remote execution paths support batched execution with chunking, limited
-intra-leaf concurrency, per-call/global timeouts, cooperative cancellation, and a
+All execution paths support batched execution with chunking, limited intra-leaf
+concurrency, per-call/global timeouts, cooperative cancellation, and a
 Torch-friendly async interface returning :class:`torch.futures.Future`.
 
 Key Capabilities
 ----------------
 * Automatic traversal of a PyTorch module; offloads only **quantum leaves**.
 * Batch **chunking** (``microbatch_size``) and **parallel** submission per leaf
-  (``chunk_concurrency``). Works identically for the remote execution paths.
+  (``chunk_concurrency``).
 * **Synchronous** (``forward``) and **asynchronous** (``forward_async``) APIs.
 * **Cancellation** of a single call or **all** calls in flight.
 * **Timeouts** that cancel in-flight cloud jobs.
@@ -83,9 +82,9 @@ MerlinProcessor
    be provided.
 
    :param processor: Perceval ``perceval.runtime.AProcessor``. Local processors
-      are stored as the local backend and do not require remote token
-      extraction. RemoteProcessor instances passed here are normalized to the
-      existing remote backend. Type: ``AProcessor | None``.
+      execute through synchronous local Perceval jobs and do not require remote
+      token extraction. RemoteProcessor instances passed here are normalized to
+      the existing remote backend. Type: ``AProcessor | None``.
    :param remote_processor: Authenticated Perceval
       :class:`~pcvl.RemoteProcessor` (simulator or QPU-backed).
       Merlin clones it per chunk so concurrent jobs have independent state.

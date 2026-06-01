@@ -5,29 +5,28 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections.abc import Sequence
 from concurrent.futures import CancelledError
 from dataclasses import dataclass
+from numbers import Integral
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import perceval as pcvl
 import pytest
 import torch
-from perceval.runtime import AProcessor, RemoteProcessor
+from perceval.runtime import AProcessor, Processor, RemoteProcessor
 from perceval.runtime.session import ISession
 
 import merlin.core.merlin_processor as merlin_processor_module
+from merlin.core.circuit import Circuit
 from merlin.core.merlin_processor import (
     BackendCapabilities,
     MerlinProcessor,
-    ValidatedLayerConfig,
     SupportsExportConfig,
+    ValidatedLayerConfig,
 )
-from collections.abc import Sequence
-from numbers import Integral
-import perceval as pcvl
-import numpy as np
-import re
-from merlin.core.circuit import Circuit
 from merlin.core.state_vector import StateVector
 
 
@@ -53,6 +52,44 @@ class FakeSampler:
         self.probs = FakeCommand()
         self.sample_count = FakeCommand()
         self.samples = FakeCommand()
+
+
+class FakeSyncCommand:
+    """Sampler command that records synchronous execution."""
+
+    def __init__(self, result: dict, on_execute=None) -> None:
+        self.result = result
+        self.on_execute = on_execute
+        self.executed = False
+        self.execute_kwargs = None
+
+    def execute_sync(self, **kwargs):
+        """Record sync execution arguments and return the configured result."""
+        self.executed = True
+        self.execute_kwargs = kwargs
+        if self.on_execute is not None:
+            self.on_execute()
+        return self.result
+
+
+class FakeSyncSampler:
+    """Minimal sampler exposing sync command attributes used by _run_chunk_local."""
+
+    def __init__(self, result: dict, on_execute=None) -> None:
+        self.probs = FakeSyncCommand(result, on_execute=on_execute)
+        self.sample_count = FakeSyncCommand(result, on_execute=on_execute)
+        self.samples = FakeSyncCommand(result, on_execute=on_execute)
+        self.iterations = []
+        self.cleared = False
+
+    def clear_iterations(self) -> None:
+        """Record that sampler iterations were reset."""
+        self.cleared = True
+        self.iterations.clear()
+
+    def add_iteration(self, **kwargs) -> None:
+        """Record a sampler iteration."""
+        self.iterations.append(kwargs)
 
 
 class FakePerceval12Command(FakeCommand):
@@ -170,6 +207,7 @@ def make_processor(available_commands: list[str]) -> MerlinProcessor:
     proc._active_jobs = set()
     proc._layer_cache = {}
     proc.microbatch_size = 32
+    proc.backend_kind = "remote_processor"
     return proc
 
 
@@ -191,6 +229,24 @@ def make_poll_processor(output: torch.Tensor | None = None) -> MerlinProcessor:
 def make_state() -> dict:
     """Return the mutable polling state shape expected by _poll_job."""
     return {"cancel_requested": False, "job_ids": []}
+
+
+def make_local_chunk_config() -> SimpleNamespace:
+    """Return the config shape consumed by _run_chunk_local."""
+    return SimpleNamespace(
+        circuit=MagicMock(name="circuit"),
+        input_state=[1, 0],
+        input_param_order=["theta_0", "theta_1"],
+    )
+
+
+def make_local_chunk_processor(available_commands: list[str]) -> MerlinProcessor:
+    """Build a processor configured for local chunk execution tests."""
+    proc = make_processor(available_commands)
+    proc.backend_kind = "local_processor"
+    proc.processor = MagicMock(name="original_processor")
+    proc._process_batch_results = MagicMock(return_value=torch.tensor([[1.0]]))
+    return proc
 
 
 def make_local_aprocessor(
@@ -400,14 +456,15 @@ def test_remote_processor_argument_copies_available_commands():
 def test_remote_processor_argument_extracts_token_like_remote_processor_argument():
     """processor=RemoteProcessor uses the existing remote token extraction path."""
     remote_processor = make_remote_processor_mock(["probs"])
+    resolved_value = "resolved-token-value"
 
     with patch.object(
-        MerlinProcessor, "_extract_rp_token", return_value="test-token"
+        MerlinProcessor, "_extract_rp_token", return_value=resolved_value
     ) as extract:
         proc = MerlinProcessor(processor=remote_processor)
 
     extract.assert_called_once_with(remote_processor)
-    assert proc._token == "test-token"
+    assert proc._token == resolved_value
 
 
 def test_merlinprocessor_rejects_unknown_remote_aprocessor_subclass():
@@ -419,17 +476,17 @@ def test_merlinprocessor_rejects_unknown_remote_aprocessor_subclass():
         MerlinProcessor(processor=remote_aprocessor)
 
 
-def test_local_aprocessor_backend_requires_copy_method():
-    """Local AProcessor without copy() raises TypeError."""
+def test_local_aprocessor_backend_does_not_require_copy_method():
+    """Local AProcessor construction does not require a copy() method."""
     processor = MagicMock(spec=AProcessor)
     processor.is_remote = False
     processor.name = "local:slos"
     processor.available_commands = ["probs"]
-    # Do not set processor.copy — spec=AProcessor means copy is not accessible,
-    # so getattr(processor, "copy", None) returns None.
 
-    with pytest.raises(TypeError, match="copy\\(\\)"):
-        MerlinProcessor(processor=processor)
+    proc = MerlinProcessor(processor=processor)
+
+    assert proc.processor is processor
+    assert proc.backend_kind == "local_processor"
 
 
 def test_remote_processor_path_stores_backend_capabilities():
@@ -812,6 +869,263 @@ def test_session_path_backend_name_is_extracted():
         proc = MerlinProcessor(session=session)
 
     assert proc.backend_name == "perceval-qpu:scaleway"
+
+
+def test_run_chunk_dispatches_local_processor_backend():
+    """Local processor backends are delegated to _run_chunk_local."""
+    proc = make_processor(["probs"])
+    proc.backend_kind = "local_processor"
+    layer = FakeLayer()
+    config = MagicMock()
+    input_chunk = torch.tensor([[0.25, 0.5]])
+    state = make_state()
+    deadline = time.time() + 10.0
+    expected = torch.tensor([[1.0]])
+    proc._run_chunk_local = MagicMock(return_value=expected)
+
+    output = proc._run_chunk(
+        layer,
+        config,
+        input_chunk,
+        nsample=None,
+        state=state,
+        deadline=deadline,
+        job_base_label="ignored-local-label",
+    )
+
+    assert output is expected
+    proc._run_chunk_local.assert_called_once_with(
+        layer, config, input_chunk, None, state, deadline
+    )
+
+
+def test_run_chunk_local_uses_processor_copy_per_execution():
+    """Local chunk execution clones the processor via its own copy() method."""
+    proc = make_local_chunk_processor(["probs"])
+    layer = FakeLayer()
+    config = make_local_chunk_config()
+    input_chunk = torch.tensor([[0.25, 0.5], [0.75, 1.0]])
+    state = make_state()
+    raw_results = {"results_list": [{"results": {"|1,0>": 1.0}}]}
+    sampler = FakeSyncSampler(raw_results)
+    cloned_processor = MagicMock(name="cloned_processor")
+    proc.processor.copy = MagicMock(return_value=cloned_processor)
+
+    with patch.object(merlin_processor_module, "Sampler", return_value=sampler) as sampler_cls:
+        output = proc._run_chunk_local(
+            layer, config, input_chunk, None, state, deadline=None
+        )
+
+    assert output is proc._process_batch_results.return_value
+    proc.processor.copy.assert_called_once_with()
+    proc.processor.set_circuit.assert_not_called()
+    cloned_processor.set_circuit.assert_called_once_with(config.circuit)
+    cloned_processor.with_input.assert_called_once()
+    cloned_processor.min_detected_photons_filter.assert_called_once_with(1)
+    sampler_cls.assert_called_once_with(cloned_processor)
+    assert sampler.cleared is True
+    assert sampler.iterations == [
+        {"circuit_params": {"theta_0": 0.25, "theta_1": 0.5}},
+        {"circuit_params": {"theta_0": 0.75, "theta_1": 1.0}},
+    ]
+    assert sampler.probs.executed is True
+    assert sampler.probs.execute_kwargs == {}
+    assert sampler.sample_count.executed is False
+    proc._process_batch_results.assert_called_once_with(
+        raw_results, 2, layer, None, True
+    )
+
+
+def test_run_chunk_local_uses_sample_count_when_probs_unavailable():
+    """Local chunk execution uses sample_count for sampling-capable processors."""
+    proc = make_local_chunk_processor(["sample_count"])
+    layer = FakeLayer()
+    config = make_local_chunk_config()
+    raw_results = {"results_list": [{"results": {"|1,0>": 3}}]}
+    sampler = FakeSyncSampler(raw_results)
+
+    with patch.object(merlin_processor_module, "Sampler", return_value=sampler):
+        proc._run_chunk_local(
+            layer,
+            config,
+            torch.tensor([[0.25, 0.5]]),
+            nsample=None,
+            state=make_state(),
+            deadline=None,
+        )
+
+    assert sampler.sample_count.executed is True
+    assert sampler.sample_count.execute_kwargs == {
+        "max_samples": MerlinProcessor.DEFAULT_SHOTS_PER_CALL
+    }
+    assert sampler.probs.executed is False
+    proc._process_batch_results.assert_called_once_with(
+        raw_results, 1, layer, None, False
+    )
+
+
+def test_run_chunk_local_uses_samples_when_sample_count_unavailable():
+    """Local chunk execution falls back to samples when sample_count is absent."""
+    proc = make_local_chunk_processor(["samples"])
+    layer = FakeLayer()
+    config = make_local_chunk_config()
+    raw_results = {"results_list": [{"results": {"|1,0>": 3}}]}
+    sampler = FakeSyncSampler(raw_results)
+
+    with patch.object(merlin_processor_module, "Sampler", return_value=sampler):
+        proc._run_chunk_local(
+            layer,
+            config,
+            torch.tensor([[0.25, 0.5]]),
+            nsample=17,
+            state=make_state(),
+            deadline=None,
+        )
+
+    assert sampler.samples.executed is True
+    assert sampler.samples.execute_kwargs == {"max_samples": 17}
+    assert sampler.sample_count.executed is False
+    proc._process_batch_results.assert_called_once_with(
+        raw_results, 1, layer, 17, False
+    )
+
+
+def test_run_chunk_local_defaults_to_sample_count_when_commands_are_empty():
+    """Local chunk execution fails explicitly through sample_count when commands are empty."""
+    proc = make_local_chunk_processor([])
+    layer = FakeLayer()
+    config = make_local_chunk_config()
+    raw_results = {"results_list": [{"results": {"|1,0>": 3}}]}
+    sampler = FakeSyncSampler(raw_results)
+
+    with patch.object(merlin_processor_module, "Sampler", return_value=sampler):
+        proc._run_chunk_local(
+            layer,
+            config,
+            torch.tensor([[0.25, 0.5]]),
+            nsample=5,
+            state=make_state(),
+            deadline=None,
+        )
+
+    assert sampler.sample_count.executed is True
+    assert sampler.sample_count.execute_kwargs == {"max_samples": 5}
+    proc._process_batch_results.assert_called_once_with(
+        raw_results, 1, layer, 5, False
+    )
+
+
+def test_run_chunk_local_raises_cancelled_before_execution():
+    """Local chunk execution observes cancellation before starting work."""
+    proc = make_local_chunk_processor(["probs"])
+    state = make_state()
+    state["cancel_requested"] = True
+
+    with pytest.raises(CancelledError, match="Remote call was cancelled"):
+        proc._run_chunk_local(
+            FakeLayer(),
+            make_local_chunk_config(),
+            torch.tensor([[0.25, 0.5]]),
+            nsample=None,
+            state=state,
+            deadline=None,
+        )
+
+    proc.processor.copy.assert_not_called()
+    proc._process_batch_results.assert_not_called()
+
+
+def test_run_chunk_local_raises_timeout_before_execution():
+    """Local chunk execution observes deadlines before starting work."""
+    proc = make_local_chunk_processor(["probs"])
+
+    with pytest.raises(TimeoutError, match="Remote call timed out"):
+        proc._run_chunk_local(
+            FakeLayer(),
+            make_local_chunk_config(),
+            torch.tensor([[0.25, 0.5]]),
+            nsample=None,
+            state=make_state(),
+            deadline=time.time() - 1.0,
+        )
+
+    proc.processor.copy.assert_not_called()
+    proc._process_batch_results.assert_not_called()
+
+
+def test_run_chunk_local_raises_cancelled_after_execution():
+    """Local chunk execution observes cancellation before returning results."""
+    proc = make_local_chunk_processor(["probs"])
+    state = make_state()
+    raw_results = {"results_list": [{"results": {"|1,0>": 1.0}}]}
+    sampler = FakeSyncSampler(
+        raw_results, on_execute=lambda: state.__setitem__("cancel_requested", True)
+    )
+
+    with (
+        patch.object(merlin_processor_module, "Sampler", return_value=sampler),
+        pytest.raises(CancelledError, match="Remote call was cancelled"),
+    ):
+        proc._run_chunk_local(
+            FakeLayer(),
+            make_local_chunk_config(),
+            torch.tensor([[0.25, 0.5]]),
+            nsample=None,
+            state=state,
+            deadline=None,
+        )
+
+    proc._process_batch_results.assert_not_called()
+
+
+def test_run_chunk_local_raises_timeout_after_execution(monkeypatch):
+    """Local chunk execution observes deadlines before returning results."""
+    proc = make_local_chunk_processor(["probs"])
+    raw_results = {"results_list": [{"results": {"|1,0>": 1.0}}]}
+    sampler = FakeSyncSampler(raw_results)
+    time_values = iter([0.0, 2.0])
+    monkeypatch.setattr(
+        merlin_processor_module.time, "time", lambda: next(time_values)
+    )
+
+    with (
+        patch.object(merlin_processor_module, "Sampler", return_value=sampler),
+        pytest.raises(TimeoutError, match="Remote call timed out"),
+    ):
+        proc._run_chunk_local(
+            FakeLayer(),
+            make_local_chunk_config(),
+            torch.tensor([[0.25, 0.5]]),
+            nsample=None,
+            state=make_state(),
+            deadline=1.0,
+        )
+
+    proc._process_batch_results.assert_not_called()
+
+
+def test_run_chunk_local_executes_real_perceval_processor():
+    """Local chunk execution works with a real Perceval Processor."""
+    pcvl_proc = Processor("SLOS")
+    pcvl_proc.copy = lambda: Processor("SLOS")
+    proc = MerlinProcessor(processor=pcvl_proc)
+    layer = FakeLayer(final_keys=[(1, 0), (0, 1)])
+    config = SimpleNamespace(
+        circuit=pcvl.Circuit(2),
+        input_state=[1, 0],
+        input_param_order=[],
+    )
+
+    output = proc._run_chunk_local(
+        layer,
+        config,
+        torch.empty((2, 0)),
+        nsample=None,
+        state=make_state(),
+        deadline=None,
+    )
+
+    torch.testing.assert_close(output, torch.tensor([[1.0, 0.0], [1.0, 0.0]]))
 
 
 def test_submit_job_prefers_probs_when_available_without_samples():
