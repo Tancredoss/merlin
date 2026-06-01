@@ -331,10 +331,9 @@ defines the allowed batch size to be ran per forward pass for circuits with memr
 
 .. code-block:: python
 
-    from merlin.algorithms.layer import QuantumLayer
-    from merlin.builder.circuit_builder import CircuitBuilder
+    import merlin as ML
 
-    circ = CircuitBuilder(n_modes=3)
+    circ = ML.CircuitBuilder(n_modes=3)
     circ.add_memristive_ps(mode=1, update_rule=update_rule, initial_state=1.2)
     circ.add_angle_encoding(modes=[0, 2])
 
@@ -357,6 +356,59 @@ defines the allowed batch size to be ran per forward pass for circuits with memr
 
 The current state of the memristive phase-shifters can be accessed with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_state` attribute. The full history of the memristive phase-shifters can be accessed
 with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` attribute. The order of the states and history is defined by the order in which the memristive phase-shifters were added in the :class:`~merlin.builder.circuit_builder.CircuitBuilder`.
+
+**Gradient Flow Control**
+
+When defining a memristive phase-shifter using :meth:`~merlin.builder.circuit_builder.CircuitBuilder.add_memristive_ps`, the ``detach_at_each_forward`` parameter controls how gradients flow through the memristive state recurrence.
+
+Since the memristive state at time *t* depends on the previous state and the output at *t-1*, gradients would normally propagate through the entire history during backpropagation. The ``detach_at_each_forward`` parameter controls this behavior:
+
+- ``detach_at_each_forward=True`` (default): New states are detached after computation, blocking gradients from flowing back through the state recurrence. Earlier inputs will receive zero gradients from the memristive state chain, but backpropagation remains fast.
+- ``detach_at_each_forward=False``: New states retain gradients, allowing full gradient flow through the entire accumulated state history. This enables learning from all historical states but may be more computationally expensive.
+
+The full history of states is always maintained in :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` regardless of the ``detach_at_each_forward`` setting.
+
+For manual truncated backpropagation through time (TBPTT), set ``detach_at_each_forward=False`` so gradients flow inside each chunk, then call :meth:`~merlin.algorithms.layer.QuantumLayer.detach_memristive_state` at the chunk boundary. This keeps the current numerical memristive state, but cuts the recurrent autograd graph before the next chunk.
+
+.. code-block:: python
+    
+    import torch
+    import merlin as ML
+
+    # Define the memristive layer
+    circ.add_entangling_layer()
+    circ.add_memristive_ps(
+        mode=1, update_rule=update_rule, initial_state=1.2, detach_at_each_forward=False
+    )
+    circ.add_angle_encoding(modes=[0, 2])
+    circ.add_entangling_layer()
+
+    ql = ML.QuantumLayer(
+        builder=circ,
+        n_photons=3,
+        input_size=2,  # Two input angles for modes [0, 2]
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+    )
+
+    ql.reset(batch_size=1)
+    optimizer = torch.optim.Adam(ql.parameters(), lr=1e-3)
+
+    k = 3  # Number of timesteps per TBPTT chunk
+    
+    for chunk in sequence_chunks(inputs, targets, k):
+        optimizer.zero_grad()
+        loss = torch.zeros((), dtype=ql.dtype, device=ql.device)
+
+        for x_t, target_t in chunk:
+            prediction = ql(x_t)
+            loss = loss + criterion(prediction, target_t)
+
+        loss.backward()
+        optimizer.step()
+        ql.detach_memristive_state(clear_history=True)
+
 
 Deprecations
 -------------------------
