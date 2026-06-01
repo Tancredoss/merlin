@@ -368,7 +368,7 @@ Since the memristive state at time *t* depends on the previous state and the out
 
 The full history of states is always maintained in :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` regardless of the ``detach_at_each_forward`` setting.
 
-If one wants to use truncated backpropagation through time instead (TBPTT) for the k previous forwards instead, it can easily be implemented. Here is how:
+For manual truncated backpropagation through time (TBPTT), set ``detach_at_each_forward=False`` so gradients flow inside each chunk, then call :meth:`~merlin.algorithms.layer.QuantumLayer.detach_memristive_state` at the chunk boundary. This keeps the current numerical memristive state, but cuts the recurrent autograd graph before the next chunk.
 
 .. code-block:: python
     
@@ -393,23 +393,21 @@ If one wants to use truncated backpropagation through time instead (TBPTT) for t
     )
 
     ql.reset(batch_size=1)
+    optimizer = torch.optim.Adam(ql.parameters(), lr=1e-3)
 
-    N = 100  # The total number of forwards to complete before backwards
-    k = 3  # Only last k steps should have gradients
+    k = 3  # Number of timesteps per TBPTT chunk
     
-    for t in range(N):
-        # Create a simple input tensor
-        inputs = torch.randn(1, 2, requires_grad=True)
-        out = ql(inputs)
+    for chunk in sequence_chunks(inputs, targets, k):
+        optimizer.zero_grad()
+        loss = torch.zeros((), dtype=ql.dtype, device=ql.device)
 
-        if N - t == k + 1:
-            # Keep only the last k timesteps with gradients by detaching earlier history
-            for i in range(len(ql.memristive_history)):
-                for j in range(len(ql.memristive_history[i])):
-                    ql.memristive_history[i][j] = ql.memristive_history[i][j].detach()
+        for x_t, target_t in chunk:
+            prediction = ql(x_t)
+            loss = loss + criterion(prediction, target_t)
 
-    loss = out.sum()  # Reduce to scalar for backward
-    loss.backward()
+        loss.backward()
+        optimizer.step()
+        ql.detach_memristive_state(clear_history=True)
 
 
 Deprecations
