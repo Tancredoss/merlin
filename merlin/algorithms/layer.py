@@ -66,6 +66,7 @@ from .layer_utils import (
     InitializationContext,
     apply_angle_encoding,
     feature_count_for_prefix,
+    has_source_noise,
     normalize_noise,
     prepare_input_encoding,
     prepare_input_state,
@@ -295,11 +296,7 @@ class QuantumLayer(MerlinModule):
         )
 
         # Adapt the computation space if a noisy simulation with source noise is done
-        source_noise = False if noise_and_detectors.noise_groups is None else True
-        if source_noise:
-            source_noise = (
-                False if noise_and_detectors.noise_groups.source is None else True
-            )
+        source_noise = has_source_noise(noise_and_detectors.noise_groups)
 
         if source_noise and (not computation_space == ComputationSpace.FOCK):
             warnings.warn(
@@ -650,9 +647,7 @@ class QuantumLayer(MerlinModule):
         # Create measurement mapping
 
         # Check if there is source noise, if so, it directly returns probabilities and should stay probabilities
-        source_noise = False if self._noise_groups is None else True
-        if source_noise and (self._noise_groups.source is None):
-            source_noise = False
+        source_noise = has_source_noise(self._noise_groups)
 
         if kind == MeasurementKind.PARTIAL or source_noise:
             self.measurement_mapping = nn.Identity()
@@ -1043,9 +1038,7 @@ class QuantumLayer(MerlinModule):
         )
 
         # Phase 5: Convert and normalize amplitudes if it is a non noisy simulation. If it is noisy, they are already normalized
-        source_noise = False if self._noise_groups is None else True
-        if source_noise:
-            source_noise = False if self._noise_groups.source is None else True
+        source_noise = has_source_noise(self._noise_groups)
 
         if not source_noise:
             if isinstance(amplitudes, tuple):
@@ -1129,9 +1122,7 @@ class QuantumLayer(MerlinModule):
     ) -> torch.Tensor | SectoredDistribution:
         """Select the computation path based on the encoding mode and input state."""
         # Checking if there is source noise
-        source_noise = False if self._noise_groups is None else True
-        if source_noise:
-            source_noise = False if self._noise_groups.source is None else True
+        source_noise = has_source_noise(self._noise_groups)
 
         if not source_noise:
             if self.amplitude_encoding:

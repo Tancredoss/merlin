@@ -1,17 +1,21 @@
 import re
+from copy import deepcopy
 
+import numpy as np
 import perceval as pcvl
 import pytest
+import torch
 
 import merlin as ml
-from merlin.core import StateVector
 from merlin.algorithms.layer_utils import (
     classify_noise,
+    has_active_noise,
+    has_circuit_noise,
+    has_phase_error,
+    has_source_noise,
     normalize_noise,
 )
-import numpy as np
-import torch
-from copy import deepcopy
+from merlin.core import StateVector
 
 
 @pytest.fixture
@@ -77,6 +81,31 @@ def test_transmittance_classified_as_post_measurement(noise_groups):
     assert noise_groups.post_measurement["transmittance"] == 0.4
     assert "transmittance" not in noise_groups.source.keys()
     assert "transmittance" not in noise_groups.circuit.keys()
+
+
+def test_noise_group_predicates_detect_active_groups():
+    neutral_groups = classify_noise(pcvl.NoiseModel())
+    assert not has_active_noise(neutral_groups)
+    assert not has_source_noise(neutral_groups)
+    assert not has_circuit_noise(neutral_groups)
+    assert not has_phase_error(neutral_groups)
+
+    source_groups = classify_noise(pcvl.NoiseModel(indistinguishability=0.9))
+    assert has_active_noise(source_groups)
+    assert has_source_noise(source_groups)
+    assert not has_circuit_noise(source_groups)
+    assert not has_phase_error(source_groups)
+
+    phase_imprecision_groups = classify_noise(pcvl.NoiseModel(phase_imprecision=0.5))
+    assert has_active_noise(phase_imprecision_groups)
+    assert has_circuit_noise(phase_imprecision_groups)
+    assert not has_source_noise(phase_imprecision_groups)
+    assert not has_phase_error(phase_imprecision_groups)
+
+    phase_error_groups = classify_noise(pcvl.NoiseModel(phase_error=0.5))
+    assert has_active_noise(phase_error_groups)
+    assert has_circuit_noise(phase_error_groups)
+    assert has_phase_error(phase_error_groups)
 
 
 # Validation tests
@@ -326,7 +355,7 @@ def test_normalise_noise():
     assert output == noise
 
     output = normalize_noise(None, None)
-    assert output == None
+    assert output is None
 
     with pytest.raises(
         ValueError,
@@ -454,6 +483,21 @@ def test_brightness_only_classification_has_no_source_or_circuit_groups():
     assert groups.post_measurement == {"brightness": 0.3}
 
 
+def test_neutral_noise_model_does_not_force_noisy_measurement_policy():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=pcvl.Circuit(2),
+        input_state=[1, 0],
+        n_photons=1,
+        noise=pcvl.NoiseModel(),
+        measurement_strategy=ml.MeasurementStrategy.amplitudes(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    assert layer._noise_groups is None
+
+
 def test_not_implemented_error_lists_classified_groups():
     with pytest.warns(
         UserWarning,
@@ -485,6 +529,24 @@ def test_experiment_noise_amplitudes_uses_value_error_contract():
             experiment=experiment,
             input_state=[1, 0, 1, 0],
             measurement_strategy=ml.MeasurementStrategy.AMPLITUDES,
+        )
+
+
+def test_active_noise_with_partial_measurement_raises_value_error():
+    with pytest.raises(
+        ValueError,
+        match="Partial measurement is not supported with active noise. Use full measurement or disable noise.",
+    ):
+        ml.QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(2),
+            input_state=[1, 0],
+            n_photons=1,
+            noise=pcvl.NoiseModel(brightness=0.5),
+            measurement_strategy=ml.MeasurementStrategy.partial(
+                modes=[0],
+                computation_space=ml.ComputationSpace.FOCK,
+            ),
         )
 
 
