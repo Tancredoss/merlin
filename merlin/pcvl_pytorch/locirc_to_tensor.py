@@ -1,6 +1,6 @@
 # MIT License
 #
-# Copyright (c) 2025 Quandela
+# Copyright (c) 2026 Quandela
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -21,8 +21,6 @@
 # SOFTWARE.
 
 from __future__ import annotations
-
-import random
 
 import torch
 from multipledispatch import dispatch
@@ -69,6 +67,19 @@ class CircuitConverter:
         Target tensor dtype.
     device : torch.device
         Device used for tensor operations.
+    phase_imprecision : float
+        Deterministic quantization step applied to every phase shifter before
+        building the unitary. This models finite phase-setting resolution: a
+        commanded phase is rounded to the nearest multiple of
+        ``phase_imprecision`` with a straight-through estimator, so the forward
+        pass uses the quantized value while the backward pass keeps the identity
+        gradient through the commanded phase. Default value is 0.0.
+    phase_error : float
+        Stochastic uniform perturbation half-width in radians. This models
+        random phase noise around the configured phase after any
+        ``phase_imprecision`` quantization. Fresh samples are drawn only when
+        :meth:`to_tensor` is called with ``apply_phase_error=True``; otherwise
+        the converter remains deterministic. Default value is 0.0.
 
     Notes
     -----
@@ -137,6 +148,8 @@ class CircuitConverter:
         input_specs: list[str] = None,
         dtype: torch.dtype = torch.complex64,
         device: torch.device = torch.device("cpu"),
+        phase_imprecision: float = 0.0,
+        phase_error: float = 0.0,
     ):
         """Initialize the CircuitConverter with a Perceval circuit.
 
@@ -151,11 +164,27 @@ class CircuitConverter:
             Tensor dtype.
         device : torch.device
             PyTorch device for tensor operations.
+        phase_imprecision : float
+            Deterministic quantization step applied to every phase shifter
+            before building the unitary. This models finite phase-setting
+            resolution: a commanded phase is rounded to the nearest multiple of
+            ``phase_imprecision`` with a straight-through estimator, so the
+            forward pass uses the quantized value while the backward pass keeps
+            the identity gradient through the commanded phase. If omitted, no
+            phase quantization is applied. Default value is 0.0.
+        phase_error : float
+            Stochastic uniform perturbation half-width in radians. This models
+            random phase noise around the configured phase after any
+            ``phase_imprecision`` quantization. Fresh samples are drawn only
+            when :meth:`to_tensor` is called with ``apply_phase_error=True``;
+            otherwise the converter remains deterministic. If omitted, no
+            stochastic phase perturbation is configured. Default value is 0.0.
 
         Raises
         ------
         ValueError
-            If ``input_specs`` do not match circuit parameters.
+            If ``input_specs`` do not match circuit parameters, or if a phase
+            noise value is negative.
         TypeError
             If ``circuit`` is not a Perceval circuit.
         """
@@ -168,6 +197,14 @@ class CircuitConverter:
         self.batch_size = 1
 
         self.set_dtype(dtype)
+        self._phase_imprecision = float(phase_imprecision)
+        self._phase_error = float(phase_error)
+        self._apply_phase_error = False
+
+        if self._phase_imprecision < 0.0:
+            raise ValueError("phase_imprecision must be non-negative.")
+        if self._phase_error < 0.0:
+            raise ValueError("phase_error must be non-negative.")
 
         assert isinstance(circuit, Circuit), (
             f"Expected a Perceval LO circuit, but got {type(circuit).__name__}"
@@ -291,7 +328,8 @@ class CircuitConverter:
                 )
             if isinstance(c, Barrier):
                 continue
-            if not c.get_parameters(all_params=False):
+            is_phase_error_sensitive = isinstance(c, PS) and self._phase_error > 0.0
+            if not c.get_parameters(all_params=False) and not is_phase_error_sensitive:
                 # we can already compute the tensor for this component
                 curr_comp_tensor = self._compute_tensor(c)
                 list_rct.append((r, curr_comp_tensor))
@@ -352,7 +390,10 @@ class CircuitConverter:
         return [item for item in list_rct if item[1] is not None]
 
     def to_tensor(
-        self, *input_params: torch.Tensor, batch_size: int | None = None
+        self,
+        *input_params: torch.Tensor,
+        batch_size: int | None = None,
+        apply_phase_error: bool = False,
     ) -> torch.Tensor:
         r"""Convert the parameterized circuit to a PyTorch unitary tensor.
 
@@ -365,6 +406,12 @@ class CircuitConverter:
         batch_size : int | None
             Explicit batch size. If ``None``, it is inferred from the input
             tensors.
+        apply_phase_error : bool
+            Whether to draw fresh stochastic perturbations for configured
+            ``phase_error`` values during this conversion. This flag does not
+            affect deterministic ``phase_imprecision`` quantization, which is
+            applied whenever ``phase_imprecision`` is positive. Default value
+            is False.
 
         Returns
         -------
@@ -404,28 +451,32 @@ class CircuitConverter:
             has_batch = True
         self.batch_size = batch_size
 
-        converted_tensor = (
-            torch
-            .eye(self.circuit.m, dtype=self.tensor_cdtype, device=self.device)
-            .unsqueeze(0)
-            .repeat(batch_size, 1, 1)
-        )
-        # Build unitary tensor by composing component unitaries
-        for r, c in self.list_rct:
-            if isinstance(c, torch.Tensor):
-                # If the component is already a tensor, use it directly, just move it to the correct device and dtype
-                # and expand it to the batch size
-                curr_comp_tensor = c.to(
-                    dtype=self.tensor_cdtype, device=self.device
-                ).expand(batch_size, -1, -1)
-            else:
-                curr_comp_tensor = self._compute_tensor(c)
-
-            # Compose unitaries
-            contribution = converted_tensor[..., r[0] : (r[-1] + 1), :].clone()
-            converted_tensor[..., r[0] : (r[-1] + 1), :] = (
-                curr_comp_tensor @ contribution.to(curr_comp_tensor.device)
+        previous_apply_phase_error = self._apply_phase_error
+        self._apply_phase_error = apply_phase_error
+        try:
+            converted_tensor = (
+                torch.eye(self.circuit.m, dtype=self.tensor_cdtype, device=self.device)
+                .unsqueeze(0)
+                .repeat(batch_size, 1, 1)
             )
+            # Build unitary tensor by composing component unitaries
+            for r, c in self.list_rct:
+                if isinstance(c, torch.Tensor):
+                    # If the component is already a tensor, use it directly, just move it to the correct device and dtype
+                    # and expand it to the batch size
+                    curr_comp_tensor = c.to(
+                        dtype=self.tensor_cdtype, device=self.device
+                    ).expand(batch_size, -1, -1)
+                else:
+                    curr_comp_tensor = self._compute_tensor(c)
+
+                # Compose unitaries
+                contribution = converted_tensor[..., r[0] : (r[-1] + 1), :].clone()
+                converted_tensor[..., r[0] : (r[-1] + 1), :] = (
+                    curr_comp_tensor @ contribution.to(curr_comp_tensor.device)
+                )
+        finally:
+            self._apply_phase_error = previous_apply_phase_error
 
         if not has_batch:
             # If no batch dimension was provided, remove the batch dimension
@@ -529,6 +580,16 @@ class CircuitConverter:
     def _compute_tensor(self, comp: AComponent) -> torch.Tensor:  # type: ignore[no-redef]
         """Compute tensor for Phase Shifter component.
 
+        Phase noise is applied directly to the real phase value before
+        constructing ``exp(1j * phase)``. If ``phase_imprecision`` is positive,
+        the phase is first rounded to the nearest quantization step with a
+        straight-through estimator, so gradients still flow through the
+        commanded phase. If ``phase_error`` is positive and ``to_tensor`` was
+        called with ``apply_phase_error=True``, a fresh Torch sample is drawn
+        from ``Uniform(-phase_error, phase_error)`` and added after
+        quantization. The sampled perturbation uses ``torch.empty_like(phase)``,
+        so it follows the phase tensor's dtype, device, and batch shape.
+
         Args:
             comp: PS component with phi parameter
 
@@ -537,18 +598,32 @@ class CircuitConverter:
         """
         if comp.param("phi").is_variable:
             (tensor_id, idx_in_tensor) = self.param_mapping[comp.param("phi").name]
-            phase = self.torch_params[tensor_id][..., idx_in_tensor]
+            phase = self.torch_params[tensor_id][..., idx_in_tensor].to(
+                dtype=self.tensor_fdtype, device=self.device
+            )
         else:
             phase = torch.tensor(
                 comp.param("phi")._value, dtype=self.tensor_fdtype, device=self.device
             )
-        phase = phase.to(self.tensor_cdtype)
 
-        if comp._max_error:
-            err = float(comp._max_error) * random.uniform(-1, 1)
-            phase += err
+        if phase.ndim == 0 and self.batch_size > 1:
+            phase = phase.expand(self.batch_size)
 
-        unitary_tensor = torch.exp(1j * phase).reshape(
+        if self._phase_imprecision > 0.0:
+            phase_imprecision = phase.new_tensor(self._phase_imprecision)
+            phase_quantized = (
+                torch.round(phase / phase_imprecision) * phase_imprecision
+            )
+            phase = phase + (phase_quantized - phase).detach()
+
+        if self._apply_phase_error and self._phase_error > 0.0:
+            phase_error = torch.empty_like(phase).uniform_(
+                -self._phase_error,
+                self._phase_error,
+            )
+            phase = phase + phase_error
+
+        unitary_tensor = torch.exp(1j * phase.to(self.tensor_cdtype)).reshape(
             -1, 1
         )  # reshape so that in any case, we have 2 dim
         return unitary_tensor.unsqueeze(-1)  # to change shape of tensor to (b, 1, 1)
