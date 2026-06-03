@@ -17,7 +17,11 @@ merlin.algorithms.layer module
 
    If the experiment carries a :class:`pcvl.NoiseModel` (via ``experiment.noise``), MerLin inserts a :class:`~merlin.measurement.photon_loss.PhotonLossTransform` ahead of any detector transform. The resulting ``output_keys`` and ``output_size`` therefore include every survival/loss configuration implied by the model, and amplitude read-out is disabled whenever custom detectors or photon loss are present.
 
-   ``n_phase_error_samples`` controls the Monte Carlo sample count used for active ``phase_error`` circuit noise. Runtime scales roughly linearly with this value when ``phase_error > 0``; the default is 10 samples.
+   Circuit phase noise is applied while MerLin builds the differentiable unitary. ``phase_imprecision`` quantizes each phase to the nearest grid point using ``round(phi / phase_imprecision) * phase_imprecision``; it is not truncation. Exact half-step ties follow ``torch.round`` behavior, so ``phi = pi / 8`` with ``phase_imprecision = pi / 4`` maps to ``0``.
+
+   ``phase_error`` is sampled after any ``phase_imprecision`` quantization. With both active, each sampled unitary uses ``round(phi / phase_imprecision) * phase_imprecision + epsilon`` where ``epsilon`` is drawn from ``Uniform(-phase_error, phase_error)``.
+
+   ``n_phase_error_samples`` controls the Monte Carlo sample count used for active ``phase_error`` circuit noise. MerLin computes probabilities for each sampled unitary and averages probabilities, not amplitudes. Runtime scales roughly linearly with this value when ``phase_error > 0``; the default is 10 samples.
 
 Example: Quickstart QuantumLayer
 --------------------------------

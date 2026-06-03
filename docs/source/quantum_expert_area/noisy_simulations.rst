@@ -14,8 +14,8 @@ To add noise to your :class:`~merlin.algorithms.layer.QuantumLayer`, Perceval's 
 
 1. Circuit noise
 
-   a. ``phase_imprecision``: Maximum precision of the phase shifters. ``0`` means infinite precision.
-   b. ``phase_error``: Maximum random noise on the phase shifters, in radians. ``0`` means no stochastic phase error.
+   a. ``phase_imprecision``: Phase-shifter resolution step, in radians. ``0`` means infinite precision. Merlin quantizes each phase to the nearest multiple of this value.
+   b. ``phase_error``: Maximum random phase-shifter perturbation, in radians. ``0`` means no stochastic phase error.
 
 2. Source noise
 
@@ -87,15 +87,45 @@ Circuit phase noise is applied while Merlin builds the differentiable circuit
 unitary.
 
 ``phase_imprecision`` is deterministic. Each phase shifter value is quantized to
-the nearest multiple of ``phase_imprecision`` during the forward pass. Merlin
-uses a straight-through estimator, so gradients still flow through the commanded
-phase value.
+the nearest multiple of ``phase_imprecision`` during the forward pass:
+
+.. math::
+
+   \phi_\text{quantized}
+   =
+   \operatorname{round}\left(\frac{\phi}{\Delta \phi}\right)\Delta \phi
+
+where :math:`\Delta \phi` is ``phase_imprecision``. This is nearest-grid
+rounding, not truncation. Merlin uses ``torch.round`` for this operation, so
+exact half-step ties follow PyTorch's rounding behavior. For example, if the
+commanded phase is :math:`\pi/8` and ``phase_imprecision`` is :math:`\pi/4`,
+then :math:`\phi / \Delta \phi = 0.5` and the quantized phase is ``0``. Values
+slightly above :math:`\pi/8` quantize to :math:`\pi/4`. Merlin uses a
+straight-through estimator, so gradients still flow through the commanded phase
+value even though the forward pass uses the quantized phase.
 
 ``phase_error`` is stochastic. For each Monte Carlo sample, Merlin draws a fresh
 Torch random perturbation from ``Uniform(-phase_error, phase_error)`` for every
 phase shifter, builds one unitary, computes probabilities, then averages the
 probability distributions. Amplitudes are not averaged. Use
 ``torch.manual_seed(...)`` to make the sampled perturbations reproducible.
+
+When both circuit phase noises are active, Merlin first quantizes the phase and
+then samples the stochastic perturbation around the quantized value:
+
+.. math::
+
+   \phi_\text{effective}
+   =
+   \operatorname{round}\left(\frac{\phi}{\Delta \phi}\right)\Delta \phi
+   +
+   \epsilon,
+   \qquad
+   \epsilon \sim \operatorname{Uniform}(-e, e)
+
+where :math:`e` is ``phase_error``. If ``phase_imprecision`` is inactive, Merlin
+uses :math:`\phi + \epsilon`. If ``phase_error`` is inactive, Merlin uses only
+the deterministic quantized phase.
 
 The ``n_phase_error_samples`` constructor parameter controls how many sampled
 unitaries are averaged when active ``phase_error`` is present. If omitted,
@@ -111,6 +141,8 @@ Suggested values:
 The parameter is ignored when ``phase_error`` is ``None`` or ``0.0``.
 
 .. code-block:: python
+
+    import math
 
     import perceval as pcvl
     import torch
@@ -128,7 +160,7 @@ The parameter is ignored when ``phase_error`` is ``None`` or ``0.0``.
         n_photons=1,
         trainable_parameters=["phi"],
         noise=pcvl.NoiseModel(
-            phase_imprecision=torch.pi / 8,
+            phase_imprecision=math.pi / 4,
             phase_error=0.1,
         ),
         n_phase_error_samples=50,
@@ -143,6 +175,11 @@ The parameter is ignored when ``phase_error`` is ``None`` or ``0.0``.
     probs_2 = layer()
 
     assert torch.allclose(probs_1, probs_2)
+
+In this example, a commanded trainable phase equal to ``math.pi / 8`` would be
+quantized to ``0`` before the stochastic perturbation is added, because it lies
+exactly halfway between the ``0`` and ``math.pi / 4`` grid points and
+``torch.round(0.5)`` returns ``0``.
 
 
 Noisy simulations guidelines

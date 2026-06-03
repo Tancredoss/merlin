@@ -70,16 +70,24 @@ class CircuitConverter:
     phase_imprecision : float
         Deterministic quantization step applied to every phase shifter before
         building the unitary. This models finite phase-setting resolution: a
-        commanded phase is rounded to the nearest multiple of
-        ``phase_imprecision`` with a straight-through estimator, so the forward
-        pass uses the quantized value while the backward pass keeps the identity
-        gradient through the commanded phase. Default value is 0.0.
+        commanded phase ``phi`` is mapped to
+        ``round(phi / phase_imprecision) * phase_imprecision`` with a
+        straight-through estimator, so the forward pass uses the quantized
+        value while the backward pass keeps the identity gradient through the
+        commanded phase. This is nearest-grid rounding, not truncation. Exact
+        half-step ties follow ``torch.round`` behavior. For example,
+        ``phi = pi / 8`` with ``phase_imprecision = pi / 4`` quantizes to
+        ``0`` because ``round(0.5) == 0``. Default value is 0.0.
     phase_error : float
         Stochastic uniform perturbation half-width in radians. This models
-        random phase noise around the configured phase after any
-        ``phase_imprecision`` quantization. Fresh samples are drawn only when
-        :meth:`to_tensor` is called with ``apply_phase_error=True``; otherwise
-        the converter remains deterministic. Default value is 0.0.
+        random phase noise around the quantized phase after any
+        ``phase_imprecision`` step. When active, the effective sampled phase is
+        ``round(phi / phase_imprecision) * phase_imprecision + epsilon`` with
+        ``epsilon ~ Uniform(-phase_error, phase_error)``. If
+        ``phase_imprecision`` is inactive, the sampled phase is
+        ``phi + epsilon``. Fresh samples are drawn only when :meth:`to_tensor`
+        is called with ``apply_phase_error=True``; otherwise the converter
+        remains deterministic. Default value is 0.0.
 
     Notes
     -----
@@ -116,6 +124,19 @@ class CircuitConverter:
            `torch.empty_like(phase)` to ensure proper device/dtype handling
            and do NOT require gradients (they are stochastic noise, not
            learnable parameters).
+
+        5. **Effective Phase**: For a phase shifter commanded to phase ``phi``,
+           the forward phase is:
+
+           - ``phi`` when both phase noises are inactive;
+           - ``round(phi / phase_imprecision) * phase_imprecision`` when only
+             ``phase_imprecision`` is active;
+           - ``phi + epsilon`` when only ``phase_error`` is active;
+           - ``round(phi / phase_imprecision) * phase_imprecision + epsilon``
+             when both are active.
+
+           The quantization uses nearest-grid rounding through
+           :func:`torch.round`; it is not floor or truncation.
 
     Example:
         Basic usage with a single phase shifter:
@@ -194,18 +215,23 @@ class CircuitConverter:
         phase_imprecision : float
             Deterministic quantization step applied to every phase shifter
             before building the unitary. This models finite phase-setting
-            resolution: a commanded phase is rounded to the nearest multiple of
-            ``phase_imprecision`` with a straight-through estimator, so the
-            forward pass uses the quantized value while the backward pass keeps
-            the identity gradient through the commanded phase. If omitted, no
-            phase quantization is applied. Default value is 0.0.
+            resolution: a commanded phase ``phi`` is mapped to
+            ``round(phi / phase_imprecision) * phase_imprecision`` with a
+            straight-through estimator, so the forward pass uses the quantized
+            value while the backward pass keeps the identity gradient through
+            the commanded phase. This is nearest-grid rounding, not
+            truncation. If omitted, no phase quantization is applied. Default
+            value is 0.0.
         phase_error : float
             Stochastic uniform perturbation half-width in radians. This models
             random phase noise around the configured phase after any
-            ``phase_imprecision`` quantization. Fresh samples are drawn only
-            when :meth:`to_tensor` is called with ``apply_phase_error=True``;
-            otherwise the converter remains deterministic. If omitted, no
-            stochastic phase perturbation is configured. Default value is 0.0.
+            ``phase_imprecision`` quantization. The sampled perturbation is
+            added after quantization, so both noises compose as
+            ``round(phi / phase_imprecision) * phase_imprecision + epsilon``.
+            Fresh samples are drawn only when :meth:`to_tensor` is called with
+            ``apply_phase_error=True``; otherwise the converter remains
+            deterministic. If omitted, no stochastic phase perturbation is
+            configured. Default value is 0.0.
 
         Raises
         ------
@@ -436,9 +462,13 @@ class CircuitConverter:
 
             1. **phase_imprecision (deterministic, always applied)**:
                If configured, every phase is quantized to the nearest multiple of
-               `phase_imprecision` using a straight-through estimator. Gradients flow
-               through the commanded phase, while the forward pass uses the quantized
-               value. This is always active and does not require `apply_phase_error=True`.
+               ``phase_imprecision`` using a straight-through estimator. This uses
+               ``torch.round(phase / phase_imprecision) * phase_imprecision``:
+               it is nearest-grid rounding, not truncation. Exact half-step ties
+               follow ``torch.round`` behavior, so ``pi / 8`` with a ``pi / 4``
+               step quantizes to ``0``. Gradients flow through the commanded phase,
+               while the forward pass uses the quantized value. This is always
+               active and does not require ``apply_phase_error=True``.
 
             2. **phase_error (stochastic, controlled by apply_phase_error flag)**:
                If configured and `apply_phase_error=True`, fresh samples from
@@ -468,8 +498,8 @@ class CircuitConverter:
             Whether to draw fresh stochastic perturbations for configured
             ``phase_error`` values during this conversion. This flag does not
             affect deterministic ``phase_imprecision`` quantization, which is
-            applied whenever ``phase_imprecision`` is positive. Default value
-            is False.
+            applied whenever ``phase_imprecision`` is positive. The perturbation
+            is added after quantization. Default value is False.
 
         Returns
         -------
@@ -651,17 +681,23 @@ class CircuitConverter:
             2. **Quantization (phase_imprecision)**:
                If self._phase_imprecision > 0.0, apply deterministic STE
                quantization. The commanded phase is rounded to the nearest
-               multiple of phase_imprecision, while gradients pass through the
-               original commanded phase unchanged. This models finite phase
-               resolution in hardware.
+               multiple of ``phase_imprecision`` with
+               ``torch.round(phase / phase_imprecision) * phase_imprecision``,
+               while gradients pass through the original commanded phase
+               unchanged. This models finite phase resolution in hardware.
+               It is not truncation. For example, ``pi / 8`` with a
+               ``pi / 4`` imprecision is exactly half a step, and
+               ``torch.round(0.5)`` sends it to ``0``.
 
             3. **Perturbation (phase_error)**:
                If self._apply_phase_error and self._phase_error > 0.0, draw
-               fresh Uniform samples and add to the quantized phase. Samples
-               are drawn using torch.empty_like(phase) to respect the phase
-               tensor's device, dtype, and batch shape. Perturbations do NOT
-               require gradients; they are stochastic noise, not learnable.
-               Optimization updates the commanded phase, not the noise.
+               fresh ``Uniform(-phase_error, phase_error)`` samples and add them
+               to the quantized phase. If quantization is inactive, samples are
+               added to the commanded phase. Samples are drawn using
+               ``torch.empty_like(phase)`` to respect the phase tensor's device,
+               dtype, and batch shape. Perturbations do NOT require gradients;
+               they are stochastic noise, not learnable. Optimization updates
+               the commanded phase, not the noise.
 
             4. **Complex Conversion**: Convert the noisy phase to the complex
                phase unitary exp(1j * phase).
@@ -697,23 +733,21 @@ class CircuitConverter:
         if phase.ndim == 0 and self.batch_size > 1:
             phase = phase.expand(self.batch_size)
 
-        # Apply deterministic phase quantization if phase_imprecision is active.
-        # Uses straight-through estimator (STE) so gradients flow through the
-        # commanded phase while the forward pass uses the quantized value.
-        # This preserves differentiability while modeling finite phase resolution.
+        # Apply finite phase resolution with nearest-grid quantization. This is
+        # not truncation: a phase is mapped to
+        # round(phase / phase_imprecision) * phase_imprecision. torch.round
+        # decides exact half-step ties, so pi/8 with a pi/4 step maps to 0.
+        # The STE keeps gradients attached to the commanded phase.
         if self._phase_imprecision > 0.0:
             phase_imprecision = phase.new_tensor(self._phase_imprecision)
             phase_quantized = torch.round(phase / phase_imprecision) * phase_imprecision
             # STE: forward uses quantized value, backward uses identity gradient
             phase = phase + (phase_quantized - phase).detach()
 
-        # Apply stochastic phase perturbation if phase_error is active and
-        # to_tensor() was called with apply_phase_error=True.
-        # Each call draws fresh samples from Uniform(-phase_error, phase_error).
-        # Important: perturbations do NOT require gradients; they are stochastic
-        # noise, not trainable parameters. Gradients flow only through the
-        # commanded phase value, ensuring that optimization updates the phase
-        # setting itself, not the noise distribution.
+        # Apply stochastic phase perturbation after quantization. Each call
+        # draws fresh Uniform(-phase_error, phase_error) samples. The samples
+        # are noise, not trainable parameters; gradients flow only through the
+        # commanded phase value.
         if self._apply_phase_error and self._phase_error > 0.0:
             # Use torch.empty_like() to ensure perturbations follow the same
             # device, dtype, and batch structure as the phase tensor.

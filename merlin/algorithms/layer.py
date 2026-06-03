@@ -194,13 +194,24 @@ class QuantumLayer(MerlinModule):
             - ``MeasurementKind.PROBABILITIES`` returns a ``ProbabilityDistribution``
             - ``MeasurementKind.PARTIAL`` returns a ``PartialMeasurement``.
             - ``MeasurementKind.MODE_EXPECTATIONS`` returns a ``torch.Tensor``.
-        noise: pcvl.NoiseModel | None
-            The noise model used in the simulation. Default is None where no `noise` is
-            applied.
+        noise : pcvl.NoiseModel | None
+            Noise model used in the simulation. If omitted, no noise is
+            applied. Circuit phase noise is handled directly while building
+            the differentiable unitary:
+            ``phase_imprecision`` first maps each commanded phase ``phi`` to
+            ``round(phi / phase_imprecision) * phase_imprecision``. This is
+            nearest-grid rounding, not truncation. Exact half-step ties follow
+            ``torch.round`` behavior, so ``phi = pi / 8`` with
+            ``phase_imprecision = pi / 4`` maps to ``0``. ``phase_error`` then
+            adds a sampled ``Uniform(-phase_error, phase_error)`` perturbation
+            around that quantized phase.
         n_phase_error_samples : int
             Number of Monte Carlo unitary samples used when active
-            ``phase_error`` is present. Runtime scales roughly linearly with
-            this value. If omitted, 10 samples are used.
+            ``phase_error`` is present. Each sample builds one perturbed
+            unitary, computes probabilities, and contributes to the averaged
+            probability distribution. Amplitudes are not averaged. Runtime
+            scales roughly linearly with this value. If omitted, 10 samples
+            are used.
         device : torch.device | None
             Target device for internal tensors (e.g., ``torch.device("cuda")``).
         dtype : torch.dtype | None

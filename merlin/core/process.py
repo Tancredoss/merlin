@@ -82,7 +82,11 @@ class ComputationProcess(AbstractComputationProcess):
         The noise groups applied to the circuit to be ran.
     n_phase_error_samples : int
         Number of Monte Carlo unitary samples used when active
-        ``phase_error`` is present.
+        ``phase_error`` is present. For each sample, the converter draws fresh
+        perturbations around the commanded phases after any
+        ``phase_imprecision`` quantization, computes probabilities for that
+        sampled unitary, and averages probabilities. Amplitudes are not
+        averaged.
     """
 
     def __init__(
@@ -128,7 +132,11 @@ class ComputationProcess(AbstractComputationProcess):
             The noise groups applied to the circuit to be ran.
         n_phase_error_samples : int
             Number of Monte Carlo unitary samples used when active
-            ``phase_error`` is present. Default value is 10.
+            ``phase_error`` is present. Each sample computes probabilities for
+            one perturbed unitary; the process averages those probabilities.
+            This matters for coherent tensor superpositions: amplitudes are
+            converted to probabilities per sample before averaging. Default
+            value is 10.
 
         Raises
         ------
@@ -493,6 +501,19 @@ class ComputationProcess(AbstractComputationProcess):
     ) -> torch.Tensor | SectoredDistribution:
         """Average probabilities over stochastic phase-error unitary samples.
 
+        The averaging order is:
+
+        ``mean_k probabilities(U(phi_quantized + epsilon_k), input_state)``
+
+        where ``epsilon_k`` is drawn independently from
+        ``Uniform(-phase_error, phase_error)`` for each sampled phase shifter.
+        If ``phase_imprecision`` is also active, ``phi_quantized`` is the
+        nearest-grid value produced by the converter before perturbation. This
+        method never averages amplitudes. For tensor superposition inputs, each
+        sampled unitary first produces coherent output amplitudes; those
+        amplitudes are converted to probabilities for that same sample, and
+        only then are probability tensors averaged.
+
         Parameters
         ----------
         parameters : list[torch.Tensor]
@@ -510,7 +531,9 @@ class ComputationProcess(AbstractComputationProcess):
             for example sectors with ``n_photons == 0`` and ``n_photons == 1``.
             The same photon-number sectors must be present in every sample;
             matching sector tensors are accumulated and divided by the sample
-            count.
+            count. A missing or additional sector in any sample is a layout
+            mismatch and raises ``ValueError`` instead of silently dropping
+            probabilities.
 
         Raises
         ------
