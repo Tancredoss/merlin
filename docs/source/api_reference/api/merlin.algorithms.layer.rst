@@ -17,6 +17,8 @@ merlin.algorithms.layer module
 
    If the experiment carries a :class:`pcvl.NoiseModel` (via ``experiment.noise``), MerLin inserts a :class:`~merlin.measurement.photon_loss.PhotonLossTransform` ahead of any detector transform. The resulting ``output_keys`` and ``output_size`` therefore include every survival/loss configuration implied by the model, and amplitude read-out is disabled whenever custom detectors or photon loss are present.
 
+   ``n_phase_error_samples`` controls the Monte Carlo sample count used for active ``phase_error`` circuit noise. Runtime scales roughly linearly with this value when ``phase_error > 0``; the default is 10 samples.
+
 Example: Quickstart QuantumLayer
 --------------------------------
 

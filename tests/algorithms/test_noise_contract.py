@@ -362,6 +362,48 @@ def test_phase_error_with_g2_returns_sectored_distribution():
     assert all(torch.all(sector.tensor >= 0.0) for sector in output.sectors)
 
 
+def test_phase_error_with_g2_and_statevector_input_is_reproducible():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_phase_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(
+            g2=0.05,
+            g2_distinguishable=False,
+            phase_error=0.2,
+        ),
+        n_phase_error_samples=3,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+    input_state = StateVector.from_basic_state(
+        [1, 0],
+        device=layer.device,
+        dtype=layer.complex_dtype,
+    )
+
+    torch.manual_seed(123)
+    first_output = layer(input_state)
+    torch.manual_seed(123)
+    second_output = layer(input_state)
+
+    assert isinstance(first_output, SectoredDistribution)
+    assert isinstance(second_output, SectoredDistribution)
+    assert {sector.n_photons for sector in first_output.sectors} == {1, 2}
+    total_probability = first_output.sectors[0].tensor.new_tensor(0.0)
+
+    for first_sector in first_output.sectors:
+        second_sector = second_output.get_sector(first_sector.n_photons)
+        assert torch.allclose(first_sector.tensor, second_sector.tensor)
+        total_probability = total_probability + first_sector.tensor.sum()
+
+    assert torch.allclose(total_probability, total_probability.new_tensor(1.0))
+
+
 def test_phase_error_with_brightness_applies_photon_loss_after_average():
     layer = ml.QuantumLayer(
         input_size=0,

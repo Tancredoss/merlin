@@ -14,8 +14,8 @@ To add noise to your :class:`~merlin.algorithms.layer.QuantumLayer`, Perceval's 
 
 1. Circuit noise
 
-   a. ``phase_imprecision``: Maximum precision of the phase shifters (0 means infinite precision).
-   b. ``phase_error``: Maximum random noise on the phase shifters (in radian). The default value (noiseless case) is 0.
+   a. ``phase_imprecision``: Maximum precision of the phase shifters. ``0`` means infinite precision.
+   b. ``phase_error``: Maximum random noise on the phase shifters, in radians. ``0`` means no stochastic phase error.
 
 2. Source noise
 
@@ -37,15 +37,15 @@ You can either add this noise model to a :class:`pcvl.Experiment` that is then u
     import torch
     import merlin as ML
 
-    noise=pcvl.NoiseModel(
-            brightness=0.1,
-            indistinguishability=0.2,
-            g2=0.3,
-            g2_distinguishable=False,
-            transmittance=0.4,
-            phase_imprecision=0.5,
-            phase_error=0.6,
-        ),
+    noise = pcvl.NoiseModel(
+        brightness=0.1,
+        indistinguishability=0.2,
+        g2=0.3,
+        g2_distinguishable=False,
+        transmittance=0.4,
+        phase_imprecision=0.5,
+        phase_error=0.6,
+    )
 
     circuit = pcvl.Circuit(3)
     circuit.add((0, 1), pcvl.BS())
@@ -60,7 +60,7 @@ You can either add this noise model to a :class:`pcvl.Experiment` that is then u
         experiment=experiment,
         input_parameters=["px"],
         input_state=[1, 1, 1],
-        computation_space=ML.ComputationSpace.FOCK  # Fock space used for noisy simulations
+        computation_space=ML.ComputationSpace.FOCK,  # Fock space used for noisy simulations
     )
 
     x = torch.rand(3, 1)
@@ -69,15 +69,80 @@ You can either add this noise model to a :class:`pcvl.Experiment` that is then u
     # Option 2: define the noise model with the noise parameter
     layer = ML.QuantumLayer(
         input_size=1,
-        experiment=experiment,
+        circuit=circuit,
         input_parameters=["px"],
         input_state=[1, 1, 1],
         computation_space=ML.ComputationSpace.FOCK,  # Fock space used for noisy simulations
-        noise=noise
+        noise=noise,
     )
 
     x = torch.rand(3, 1)
     probs = layer(x)
+
+
+Circuit phase noise
+----------------------------------------------
+
+Circuit phase noise is applied while Merlin builds the differentiable circuit
+unitary.
+
+``phase_imprecision`` is deterministic. Each phase shifter value is quantized to
+the nearest multiple of ``phase_imprecision`` during the forward pass. Merlin
+uses a straight-through estimator, so gradients still flow through the commanded
+phase value.
+
+``phase_error`` is stochastic. For each Monte Carlo sample, Merlin draws a fresh
+Torch random perturbation from ``Uniform(-phase_error, phase_error)`` for every
+phase shifter, builds one unitary, computes probabilities, then averages the
+probability distributions. Amplitudes are not averaged. Use
+``torch.manual_seed(...)`` to make the sampled perturbations reproducible.
+
+The ``n_phase_error_samples`` constructor parameter controls how many sampled
+unitaries are averaged when active ``phase_error`` is present. If omitted,
+Merlin uses 10 samples. Runtime scales roughly linearly with this value when
+``phase_error > 0``.
+
+Suggested values:
+
+- ``5`` to ``10`` for quick prototyping.
+- ``50`` to ``100`` for validation studies.
+- ``200`` or more for production or publication results.
+
+The parameter is ignored when ``phase_error`` is ``None`` or ``0.0``.
+
+.. code-block:: python
+
+    import perceval as pcvl
+    import torch
+    import merlin as ML
+
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+    circuit.add(0, pcvl.PS(pcvl.P("phi")))
+    circuit.add((0, 1), pcvl.BS.H())
+
+    layer = ML.QuantumLayer(
+        input_size=0,
+        circuit=circuit,
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(
+            phase_imprecision=torch.pi / 8,
+            phase_error=0.1,
+        ),
+        n_phase_error_samples=50,
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+    )
+
+    torch.manual_seed(42)
+    probs_1 = layer()
+    torch.manual_seed(42)
+    probs_2 = layer()
+
+    assert torch.allclose(probs_1, probs_2)
 
 
 Noisy simulations guidelines
@@ -89,6 +154,7 @@ For noisy simulations, there are a couple of rules that need to be followed:
 2. Noisy simulations cannot use ``return_object=True``.
 3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning.
 4. Noisy simulation with ``g2>0`` cannot use a grouping strategy. Indeed, since this noise creates input states with more photons than expected, multiple photon sectors are explored. The fock spaces explored are m modes and n_photons to 2*n_photons that all have different space dimensions. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult` objects of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector.
+5. Circuit phase noise composes with source noise. ``phase_error`` is averaged before photon-loss and detector transforms are applied.
 
 
 g2_distinguishable parameter
