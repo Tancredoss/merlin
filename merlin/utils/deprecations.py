@@ -185,7 +185,9 @@ DEPRECATION_REGISTRY: dict[
     ),
     # FeatureMap.simple deprecations
     "FeatureMap.simple.n_modes": (
-        "The number of modes is fixed to 'input_size + 1'. "
+        "The provided value is still honored in 0.4, but this parameter will "
+        "be removed in release 0.5 and the mode count will default to "
+        "'input_size + 1'. "
         "Use CircuitBuilder directly if you need a different mode count.",
         False,
         None,
@@ -201,7 +203,9 @@ DEPRECATION_REGISTRY: dict[
     ),
     # FidelityKernel.simple parameter-level deprecations
     "FidelityKernel.simple.n_modes": (
-        "The number of modes is fixed to 'input_size + 1'. "
+        "The provided value is still honored in 0.4, but this parameter will "
+        "be removed in release 0.5 and the mode count will default to "
+        "'input_size + 1'. "
         "Use CircuitBuilder directly if you need a different mode count.",
         False,
         None,
