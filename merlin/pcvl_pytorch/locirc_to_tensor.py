@@ -109,27 +109,27 @@ class CircuitConverter:
         Phase noise parameters (`phase_imprecision` and `phase_error`) are
         configured at converter initialization and automatically applied during
         unitary generation. The flow is:
-        
-        1. **Initialization**: User passes `phase_imprecision` and/or 
-           `phase_error` to CircuitConverter via QuantumLayer 
-           (Step 4: through InitializationContext → ComputationProcessFactory 
+
+        1. **Initialization**: User passes `phase_imprecision` and/or
+           `phase_error` to CircuitConverter via QuantumLayer
+           (Step 4: through InitializationContext → ComputationProcessFactory
            → ComputationProcess → CircuitConverter).
-        
+
         2. **Compilation**: During `_compile_circuit()`, constant phase shifters
-           are marked as dynamic if `phase_error > 0.0`, ensuring fresh 
-           perturbations on each call. Quantization-only noise allows 
+           are marked as dynamic if `phase_error > 0.0`, ensuring fresh
+           perturbations on each call. Quantization-only noise allows
            precomputation since it is deterministic.
-        
+
         3. **Conversion**: Each call to `to_tensor(*params, apply_phase_error=bool)`
-           applies both quantization (always, if configured) and perturbations 
-           (only if `apply_phase_error=True`). Monte Carlo sampling is done by 
-           calling `to_tensor()` multiple times with `apply_phase_error=True` 
+           applies both quantization (always, if configured) and perturbations
+           (only if `apply_phase_error=True`). Monte Carlo sampling is done by
+           calling `to_tensor()` multiple times with `apply_phase_error=True`
            and averaging the resulting probability distributions.
-        
+
         4. **Gradient Flow**: Phase quantization uses straight-through estimators
-           to preserve gradients to the commanded phase. Perturbations use 
-           `torch.empty_like(phase)` to ensure proper device/dtype handling 
-           and do NOT require gradients (they are stochastic noise, not 
+           to preserve gradients to the commanded phase. Perturbations use
+           `torch.empty_like(phase)` to ensure proper device/dtype handling
+           and do NOT require gradients (they are stochastic noise, not
            learnable parameters).
 
     Example:
@@ -248,7 +248,7 @@ class CircuitConverter:
             raise ValueError("phase_imprecision must be non-negative.")
         if self._phase_error < 0.0:
             raise ValueError("phase_error must be non-negative.")
-        
+
         # Normalize very small phase noise to 0.0 for numerical stability
         # This prevents floating-point precision issues when comparing against 0.0
         # and avoids triggering unnecessary dynamic behavior for negligible noise
@@ -452,17 +452,17 @@ class CircuitConverter:
         apply_phase_error: bool = False,
     ) -> torch.Tensor:
         r"""Convert the parameterized circuit to a PyTorch unitary tensor.
-        
+
         Phase Noise Processing:
             This method applies configured phase noise to all phase shifters during
             unitary generation. The noise is applied in two stages:
-            
+
             1. **phase_imprecision (deterministic, always applied)**:
                If configured, every phase is quantized to the nearest multiple of
                `phase_imprecision` using a straight-through estimator. Gradients flow
                through the commanded phase, while the forward pass uses the quantized
                value. This is always active and does not require `apply_phase_error=True`.
-            
+
             2. **phase_error (stochastic, controlled by apply_phase_error flag)**:
                If configured and `apply_phase_error=True`, fresh samples from
                Uniform(-phase_error, phase_error) are drawn and added to each phase
@@ -471,7 +471,7 @@ class CircuitConverter:
                produces a different unitary. For Monte Carlo averaging of probabilistic
                outputs, call this method multiple times with `apply_phase_error=True`,
                collect the resulting probability distributions, and average them.
-            
+
             Parameter Flow (see class Notes for full context):
             - layer_utils.classify_noise() → extracts phase settings to NoiseGroups
             - ComputationProcess.__init__() → stores phase settings from NoiseGroups
@@ -536,7 +536,8 @@ class CircuitConverter:
         self._apply_phase_error = apply_phase_error
         try:
             converted_tensor = (
-                torch.eye(self.circuit.m, dtype=self.tensor_cdtype, device=self.device)
+                torch
+                .eye(self.circuit.m, dtype=self.tensor_cdtype, device=self.device)
                 .unsqueeze(0)
                 .repeat(batch_size, 1, 1)
             )
@@ -725,9 +726,7 @@ class CircuitConverter:
         # This preserves differentiability while modeling finite phase resolution.
         if self._phase_imprecision > 0.0:
             phase_imprecision = phase.new_tensor(self._phase_imprecision)
-            phase_quantized = (
-                torch.round(phase / phase_imprecision) * phase_imprecision
-            )
+            phase_quantized = torch.round(phase / phase_imprecision) * phase_imprecision
             # STE: forward uses quantized value, backward uses identity gradient
             phase = phase + (phase_quantized - phase).detach()
 

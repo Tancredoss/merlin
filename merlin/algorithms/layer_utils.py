@@ -200,9 +200,7 @@ def has_active_noise(noise_groups: NoiseGroups | None) -> bool:
     if noise_groups is None:
         return False
     return bool(
-        noise_groups.source
-        or noise_groups.circuit
-        or noise_groups.post_measurement
+        noise_groups.source or noise_groups.circuit or noise_groups.post_measurement
     )
 
 
