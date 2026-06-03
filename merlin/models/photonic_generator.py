@@ -421,7 +421,8 @@ class PhotonicGenerator(nn.Module):
     layers : merlin.algorithms.layer.QuantumLayer | Sequence[merlin.algorithms.layer.QuantumLayer]
         Quantum generator head template or non-empty sequence of quantum
         generator heads. If a single layer is provided with ``count``, Merlin
-        creates ``count`` independent copies. All heads must expose the same
+        creates ``count`` heads with the same configuration and independent
+        trainable initializations. All heads must expose the same
         ``input_size``. Amplitude-output measurement strategies are not
         supported because they do not directly represent classical generated
         samples.
@@ -436,8 +437,10 @@ class PhotonicGenerator(nn.Module):
         ``std=2*pi`` is used. Default is ``None``.
     count : int | None
         Number of independent copies to create when ``layers`` is a single
-        :class:`~merlin.algorithms.layer.QuantumLayer`. Must be omitted when
-        ``layers`` is a sequence. Default is ``None``.
+        :class:`~merlin.algorithms.layer.QuantumLayer`. Heads have separate
+        trainable parameters, and heads after the first are reinitialized to
+        match repeated construction from the same layer recipe. Must be omitted
+        when ``layers`` is a sequence. Default is ``None``.
 
     Raises
     ------
@@ -685,8 +688,9 @@ def _prepare_layers(
         Single layer template or explicit sequence of generator heads.
     count : int | None
         Number of independent copies to create when ``layers`` is a single
-        layer. If omitted, a single layer is used directly. Default is
-        ``None``.
+        layer. Heads after the first are reinitialized so repeated heads start
+        from independent trainable values. If omitted, a single layer is used
+        directly. Default is ``None``.
 
     Returns
     -------
@@ -707,7 +711,10 @@ def _prepare_layers(
         if count is None:
             return [layers]
         _validate_count(count)
-        return [copy.deepcopy(layers) for _ in range(count)]
+        repeated_layers = [copy.deepcopy(layers) for _ in range(count)]
+        for layer in repeated_layers[1:]:
+            _reset_quantum_layer_trainable_parameters(layer)
+        return repeated_layers
 
     if count is not None:
         raise ValueError("count can only be supplied when layers is a QuantumLayer.")
@@ -724,6 +731,13 @@ def _validate_count(count: int) -> None:
         raise TypeError("count must have int type.")
     if count <= 0:
         raise ValueError("count must be positive.")
+
+
+def _reset_quantum_layer_trainable_parameters(layer: QuantumLayer) -> None:
+    """Reset QuantumLayer trainable tensors using the construction initializer."""
+    with torch.no_grad():
+        for parameter in layer.thetas:
+            parameter.copy_(torch.randn_like(parameter).mul(math.pi))
 
 
 def _validate_layers(layers: Sequence[QuantumLayer]) -> list[QuantumLayer]:

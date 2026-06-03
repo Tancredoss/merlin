@@ -252,6 +252,7 @@ def test_generator_accepts_single_layer_object():
 
 
 def test_generator_count_creates_independent_layer_copies():
+    torch.manual_seed(10)
     template = _make_layer(input_size=2)
 
     generator = ML.PhotonicGenerator(
@@ -268,8 +269,44 @@ def test_generator_count_creates_independent_layer_copies():
             id(param) for param in generator[head_index].parameters()
         }
         assert first_head_param_ids.isdisjoint(other_head_param_ids)
-    for key, value in generator[0].state_dict().items():
-        assert torch.equal(value, generator[1].state_dict()[key])
+
+    for head_index in range(1, len(generator)):
+        assert any(
+            not torch.equal(first_param, other_param)
+            for first_param, other_param in zip(
+                generator[0].parameters(),
+                generator[head_index].parameters(),
+                strict=True,
+            )
+        )
+
+
+def test_generator_count_matches_repeated_fresh_layer_initialization():
+    torch.manual_seed(25)
+    template = _make_layer(input_size=2)
+    counted_generator = ML.PhotonicGenerator(
+        layers=template,
+        count=3,
+        output_adapter=ML.VectorAdapter(size=4),
+    )
+
+    torch.manual_seed(25)
+    explicit_layers = [_make_layer(input_size=2) for _ in range(3)]
+    explicit_generator = ML.PhotonicGenerator(
+        layers=explicit_layers,
+        output_adapter=ML.VectorAdapter(size=4),
+    )
+
+    for counted_layer, explicit_layer in zip(
+        counted_generator.layers,
+        explicit_generator.layers,
+        strict=True,
+    ):
+        counted_state = counted_layer.state_dict()
+        explicit_state = explicit_layer.state_dict()
+        assert counted_state.keys() == explicit_state.keys()
+        for key in counted_state:
+            assert torch.equal(counted_state[key], explicit_state[key])
 
 
 def test_generator_rejects_invalid_count_usage():
