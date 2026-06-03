@@ -66,6 +66,7 @@ from .layer_utils import (
     InitializationContext,
     apply_angle_encoding,
     feature_count_for_prefix,
+    has_phase_error,
     has_source_noise,
     normalize_noise,
     prepare_input_encoding,
@@ -119,6 +120,7 @@ class QuantumLayer(MerlinModule):
         measurement_strategy: MeasurementStrategyLike | None = None,
         return_object: bool = False,
         noise: pcvl.NoiseModel | None = None,
+        n_phase_error_samples: int = 10,
         # device and dtype
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
@@ -195,6 +197,10 @@ class QuantumLayer(MerlinModule):
         noise: pcvl.NoiseModel | None
             The noise model used in the simulation. Default is None where no `noise` is
             applied.
+        n_phase_error_samples : int
+            Number of Monte Carlo unitary samples used when active
+            ``phase_error`` is present. Runtime scales roughly linearly with
+            this value. If omitted, 10 samples are used.
         device : torch.device | None
             Target device for internal tensors (e.g., ``torch.device("cuda")``).
         dtype : torch.dtype | None
@@ -330,6 +336,7 @@ class QuantumLayer(MerlinModule):
             warnings=noise_and_detectors.detector_warnings,
             return_object=return_object,
             noise_groups=noise_and_detectors.noise_groups,
+            n_phase_error_samples=n_phase_error_samples,
         )
 
         # Phase 11: assign context to self + warnings
@@ -448,6 +455,7 @@ class QuantumLayer(MerlinModule):
             dtype=self.dtype,
             computation_space=self.computation_space,
             noise_groups=self._noise_groups,
+            n_phase_error_samples=context.n_phase_error_samples,
         )
 
         # If input_state was a StateVector, set the actual tensor now (after init to bypass validation)
@@ -1039,8 +1047,9 @@ class QuantumLayer(MerlinModule):
 
         # Phase 5: Convert and normalize amplitudes if it is a non noisy simulation. If it is noisy, they are already normalized
         source_noise = has_source_noise(self._noise_groups)
+        probability_output_noise = source_noise or has_phase_error(self._noise_groups)
 
-        if not source_noise:
+        if not probability_output_noise:
             if isinstance(amplitudes, tuple):
                 amplitudes = amplitudes[1]
             elif not isinstance(amplitudes, torch.Tensor):
@@ -1122,9 +1131,11 @@ class QuantumLayer(MerlinModule):
     ) -> torch.Tensor | SectoredDistribution:
         """Select the computation path based on the encoding mode and input state."""
         # Checking if there is source noise
-        source_noise = has_source_noise(self._noise_groups)
+        probability_output_noise = has_source_noise(
+            self._noise_groups
+        ) or has_phase_error(self._noise_groups)
 
-        if not source_noise:
+        if not probability_output_noise:
             if self.amplitude_encoding:
                 if inferred_state is None:
                     raise TypeError(

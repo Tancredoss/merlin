@@ -305,6 +305,9 @@ class InitializationContext:
         Whether the layer returns structured objects instead of tensors.
     noise_groups: NoiseGroups | None
         The noise groups applied to the circuit to be ran.
+    n_phase_error_samples : int
+        Number of Monte Carlo unitary samples used when active stochastic
+        ``phase_error`` is present.
     """
 
     device: torch.device | None
@@ -329,6 +332,7 @@ class InitializationContext:
     warnings: list[str]
     return_object: bool
     noise_groups: NoiseGroups | None
+    n_phase_error_samples: int
 
 
 def validate_encoding_mode(
@@ -760,9 +764,7 @@ def setup_noise_and_detectors(
         If amplitude readout is requested together with custom detectors, or if
         amplitude readout or object return is incompatible with the noise model.
     NotImplementedError
-        If unsupported noise types (g2_distinguishable, g2, phase_imprecision,
-        phase_error) are detected in the noise model, or if a non-SLOS backend
-        is specified.
+        If a non-SLOS backend is specified.
     ValueError
         If measurement strategy is incompatible with noisy simulation.
     """
@@ -802,22 +804,6 @@ def setup_noise_and_detectors(
         noise_groups, circuit.m
     )
     has_post_measurement_noise = not empty_post_measurement_noise
-
-    # Not implemented errors
-    if has_circuit_noise(noise_groups):
-        noises_not_implemented_circuit = []
-
-        circuit_noise = cast(dict[str, float | None], noise_groups.circuit)
-        if "phase_imprecision" in circuit_noise:
-            noises_not_implemented_circuit.append("phase_imprecision")
-
-        if "phase_error" in circuit_noise:
-            noises_not_implemented_circuit.append("phase_error")
-
-        if len(noises_not_implemented_circuit) > 0:
-            raise NotImplementedError(
-                f"The following noises are not implemented yet for the QuantumLayer. Circuit noises: {noises_not_implemented_circuit}."
-            )
 
     # Creating the noise config object
     return NoiseAndDetectorConfig(

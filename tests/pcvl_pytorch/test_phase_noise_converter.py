@@ -169,6 +169,13 @@ def test_constant_ps_remains_dynamic_when_phase_error_is_configured():
     assert not torch.allclose(first, second)
 
 
+def test_tiny_nonzero_phase_error_keeps_constant_ps_dynamic():
+    circuit = pcvl.Circuit(1) // pcvl.PS(0.25)
+    converter = CircuitConverter(circuit, dtype=torch.float64, phase_error=1e-15)
+
+    assert any(isinstance(component, pcvl.PS) for _, component in converter.list_rct)
+
+
 def test_constant_ps_can_be_precomputed_with_only_phase_imprecision():
     circuit = pcvl.Circuit(1) // pcvl.PS(0.74)
     converter = CircuitConverter(
@@ -226,7 +233,7 @@ def test_python_random_is_not_used_for_phase_noise():
 
 def test_phase_error_perturbations_do_not_require_gradients():
     """Verify that phase_error samples do not flow gradients backward.
-    
+
     Phase noise perturbations are stochastic noise, not trainable parameters.
     Gradients must flow only through the commanded phase value itself, so that
     optimization updates the phase setting and not the perturbation distribution.
@@ -242,31 +249,31 @@ def test_phase_error_perturbations_do_not_require_gradients():
         dtype=torch.float64,
         phase_error=0.1,
     )
-    
+
     # Create a trainable phase parameter
     phase = torch.tensor([0.5], dtype=torch.float64, requires_grad=True)
-    
+
     # Compute unitary with phase_error applied
     torch.manual_seed(42)
     unitary1 = converter.to_tensor(phase, apply_phase_error=True)
-    
+
     # Compute loss and backward pass
-    loss1 = unitary1.abs().sum()
+    loss1 = unitary1.real.sum()
     loss1.backward()
     grad1 = phase.grad.clone()
-    
+
     # Reset and compute again with same seed to verify gradient is same
     phase.grad = None
     torch.manual_seed(42)
     unitary2 = converter.to_tensor(phase, apply_phase_error=True)
-    
-    loss2 = unitary2.abs().sum()
+
+    loss2 = unitary2.real.sum()
     loss2.backward()
     grad2 = phase.grad
-    
+
     # Gradients should be identical (deterministic wrt phase despite noise)
     assert torch.allclose(grad1, grad2, rtol=1e-6, atol=1e-8)
-    
+
     # Gradients should exist and be non-zero
     assert grad1 is not None
     assert grad1.abs().sum() > 0.0

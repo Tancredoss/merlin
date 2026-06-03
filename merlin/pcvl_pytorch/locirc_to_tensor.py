@@ -48,21 +48,6 @@ Components:
     Barrier: Synchronization barrier (removed during compilation)
 """
 
-MIN_PHASE_NOISE = 1e-10
-"""Minimum threshold for phase noise parameters to be considered active.
-
-Phase noise values below this threshold are treated as inactive (0.0) to avoid
-numerical precision issues. This applies to both phase_imprecision and
-phase_error parameters. For example, phase_imprecision=1e-15 would be treated
-as 0.0 since it is below this tolerance, preventing unnecessary quantization
-or dynamic compilation overhead.
-
-Rationale: Direct comparison with 0.0 can fail when phase noise parameters
-are set to very small values due to floating-point arithmetic, potentially
-leading to unexpected behavior. This tolerance ensures consistent behavior
-across different numerical scales.
-"""
-
 
 class CircuitConverter:
     """Convert a parameterized Perceval circuit into a differentiable PyTorch unitary matrix.
@@ -248,14 +233,6 @@ class CircuitConverter:
             raise ValueError("phase_imprecision must be non-negative.")
         if self._phase_error < 0.0:
             raise ValueError("phase_error must be non-negative.")
-
-        # Normalize very small phase noise to 0.0 for numerical stability
-        # This prevents floating-point precision issues when comparing against 0.0
-        # and avoids triggering unnecessary dynamic behavior for negligible noise
-        if self._phase_imprecision < MIN_PHASE_NOISE:
-            self._phase_imprecision = 0.0
-        if self._phase_error < MIN_PHASE_NOISE:
-            self._phase_error = 0.0
 
         assert isinstance(circuit, Circuit), (
             f"Expected a Perceval LO circuit, but got {type(circuit).__name__}"
