@@ -45,6 +45,8 @@ Migration guide
    :contour-color: #f2994a
 
 
+:doc:`/user_guide/noisy_simulations.rst`
+
 .. toctree::
    :hidden:
    :maxdepth: 1
@@ -57,5 +59,6 @@ Migration guide
    layer
    measurement_strategy
    migration_guide
+   noisy_simulations.rst
    quantum_bridge
    remote_execution

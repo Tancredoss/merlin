@@ -4,99 +4,21 @@
 Noisy Simulations
 ==============================================
 
-Before running your QuantumLayer on hardware, which presents a lot of noise, you may want to test the performance of your algorithm 
-locally with simulated noise. This page will present the way to complete a noisy simulation as well as guidelines and limitations.
+To run your first noisy simulation, consult the :doc:`/user_guide/noisy_simulations.rst` page to understand the different noise types and run your first noisy :class:`~merlin.algorithms.layer.QuantumLayer`.
 
-Run a noisy simulation
+----------------------------------------------
+Noisy Simulation implementation
 ----------------------------------------------
 
-To add noise to your :class:`~merlin.algorithms.layer.QuantumLayer`, Perceval's :class:`pcvl.NoiseModel` must be used. Seven different types of noises can be defined. All of the values are floats going from 0 to 1, except for ``g2_distinguishable`` which is a bool.
+In this section, we will discuss the genral implementation details of the different noise calculations inside of SLOS.
 
-1. Circuit noise
-
-   a. ``phase_imprecision``: Maximum precision of the phase shifters (0 means infinite precision).
-   b. ``phase_error``: Maximum random noise on the phase shifters (in radian). The default value (noiseless case) is 0.
-
-2. Source noise
-
-   a. ``indistinguishability``: Chance two photons are indistinguishable. The default value (noiseless case) is 1.
-   b. ``g2``: :math:`g^2(0)` - second order intensity autocorrelation at zero time delay. This parameter is correlated with how often two photons are emitted by the source instead of a single one. The default value (noiseless case) is 0.
-   c. ``g2_distinguishable``: g2-generated photons indistinguishability. This parameter can not be False if ``indistinguishability=1.0`` and ``g2>0.0``. The default value (noiseless case) is True.
-
-3. Post-measurement noise
-
-   a. ``brightness``: First lens brightness of a quantum dot. The default value (noiseless case) is 1.
-   b. ``transmittance``: System-wide transmittance (warning, can interfere with the brightness parameter). The default value (noiseless case) is 1.
-
-
-You can either add this noise model to a :class:`pcvl.Experiment` that is then used at the initialization of the :class:`~merlin.algorithms.layer.QuantumLayer` or you can directly pass this noise model to the :class:`~merlin.algorithms.layer.QuantumLayer`'s ``noise`` parameter in the constructor. Here are some usage examples:
-
-.. code-block:: python
-
-    import perceval as pcvl
-    import torch
-    import merlin as ML
-
-    noise=pcvl.NoiseModel(
-            brightness=0.1,
-            indistinguishability=0.2,
-            g2=0.3,
-            g2_distinguishable=False,
-            transmittance=0.4,
-            phase_imprecision=0.5,
-            phase_error=0.6,
-        ),
-
-    circuit = pcvl.Circuit(3)
-    circuit.add((0, 1), pcvl.BS())
-    circuit.add(0, pcvl.PS(pcvl.P("px")))
-    circuit.add((1, 2), pcvl.BS())
-    
-    # Option 1: define the noise model with an experiment
-    experiment = pcvl.Experiment(circuit, noise=noise)
-
-    layer = ML.QuantumLayer(
-        input_size=1,
-        experiment=experiment,
-        input_parameters=["px"],
-        input_state=[1, 1, 1],
-        computation_space=ML.ComputationSpace.FOCK  # Fock space used for noisy simulations
-    )
-
-    x = torch.rand(3, 1)
-    probs = layer(x)
-
-    # Option 2: define the noise model with the noise parameter
-    layer = ML.QuantumLayer(
-        input_size=1,
-        experiment=experiment,
-        input_parameters=["px"],
-        input_state=[1, 1, 1],
-        computation_space=ML.ComputationSpace.FOCK,  # Fock space used for noisy simulations
-        noise=noise
-    )
-
-    x = torch.rand(3, 1)
-    probs = layer(x)
-
-
-Noisy simulations guidelines
+Brightness and transmittance
 ----------------------------------------------
 
-For noisy simulations, there are a couple of rules that need to be followed:
-
-1. All noisy simulations must be run with the probabilities measurement strategy.
-2. Noisy simulations cannot use ``return_object=True``.
-3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning.
-4. Noisy simulation with ``g2>0`` cannot use a grouping strategy. Indeed, since this noise creates input states with more photons than expected, multiple photon sectors are explored. The fock spaces explored are m modes and n_photons to 2*n_photons that all have different space dimensions. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult` objects of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector.
+These two noises are implemented in the same workflow. As mentionned in this page :doc:`/user_guide/noisy_simulations.rst`, the survival probability of the photons are defined by the product of these two noises. This survival probability is then used to **TODO complete once I understand the end of the pipeline**.
 
 
-g2_distinguishable parameter
-----------------------------------------------
-The ``g2_distinguishable`` parameter in the noise model is a boolean that identifies if the photons generated by g2 emissions (multi-photon emissions) are distinguishable or not. By default, in Perceval, this parameter is ``True``. In MerLin's QuantumLayer, the parameter is considered ``False`` if it can be ignored (indistinguishability=1.0 or g2=0.0: the default value of these noise sources). So, even if this parameter is set to True, which is the case with Perceval's :class:`pcvl.NoiseModel`'s object, if there is not a simulation with g2 emissions and indistinguishable photons, the ``g2_distinguishable`` parameter will be set to ``False`` in the :class:`~merlin.algorithms.layer.QuantumLayer`. If ``indistinguishability=1.0`` and ``g2>0.0``, a warning will indicate that ``g2_distinguishable`` is set to ``False``, otherwise, since the parameter does not have an impact on the simulation, the switch is done silently. 
-
-
-Noisy simulations limitations
+Noisy Simulations Limitations
 ----------------------------------------------
 
 Noisy simulations are significantly less efficient than ideal ones. You can profile the memory requirements of noisy simulations with source noise using the benchmark script: :file:`../../benchmarks/benchmark_noisy_slos_cache_memory.py`.
@@ -112,4 +34,4 @@ Here is an example of the output graph of this run.
 .. figure:: images/benchmark_noisy_slos_cache_memory.png
    :align: center
    :width: 600px
-   :alt: Memory need for the QuantumLayer with distinguishable photons per output size.
+   :alt: Memory need for the QuantumLayer with distinguishable photons per output size
