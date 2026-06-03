@@ -1895,17 +1895,14 @@ class FidelityKernel(MerlinModule):
         # TODO: In release 0.5.x, remove n_modes handling; always use input_size + 1.
         state_size = n_modes if n_modes is not None else input_size + 1
 
-        # Suppress only the duplicate n_modes DeprecationWarning from FeatureMap.simple
-        # when n_modes is forwarded: FidelityKernel.simple already warned the caller via
-        # its own registry entry, so a second warning would be confusing. A targeted
-        # filter is used so that any other DeprecationWarnings added to FeatureMap.simple
-        # later are still surfaced.
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message="The number of modes is fixed",
-                category=DeprecationWarning,
+        if n_modes is None:
+            feature_map = FeatureMap.simple(
+                input_size=input_size,
+                dtype=dtype,
+                device=device,
+                angle_encoding_scale=angle_encoding_scale,
             )
+        else:
             feature_map = FeatureMap.simple(
                 input_size=input_size,
                 n_modes=n_modes,
