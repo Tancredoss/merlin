@@ -987,7 +987,7 @@ def normalize_output_key(
 
 def sum_input_elements(input_state) -> float | int:
     """
-    Calcule la somme des éléments d'un état d'entrée en fonction de sa structure mémoire.
+    compute number of photons from input_state.
     """
     if input_state is None:
         return 0.0
@@ -1006,11 +1006,9 @@ def sum_input_elements(input_state) -> float | int:
     if isinstance(input_state, pcvl.StateVector):
         return input_state.n
 
-    # 3. Type enveloppe Merlin (merlin.core.state_vector.StateVector)
-    # L'objet enveloppe souvent un tenseur classique pour l'amplitude encoding
     if type(input_state).__name__ == "StateVector":
         if hasattr(input_state, 'tensor') and isinstance(input_state.tensor, torch.Tensor):
             return torch.sum(input_state.tensor).item()
 
-    # Sécurité finale si un type inattendu est injecté
-    raise TypeError(f"Type non pris en charge par le parseur : {type(input_state)}")
+    
+    raise TypeError(f"Type not managed by the parser : {type(input_state)}")
