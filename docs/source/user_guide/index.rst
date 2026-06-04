@@ -25,6 +25,12 @@ Mixing gates and interferometers
    :data: _data/galleries/user_guide/mixing_gates.json
    :columns: 2
 
+Noisy simulations
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/noisy_simulations.json
+   :columns: 2
+
 Send your code to simulators or QPUs
 ----------------------------------------
 .. merlin-gallery::
@@ -43,9 +49,6 @@ Migration guide
    :data: _data/galleries/user_guide/migration.json
    :columns: 2
    :contour-color: #f2994a
-
-
-:doc:`/user_guide/noisy_simulations.rst`
 
 .. toctree::
    :hidden:

@@ -4,18 +4,18 @@
 Noisy Simulations
 ==============================================
 
-To run your first noisy simulation, consult the :doc:`/user_guide/noisy_simulations.rst` page to understand the different noise types and run your first noisy :class:`~merlin.algorithms.layer.QuantumLayer`.
+To run your first noisy simulation, consult the :doc:`/user_guide/noisy_simulations` page to understand the different noise types and run your first noisy :class:`~merlin.algorithms.layer.QuantumLayer`.
 
 ----------------------------------------------
 Noisy Simulation implementation
 ----------------------------------------------
 
-In this section, we will discuss the general implementation details of the different noise calculations inside of SLOS.
+In this section, we discuss the general implementation details of the different noise calculations inside SLOS.
 
 Brightness and Transmittance
 ----------------------------------------------
 
-These two noises are implemented in the same workflow. As mentioned in this page :doc:`/user_guide/noisy_simulations.rst`, the survival probability of the photons are defined by the product of these two noises. This survival probability is then used to create a transition matrix for the end probabilities of the interferometer. Indeed, the whole simulation of the pipeline is done without any consideration for these noises and generate a tensor of dimension (batch size, n and m Fock space), where n is the number of photons and m is the number of modes. We then apply the brightness and transmittance noise to these results. First we need to compute the transition matrix like so:
+These two noises are implemented in the same workflow. As mentioned on the :doc:`/user_guide/noisy_simulations` page, the photon survival probability is defined by the product of these two noises. This survival probability is then used to create a transition matrix for the output probabilities of the interferometer. Indeed, the whole pipeline simulation is performed without considering these noises and generates a tensor of dimension (batch size, n and m Fock space), where n is the number of photons and m is the number of modes. We then apply brightness and transmittance noise to these results. First, we need to compute the transition matrix like so:
 
 **Algorithm**
 
@@ -61,7 +61,7 @@ These two noises are implemented in the same workflow. As mentioned in this page
 
 The possible output states are all of the possible combinations of losing photons in the basis state.
 
-For g2 simulations, the photon loss algorithm is applied per n photon photon sector at the output of the simulation. Indeed, the transition matrix is different per sector. After this noise is applied, the probabilities are then reclassified and returned as a big tensor.
+For g2 simulations, the photon loss algorithm is applied per n-photon sector at the output of the simulation. Indeed, the transition matrix is different for each sector. After this noise is applied, the probabilities are reclassified and returned as a large tensor.
 
 Phase Error and Imprecision
 ----------------------------------------------
@@ -71,7 +71,7 @@ Phase Error and Imprecision
 Indistinguishability
 ----------------------------------------------
 
-This noise is implemented on the one-bad-bit (OBB) principle first implemented in Merlin in this `reproduced paper <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels/utils/noise.py>`_. Indeed, since distinguishable photons can be tracked independently, each of those independant photons can be simulated on their own. This implementation is done in the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisySLOSComputeGraph` class. Here are the main steps:
+This noise is implemented using the one-bad-bit (OBB) principle first introduced in Merlin in this `reproduced paper <https://github.com/merlinquantum/reproduced_papers/blob/main/papers/photonic_quantum_enhanced_kernels/utils/noise.py>`_. Indeed, since distinguishable photons can be tracked independently, each of those independent photons can be simulated separately. This implementation is done in the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisySLOSComputeGraph` class. Here are the main steps:
 
 **Algorithm**
 
@@ -114,7 +114,7 @@ The combinations of possible distinguishable photons are simply the ways of choo
 g2 and g2 distinguishable
 ----------------------------------------------
 
-These noise build on the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisySLOSComputeGraph` class to create the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisyG2SLOSComputeGraph` object. Indeed, the noisy simulation needs to be done for multiple input states with photon duplication. Here is the main implementation steps.
+These noises build on the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisySLOSComputeGraph` class to create the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisyG2SLOSComputeGraph` object. Indeed, the noisy simulation must be performed for multiple input states with photon duplication. Here are the main implementation steps.
 
 **Algorithm**
 
@@ -126,7 +126,7 @@ These noise build on the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisySLOSComput
    :class:`~merlin.pcvl_pytorch.slos_torchscript.SLOSComputeGraph`
    object for ``m`` modes and a single photon.
 
-3. Generate all possible photon-addition vectors. We want the vectors of all possibles sequences of possible duplicated photons.
+3. Generate all possible photon-addition vectors. These are the vectors for all possible sequences of duplicated photons.
 
    For example, for the input state ``[1,1,0]``:
 
@@ -176,7 +176,7 @@ Noisy Simulations Limitations
 
 Noisy simulations are significantly less efficient than ideal ones. You can profile the memory requirements of noisy simulations with source noise using the benchmark script: :file:`../../benchmarks/benchmark_noisy_slos_cache_memory.py`.
 
-Memory and computational complexity grow significantly with the number of modes and photons. For example, a 5-photon 2-mode circuit requires around 200 MB, while a 20-mode 3-photon experiment requires around 3 GB. This is only with indistinguishable photons. The memory need is even bigger for g2 simulations. To profile memory consumption in your specific use case, run the benchmark script with:
+Memory and computational complexity grow significantly with the number of modes and photons. For example, a 5-photon 2-mode circuit requires around 200 MB, while a 20-mode 3-photon experiment requires around 3 GB. This is only for indistinguishable photons. Memory requirements are even greater for g2 simulations. To profile memory consumption in your specific use case, run the benchmark script with:
 
 .. code-block:: bash
 
@@ -190,10 +190,10 @@ Here is an example of the output graph of this run.
    :alt: Memory need for the QuantumLayer with distinguishable photons per output size
 
 
-Also, as a reminder, here are the guidelines of the noisy simulations.
+Also, as a reminder, here are the noisy simulation guidelines.
 
 1. All noisy simulations must be run with the probabilities measurement strategy. Indeed, we can only change the probabilities as computing the actual amplitude after the noise breaks the current implementation of SLOS simulations: density matrix representation would be needed instead of just vector states.
 
 2. Noisy simulations cannot use ``return_object=True``. It will be implemented in a future version.
 
-3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning. Indeed, since the noises can remove or add photons, remaining in a constrained space may remove some of the ffects of the noise.
+3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning. Indeed, since the noises can remove or add photons, remaining in a constrained space may remove some of the effects of the noise.
