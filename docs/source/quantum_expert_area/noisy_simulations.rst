@@ -50,7 +50,24 @@ The combinations of possible distinguishable photons are simply the ways of choo
 g2 and g2 distinguishable
 ----------------------------------------------
 
-These params
+These noise build on the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisySLOSComputeGraph` class to create the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisyG2SLOSComputeGraph` object. Indeed, the noisy simulation needs to be done for multiple input states with photon duplication. Here is the basic idea.
+
+1. Create a :class:`~merlin.pcvl_pytorch.noisy_slos.NoisySLOSComputeGraph` object for m modes and i phtons going form n to 2n.
+2. Create a :class:`~merlin.pcvl_pytorch.slos_torchscript.SLOSComputeGraph` object of m modes and 1 photon if g2 distinguishable is True.
+2. Generate all of the possible photons to add vectors. Here, we want one vector per possible input state. So, if, for an input state [1,1,0], we want to generate these vectors: [[0,0,0]],[[1,0,0],[0,1,0]],[[1,1,0]] (the first vector represents the case where the source emits the correct number of photons, the second and third the case where one photon is duplicated and the last one when both photons are duplicated). Each vector must also be classified per number of photons added.
+3. For each vector that adds i photons:
+    a. For each possibility to add i photons:
+        i. If g2 distinguishable is True:
+            1. Run the input state with no photon added on the :class:`~merlin.pcvl_pytorch.slos_torchscript.SLOSComputeGraph` object wth n photons.
+            2. Run one photon SLOS for each of the added photons.
+            3. Convolve the output distributions to the correct output size.
+        ii. Else:
+            1. Run the input state with the photon added on the :class:`~merlin.pcvl_pytorch.slos_torchscript.SLOSComputeGraph` object wth n+i photons.
+        iii. Mutiliply the output distribution by the probability of obtaining it: :math:`p^{i}(1- p)^{n-i}` where :math:`p` is the probability that two photons are emitted (derived from g2, see the user guide for the formula), :math:`n` is the number of photons in the desired input state.
+    b. Combine all the distributions in a tensor that will represent the n_i photon sector
+4. Return all of the probabilities per photon sector.
+
+This is why the probabilities are split per sector as the output dimension is not the same across the spaces with different photon number.
 
 ----------------------------------------------
 Noisy Simulations Limitations
