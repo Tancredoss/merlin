@@ -85,7 +85,9 @@ The brightness noise identifies the probability that the photon source actually 
 
 The transmittance is directly is the probability that the photon is transmitted through the whole interferometer without being ejected. Because it is a probability, it is also bounded between ``0.0`` and ``1.0``. The default value is ``1.0`` as it is the perfect case where no photon is lost. The transmittance can be defined in the ``NoiseModel`` with the ``transmittance`` parameter.
 
-The noise affect the output probabilities by inducing a photon survival probability. So, in other words, the probability that a single photon will be emitted and transmitted is defined by the product of the brightness and transmittance. So, the output probabilities or amplitudes of the quantum layer are not normalized. **TODO Complete When I understand the work exacly, add an example**
+The noise affect the output probabilities by inducing a photon survival probability. So, in other words, the probability that a single photon will be emitted and transmitted is defined by the product of the brightness and transmittance.
+
+The output size of a simulation with this type of noise will be bigger than the Fock space of m modes and n photons since the output states may be missing photons. 
 
 
 -----------------------
