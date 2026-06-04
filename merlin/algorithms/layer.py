@@ -39,7 +39,7 @@ from ..builder.circuit_builder import (
     CircuitBuilder,
 )
 from ..core.computation_space import ComputationSpace
-from ..core.partial_measurement import PartialMeasurement
+from ..core.partial_measurement import PartialMeasurement, PartialMeasurementBranch
 from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
 from ..core.state import StatePattern, generate_state
@@ -231,12 +231,6 @@ class QuantumLayer(MerlinModule):
 
         """
         super().__init__()
-        if (
-            sum_input_elements(input_state) != n_photons
-            and input_state is not None
-            and n_photons is not None
-        ):
-            raise ValueError("number of photons doesn't fit input state")
 
         # === DEPRECATION WARNING: amplitude_encoding ===
         if amplitude_encoding:
@@ -260,6 +254,12 @@ class QuantumLayer(MerlinModule):
         circuit_source = validate_and_resolve_circuit_source(
             builder, circuit, experiment, trainable_parameters, input_parameters
         )
+        if (
+            sum_input_elements(input_state) != n_photons
+            and input_state is not None
+            and n_photons is not None
+        ):
+            raise ValueError("number of photons doesn't fit input state")
 
         # Phase 4: encoding validation (post-resolution)
         encoding_config = validate_encoding_mode(
@@ -333,6 +333,10 @@ class QuantumLayer(MerlinModule):
             torch.tensor([i["initial_state"]], device=device, dtype=dtype)
             for i in self._memristive_metadata
         ]
+        for i in range(len(self.memristive_state)):
+            if self._memristive_metadata[i]["detach_at_each_forward"]:
+                self.memristive_history[i][0] = self.memristive_history[i][0].detach()
+                self.memristive_state[i] = self.memristive_state[i].detach()
         self._memristive_smaller_last_batch = False
 
         # Phase 12: assign context to self + warnings
@@ -828,6 +832,16 @@ class QuantumLayer(MerlinModule):
         - ``torch.Tensor`` (complex): amplitude encoding
         - :class:`~merlin.core.state_vector.StateVector`: amplitude encoding (preferred for quantum state injection)
 
+        **Memristive State Updates**
+
+        For layers with memristive elements, the state is updated after each forward pass according to the
+        registered update rule. Gradient flow through the memristive recurrence is controlled by the
+        ``detach_at_each_forward`` flag:
+
+        - ``detach_at_each_forward=True`` (default): New states are detached, blocking gradients through
+          the state recurrence. Earlier inputs receive zero gradients from memristive state chains.
+          the entire accumulated state history.
+
         Parameters
         ----------
         input_parameters : torch.Tensor | merlin.core.state_vector.StateVector
@@ -854,6 +868,8 @@ class QuantumLayer(MerlinModule):
             unsupported input type is provided.
         ValueError
             If multiple ``StateVector`` inputs are provided.
+        RuntimeError
+            If batch size is inconsistent with memristive state (call ``reset(batch_size=N)`` to fix).
         """
         # Phase 1: Input classification and validation
         tensor_inputs: list[torch.Tensor] = []
@@ -968,6 +984,10 @@ class QuantumLayer(MerlinModule):
                     self.memristive_state = [
                         x[:batch_dim] for x in self.memristive_state
                     ]
+                    for memristor in range(len(self.memristive_state)):
+                        self.memristive_state[memristor] = self.memristive_state[
+                            memristor
+                        ][:batch_dim]
                 else:
                     raise RuntimeError(
                         "batch size mismatch: call reset(batch_size=N) before starting a new batch"
@@ -1073,41 +1093,72 @@ class QuantumLayer(MerlinModule):
         else:
             output = self.measurement_mapping(results)
 
+        # ================================================================
         # Phase 7: memristive update
+        # ================================================================
+        # This runs AFTER measurement for ALL output types to ensure
+        # memristive states are updated regardless of measurement strategy.
         if len(self.memristive_state) > 0:
-            # Detach output for memristive computation to prevent autograd graph retention.
-            # Return the original output untouched by detaching a separate copy.
+            # Safe output copy (handle all output types)
             output_for_memristive: (
                 torch.Tensor
                 | PartialMeasurement
-                | ProbabilityDistribution
                 | StateVector
+                | ProbabilityDistribution
             )
-            if isinstance(output, torch.Tensor):
-                output_for_memristive = output.detach()
+            if not isinstance(output, PartialMeasurement):
+                output_for_memristive = output.clone()
             else:
-                # StateVector, ProbabilityDistribution, and PartialMeasurement all have .detach()
-                output_for_memristive = output.detach()
+                branches = [
+                    PartialMeasurementBranch(
+                        outcome=b.outcome,
+                        probability=b.probability.clone(),
+                        amplitudes=b.amplitudes.clone(),
+                    )
+                    for b in output.branches
+                ]
+                output_for_memristive = PartialMeasurement(
+                    branches=tuple(branches),
+                    measured_modes=output.measured_modes,
+                    unmeasured_modes=output.unmeasured_modes,
+                    grouping=output.grouping,
+                )
 
-            self.memristive_state = compute_new_memristive_ps_angles(
+            # Compute new states
+            new_states = compute_new_memristive_ps_angles(
                 memristive_metadata=self._memristive_metadata,
                 memristive_state=self.memristive_state,
                 output=output_for_memristive,
             )
 
-            expected_output_shape = torch.Size([batch_dim])
-            for i in range(len(self.memristive_history)):
-                if not (
-                    self.memristive_state[i].shape == expected_output_shape
-                    or self._memristive_smaller_last_batch
-                ):
-                    raise ValueError(
-                        f"""The following memristive phase shifter's update rule does not return a Tensor of shape [batch_dim]. Got {self.memristive_state[i].shape} instead of {expected_output_shape}.
+            # Get batch dimension from output for shape validation
+            output_batch_dim = (
+                output.shape[0]
+                if isinstance(output, torch.Tensor)
+                else output.tensor.shape[0]
+            )
 
-                            Memristive phase-shifter analyzed: {self._memristive_metadata[i]}
-                        """
+            # ============================================================
+            # UPDATE STATE STRUCTURES
+            # ============================================================
+            for i, new_state in enumerate(new_states):
+                # Validate shape
+                expected_shape = torch.Size([output_batch_dim])
+                if new_state.shape != expected_shape:
+                    raise ValueError(
+                        f"Update rule for memristor {i} returned shape {new_state.shape}, "
+                        f"expected {expected_shape}. The update rule must return a tensor "
+                        f"of shape [batch_size].\n\nMemristor metadata: {self._memristive_metadata[i]}"
                     )
-                self.memristive_history[i].append(self.memristive_state[i])
+                self.memristive_history[i].append(new_state)
+                self.memristive_state[i] = new_state
+
+                # If it needs to be detached
+                if self._memristive_metadata[i]["detach_at_each_forward"]:
+                    self.memristive_history[i][-1] = self.memristive_history[i][
+                        -1
+                    ].detach()
+                    self.memristive_state[i] = new_state.detach()
 
         return output
 
