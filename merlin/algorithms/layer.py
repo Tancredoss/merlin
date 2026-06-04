@@ -72,10 +72,10 @@ from .layer_utils import (
     resolve_circuit,
     setup_noise_and_detectors,
     split_inputs_by_prefix,
+    sum_input_elements,
     validate_and_resolve_circuit_source,
     validate_encoding_mode,
     vet_experiment,
-    sum_input_elements,
 )
 from .module import MerlinModule
 
@@ -231,7 +231,11 @@ class QuantumLayer(MerlinModule):
 
         """
         super().__init__()
-        if sum_input_elements(input_state) != n_photons and input_state != None and n_photons != None:
+        if (
+            sum_input_elements(input_state) != n_photons
+            and input_state is not None
+            and n_photons is not None
+        ):
             raise ValueError("number of photons doesn't fit input state")
 
         # === DEPRECATION WARNING: amplitude_encoding ===
@@ -1618,6 +1622,195 @@ class QuantumLayer(MerlinModule):
 
         return base_str + ")"
 
+    def _serialize_memristive_runtime_state(
+        self, keep_vars: bool
+    ) -> dict[str, list[torch.Tensor]]:
+        """Serialize memristive state and history for checkpointing."""
 
+        def _tensor_for_checkpoint(tensor: torch.Tensor) -> torch.Tensor:
+            return tensor if keep_vars else tensor.detach()
 
+        return {
+            "memristive_state": [
+                _tensor_for_checkpoint(state) for state in self.memristive_state
+            ],
+            "memristive_history": [
+                (
+                    torch.stack([_tensor_for_checkpoint(tensor) for tensor in history])
+                    if history
+                    else torch.empty(0, device=self.device, dtype=self.dtype)
+                )
+                for history in self.memristive_history
+            ],
+        }
 
+    def _restore_memristive_runtime_state(self, state: dict[str, Any] | None) -> None:
+        """Restore memristive state and history from checkpointed runtime state."""
+        if not self._memristive_metadata:
+            return
+
+        if state is None or "memristive_state" not in state:
+            warnings.warn(
+                "Checkpoint does not contain memristive runtime state. "
+                "The memristive state will remain at its current (initial) value. "
+                "Re-save the checkpoint with the current version of Merlin to "
+                "preserve the memristive state across save/load round-trips.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return
+
+        loaded_states: list[torch.Tensor] = state["memristive_state"]
+        n_states = len(self.memristive_state)
+        if len(loaded_states) != n_states:
+            raise RuntimeError(
+                f"Checkpoint contains {len(loaded_states)} memristive state tensor(s) "
+                f"but the layer has {n_states}. The checkpoint is incompatible with this layer."
+            )
+
+        for index, tensor in enumerate(loaded_states):
+            self.memristive_state[index] = tensor.to(
+                device=self.device,
+                dtype=self.dtype,
+            )
+
+        loaded_histories: list[torch.Tensor] | None = state.get("memristive_history")
+        if loaded_histories is not None:
+            for index, stacked in enumerate(loaded_histories):
+                if stacked.numel() > 0:
+                    self.memristive_history[index] = [
+                        stacked[time_index].to(device=self.device, dtype=self.dtype)
+                        for time_index in range(stacked.shape[0])
+                    ]
+                else:
+                    self.memristive_history[index] = []
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        """Save module parameters plus memristive runtime state when present."""
+        super()._save_to_state_dict(destination, prefix, keep_vars)
+
+        if not self._memristive_metadata:
+            return
+
+        runtime_state = self._serialize_memristive_runtime_state(keep_vars)
+        destination[prefix + "_memristive_state"] = runtime_state["memristive_state"]
+        destination[prefix + "_memristive_history"] = runtime_state[
+            "memristive_history"
+        ]
+
+    def _load_from_state_dict(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
+        """Load module parameters plus memristive runtime state when present."""
+        memristive_state_key = prefix + "_memristive_state"
+        memristive_history_key = prefix + "_memristive_history"
+        legacy_extra_state_key = prefix + "_extra_state"
+
+        runtime_state: dict[str, Any] | None = None
+        if memristive_state_key in state_dict:
+            runtime_state = {"memristive_state": state_dict.pop(memristive_state_key)}
+            if memristive_history_key in state_dict:
+                runtime_state["memristive_history"] = state_dict.pop(
+                    memristive_history_key
+                )
+        elif legacy_extra_state_key in state_dict:
+            runtime_state = state_dict.pop(legacy_extra_state_key)
+
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
+
+        if runtime_state is not None or self._memristive_metadata:
+            self._restore_memristive_runtime_state(runtime_state)
+
+    def detach_memristive_state(self, *, clear_history: bool = False) -> None:
+        """Detach the current memristive state without resetting its value.
+
+        This method is intended for manual truncated backpropagation through
+        time. It cuts the autograd graph carried by the live recurrent
+        memristive state, so future forward passes keep using the same
+        numerical state values without backpropagating through earlier
+        recurrence updates.
+
+        Parameters
+        ----------
+        clear_history : bool
+            Whether to replace each memristive history with only the detached
+            current state. If ``False``, the history length is preserved but
+            stored tensors are detached. Default value is ``False``.
+
+        Returns
+        -------
+        None
+            The layer is updated in place.
+        """
+        if len(self.memristive_state) == 0:
+            return
+
+        self.memristive_state = [state.detach() for state in self.memristive_state]
+
+        if clear_history:
+            self.memristive_history = [[state] for state in self.memristive_state]
+            return
+
+        for index, history in enumerate(self.memristive_history):
+            if len(history) == 0:
+                self.memristive_history[index] = [self.memristive_state[index]]
+                continue
+
+            self.memristive_history[index] = [state.detach() for state in history]
+            self.memristive_history[index][-1] = self.memristive_state[index]
+
+    def reset(self, batch_size: int = 1) -> None:
+        """Resets the memristors to their initial state while clearing the history.
+
+        This also defines the allowed batch size to be ran per forward pass for circuits with
+        memristive phase shifters.
+
+        Parameters
+        ----------
+        batch_size : int
+            Batch size that will be used in forward passes. Must be at least 1.
+            Call this before each new batch to ensure memristive states are properly initialized.
+
+        Raises
+        ------
+        ValueError
+            If batch_size < 1.
+        """
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be at least 1, got {batch_size}")
+
+        self._memristive_smaller_last_batch = False
+
+        if len(self.memristive_history) == 0:
+            return
+
+        for i in range(len(self.memristive_history)):
+            self.memristive_state[i] = torch.full(
+                [batch_size],
+                self._memristive_metadata[i]["initial_state"],
+                device=self.device,
+                dtype=self.dtype,
+            )
+            self.memristive_history[i] = [self.memristive_state[i]]
+
+            # Initial state gradient tracking depends on detach flag
+            if self._memristive_metadata[i]["detach_at_each_forward"]:
+                self.memristive_state[i] = self.memristive_state[i].detach()
+                self.memristive_history[i][-1] = self.memristive_history[i][-1].detach()
+
+        return

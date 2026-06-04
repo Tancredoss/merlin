@@ -1007,8 +1007,9 @@ def sum_input_elements(input_state) -> float | int:
         return input_state.n
 
     if type(input_state).__name__ == "StateVector":
-        if hasattr(input_state, 'tensor') and isinstance(input_state.tensor, torch.Tensor):
+        if hasattr(input_state, "tensor") and isinstance(
+            input_state.tensor, torch.Tensor
+        ):
             return torch.sum(input_state.tensor).item()
 
-    
     raise TypeError(f"Type not managed by the parser : {type(input_state)}")
