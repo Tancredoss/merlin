@@ -7,6 +7,23 @@ User Guide
 ==========
 Here are a few pages to guide you through your MerLin usage.
 
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   angle_amplitude_encoding
+   computation_space
+   feed_forward
+   grouping
+   kernels
+   layer
+   measurement_strategy
+   migration_guide
+   noisy_simulations.rst
+   quantum_bridge
+   remote_execution
+
+
 Master the QuantumLayer
 ----------------------------
 .. merlin-gallery::
@@ -50,18 +67,3 @@ Migration guide
    :columns: 2
    :contour-color: #f2994a
 
-.. toctree::
-   :hidden:
-   :maxdepth: 1
-
-   angle_amplitude_encoding
-   computation_space
-   feed_forward
-   grouping
-   kernels
-   layer
-   measurement_strategy
-   migration_guide
-   noisy_simulations.rst
-   quantum_bridge
-   remote_execution

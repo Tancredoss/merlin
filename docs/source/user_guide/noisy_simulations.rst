@@ -124,7 +124,7 @@ These noises describe the imperfections of the photon emitter (source).
 5. Indistinguishability
 -----------------------------------
 
-This noise describes the probability that the photon emitters generate photons that are indistinguishable from one another. In the perfect case, all photons are indistinguishable, which enables intrication effects. Indeed, intrication is one of the two main quantum phenomena that underlie quantum computing. To see the impact of indistinguishability on intrication, a simple beam splitter with a 50:50 reflection/transmittance ratio is necessary:
+This noise describes the probability that the photon emitters generate photons that are indistinguishable from one another. In the perfect case, all photons are indistinguishable, which enables entanglement effects. Indeed, entanglement is one of the two main quantum phenomena that underlie quantum computing. To see the impact of indistinguishability on entanglement, a simple beam splitter with a 50:50 reflection/transmittance ratio is necessary:
 
 .. image:: ../_static/img/simple_bs.png
    :alt: Simple beam-splitter
@@ -167,7 +167,7 @@ This is caused by interference because, classically, if each photon has a 50% ch
 - There is a 25% chance that both photons are measured in the second mode.
 - There is a 50% chance that the photons are measured in different modes.
 
-The intrication phenomenon between two indistinguishable photons (they effectively interact through the quantum state) causes the discrepancy.
+The entanglement phenomenon between two indistinguishable photons (they effectively interact through the quantum state) causes the discrepancy.
 
 With completely distinguishable photons, we recover the expected classical distribution because distinguishable photons do not interfere. It can be observed in the following code:
 
