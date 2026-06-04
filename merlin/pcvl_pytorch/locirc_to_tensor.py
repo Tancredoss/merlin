@@ -741,7 +741,9 @@ class CircuitConverter:
         if self._phase_imprecision > 0.0:
             phase_imprecision = phase.new_tensor(self._phase_imprecision)
             phase_quantized = torch.round(phase / phase_imprecision) * phase_imprecision
-            # STE: forward uses quantized value, backward uses identity gradient
+            # Straight-through estimator: adding a detached delta makes the
+            # forward value equal to phase_quantized, while autograd sees
+            # d phase / d commanded_phase = 1 because the delta is constant.
             phase = phase + (phase_quantized - phase).detach()
 
         # Apply stochastic phase perturbation after quantization. Each call

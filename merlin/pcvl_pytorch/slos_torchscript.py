@@ -91,7 +91,10 @@ def prepare_vectorized_operations(operations_list, device=None):
             torch.tensor([], dtype=torch.long, device=device),
         )
 
-    # Convert operations to tensor format directly on the specified device
+    # Each row is one sparse transition in the SLOS dynamic program:
+    # prev_amplitudes[source] * U[mode, injected_photon] -> next[destination].
+    # Splitting the columns lets layer_compute_* gather and scatter in one
+    # vectorized pass instead of iterating over transitions in Python.
     sources = torch.tensor(
         [op[0] for op in operations_list], dtype=torch.long, device=device
     )
@@ -230,20 +233,23 @@ def layer_compute_batch(
     # Determine output size
     next_size = int(destinations.max().item()) + 1
 
-    # Convert p to tensor for indexing
+    # p_tensor indexes the injected input mode for each coherent input
+    # component. Expanding it against modes creates one unitary lookup per
+    # sparse transition and per input component.
     p_tensor = torch.tensor(p, device=unitary.device, dtype=torch.long)
 
-    # Get unitary elements for all operations and input states
+    # Get all U[mode, p] factors used by the sparse transitions.
     # Shape: [batch_size, num_ops, num_input_states]
     modes_expanded = modes.unsqueeze(-1).expand(-1, num_input_states).to(unitary.device)
     p_expanded = p_tensor.unsqueeze(0).expand(modes.shape[0], -1)
     u_elements = unitary[:, modes_expanded, p_expanded]
 
-    # Get source amplitudes for all operations
-    # Shape: [batch_size, num_ops, num_input_states]
+    # Gather parent amplitudes for every sparse transition. ``sources`` indexes
+    # the previous-layer basis, while the final axis keeps coherent input
+    # components separate until the full SLOS graph has been evaluated.
     prev_amps = prev_amplitudes[:, sources.to(prev_amplitudes.device), :]
 
-    # Compute contributions
+    # Each contribution is the parent amplitude multiplied by its unitary edge.
     # Shape: [batch_size, num_ops, num_input_states]
     contributions = u_elements.to(prev_amps.device) * prev_amps
 
@@ -254,8 +260,8 @@ def layer_compute_batch(
         device=destinations.device,
     )
 
-    # Scatter add contributions to result
-    # Need to expand destinations for all input states
+    # Multiple transitions can land on the same child state, so scatter_add
+    # performs the dynamic-programming accumulation over ``destinations``.
     destinations_expanded = (
         destinations.unsqueeze(0).unsqueeze(-1).expand(batch_size, -1, num_input_states)
     )

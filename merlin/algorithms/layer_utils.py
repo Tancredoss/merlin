@@ -800,10 +800,10 @@ def setup_noise_and_detectors(
     )
 
     # Post measurement error
-    photon_survival_probs, empty_post_measurement_noise = resolve_photon_loss(
+    photon_survival_probs, no_post_measurement_noise = resolve_photon_loss(
         noise_groups, circuit.m
     )
-    has_post_measurement_noise = not empty_post_measurement_noise
+    has_post_measurement_noise = not no_post_measurement_noise
 
     # Creating the noise config object
     return NoiseAndDetectorConfig(

@@ -202,13 +202,13 @@ The ``g2_distinguishable`` parameter in the noise model is a boolean that identi
 Noisy simulations limitations
 ----------------------------------------------
 
-Noisy simulations are significantly less efficient than ideal ones. You can profile the memory requirements of noisy simulations with source noise using the benchmark script: :file:`../../benchmarks/benchmark_noisy_slos_cache_memory.py`.
+Noisy simulations are significantly less efficient than ideal ones. You can profile the memory requirements of noisy simulations with source noise using the benchmark script: :file:`../../benchmarks/benchmark_noisy_slos_cache_memory.py`. Use ``--baseline`` to run the matching noiseless layer and report graph-size, layer-size, and forward-time ratios next to the noisy measurements.
 
 Memory and computational complexity grow significantly with the number of modes and photons. For example, a 5-photon 2-mode circuit requires around 200 MB, while a 20-mode 3-photon experiment requires around 3 GB. To profile memory consumption in your specific use case, run the benchmark script with:
 
 .. code-block:: bash
 
-    python benchmarks/benchmark_noisy_slos_cache_memory.py --modes 6 7 8 9 --photons 1 2 3 4 5 --backward
+    python benchmarks/benchmark_noisy_slos_cache_memory.py --modes 6 7 8 9 --photons 1 2 3 4 5 --backward --baseline
 
 Here is an example of the output graph of this run.
 
