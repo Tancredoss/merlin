@@ -1,8 +1,11 @@
 import perceval as pcvl
+import torch
+
+import merlin as ML
+
 # Correction de l'import : on passe par le package algorithms
 from merlin.algorithms.layer import QuantumLayer
-import merlin as ML
-import torch
+
 layer = QuantumLayer(
     input_size=0,
     circuit=pcvl.Circuit(3),
@@ -13,4 +16,4 @@ layer = QuantumLayer(
 
 # # Construction succeeds even though sum([1, 0]) == 1, not 2.
 # layer()
-# # Raises: IndexError: list index out of range 
+# # Raises: IndexError: list index out of range
