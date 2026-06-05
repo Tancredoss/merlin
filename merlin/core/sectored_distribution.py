@@ -379,7 +379,6 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
                 # Checking if the photon sector exists, otherwise add it to the sectors and keys
                 number_of_photons_in_state = sum(key)
                 if number_of_photons_in_state not in photon_numbers:
-
                     combinadics_per_sector[number_of_photons_in_state] = Combinadics(
                         scheme="fock",
                         n=number_of_photons_in_state,
@@ -408,10 +407,9 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
                     number_of_photons_in_state
                 ].index(key)
 
-                sectors[number_of_photons_in_state][:, column_in_new_tensor] = sectors[
-                    number_of_photons_in_state
-                ][:, column_in_new_tensor] + (
-                    sector_to_fix.tensor[:, col_index_in_previous_sector]
+                sectors[number_of_photons_in_state][:, column_in_new_tensor] = (
+                    sectors[number_of_photons_in_state][:, column_in_new_tensor]
+                    + (sector_to_fix.tensor[:, col_index_in_previous_sector])
                 )
 
         else:
