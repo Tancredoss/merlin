@@ -235,6 +235,7 @@ class SectoredDistribution:
         5
         """
         is_batched = len(self.sectors[0].tensor.shape) > 1
+        output_shape: int | tuple[int, int]
         if not is_batched:
             output_shape = sum(sector.tensor.shape[0] for sector in self.sectors)
         else:
@@ -249,7 +250,7 @@ class SectoredDistribution:
         )
         output_index = 0
         if return_keys:
-            output_keys = []
+            output_keys: list[tuple[int, ...]] = []
 
         # Create the tensor
         for sector in self.sectors:
@@ -438,14 +439,14 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
                     sectors[number_of_photons_in_state][index_in_new_tensor] + value
                 )
 
-    sectors_to_return = [
+    sectors_to_return = tuple(
         SectorResult(
             sectors[i],
             n_modes=dist.sectors[0].n_modes,
             n_photons=i,
-            keys=keys_per_sector[i],
+            keys=tuple(keys_per_sector[i]),
         )
         for i in photon_numbers
-    ]
+    )
 
     return SectoredDistribution(sectors=sectors_to_return)

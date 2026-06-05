@@ -778,7 +778,7 @@ class QuantumLayer(MerlinModule):
                 scheme=self.computation_space.lower(),
                 n=self.n_photons,
                 m=self.circuit.m,
-            )
+            ).compute_space_size()
         else:
             if (
                 isinstance(self._raw_output_keys, list)
@@ -1104,10 +1104,10 @@ class QuantumLayer(MerlinModule):
             apply_detectors=self._apply_detector_transform,
             grouping=grouping,
         )
-        if isinstance(results, DistributionStrategy):
+        if isinstance(strategy, DistributionStrategy):
             # Reorder tensor to match layer's expected key order if needed
-            if results.keys is not None and isinstance(results, torch.Tensor):
-                tensor_result_keys = cast(list[tuple[int, ...]], results.keys)
+            if strategy.keys is not None and isinstance(results, torch.Tensor):
+                tensor_result_keys = cast(list[tuple[int, ...]], strategy.keys)
                 # Flatten expected keys if nested (g2 case)
                 if (
                     isinstance(self._detector_keys, list)
@@ -1133,13 +1133,13 @@ class QuantumLayer(MerlinModule):
                     reorder_indices = [
                         key_to_tensor_idx[key] for key in expected_keys_list
                     ]
-                    results = results[reorder_indices]
+                    results = results[..., reorder_indices]
 
         if (
             _resolve_measurement_kind(self.measurement_strategy)
             == MeasurementKind.PARTIAL
         ):
-            return results
+            return cast(PartialMeasurement, results)
 
         if (
             self.return_object is True
