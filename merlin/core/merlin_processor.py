@@ -1,3 +1,4 @@
+import copy
 import logging
 import threading
 import time
@@ -39,6 +40,32 @@ class BackendCapabilities:
 
     name: str
     available_commands: tuple[str]
+
+
+@dataclass(frozen=True)
+class _LocalExperimentMetadata:
+    """Experiment-level state that must survive local circuit replacement."""
+
+    circuit_size: int
+    in_ports: tuple[tuple[Any, tuple[int, ...]], ...]
+    out_ports: tuple[tuple[Any, tuple[int, ...]], ...]
+    detectors: tuple[Any | None, ...]
+    detectors_injected: tuple[int, ...]
+    in_mode_type: tuple[Any, ...]
+    out_mode_type: tuple[Any, ...]
+    anon_herald_num: int
+    postselection: Any
+
+    @property
+    def has_mode_metadata(self) -> bool:
+        """Return whether metadata is tied to a concrete circuit mode layout."""
+
+        return (
+            bool(self.in_ports)
+            or bool(self.out_ports)
+            or any(detector is not None for detector in self.detectors)
+            or bool(self.detectors_injected)
+        )
 
 
 _ALLOWED_STATE_TYPES = (
@@ -1184,12 +1211,93 @@ class MerlinProcessor:
                     "Local processor backend cannot be reconstructed safely."
                 ) from exc
 
+        experiment_metadata = self._snapshot_local_experiment_metadata(experiment)
         copied_experiment = experiment_copy()
         copied_experiment.clear_input_and_circuit()
-        if hasattr(copied_experiment, "_min_detected_photons_filter"):
-            copied_experiment._min_detected_photons_filter = None
 
-        return Processor(backend, copied_experiment)
+        processor = Processor(backend, copied_experiment)
+        processor._merlin_local_experiment_metadata = experiment_metadata
+        return processor
+
+    @staticmethod
+    def _snapshot_local_experiment_metadata(
+        experiment: Any,
+    ) -> _LocalExperimentMetadata:
+        """Copy non-circuit local experiment metadata before Perceval clears it.
+
+        Parameters
+        ----------
+        experiment : Any
+            Perceval experiment owned by the caller's local processor.
+
+        Returns
+        -------
+        _LocalExperimentMetadata
+            Deep-copied metadata that is independent from the caller's processor.
+        """
+
+        in_ports = tuple(
+            (port, tuple(modes))
+            for port, modes in copy.deepcopy(experiment._in_ports).items()
+        )
+        out_ports = tuple(
+            (port, tuple(modes))
+            for port, modes in copy.deepcopy(experiment._out_ports).items()
+        )
+        return _LocalExperimentMetadata(
+            circuit_size=int(experiment.circuit_size),
+            in_ports=in_ports,
+            out_ports=out_ports,
+            detectors=tuple(copy.deepcopy(experiment.detectors)),
+            detectors_injected=tuple(copy.deepcopy(experiment.detectors_injected)),
+            in_mode_type=tuple(copy.deepcopy(experiment._in_mode_type)),
+            out_mode_type=tuple(copy.deepcopy(experiment._out_mode_type)),
+            anon_herald_num=int(experiment._anon_herald_num),
+            postselection=copy.copy(experiment.post_select_fn),
+        )
+
+    @staticmethod
+    def _restore_local_experiment_metadata(
+        experiment: Any, metadata: _LocalExperimentMetadata
+    ) -> None:
+        """Restore local experiment metadata after the execution circuit is set.
+
+        Parameters
+        ----------
+        experiment : Any
+            Perceval experiment owned by the fresh local execution processor.
+        metadata : _LocalExperimentMetadata
+            Metadata copied from the caller's local processor.
+
+        Raises
+        ------
+        ValueError
+            If mode-indexed metadata cannot be applied to the execution circuit
+            because the circuit sizes differ.
+        """
+
+        if metadata.has_mode_metadata:
+            circuit_size = int(experiment.circuit_size)
+            if circuit_size != metadata.circuit_size:
+                raise ValueError(
+                    "Local processor experiment metadata is tied to circuit size "
+                    f"{metadata.circuit_size}, but the execution circuit has size "
+                    f"{circuit_size}."
+                )
+            experiment._in_ports = {
+                port: list(modes) for port, modes in metadata.in_ports
+            }
+            experiment._out_ports = {
+                port: list(modes) for port, modes in metadata.out_ports
+            }
+            experiment._detectors = list(metadata.detectors)
+            experiment.detectors_injected = list(metadata.detectors_injected)
+            experiment._in_mode_type = list(metadata.in_mode_type)
+            experiment._out_mode_type = list(metadata.out_mode_type)
+            experiment._anon_herald_num = metadata.anon_herald_num
+
+        experiment._postselect = copy.copy(metadata.postselection)
+        experiment._circuit_changed()
 
     @staticmethod
     def _copy_circuit_for_execution(circuit: pcvl.ACircuit) -> pcvl.ACircuit:
@@ -1286,6 +1394,13 @@ class MerlinProcessor:
 
         processor = self._create_fresh_local_processor()
         processor.set_circuit(self._copy_circuit_for_execution(config.circuit))
+        experiment_metadata = getattr(
+            processor, "_merlin_local_experiment_metadata", None
+        )
+        if isinstance(experiment_metadata, _LocalExperimentMetadata):
+            self._restore_local_experiment_metadata(
+                processor.experiment, experiment_metadata
+            )
         if config.input_state:
             input_state = pcvl.BasicState(config.input_state)
             processor.with_input(input_state)

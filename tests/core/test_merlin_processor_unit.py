@@ -219,9 +219,13 @@ def make_poll_processor(output: torch.Tensor | None = None) -> MerlinProcessor:
     proc.processed_calls = []
 
     def process_results(raw_results, batch_size, layer, nsample, is_probability=False):
-        proc.processed_calls.append(
-            (raw_results, batch_size, layer, nsample, is_probability)
-        )
+        proc.processed_calls.append((
+            raw_results,
+            batch_size,
+            layer,
+            nsample,
+            is_probability,
+        ))
         return torch.tensor([[1.0]]) if output is None else output
 
     proc._process_batch_results = process_results
@@ -262,8 +266,8 @@ def make_local_aprocessor(
     processor = MagicMock(spec=AProcessor)
     processor.is_remote = False
     processor.name = "local:slos"
-    processor.available_commands = ["probs"] if available_commands is None else list(
-        available_commands
+    processor.available_commands = (
+        ["probs"] if available_commands is None else list(available_commands)
     )
     return processor
 
@@ -326,7 +330,11 @@ def test_backend_capabilities_repr():
 @pytest.mark.parametrize(
     ("nsample", "max_shots_per_call", "expected"),
     [
-        (None, MerlinProcessor.DEFAULT_MAX_SHOTS, MerlinProcessor.DEFAULT_SHOTS_PER_CALL),
+        (
+            None,
+            MerlinProcessor.DEFAULT_MAX_SHOTS,
+            MerlinProcessor.DEFAULT_SHOTS_PER_CALL,
+        ),
         (None, 123, 123),
         (123, 456, 123),
         (456, 123, 123),
@@ -597,7 +605,9 @@ def test_session_path_does_not_require_remote_processor_token():
     remote_processor.proxies = None
     session.build_remote_processor.return_value = remote_processor
 
-    with patch.object(MerlinProcessor, "_extract_rp_token", return_value=None) as extract:
+    with patch.object(
+        MerlinProcessor, "_extract_rp_token", return_value=None
+    ) as extract:
         proc = MerlinProcessor(session=session)
 
     extract.assert_not_called()
@@ -1131,9 +1141,7 @@ def test_run_chunk_local_defaults_to_sample_count_when_commands_are_empty():
 
     assert sampler.sample_count.executed is True
     assert sampler.sample_count.execute_kwargs == {"max_samples": 5}
-    proc._process_batch_results.assert_called_once_with(
-        raw_results, 1, layer, 5, False
-    )
+    proc._process_batch_results.assert_called_once_with(raw_results, 1, layer, 5, False)
 
 
 def test_run_chunk_local_raises_cancelled_before_execution():
@@ -1205,9 +1213,7 @@ def test_run_chunk_local_raises_timeout_after_execution(monkeypatch):
     raw_results = {"results_list": [{"results": {"|1,0>": 1.0}}]}
     sampler = FakeSyncSampler(raw_results)
     time_values = iter([0.0, 2.0])
-    monkeypatch.setattr(
-        merlin_processor_module.time, "time", lambda: next(time_values)
-    )
+    monkeypatch.setattr(merlin_processor_module.time, "time", lambda: next(time_values))
 
     with (
         patch.object(merlin_processor_module, "Sampler", return_value=sampler),
@@ -1242,6 +1248,59 @@ def test_create_fresh_local_processor_does_not_share_experiment_state():
     assert str(execution_processor.input_state) == "|0,1,0,0>"
     assert original_processor.circuit_size == 2
     assert execution_processor.circuit_size == 4
+
+
+def test_run_chunk_local_preserves_processor_experiment_metadata():
+    """Local execution keeps caller-provided experiment detector metadata."""
+    original_processor = Processor("SLOS")
+    original_processor.set_circuit(pcvl.Circuit(4))
+    original_processor.add_port(0, pcvl.Port(pcvl.Encoding.DUAL_RAIL, "q0"))
+    original_processor.add_herald(2, 1, "h0")
+    original_processor.experiment._add_detector(3, pcvl.Detector.threshold())
+    original_processor.set_postselection("[3]==1")
+    proc = MerlinProcessor(processor=original_processor)
+    proc._process_batch_results = MagicMock(return_value=torch.tensor([[1.0]]))
+    layer = FakeLayer(final_keys=[(1, 0, 0, 0)])
+    config = SimpleNamespace(
+        circuit=pcvl.Circuit(4),
+        input_state=[1, 0, 0],
+        input_param_order=[],
+    )
+    raw_results = {"results_list": [{"results": {"|1,0,0,0>": 1.0}}]}
+    captured_processor = {}
+
+    class CapturingSampler(FakeSyncSampler):
+        """Sampler fake that exposes the execution processor under test."""
+
+        def __init__(self, processor, max_shots_per_call) -> None:
+            captured_processor["processor"] = processor
+            captured_processor["max_shots_per_call"] = max_shots_per_call
+            super().__init__(raw_results)
+
+    with patch.object(merlin_processor_module, "Sampler", CapturingSampler):
+        output = proc._run_chunk_local(
+            layer,
+            config,
+            torch.empty((1, 0)),
+            nsample=None,
+            state=make_state(),
+            deadline=None,
+        )
+
+    execution_processor = captured_processor["processor"]
+    execution_experiment = execution_processor.experiment
+    assert execution_processor is not original_processor
+    assert execution_experiment is not original_processor.experiment
+    assert execution_experiment.out_port_names == ["q0", "q0", "h0", ""]
+    assert execution_experiment.in_port_names == ["q0", "q0", "h0", ""]
+    assert execution_experiment.heralds == {2: 1}
+    assert execution_experiment.in_heralds == {2: 1}
+    assert execution_experiment.detectors[3] is not None
+    assert str(execution_experiment.post_select_fn) == "[3] == 1"
+    assert str(execution_processor.input_state) == "|1,0,1,0>"
+    assert execution_processor._min_detected_photons_filter == 1
+    assert str(original_processor.post_select_fn) == "[3] == 1"
+    torch.testing.assert_close(output, torch.tensor([[1.0]]))
 
 
 def test_run_chunk_local_accepts_layer_with_different_mode_count_than_original_processor():
@@ -1709,13 +1768,11 @@ def test_process_batch_results_zero_fills_missing_rows():
 
     assert torch.allclose(
         result,
-        torch.tensor(
-            [
-                [0.0, 1.0],
-                [0.0, 0.0],
-                [0.0, 0.0],
-            ]
-        ),
+        torch.tensor([
+            [0.0, 1.0],
+            [0.0, 0.0],
+            [0.0, 0.0],
+        ]),
     )
 
 
