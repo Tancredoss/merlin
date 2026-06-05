@@ -1359,7 +1359,7 @@ class TestQuantumLayer:
         """Check that photon loss is applied with the correct basis for every sector.
 
         Correct result: a layer with both ``g2`` and post-measurement loss should
-        return a ``SectoredDistribution`` after applying photon loss independently to
+        return a ``torch.Tensor`` after applying photon loss independently to
         each photon-number sector.
         """
         with pytest.warns(UserWarning, match="g2_distinguishable must be False"):

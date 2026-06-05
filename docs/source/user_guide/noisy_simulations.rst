@@ -203,7 +203,7 @@ Output:
 
 The default value of the ``indistinguishability`` parameter of the ``NoiseModel`` is 1.0, because in the perfect case all photons are indistinguishable.
 
-7. g2
+6. g2
 -----------------------------------
 
 The g2 value is correlated to the probability that a source emits two photons instead of one. Mathematically, it is defined by :math:`g(2)=\frac{\langle n(n-1)\rangle}{\langle n \rangle^2}`. Here, since we only analyze the probability that a second photon is emitted and not higher-order emissions, we can define p as the probability that two photons are emitted: :math:`p=\frac{1-g(2)-\sqrt{1-2g(2)}}{2g(2)}`. So a ``g(2)`` of ``0.5`` corresponds to the case where all generated photons are duplicated.
