@@ -288,6 +288,7 @@ def test_feedforward_block2_accepts_state_vector_input():
 def test_feedforward_block2_input_and_trainable_parameters_backward():
     exp = pcvl.Experiment()
     root = pcvl.Circuit(2)
+    root.add((0, 1), pcvl.BS())
     root.add(0, pcvl.PS(pcvl.P("phi")))
     root.add((0, 1), pcvl.BS(theta=pcvl.P("theta_1")))
     exp.add(0, root)
@@ -331,7 +332,9 @@ def test_feedforward_block2_forward_without_inputs_matches_explicit_tensor():
 def test_feedforward_block2_requires_classical_features_when_needed():
     exp = pcvl.Experiment()
     circuit = pcvl.Circuit(2)
+    circuit.add(0, pcvl.BS())
     circuit.add(0, pcvl.PS(pcvl.P("phi")))
+    circuit.add(0, pcvl.BS())
     exp.add(0, circuit)
     exp.add(0, pcvl.Detector.pnr())
     provider = pcvl.FFCircuitProvider(1, 0, pcvl.Circuit(1))

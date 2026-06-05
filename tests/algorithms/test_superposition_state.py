@@ -16,6 +16,12 @@ from merlin.measurement.strategies import MeasurementStrategy
 from merlin.utils.combinadics import Combinadics
 
 
+def _add_beam_splitter_chain(circuit: pcvl.Circuit, n_modes: int) -> None:
+    """Add deterministic nearest-neighbor mixing before parameterized phases."""
+    for mode in range(n_modes - 1):
+        circuit.add(mode, pcvl.BS())
+
+
 def classical_method(layer, input_state, *x):
     output_classical = torch.zeros(1, layer.output_size)
     dtype = layer.computation_process.simulation_graph.prev_amplitudes.dtype
@@ -270,9 +276,11 @@ class TestOutputSuperposedState:
 
     def test_superposition_state_classical_batch(self):
         circuit = pcvl.Circuit(3)
+        _add_beam_splitter_chain(circuit, circuit.m)
         circuit.add(0, pcvl.PS(pcvl.P("px_0")))
         circuit.add(1, pcvl.PS(pcvl.P("px_1")))
         circuit.add(2, pcvl.PS(pcvl.P("px_2")))
+        _add_beam_splitter_chain(circuit, circuit.m)
 
         n_photons = 1
         expected_states = math.comb(circuit.m, n_photons)
@@ -366,6 +374,7 @@ class TestOutputSuperposedState:
         n_photons: int,
     ):
         circuit = pcvl.Circuit(n_modes)
+        _add_beam_splitter_chain(circuit, n_modes)
         for mode in range(n_modes):
             circuit.add(mode, pcvl.PS(pcvl.P(f"theta_{mode}")))
 
@@ -499,6 +508,7 @@ class TestOutputSuperposedState:
         n_photons = 5
 
         circuit = pcvl.Circuit(n_modes)
+        _add_beam_splitter_chain(circuit, n_modes)
         for mode in range(n_modes):
             circuit.add(mode, pcvl.PS(pcvl.P(f"theta_{mode}")))
 

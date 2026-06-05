@@ -232,11 +232,13 @@ def test_angle_encoding_subset_combinations_extend_metadata():
 
 def test_angle_encoding_applies_scaling_in_quantum_layer():
     builder = CircuitBuilder(n_modes=4)
+    builder.add_entangling_layer(trainable=False, name="pre_mix")
     builder.add_angle_encoding(
         modes=[0, 1, 2],
         name="input",
         scale=0.5,
     )
+    builder.add_entangling_layer(trainable=False, name="post_mix")
 
     layer = QuantumLayer(
         input_size=3,
@@ -260,12 +262,14 @@ def test_angle_encoding_applies_scaling_in_quantum_layer():
 
 def test_angle_encoding_subset_combinations_in_quantum_layer():
     builder = CircuitBuilder(n_modes=8)
+    builder.add_entangling_layer(trainable=False, name="pre_mix")
     builder.add_angle_encoding(
         modes=[0, 1, 2],
         name="input",
         subset_combinations=True,
         max_order=2,
     )
+    builder.add_entangling_layer(trainable=False, name="post_mix")
 
     layer = QuantumLayer(
         input_size=3,

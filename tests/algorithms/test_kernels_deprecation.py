@@ -72,7 +72,12 @@ class TestLegacyFeatureMapUnitaryPath:
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
         self.circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
+            pcvl.Circuit(2)
+            // pcvl.BS()
+            // pcvl.PS(x1)
+            // pcvl.BS()
+            // pcvl.PS(x2)
+            // pcvl.BS()
         )
         self.feature_map = FeatureMap(
             circuit=self.circuit,
@@ -84,6 +89,7 @@ class TestLegacyFeatureMapUnitaryPath:
         theta = pcvl.P("theta")
         circuit = (
             pcvl.Circuit(2)
+            // pcvl.BS()
             // pcvl.PS(pcvl.P("x1"))
             // pcvl.BS(theta)
             // pcvl.PS(pcvl.P("x2"))

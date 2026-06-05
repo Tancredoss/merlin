@@ -325,8 +325,10 @@ class TestQuantumLayer:
     def test_prepare_classical_parameters_detects_batch_mismatch(self):
         """Classical parameter helper should reject mismatched batch sizes."""
         builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input_a")
         builder.add_angle_encoding(modes=[2, 3], name="input_b")
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=4,

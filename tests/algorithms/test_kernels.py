@@ -518,11 +518,13 @@ class TestFidelityKernel:
 
     def test_kernel_uses_builder_subset_encoding_without_deprecation(self):
         builder = CircuitBuilder(n_modes=3)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(
             modes=[0, 1],
             name="input",
             subset_combinations=True,
         )
+        builder.add_entangling_layer(trainable=False, name="post_mix")
         feature_map = FeatureMap(
             builder=builder,
             input_size=2,
@@ -543,11 +545,13 @@ class TestFidelityKernel:
 
     def test_kernel_backend_preserves_builder_angle_encoding_scale(self):
         builder = CircuitBuilder(n_modes=3)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(
             modes=[0, 1],
             name="input",
             scale=0.5,
         )
+        builder.add_entangling_layer(trainable=False, name="post_mix")
         feature_map = FeatureMap(
             builder=builder,
             input_size=2,
@@ -577,12 +581,14 @@ class TestFidelityKernel:
 
     def test_kernel_backend_preserves_builder_subset_scale(self):
         builder = CircuitBuilder(n_modes=3)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(
             modes=[0, 1],
             name="input",
             scale=0.5,
             subset_combinations=True,
         )
+        builder.add_entangling_layer(trainable=False, name="post_mix")
         feature_map = FeatureMap(
             builder=builder,
             input_size=2,
@@ -652,7 +658,12 @@ class TestFeatureMapDescriptor:
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
         self.circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
+            pcvl.Circuit(2)
+            // pcvl.BS()
+            // pcvl.PS(x1)
+            // pcvl.BS()
+            // pcvl.PS(x2)
+            // pcvl.BS()
         )
         self.feature_map = FeatureMap(
             circuit=self.circuit,
@@ -670,6 +681,7 @@ class TestFeatureMapDescriptor:
         theta = pcvl.P("theta")
         circuit = (
             pcvl.Circuit(2)
+            // pcvl.BS()
             // pcvl.PS(pcvl.P("x1"))
             // pcvl.BS(theta)
             // pcvl.PS(pcvl.P("x2"))
@@ -788,11 +800,13 @@ class TestFeatureMapFactoryMethods:
 
     def test_angle_encoding_respects_scale_in_feature_map(self):
         builder = CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(
             modes=[0, 1, 2],
             name="input",
             scale=0.5,
         )
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         feature_map = FeatureMap(
             builder=builder,
