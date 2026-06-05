@@ -60,11 +60,11 @@ from ..measurement.strategies import (
     _resolve_measurement_kind,
     resolve_measurement_strategy,
 )
+from ..utils.combinadics import Combinadics
 from ..utils.deprecations import (
     normalize_measurement_strategy,
     sanitize_parameters,
 )
-from ..utils.combinadics import Combinadics
 from ..utils.grouping import ModGrouping
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
