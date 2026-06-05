@@ -430,7 +430,7 @@ class TestFidelityKernel:
 
     def test_input_state_circuit_size_mismatch(self):
         x1 = pcvl.P("x1")
-        circuit = pcvl.Circuit(3) // pcvl.PS(x1)  # 3 modes
+        circuit = pcvl.Circuit(3) // pcvl.BS() // pcvl.PS(x1) // pcvl.BS()
         feature_map = FeatureMap(
             circuit=circuit,
             input_size=1,
@@ -448,8 +448,12 @@ class TestFidelityKernel:
 
     def test_kernel_warns_and_uses_feature_map_encoder(self):
         circuit = pcvl.Circuit(3)
+        circuit.add(0, pcvl.BS())
+        circuit.add(1, pcvl.BS())
         for mode in range(3):
             circuit.add(mode, pcvl.PS(pcvl.P(f"x{mode}")))
+        circuit.add(0, pcvl.BS())
+        circuit.add(1, pcvl.BS())
 
         def encoder(x):
             return torch.stack([x[0], x[1], x[0] + x[1]])
@@ -481,8 +485,12 @@ class TestFidelityKernel:
 
     def test_kernel_warns_and_uses_direct_circuit_subset_expansion(self):
         circuit = pcvl.Circuit(3)
+        circuit.add(0, pcvl.BS())
+        circuit.add(1, pcvl.BS())
         for mode in range(3):
             circuit.add(mode, pcvl.PS(pcvl.P(f"x{mode}")))
+        circuit.add(0, pcvl.BS())
+        circuit.add(1, pcvl.BS())
 
         feature_map = FeatureMap(
             circuit=circuit,
@@ -1569,6 +1577,8 @@ def test_iris_with_supported_constructors():
         try:
             params = [pcvl.P(f"x{i + 1}") for i in range(4)]
             circuit = pcvl.Circuit(4)
+            circuit.add(0, pcvl.BS())
+            circuit.add(2, pcvl.BS())
             for mode, param in enumerate(params):
                 circuit.add(mode, pcvl.PS(param))
             circuit.add(0, pcvl.BS())
@@ -1767,6 +1777,8 @@ def test_kernel_constructor_performance_comparison():
     start = time.time()
     params = [pcvl.P(f"x{i + 1}") for i in range(3)]
     circuit = pcvl.Circuit(4)
+    circuit.add(0, pcvl.BS())
+    circuit.add(2, pcvl.BS())
     for mode, param in enumerate(params):
         circuit.add(mode, pcvl.PS(param))
     circuit.add(0, pcvl.BS())
@@ -1839,6 +1851,8 @@ def test_fidelity_kernel_gpu_execution_all_constructors(cuda_device, constructor
     elif constructor == "manual":
         params = [pcvl.P(f"x{i + 1}") for i in range(4)]
         circuit = pcvl.Circuit(4)
+        circuit.add(0, pcvl.BS())
+        circuit.add(2, pcvl.BS())
         for mode, param in enumerate(params):
             circuit.add(mode, pcvl.PS(param))
         circuit.add(0, pcvl.BS())

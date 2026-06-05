@@ -426,6 +426,7 @@ class TestPhotonLossWithQuantumLayer:
         """Photon loss transforms must preserve autograd support."""
         circuit = pcvl.Circuit(2)
         theta = pcvl.P("phi")
+        circuit.add((0, 1), pcvl.BS())
         circuit.add(0, pcvl.PS(theta))
         circuit.add((0, 1), pcvl.BS())
 
@@ -686,6 +687,7 @@ class TestPhotonLossWithFidelityKernel:
         """FidelityKernel should inherit noise model and detector configuration provided via FeatureMap."""
 
         circuit = pcvl.Circuit(2)
+        circuit.add((0, 1), pcvl.BS())
         circuit.add(0, pcvl.PS(pcvl.P("px")))
         circuit.add((0, 1), pcvl.BS())
 
