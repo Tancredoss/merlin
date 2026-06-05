@@ -988,7 +988,7 @@ def test_brightness_still_uses_post_measurement_approximation():
 
 
 def test_g2_layer_forward_returns_tensor():
-    """Regression: layer(x) returns SectoredDistribution when g2 > 0."""
+    """Regression: layer(x) returns Tensor when g2 > 0."""
     circ = ml.CircuitBuilder(n_modes=3)
     circ.add_entangling_layer()
     circ.add_angle_encoding(modes=[0, 1])
