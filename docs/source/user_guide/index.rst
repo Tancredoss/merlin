@@ -19,7 +19,7 @@ Here are a few pages to guide you through your MerLin usage.
    layer
    measurement_strategy
    migration_guide
-   noisy_simulations.rst
+   noisy_simulations
    quantum_bridge
    remote_execution
 
