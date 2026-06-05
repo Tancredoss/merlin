@@ -36,7 +36,6 @@ from perceval import FFCircuitProvider
 import merlin as ML
 from merlin.measurement import MeasurementStrategy
 from merlin.core.computation_space import ComputationSpace
-from merlin.core.sectored_distribution import SectoredDistribution
 from merlin.core.partial_measurement import (
     PartialMeasurement,
 )
@@ -1362,10 +1361,6 @@ class TestQuantumLayer:
         Correct result: a layer with both ``g2`` and post-measurement loss should
         return a ``SectoredDistribution`` after applying photon loss independently to
         each photon-number sector.
-
-        Branch result: the measurement path reuses the transform built for the
-        original 2-photon basis on the 3-photon sector, causing a matrix shape
-        mismatch during ``layer()``.
         """
         with pytest.warns(UserWarning, match="g2_distinguishable must be False"):
             layer = ML.QuantumLayer(
@@ -1380,4 +1375,4 @@ class TestQuantumLayer:
 
         output = layer()
 
-        assert isinstance(output, SectoredDistribution)
+        assert isinstance(output, torch.Tensor)

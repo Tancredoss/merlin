@@ -987,7 +987,7 @@ def test_brightness_still_uses_post_measurement_approximation():
     assert output is not None
 
 
-def test_g2_layer_forward_returns_sectored_distribution():
+def test_g2_layer_forward_returns_tensor():
     """Regression: layer(x) returns SectoredDistribution when g2 > 0."""
     circ = ml.CircuitBuilder(n_modes=3)
     circ.add_entangling_layer()
@@ -1007,11 +1007,8 @@ def test_g2_layer_forward_returns_sectored_distribution():
     x = torch.randn(1, 2)
     output = layer(x)
 
-    # Output should be SectoredDistribution when g2 > 0
-    from merlin.core import SectoredDistribution
-
-    assert isinstance(output, SectoredDistribution)
-    assert len(output.sectors) > 0
+    assert isinstance(output, torch.Tensor)
+    assert max(output.shape) == 31
 
 
 def test_g2_gradient_regression():
@@ -1033,9 +1030,9 @@ def test_g2_gradient_regression():
 
     x = torch.randn(1, 2, requires_grad=True)
     output = layer(x)
-    state = torch.zeros_like(output.sectors[0].tensor)
+    state = torch.zeros_like(output)
     state[0] = 1
-    loss = ((output.sectors[0].tensor - state) ** 2).mean()
+    loss = ((output - state) ** 2).mean()
     loss.backward()
 
     # # Verify gradients are computed

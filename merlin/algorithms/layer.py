@@ -42,7 +42,10 @@ from ..core.computation_space import ComputationSpace
 from ..core.partial_measurement import PartialMeasurement
 from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
-from ..core.sectored_distribution import SectoredDistribution
+from ..core.sectored_distribution import (
+    SectoredDistribution,
+    clean_sectored_distribution,
+)
 from ..core.state import StatePattern, generate_state
 from ..core.state_vector import StateVector
 from ..measurement import OutputMapper
@@ -873,13 +876,7 @@ class QuantumLayer(MerlinModule):
         shots: int | None = None,
         sampling_method: str | None = None,
         simultaneous_processes: int | None = None,
-    ) -> (
-        torch.Tensor
-        | PartialMeasurement
-        | StateVector
-        | ProbabilityDistribution
-        | SectoredDistribution
-    ):
+    ) -> torch.Tensor | PartialMeasurement | StateVector | ProbabilityDistribution:
         """Forward pass through the quantum layer.
 
         Encoding is inferred from the input type:
@@ -1089,6 +1086,13 @@ class QuantumLayer(MerlinModule):
             apply_detectors=self._apply_detector_transform,
             grouping=grouping,
         )
+
+        # Change the sectored distribution to a tensor
+        if isinstance(results, SectoredDistribution):
+            keys, results = results.to_tensor(return_keys=True)
+            self._detector_keys = keys
+            self._raw_output_keys = keys
+            self._detector_keys = keys
 
         if (
             _resolve_measurement_kind(self.measurement_strategy)
@@ -1471,8 +1475,10 @@ class QuantumLayer(MerlinModule):
                     distribution_copy.sectors[i].keys = tuple(
                         self._photon_loss_transform[index].output_keys
                     )
-                return distribution_copy
-            return self._photon_loss_transform(distribution)
+                return clean_sectored_distribution(distribution_copy)
+            return clean_sectored_distribution(
+                self._photon_loss_transform(distribution)
+            )
         if isinstance(self._photon_loss_transform, Sequence):
             raise RuntimeError(
                 "Invalid photon-loss transform for non-sectored distribution."
@@ -1499,8 +1505,8 @@ class QuantumLayer(MerlinModule):
                     distribution_copy.sectors[i].keys = tuple(
                         self._detector_transform[index].output_keys
                     )
-                return distribution_copy
-            return self._detector_transform(distribution)
+                return clean_sectored_distribution(distribution_copy)
+            return clean_sectored_distribution(self._detector_transform(distribution))
         if isinstance(self._detector_transform, Sequence):
             raise RuntimeError(
                 "Invalid detector transform for non-sectored distribution."
