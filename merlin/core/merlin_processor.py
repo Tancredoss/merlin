@@ -324,8 +324,8 @@ class MerlinProcessor:
     - Global timeouts that cancel in-flight remote jobs and check local jobs
       before and after synchronous execution.
     - Isolated backend object per execution: local processors are rebuilt from
-      copied experiment state, and remote processors are cloned or built from a
-      session.
+      copied non-circuit experiment state, and remote processors are cloned or
+      built from a session.
     - Descriptive cloud job names (<= 50 chars) for remote chunk traceability.
 
     **Execution Model**
@@ -1149,8 +1149,8 @@ class MerlinProcessor:
         Returns
         -------
         AProcessor
-            Fresh local processor with copied experiment state and a fresh
-            backend instance.
+            Fresh local processor with copied non-circuit experiment state and
+            a fresh backend instance.
 
         Raises
         ------
@@ -1184,7 +1184,12 @@ class MerlinProcessor:
                     "Local processor backend cannot be reconstructed safely."
                 ) from exc
 
-        return Processor(backend, experiment_copy())
+        copied_experiment = experiment_copy()
+        copied_experiment.clear_input_and_circuit()
+        if hasattr(copied_experiment, "_min_detected_photons_filter"):
+            copied_experiment._min_detected_photons_filter = None
+
+        return Processor(backend, copied_experiment)
 
     @staticmethod
     def _copy_circuit_for_execution(circuit: pcvl.ACircuit) -> pcvl.ACircuit:

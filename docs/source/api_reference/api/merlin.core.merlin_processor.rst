@@ -33,9 +33,10 @@ Key Capabilities
 * **Cancellation** of a single call or **all** calls in flight.
 * **Timeouts** that cancel in-flight cloud jobs for remote backends and check
   local jobs before and after synchronous execution.
-* Isolated backend objects: local processors are rebuilt from copied experiment
-  state, while :class:`~pcvl.RemoteProcessor` objects are cloned from the
-  original (RemoteProcessor path) or built from the session (ISession path).
+* Isolated backend objects: local processors are rebuilt from copied
+  non-circuit experiment state, while :class:`~pcvl.RemoteProcessor` objects
+  are cloned from the original (RemoteProcessor path) or built from the session
+  (ISession path).
 * Stable, descriptive cloud job names (capped to 50 chars) for remote jobs.
 
 .. note::
@@ -316,7 +317,9 @@ Threading & Isolated Backends
 * For each chunk attempt, the processor uses an isolated backend object:
 
   * **Local processor path**: rebuilds a fresh ``perceval.runtime.Processor``
-    from copied experiment state and a fresh local backend.
+    from copied non-circuit experiment state and a fresh local backend. The
+    caller processor's previous circuit, input, and mode count are cleared
+    before the layer circuit is set.
   * **RemoteProcessor path**: clones the original RP (independent RPC handler).
   * **ISession path**: calls ``session.build_remote_processor()`` (independent
     RP per chunk). The session's lifecycle is managed by the context manager

@@ -1233,13 +1233,42 @@ def test_create_fresh_local_processor_does_not_share_experiment_state():
     proc = MerlinProcessor(processor=original_processor)
 
     execution_processor = proc._create_fresh_local_processor()
-    execution_processor.set_circuit(pcvl.Circuit(2))
-    execution_processor.with_input(pcvl.BasicState([0, 1]))
+    execution_processor.set_circuit(pcvl.Circuit(4))
+    execution_processor.with_input(pcvl.BasicState([0, 1, 0, 0]))
 
     assert execution_processor is not original_processor
     assert execution_processor.experiment is not original_processor.experiment
     assert str(original_processor.input_state) == "|1,0>"
-    assert str(execution_processor.input_state) == "|0,1>"
+    assert str(execution_processor.input_state) == "|0,1,0,0>"
+    assert original_processor.circuit_size == 2
+    assert execution_processor.circuit_size == 4
+
+
+def test_run_chunk_local_accepts_layer_with_different_mode_count_than_original_processor():
+    """Local execution ignores the caller processor's previous circuit mode count."""
+    original_processor = Processor("SLOS")
+    original_processor.set_circuit(pcvl.Circuit(2))
+    original_processor.with_input(pcvl.BasicState([1, 0]))
+    proc = MerlinProcessor(processor=original_processor)
+    layer = FakeLayer(final_keys=[(1, 0, 0, 0), (0, 1, 0, 0)])
+    config = SimpleNamespace(
+        circuit=pcvl.Circuit(4),
+        input_state=[1, 0, 0, 0],
+        input_param_order=[],
+    )
+
+    output = proc._run_chunk_local(
+        layer,
+        config,
+        torch.empty((1, 0)),
+        nsample=None,
+        state=make_state(),
+        deadline=None,
+    )
+
+    assert str(original_processor.input_state) == "|1,0>"
+    assert original_processor.circuit_size == 2
+    torch.testing.assert_close(output, torch.tensor([[1.0, 0.0]]))
 
 
 def test_run_chunk_local_does_not_mutate_original_real_processor_input():
