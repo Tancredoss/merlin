@@ -63,6 +63,7 @@ from ..utils.deprecations import (
     normalize_measurement_strategy,
     sanitize_parameters,
 )
+from ..measurement.strategies import DistributionStrategy
 from ..utils.grouping import ModGrouping
 from ..utils.combinadics import Combinadics
 from ..utils.normalization import normalize_probabilities_and_amplitudes
@@ -579,7 +580,13 @@ class QuantumLayer(MerlinModule):
     def _setup_measurement_strategy_from_custom(
         self, measurement_strategy: MeasurementStrategyLike
     ):
-        """Setup output mapping for custom circuit construction."""
+        """Setup output mapping for custom circuit construction.
+
+        Correctly handles output sizing based on the key contract:
+        - _raw_output_keys: complete output basis (flat or nested for g2)
+        - _photon_loss_keys: derived from _raw_output_keys
+        - _detector_keys: derived from _photon_loss_keys
+        """
         if self._photon_loss_transform is None:
             raise RuntimeError(
                 "Photon loss transform must be initialised before sizing."
@@ -589,42 +596,32 @@ class QuantumLayer(MerlinModule):
 
         kind = _resolve_measurement_kind(measurement_strategy)
 
-        flat_keys: list[tuple[int, ...]] | None = None
+        # Determine if keys are nested (g2 noise) or flat
+        is_nested = (
+            isinstance(self._raw_output_keys, list)
+            and self._raw_output_keys
+            and isinstance(self._raw_output_keys[0], list)
+        )
+
+        # Select the appropriate keys based on measurement kind and key contract
         if kind == MeasurementKind.AMPLITUDES:
-            if (
-                isinstance(self._raw_output_keys, list)
-                and self._raw_output_keys
-                and isinstance(self._raw_output_keys[0], list)
-            ):
-                nested_amplitude_keys = cast(
-                    list[list[tuple[int, ...]]], self._raw_output_keys
-                )
-                dist_size = sum(len(key) for key in nested_amplitude_keys)
-            else:
-                flat_keys = cast(list[tuple[int, ...]], self._raw_output_keys)
-                dist_size = len(flat_keys)
+            # For amplitudes, use raw output keys (complete basis)
+            output_keys = self._raw_output_keys
         else:
-            if (
-                isinstance(self._raw_output_keys, list)
-                and self._raw_output_keys
-                and isinstance(self._raw_output_keys[0], list)
-            ):
-                if self._detector_is_identity:
-                    nested_detector_keys = cast(
-                        list[list[tuple[int, ...]]], self._photon_loss_keys
-                    )
-                else:
-                    nested_detector_keys = cast(
-                        list[list[tuple[int, ...]]], self._detector_keys
-                    )
-                dist_size = sum(len(key) for key in nested_detector_keys)
+            # For probabilities and other modes, use final output keys after transforms
+            if self._detector_is_identity:
+                output_keys = self._photon_loss_keys
             else:
-                flat_keys = (
-                    cast(list[tuple[int, ...]], self._photon_loss_keys)
-                    if self._detector_is_identity
-                    else cast(list[tuple[int, ...]], self._detector_keys)
-                )
-                dist_size = len(flat_keys)
+                output_keys = self._detector_keys
+
+        # Calculate distribution size uniformly for nested and flat cases
+        if is_nested:
+            dist_size = sum(
+                len(key_list)
+                for key_list in cast(list[list[tuple[int, ...]]], output_keys)
+            )
+        else:
+            dist_size = len(cast(list[tuple[int, ...]], output_keys))
 
         # Determine output size (upstream model)
         if kind == MeasurementKind.PROBABILITIES:
@@ -661,12 +658,20 @@ class QuantumLayer(MerlinModule):
         if kind == MeasurementKind.PARTIAL or source_noise:
             self.measurement_mapping = nn.Identity()
         else:
-            assert flat_keys is not None
-            measurement_keys = flat_keys
+            # Flatten keys if nested for measurement mapping
+            if is_nested:
+                flat_measurement_keys = [
+                    key
+                    for key_list in cast(list[list[tuple[int, ...]]], output_keys)
+                    for key in key_list
+                ]
+            else:
+                flat_measurement_keys = cast(list[tuple[int, ...]], output_keys)
+
             self.measurement_mapping = OutputMapper.create_mapping(
                 measurement_strategy,
                 self.computation_process.computation_space,
-                measurement_keys,
+                flat_measurement_keys,
                 dtype=self.dtype,
             )
 
@@ -1089,11 +1094,6 @@ class QuantumLayer(MerlinModule):
             ):
                 grouping = self.measurement_strategy.grouping
 
-        # Change the sectored distribution to a tensor
-        if isinstance(distribution, SectoredDistribution):
-            keys, distribution = distribution.to_tensor(return_keys=True)
-            self._raw_output_keys = keys
-
         results = strategy.process(
             distribution=distribution,
             amplitudes=amplitudes,
@@ -1104,6 +1104,30 @@ class QuantumLayer(MerlinModule):
             apply_detectors=self._apply_detector_transform,
             grouping=grouping,
         )
+        if isinstance(results, DistributionStrategy):
+            # Reorder tensor to match layer's expected key order if needed
+            if results.keys is not None and isinstance(results, torch.Tensor):
+                tensor_result_keys = cast(list[tuple[int, ...]], results.keys)
+                
+                # Flatten expected keys if nested (g2 case)
+                if (
+                    isinstance(self._detector_keys, list)
+                    and self._detector_keys
+                    and isinstance(self._detector_keys[0], list)
+                ):
+                    expected_keys_list = [
+                        key
+                        for key_list in cast(list[list[tuple[int, ...]]], self._detector_keys)
+                        for key in key_list
+                    ]
+                else:
+                    expected_keys_list = cast(list[tuple[int, ...]], self._detector_keys)
+                
+                # Create mapping from tensor key order to expected key order
+                if tensor_result_keys != expected_keys_list:
+                    key_to_tensor_idx = {key: idx for idx, key in enumerate(tensor_result_keys)}
+                    reorder_indices = [key_to_tensor_idx[key] for key in expected_keys_list]
+                    results = results[reorder_indices]
 
         if (
             _resolve_measurement_kind(self.measurement_strategy)
@@ -1290,7 +1314,11 @@ class QuantumLayer(MerlinModule):
 
     @property
     def output_keys(self):
-        """Return the Fock basis associated with the layer outputs."""
+        """Return the Fock basis associated with the layer outputs.
+        
+        For g2 noise cases with photon loss/detectors, returns flattened keys matching the tensor output order.
+        For other cases, returns keys with original structure.
+        """
         if (
             getattr(self, "_photon_loss_transform", None) is None
             or getattr(self, "_detector_transform", None) is None
@@ -1320,22 +1348,18 @@ class QuantumLayer(MerlinModule):
                 return cast(list[list[tuple[int, ...]]], self._raw_output_keys)
             else:
                 return cast(list[tuple[int, ...]], self._raw_output_keys)
+        
+        # For probabilities/other modes: flatten nested keys for g2 cases
         if self._detector_is_identity:
-            if (
-                isinstance(self._raw_output_keys, list)
-                and self._raw_output_keys
-                and isinstance(self._raw_output_keys[0], list)
-            ):
-                return cast(list[list[tuple[int, ...]]], self._photon_loss_keys)
-            else:
-                return cast(list[tuple[int, ...]], self._photon_loss_keys)
-        if (
-            isinstance(self._raw_output_keys, list)
-            and self._raw_output_keys
-            and isinstance(self._raw_output_keys[0], list)
-        ):
-            return cast(list[list[tuple[int, ...]]], self._detector_keys)
-        return cast(list[tuple[int, ...]], self._detector_keys)
+            keys = self._photon_loss_keys
+        else:
+            keys = self._detector_keys
+        
+        # Flatten if nested (g2 case)
+        if isinstance(keys, list) and keys and isinstance(keys[0], list):
+            return [key for key_list in cast(list[list[tuple[int, ...]]], keys) for key in key_list]
+        else:
+            return cast(list[tuple[int, ...]], keys)
 
     @property
     def output_size(self) -> int:
@@ -1362,9 +1386,17 @@ class QuantumLayer(MerlinModule):
                 )
                 for keys in self._raw_output_keys
             ]
-            self._photon_loss_keys = [
-                transform.output_keys for transform in self._photon_loss_transform
-            ]
+            # Deduplicate photon loss keys across photon numbers (photon loss can cause overlaps)
+            all_photon_loss_keys_set: set[tuple[int, ...]] = set()
+            deduplicated_photon_loss_keys: list[list[tuple[int, ...]]] = []
+            for transform in self._photon_loss_transform:
+                output_keys_per_n = cast(list[tuple[int, ...]], transform.output_keys)
+                unique_keys = [
+                    k for k in output_keys_per_n if k not in all_photon_loss_keys_set
+                ]
+                deduplicated_photon_loss_keys.append(unique_keys)
+                all_photon_loss_keys_set.update(unique_keys)
+            self._photon_loss_keys = deduplicated_photon_loss_keys
             photon_loss_identities = [
                 transform.is_identity for transform in self._photon_loss_transform
             ]
@@ -1434,10 +1466,19 @@ class QuantumLayer(MerlinModule):
                 )
             ]
             self._detector_transform = detector_transform_list
-            self._detector_keys = [
-                detector_transform_per_n.output_keys
-                for detector_transform_per_n in detector_transform_list
-            ]
+            # Deduplicate detector keys across photon numbers (photon loss can cause overlaps)
+            all_detector_keys_set: set[tuple[int, ...]] = set()
+            deduplicated_detector_keys: list[list[tuple[int, ...]]] = []
+            for transform_per_n in detector_transform_list:
+                output_keys_per_n = cast(
+                    list[tuple[int, ...]], transform_per_n.output_keys
+                )
+                unique_keys = [
+                    k for k in output_keys_per_n if k not in all_detector_keys_set
+                ]
+                deduplicated_detector_keys.append(unique_keys)
+                all_detector_keys_set.update(unique_keys)
+            self._detector_keys = deduplicated_detector_keys
             detector_transform_identities = [
                 transform.is_identity for transform in detector_transform_list
             ]

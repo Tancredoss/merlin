@@ -239,9 +239,21 @@ This noise can change the output type considerably when running the ``forward`` 
 
 
 Output:
-    - 2-photon sector had probabilities of tensor([[0.3431, 0.0000, 0.3431]])
-    - 3-photon sector had probabilities of tensor([[0.1066, 0.0355, 0.0355, 0.1066]])
-    - 4-photon sector had probabilities of tensor([[0.0110, 0.0000, 0.0074, 0.0000, 0.0110]])
+    - Output probability of state (2, 0) is 0.1348033845424652
+    - Output probability of state (1, 0) is 0.019606785848736763
+    - Output probability of state (0, 0) is 0.1348033845424652
+    - Output probability of state (1, 1) is 0.016084961593151093
+    - Output probability of state (0, 1) is 0.0053616538643836975
+    - Output probability of state (0, 2) is 0.0053616538643836975
+    - Output probability of state (3, 0) is 0.016084961593151093
+    - Output probability of state (2, 1) is 0.0006899359868839383
+    - Output probability of state (1, 2) is 0.0
+    - Output probability of state (0, 3) is 0.00045995728578418493
+    - Output probability of state (4, 0) is 0.0
+    - Output probability of state (3, 1) is 0.0006899359868839383
+    - Output probability of state (2, 2) is 0.2285533845424652
+    - Output probability of state (1, 3) is 0.2285533845424652
+    - Output probability of state (0, 4) is 0.2089466005563736
 
 We observe that the output is a large :class:`torch.Tensor`. Indeed, because the space analyzed by a quantum interferometer depends on the number of input photons (the Fock space dimension for n photons and m modes is defined by :math:`\binom{m+n-1}{n}`).  Thus, g2 noise simulations explore a larger space and are handled differently in the output of the :class:`~merlin.algorithms.layer.QuantumLayer`'s forward method. Photon loss and detectors are applied to each sector independently.
 

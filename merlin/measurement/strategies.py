@@ -139,10 +139,14 @@ class DistributionStrategy(BaseMeasurementStrategy):
             [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
         ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    ) -> torch.Tensor | SectoredDistribution:
+    ) -> torch.Tensor:
         # Distribution strategies apply detector/noise transforms before sampling.
         distribution = apply_photon_loss(distribution)
         distribution = apply_detectors(distribution)
+        # Change the sectored distribution to a tensor
+        self.keys = None
+        if isinstance(distribution, SectoredDistribution):
+            self.keys, distribution = distribution.to_tensor(return_keys=True)
         if apply_sampling and effective_shots > 0:
             distribution = sampler.pcvl_sampler(distribution, effective_shots)
         if grouping is not None:
