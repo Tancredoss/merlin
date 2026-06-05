@@ -1157,7 +1157,6 @@ def test_g2_output_keys_match_tensor_order_with_forward():
     ), f"Output tensor size {output_g2_pl.shape[-1]} doesn't match keys count {len(keys_g2_pl)}"
 
     # With photon loss, we can have 0 or 1 photon states
-    # Valid states: (0,0), (1,0), (0,1)
     expected_keys_g2_pl = {(0, 1), (0, 0), (1, 1), (2, 0), (0, 2), (1, 0)}
     assert (
         set(keys_g2_pl) == expected_keys_g2_pl

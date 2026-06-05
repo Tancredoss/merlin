@@ -53,6 +53,7 @@ from ..measurement.autodiff import AutoDiffProcess
 from ..measurement.detectors import DetectorTransform
 from ..measurement.photon_loss import PhotonLossTransform
 from ..measurement.strategies import (
+    DistributionStrategy,
     MeasurementKind,
     MeasurementStrategy,
     MeasurementStrategyLike,
@@ -63,9 +64,8 @@ from ..utils.deprecations import (
     normalize_measurement_strategy,
     sanitize_parameters,
 )
-from ..measurement.strategies import DistributionStrategy
-from ..utils.grouping import ModGrouping
 from ..utils.combinadics import Combinadics
+from ..utils.grouping import ModGrouping
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
     InitializationContext,
@@ -1108,7 +1108,6 @@ class QuantumLayer(MerlinModule):
             # Reorder tensor to match layer's expected key order if needed
             if results.keys is not None and isinstance(results, torch.Tensor):
                 tensor_result_keys = cast(list[tuple[int, ...]], results.keys)
-                
                 # Flatten expected keys if nested (g2 case)
                 if (
                     isinstance(self._detector_keys, list)
@@ -1117,16 +1116,23 @@ class QuantumLayer(MerlinModule):
                 ):
                     expected_keys_list = [
                         key
-                        for key_list in cast(list[list[tuple[int, ...]]], self._detector_keys)
+                        for key_list in cast(
+                            list[list[tuple[int, ...]]], self._detector_keys
+                        )
                         for key in key_list
                     ]
                 else:
-                    expected_keys_list = cast(list[tuple[int, ...]], self._detector_keys)
-                
+                    expected_keys_list = cast(
+                        list[tuple[int, ...]], self._detector_keys
+                    )
                 # Create mapping from tensor key order to expected key order
                 if tensor_result_keys != expected_keys_list:
-                    key_to_tensor_idx = {key: idx for idx, key in enumerate(tensor_result_keys)}
-                    reorder_indices = [key_to_tensor_idx[key] for key in expected_keys_list]
+                    key_to_tensor_idx = {
+                        key: idx for idx, key in enumerate(tensor_result_keys)
+                    }
+                    reorder_indices = [
+                        key_to_tensor_idx[key] for key in expected_keys_list
+                    ]
                     results = results[reorder_indices]
 
         if (
@@ -1315,7 +1321,7 @@ class QuantumLayer(MerlinModule):
     @property
     def output_keys(self):
         """Return the Fock basis associated with the layer outputs.
-        
+
         For g2 noise cases with photon loss/detectors, returns flattened keys matching the tensor output order.
         For other cases, returns keys with original structure.
         """
@@ -1348,16 +1354,18 @@ class QuantumLayer(MerlinModule):
                 return cast(list[list[tuple[int, ...]]], self._raw_output_keys)
             else:
                 return cast(list[tuple[int, ...]], self._raw_output_keys)
-        
         # For probabilities/other modes: flatten nested keys for g2 cases
         if self._detector_is_identity:
             keys = self._photon_loss_keys
         else:
             keys = self._detector_keys
-        
         # Flatten if nested (g2 case)
         if isinstance(keys, list) and keys and isinstance(keys[0], list):
-            return [key for key_list in cast(list[list[tuple[int, ...]]], keys) for key in key_list]
+            return [
+                key
+                for key_list in cast(list[list[tuple[int, ...]]], keys)
+                for key in key_list
+            ]
         else:
             return cast(list[tuple[int, ...]], keys)
 

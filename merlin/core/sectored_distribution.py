@@ -407,7 +407,9 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
                 )
 
         else:
-            for key, value in zip(sector_to_fix.keys, sector_to_fix.tensor):
+            for key, value in zip(
+                sector_to_fix.keys, sector_to_fix.tensor, strict=True
+            ):
                 # Checking if the photon sector exists, otherwise add it to the sectors and keys
                 number_of_photons_in_state = sum(key)
                 if number_of_photons_in_state not in photon_numbers:
