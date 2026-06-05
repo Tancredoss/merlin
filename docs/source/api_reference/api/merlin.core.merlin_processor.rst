@@ -19,22 +19,23 @@ classical layers local. It supports these backend entry points:
 * **Perceval** `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v1.2/providers.html#scaleway>`_ — the preferred path
   for Scaleway-hosted platforms (and any future session-based providers).
 
-All execution paths support batched execution with chunking, limited intra-leaf
-concurrency, per-call/global timeouts, cooperative cancellation, and a
-Torch-friendly async interface returning :class:`torch.futures.Future`.
+All execution paths support batched execution, per-call/global timeouts,
+cooperative cancellation, and a Torch-friendly async interface returning
+:class:`torch.futures.Future`. Remote backends additionally support chunking
+with limited intra-leaf concurrency.
 
 Key Capabilities
 ----------------
 * Automatic traversal of a PyTorch module; offloads only **quantum leaves**.
-* Batch **chunking** (``microbatch_size``) and **parallel** submission per leaf
-  (``chunk_concurrency``).
+* Remote batch **chunking** (``microbatch_size``) and **parallel** submission
+  per leaf (``chunk_concurrency``).
 * **Synchronous** (``forward``) and **asynchronous** (``forward_async``) APIs.
 * **Cancellation** of a single call or **all** calls in flight.
 * **Timeouts** that cancel in-flight cloud jobs for remote backends and check
   local jobs before and after synchronous execution.
-* Per-chunk isolated backend objects: local processors are shallow-copied,
-  while :class:`~pcvl.RemoteProcessor` objects are cloned from the original
-  (RemoteProcessor path) or built from the session (ISession path).
+* Isolated backend objects: local processors are rebuilt from copied experiment
+  state, while :class:`~pcvl.RemoteProcessor` objects are cloned from the
+  original (RemoteProcessor path) or built from the session (ISession path).
 * Stable, descriptive cloud job names (capped to 50 chars) for remote jobs.
 
 .. note::
@@ -94,15 +95,17 @@ MerlinProcessor
       object — e.g. from ``pcvl.providers.scaleway.Session``. Merlin calls
       ``session.build_remote_processor()`` per chunk, giving each chunk
       an independent RP. Type: ``ISession | None``.
-   :param int microbatch_size: Maximum **rows per backend chunk** (chunk size).
+   :param int microbatch_size: Maximum **rows per remote backend chunk**.
+      Ignored for local processors.
    :param float timeout: Default wall-time limit (seconds) per call. Per-call
       override via ``timeout=...`` on API methods.
    :param max_shots_per_call: Hard cap on **shots per backend call**.
       If ``None``, a safe default is used internally. If ``nsample`` exceeds
       this cap, Merlin clamps the submitted sample count to this value.
       Type: ``int | None``.
-   :param int chunk_concurrency: Max number of chunk jobs in flight **per
-      quantum leaf** during a single call. ``>=1`` (default: 1, i.e., serial).
+   :param int chunk_concurrency: Max number of remote chunk jobs in flight
+      **per quantum leaf** during a single call. Ignored for local processors.
+      ``>=1`` (default: 1, i.e., serial).
    :param token: Optional authentication token forwarded to cloned remote
       processors. If omitted, Merlin extracts the token from the
       RemoteProcessor's RPC handler. Ignored for local and session paths.
@@ -267,10 +270,14 @@ Traversal & Offload
 
 Batching & Chunking
 ^^^^^^^^^^^^^^^^^^^
-* If ``B > microbatch_size``, the batch is split into chunks of size
-  ``<= microbatch_size``. Up to ``chunk_concurrency`` chunk jobs per quantum
-  leaf are submitted in parallel. This applies to the local processor,
-  RemoteProcessor, and ISession paths.
+* Local processors keep the full PyTorch input as one Merlin-level batch, then
+  represent its rows as Perceval sampler iterations. Perceval does not execute
+  a native vectorized batch. ``microbatch_size`` and ``chunk_concurrency`` do
+  not affect local processor execution; users control local batch size through
+  the input batch they pass to PyTorch.
+* RemoteProcessor and ISession backends split batches larger than
+  ``microbatch_size`` into chunks of size ``<= microbatch_size``. Up to
+  ``chunk_concurrency`` chunk jobs per quantum leaf are submitted in parallel.
 * Remote chunks are retried up to 3 times with exponential backoff. Local
   synchronous execution propagates errors directly. Cancellation and timeout
   errors propagate immediately without retry.
@@ -308,15 +315,15 @@ Threading & Isolated Backends
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 * For each chunk attempt, the processor uses an isolated backend object:
 
-  * **Local processor path**: shallow-copies the original
-    ``perceval.runtime.AProcessor``.
+  * **Local processor path**: rebuilds a fresh ``perceval.runtime.Processor``
+    from copied experiment state and a fresh local backend.
   * **RemoteProcessor path**: clones the original RP (independent RPC handler).
   * **ISession path**: calls ``session.build_remote_processor()`` (independent
     RP per chunk). The session's lifecycle is managed by the context manager
     (``__enter__`` and ``__exit__`` delegate to the session if provided).
 
-  This prevents concurrent chunks and retries from sharing mutable backend
-  state, and session resources are properly initialized and cleaned up.
+  This prevents concurrent calls, chunks, and retries from sharing mutable
+  backend state, and session resources are properly initialized and cleaned up.
 
 Return Shapes & Mapping
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -375,9 +382,10 @@ High-throughput chunking
 
 Version Notes
 =============
-* The ``processor``, ``remote_processor``, and ``session`` paths support
-  chunking and ``chunk_concurrency``. Local chunks use a shallow AProcessor
-  copy; remote chunks get an independent ``RemoteProcessor``.
+* Only ``remote_processor`` and ``session`` paths use chunking and
+  ``chunk_concurrency``. The local ``processor`` path keeps the full PyTorch
+  input together at the Merlin level, maps rows to Perceval sampler iterations,
+  and uses a rebuilt processor.
 * Default ``chunk_concurrency`` is **1** (serial).
 * The constructor ``timeout`` must be a **float**; use per-call ``timeout=None``
   for an unlimited call.

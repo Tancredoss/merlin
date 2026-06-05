@@ -247,6 +247,10 @@ def make_local_chunk_processor(available_commands: list[str]) -> MerlinProcessor
     proc = make_processor(available_commands)
     proc.backend_kind = "local_processor"
     proc.processor = MagicMock(name="original_processor")
+    proc.local_execution_processor = MagicMock(name="local_execution_processor")
+    proc._create_fresh_local_processor = MagicMock(
+        return_value=proc.local_execution_processor
+    )
     proc._process_batch_results = MagicMock(return_value=torch.tensor([[1.0]]))
     return proc
 
@@ -928,8 +932,8 @@ def test_run_chunk_dispatches_local_processor_backend():
     )
 
 
-def test_local_aprocessor_backend_can_execute_quantum_leaf_in_default_path():
-    """forward() routes local AProcessor quantum leaves through _run_chunk_local."""
+def test_local_aprocessor_backend_executes_quantum_leaf_without_chunking():
+    """forward() sends the full local AProcessor batch to _run_chunk_local."""
 
     class LocalQuantumLeaf(MerlinModule):
         def __init__(self) -> None:
@@ -976,12 +980,12 @@ def test_local_aprocessor_backend_can_execute_quantum_leaf_in_default_path():
     output = proc.forward(layer, input_tensor, timeout=10.0)
 
     torch.testing.assert_close(output, torch.ones(3, 2))
-    assert proc._run_chunk_local.call_count == 2
-    assert [chunk.shape[0] for chunk in observed_chunks] == [2, 1]
+    assert proc._run_chunk_local.call_count == 1
+    assert [chunk.shape[0] for chunk in observed_chunks] == [3]
 
 
-def test_run_chunk_local_uses_processor_shallow_copy_per_execution():
-    """Local chunk execution shallow-copies the processor per run."""
+def test_run_chunk_local_uses_fresh_processor_per_execution():
+    """Local execution uses a rebuilt processor per run."""
     proc = make_local_chunk_processor(["probs"])
     layer = FakeLayer()
     config = make_local_chunk_config()
@@ -989,12 +993,10 @@ def test_run_chunk_local_uses_processor_shallow_copy_per_execution():
     state = make_state()
     raw_results = {"results_list": [{"results": {"|1,0>": 1.0}}]}
     sampler = FakeSyncSampler(raw_results)
-    cloned_processor = MagicMock(name="cloned_processor")
+    execution_processor = proc.local_execution_processor
+    copied_circuit = config.circuit.copy.return_value
 
     with (
-        patch.object(
-            merlin_processor_module.copy, "copy", return_value=cloned_processor
-        ) as copy_processor,
         patch.object(
             merlin_processor_module, "Sampler", return_value=sampler
         ) as sampler_cls,
@@ -1004,13 +1006,13 @@ def test_run_chunk_local_uses_processor_shallow_copy_per_execution():
         )
 
     assert output is proc._process_batch_results.return_value
-    copy_processor.assert_called_once_with(proc.processor)
+    proc._create_fresh_local_processor.assert_called_once_with()
     proc.processor.set_circuit.assert_not_called()
-    cloned_processor.set_circuit.assert_called_once_with(config.circuit)
-    cloned_processor.with_input.assert_called_once()
-    cloned_processor.min_detected_photons_filter.assert_called_once_with(1)
+    execution_processor.set_circuit.assert_called_once_with(copied_circuit)
+    execution_processor.with_input.assert_called_once()
+    execution_processor.min_detected_photons_filter.assert_called_once_with(1)
     sampler_cls.assert_called_once_with(
-        cloned_processor, max_shots_per_call=MerlinProcessor.DEFAULT_MAX_SHOTS
+        execution_processor, max_shots_per_call=MerlinProcessor.DEFAULT_MAX_SHOTS
     )
     assert sampler.cleared is True
     assert sampler.iterations == [
@@ -1140,10 +1142,7 @@ def test_run_chunk_local_raises_cancelled_before_execution():
     state = make_state()
     state["cancel_requested"] = True
 
-    with (
-        patch.object(merlin_processor_module.copy, "copy") as copy_processor,
-        pytest.raises(CancelledError, match="Local call was cancelled"),
-    ):
+    with pytest.raises(CancelledError, match="Local call was cancelled"):
         proc._run_chunk_local(
             FakeLayer(),
             make_local_chunk_config(),
@@ -1153,7 +1152,7 @@ def test_run_chunk_local_raises_cancelled_before_execution():
             deadline=None,
         )
 
-    copy_processor.assert_not_called()
+    proc._create_fresh_local_processor.assert_not_called()
     proc._process_batch_results.assert_not_called()
 
 
@@ -1161,10 +1160,7 @@ def test_run_chunk_local_raises_timeout_before_execution():
     """Local chunk execution observes deadlines before starting work."""
     proc = make_local_chunk_processor(["probs"])
 
-    with (
-        patch.object(merlin_processor_module.copy, "copy") as copy_processor,
-        pytest.raises(TimeoutError, match="Local call timed out"),
-    ):
+    with pytest.raises(TimeoutError, match="Local call timed out"):
         proc._run_chunk_local(
             FakeLayer(),
             make_local_chunk_config(),
@@ -1174,7 +1170,7 @@ def test_run_chunk_local_raises_timeout_before_execution():
             deadline=time.time() - 1.0,
         )
 
-    copy_processor.assert_not_called()
+    proc._create_fresh_local_processor.assert_not_called()
     proc._process_batch_results.assert_not_called()
 
 
@@ -1227,6 +1223,49 @@ def test_run_chunk_local_raises_timeout_after_execution(monkeypatch):
         )
 
     proc._process_batch_results.assert_not_called()
+
+
+def test_create_fresh_local_processor_does_not_share_experiment_state():
+    """Fresh local processors do not share mutable Perceval experiment state."""
+    original_processor = Processor("SLOS")
+    original_processor.set_circuit(pcvl.Circuit(2))
+    original_processor.with_input(pcvl.BasicState([1, 0]))
+    proc = MerlinProcessor(processor=original_processor)
+
+    execution_processor = proc._create_fresh_local_processor()
+    execution_processor.set_circuit(pcvl.Circuit(2))
+    execution_processor.with_input(pcvl.BasicState([0, 1]))
+
+    assert execution_processor is not original_processor
+    assert execution_processor.experiment is not original_processor.experiment
+    assert str(original_processor.input_state) == "|1,0>"
+    assert str(execution_processor.input_state) == "|0,1>"
+
+
+def test_run_chunk_local_does_not_mutate_original_real_processor_input():
+    """Local execution does not rewrite the caller's real Perceval Processor."""
+    original_processor = Processor("SLOS")
+    original_processor.set_circuit(pcvl.Circuit(2))
+    original_processor.with_input(pcvl.BasicState([0, 1]))
+    proc = MerlinProcessor(processor=original_processor)
+    layer = FakeLayer(final_keys=[(1, 0), (0, 1)])
+    config = SimpleNamespace(
+        circuit=pcvl.Circuit(2),
+        input_state=[1, 0],
+        input_param_order=[],
+    )
+
+    output = proc._run_chunk_local(
+        layer,
+        config,
+        torch.empty((1, 0)),
+        nsample=None,
+        state=make_state(),
+        deadline=None,
+    )
+
+    assert str(original_processor.input_state) == "|0,1>"
+    torch.testing.assert_close(output, torch.tensor([[1.0, 0.0]]))
 
 
 def test_run_chunk_local_executes_real_perceval_processor():

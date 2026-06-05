@@ -16,8 +16,8 @@ With either backend you can:
 
 * Offload **quantum leaves** (e.g. ``QuantumLayer``) to the cloud while keeping
   **classical layers** local.
-* Submit batched inputs; when batches are large, Merlin will **chunk** them and
-  (optionally) **run chunks in parallel**.
+* Submit batched inputs; when remote batches are large, Merlin will **chunk**
+  them and (optionally) **run chunks in parallel**.
 * Drive execution **synchronously** (``forward``) or **asynchronously**
   (``forward_async`` returning a ``torch.futures.Future``).
 * Monitor status, collect **job IDs**, **cancel** jobs, and enforce **timeouts**.
@@ -277,10 +277,15 @@ Asynchronous
 Batching & Chunking
 -------------------
 
-* If ``len(X) > microbatch_size``, Merlin splits into chunks of size
-  ``<= microbatch_size`` and submits up to ``chunk_concurrency`` chunk-jobs in
-  parallel **for that quantum leaf**. This applies to both the
+* If ``len(X) > microbatch_size``, Merlin splits remote execution into chunks
+  of size ``<= microbatch_size`` and submits up to ``chunk_concurrency``
+  chunk-jobs in parallel **for that quantum leaf**. This applies to both the
   ``RemoteProcessor`` and ``ISession`` paths.
+* Local ``processor=`` execution does not use remote chunking. Merlin keeps the
+  full PyTorch input together, maps rows to Perceval sampler iterations, and
+  returns a batched tensor. Perceval does not execute a native vectorized batch,
+  so local users control batch size from their PyTorch input batch rather than
+  ``microbatch_size``.
 * The Future aggregates **all job IDs** across leaves in
   ``future.job_ids``. It also exposes chunk counters via ``future.status()``:
 
@@ -344,8 +349,8 @@ Multiple Quantum Layers
 
 Sequential models with multiple quantum leaves are supported:
 
-* Each quantum leaf is processed in order; each may chunk and run those chunks
-  with its own intra-leaf concurrency (``chunk_concurrency``).
+* Each quantum leaf is processed in order; remote leaves may chunk and run
+  those chunks with their own intra-leaf concurrency (``chunk_concurrency``).
 * ``future.job_ids`` will include all job IDs across all leaves.
 
 Workflow Recipes
@@ -575,7 +580,7 @@ Version Notes
 * ``session`` parameter added for ``ISession``-based backends (Scaleway).
   Exactly one of ``remote_processor`` or ``session`` must be provided. A 
   given session then uses its remote processor from the ``session.build_remote_processor()``
-  method to define the available commands. Both paths now support chunking and ``chunk_concurrency`` — each chunk
+  method to define the available commands. Both remote paths support chunking and ``chunk_concurrency`` — each chunk
   gets an independent ``RemoteProcessor`` via ``session.build_remote_processor()``.
 
   To see the available commands and backend name, call the ``backend_capabilities`` attribute of the ``MerlinProcessor``.

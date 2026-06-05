@@ -1,4 +1,3 @@
-import copy
 import logging
 import threading
 import time
@@ -16,7 +15,7 @@ import perceval as pcvl
 import torch
 import torch.nn as nn
 from perceval.algorithm import Sampler
-from perceval.runtime import AProcessor, RemoteJob, RemoteProcessor
+from perceval.runtime import AProcessor, Processor, RemoteJob, RemoteProcessor
 from perceval.runtime.session import ISession
 from torch.futures import Future
 
@@ -312,20 +311,21 @@ class MerlinProcessor:
 
     Offloads :class:`~merlin.algorithms.module.MerlinModule` leaves (e.g.
     QuantumLayer) to a Perceval backend while keeping classical layers local.
-    Automatically handles batching, chunking, concurrency control, timeouts, and
-    cooperative cancellation.
+    Automatically handles batching, remote chunking, concurrency control,
+    timeouts, and cooperative cancellation.
 
     **Key Features**
 
     - Torch-friendly asynchronous execution via ``Future[torch.Tensor]``.
     - Perceval backend offload of quantum leaves only; non-quantum leaves run locally.
-    - Batch **chunking** (``microbatch_size``) and **parallel** submission per leaf
-      (``chunk_concurrency``).
+    - Remote batch **chunking** (``microbatch_size``) and **parallel** submission
+      per leaf (``chunk_concurrency``).
     - Cancellation support, both per future and globally.
     - Global timeouts that cancel in-flight remote jobs and check local jobs
       before and after synchronous execution.
-    - Isolated backend object per chunk/attempt: local processors are
-      shallow-copied, and remote processors are cloned or built from a session.
+    - Isolated backend object per execution: local processors are rebuilt from
+      copied experiment state, and remote processors are cloned or built from a
+      session.
     - Descriptive cloud job names (<= 50 chars) for remote chunk traceability.
 
     **Execution Model**
@@ -345,9 +345,9 @@ class MerlinProcessor:
     ----------
     processor : AProcessor | None
         Perceval processor entry point. Local, non-remote processors are stored
-        for the local backend path, shallow-copied per chunk, and do not require
-        remote token extraction. RemoteProcessor instances passed here are
-        normalized to the remote processor path.
+        for the local backend path, rebuilt for each local execution, and do not
+        require remote token extraction. RemoteProcessor instances passed here
+        are normalized to the remote processor path.
     remote_processor : RemoteProcessor | None
         Perceval remote processor used in the direct remote path. Cloned per chunk
         for thread safety.
@@ -356,7 +356,8 @@ class MerlinProcessor:
         ``session.build_remote_processor()`` is called per chunk. Exactly one of
         ``processor``, ``remote_processor``, or ``session`` must be provided.
     microbatch_size : int
-        Maximum number of inputs submitted in a single backend chunk.
+        Maximum number of inputs submitted in a single remote backend chunk.
+        Ignored for local processors.
         Default: 32.
     timeout : float
         Default wall-time limit in seconds for backend calls. Can be overridden
@@ -367,7 +368,8 @@ class MerlinProcessor:
         ``nsample`` is clamped to this value with a warning. If ``None``,
         defaults are used internally. Default: None.
     chunk_concurrency : int
-        Maximum number of concurrent chunk submissions per quantum layer.
+        Maximum number of concurrent remote chunk submissions per quantum layer.
+        Ignored for local processors.
         Default: 1 (serial).
     token : str | None
         Optional authentication token forwarded to cloned remote processors.
@@ -415,9 +417,9 @@ class MerlinProcessor:
 
         1. **AProcessor path** (``processor`` provided):
             Primary Perceval entry point. Local processors are stored as the
-            local backend, shallow-copied per chunk, and used without remote
-            token extraction. RemoteProcessor instances are normalized to the
-            RemoteProcessor path.
+            local backend, rebuilt for each local execution, and used without
+            remote token extraction. RemoteProcessor instances are normalized
+            to the RemoteProcessor path.
         2. **RemoteProcessor path** (``remote_processor`` provided):
             Direct RemoteProcessor backend. The RP is stored and cloned per chunk.
         3. **ISession path** (``session`` provided):
@@ -444,7 +446,8 @@ class MerlinProcessor:
             Exactly one of ``processor``, ``remote_processor``, or ``session``
             must be provided. Default: None.
         microbatch_size : int
-            Maximum number of inputs submitted in a single backend chunk. Default: 32.
+            Maximum number of inputs submitted in a single remote backend
+            chunk. Ignored for local processors. Default: 32.
         timeout : float
             Default wall-time limit (seconds) for backend calls. Per-call
             override via ``timeout=...`` on API methods. Default: 3600.0.
@@ -455,8 +458,8 @@ class MerlinProcessor:
             is clamped with a warning. If it is ``None``, it is set to
             100 000. Default: None.
         chunk_concurrency : int
-            Max number of chunk jobs in flight per quantum leaf during a
-            single call. Default: 1 (serial).
+            Max number of remote chunk jobs in flight per quantum leaf during
+            a single call. Ignored for local processors. Default: 1 (serial).
         token : str | None
             Optional authentication token forwarded to cloned remote processors.
             If not provided, extracted from the processor's RPC handler.
@@ -749,9 +752,10 @@ class MerlinProcessor:
         """Asynchronously execute a module against the configured Perceval backend.
 
         Returns a ``torch.futures.Future`` that resolves to the output tensor.
-        Batch is automatically chunked and submitted with limited concurrency.
-        Each chunk uses an isolated backend object: a shallow local processor
-        copy or a fresh ``RemoteProcessor``.
+        Remote batches are automatically chunked and submitted with limited
+        concurrency. Local processor inputs are kept as one Merlin-level batch
+        and represented as Perceval sampler iterations using an isolated
+        backend object.
 
         **Execution Strategy**
 
@@ -923,8 +927,14 @@ class MerlinProcessor:
         state: dict,
         deadline: float | None,
     ) -> torch.Tensor:
-        """Split the batch into chunks of size <= microbatch_size,
-        submit up to chunk_concurrency jobs concurrently, and stitch."""
+        """Execute a quantum layer through the selected backend route.
+
+        Local processors receive the full input as one Merlin-level batch and
+        convert rows into Perceval sampler iterations without microbatch
+        splitting. Remote processors split the batch into ``microbatch_size``
+        chunks, submit up to ``chunk_concurrency`` jobs concurrently, and
+        stitch the chunk outputs.
+        """
         if input_tensor.is_cuda:
             input_tensor = input_tensor.cpu()
 
@@ -940,6 +950,11 @@ class MerlinProcessor:
             config = cache["config"]
 
         B = input_tensor.shape[0]
+
+        if self.backend_kind == "local_processor":
+            return self._run_chunk_local(
+                layer, config, input_tensor, nsample, state, deadline
+            )
 
         chunks: list[tuple[int, int]] = []
         start = 0
@@ -1128,6 +1143,65 @@ class MerlinProcessor:
             f"Chunk failed after {self._MAX_CHUNK_RETRIES} attempts"
         ) from last_error
 
+    def _create_fresh_local_processor(self) -> AProcessor:
+        """Create an isolated local Perceval processor for one execution.
+
+        Returns
+        -------
+        AProcessor
+            Fresh local processor with copied experiment state and a fresh
+            backend instance.
+
+        Raises
+        ------
+        TypeError
+            If the configured local processor cannot be reconstructed safely.
+        """
+        assert self.processor is not None
+
+        experiment = getattr(self.processor, "experiment", None)
+        backend_object = getattr(self.processor, "backend", None)
+        experiment_copy = getattr(experiment, "copy", None)
+        if (
+            experiment is None
+            or backend_object is None
+            or not callable(experiment_copy)
+        ):
+            raise TypeError(
+                "Local execution requires a Perceval processor with copyable "
+                "experiment state and a reconstructable local backend."
+            )
+
+        backend_name = getattr(backend_object, "name", None)
+        backend: str | object
+        if isinstance(backend_name, str):
+            backend = backend_name
+        else:
+            try:
+                backend = type(backend_object)()
+            except Exception as exc:
+                raise TypeError(
+                    "Local processor backend cannot be reconstructed safely."
+                ) from exc
+
+        return Processor(backend, experiment_copy())
+
+    @staticmethod
+    def _copy_circuit_for_execution(circuit: pcvl.ACircuit) -> pcvl.ACircuit:
+        """Return a circuit copy for processor execution.
+
+        Parameters
+        ----------
+        circuit : pcvl.ACircuit
+            Circuit exported by the quantum layer.
+
+        Returns
+        -------
+        pcvl.ACircuit
+            Independent circuit object used by a single backend execution.
+        """
+        return circuit.copy()
+
     def _run_chunk_local(
         self,
         layer: MerlinModule,
@@ -1137,13 +1211,11 @@ class MerlinProcessor:
         state: dict,
         deadline: float | None,
     ) -> torch.Tensor:
-        """Execute a single local AProcessor chunk with a shallow processor copy.
+        """Execute a local AProcessor batch with an isolated processor.
 
-        The processor is shallow-copied before each execution so that
+        The local processor is rebuilt before each execution so that
         ``set_circuit``, ``with_input``, and ``min_detected_photons_filter``
-        calls do not mutate the shared ``self.processor`` instance.  This
-        keeps concurrent chunk calls independent without requiring
-        ``AProcessor`` to expose a ``copy`` method.
+        calls do not mutate the shared ``self.processor`` instance.
 
         Cancellation and deadline are checked *before* execution (to skip work
         the caller no longer needs) and *after* execution (to avoid returning
@@ -1160,7 +1232,7 @@ class MerlinProcessor:
             Validated circuit and input configuration extracted from ``layer``.
         input_chunk : torch.Tensor
             2D tensor of shape ``(batch_size, n_params)`` containing the
-            circuit parameter values for this chunk.
+            circuit parameter values for the local batch.
         nsample : int | None
             Number of samples per row.  ``None`` or ``<= 0`` triggers exact
             probability computation when the backend supports ``"probs"``.
@@ -1207,8 +1279,8 @@ class MerlinProcessor:
                 )
             iteration_params.append(circuit_params)
 
-        processor = copy.copy(self.processor)
-        processor.set_circuit(config.circuit)
+        processor = self._create_fresh_local_processor()
+        processor.set_circuit(self._copy_circuit_for_execution(config.circuit))
         if config.input_state:
             input_state = pcvl.BasicState(config.input_state)
             processor.with_input(input_state)
