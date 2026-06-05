@@ -700,7 +700,7 @@ class FeatureMap:
             raise ValueError(ANGLE_ENCODING_MODE_ERROR)
 
         builder = _build_simple_circuit(input_size, n_modes, angle_encoding_scale)
-
+        # input_parameters=None indicates that the builder's input layer is inferred by FeatureMap
         return cls(
             builder=builder,
             input_size=input_size,
