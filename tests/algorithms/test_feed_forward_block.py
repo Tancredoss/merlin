@@ -472,6 +472,8 @@ def test_feedforwardblock_params_only_in_branches():
 
     experiment.add(0, feedforward_config)
 
+    print(experiment.get_circuit_parameters().keys())
+
     FeedForwardBlock(
         experiment,
         input_state=BasicState([1] * n + [0] * (m - n)),

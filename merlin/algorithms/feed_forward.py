@@ -267,6 +267,16 @@ class FeedForwardBlock(MerlinModule):
         ] = {}
         self._layer_registry_counter = 0
         self._basis_cache: dict[tuple[int, int], tuple[tuple[int, ...], ...]] = {}
+
+        # Global parameter validation
+        # TODO, Change because the trainable_parameters and input_parameters are prefixes, not all params names
+        self._experiment_params = experiment.get_circuit_parameters()
+        if self._experiment_params is not None:
+            if trainable_parameters is not None:
+                assert set(trainable_parameters).issubset(self._experiment_params)
+            if input_parameters is not None:
+                assert set(input_parameters).issubset(self._experiment_params)
+
         for idx, stage in enumerate(self.stages):
             runtime = self._build_stage_runtime(
                 stage,
@@ -1228,14 +1238,16 @@ class FeedForwardBlock(MerlinModule):
                     != MeasurementKind["PROBABILITIES"]
                 ):
                     continue
-                entries.append((
-                    key,
-                    probability_total,
-                    amplitude_total,
-                    weight_total,
-                    basis_keys,
-                    remaining_n,
-                ))
+                entries.append(
+                    (
+                        key,
+                        probability_total,
+                        amplitude_total,
+                        weight_total,
+                        basis_keys,
+                        remaining_n,
+                    )
+                )
 
         if not entries:
             self._output_keys = []
@@ -1503,19 +1515,19 @@ class FeedForwardBlock(MerlinModule):
                     if src_idx is not None:
                         reordered[..., tgt_idx] = src[..., src_idx]
                 normalized_amplitudes = reordered
-            mixed_states.append((
-                key,
-                branch_probability,
-                remaining_n,
-                normalized_amplitudes,
-            ))
+            mixed_states.append(
+                (
+                    key,
+                    branch_probability,
+                    remaining_n,
+                    normalized_amplitudes,
+                )
+            )
         self._output_keys = [entry[0] for entry in mixed_states]
         self._output_state_sizes = None
         return mixed_states
 
-    def _aggregate_branch_list(
-        self, branch_list: list[BranchState]
-    ) -> tuple[
+    def _aggregate_branch_list(self, branch_list: list[BranchState]) -> tuple[
         torch.Tensor | None,
         torch.Tensor | None,
         torch.Tensor | None,
