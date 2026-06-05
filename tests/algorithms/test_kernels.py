@@ -315,6 +315,14 @@ class TestFidelityKernel:
         assert self.quantum_kernel.force_psd
         assert not self.quantum_kernel.is_trainable
 
+    def test_input_state_property_returns_copy(self):
+        input_state = self.quantum_kernel.input_state
+        input_state[0] = 0
+
+        assert self.quantum_kernel.input_state == [2, 0]
+        assert self.quantum_kernel.input_state is not input_state
+        assert self.quantum_kernel._quantum_layer._kernel_input_state == [2, 0]
+
     def test_fidelity_kernel_with_trainable_feature_map(self):
         theta = pcvl.P("theta")
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
@@ -557,11 +565,12 @@ class TestFidelityKernel:
         assert torch.allclose(encoded, expected)
 
     def test_simple_kernel_backend_preserves_angle_encoding_scale(self):
-        kernel = FidelityKernel.simple(
-            input_size=2,
-            n_modes=4,
-            angle_encoding_scale=0.5,
-        )
+        with pytest.warns(DeprecationWarning, match="n_modes"):
+            kernel = FidelityKernel.simple(
+                input_size=2,
+                n_modes=4,
+                angle_encoding_scale=0.5,
+            )
 
         encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.4]))
         expected = torch.tensor([0.1, 0.2], dtype=encoded.dtype)
@@ -592,20 +601,19 @@ class TestFidelityKernel:
         assert torch.allclose(encoded, expected)
 
     def test_simple_kernel_rejects_missing_angle_encoding_specs(self):
-        feature_map = FeatureMap.simple(input_size=2, n_modes=4)
+        feature_map = FeatureMap.simple(input_size=2)
         feature_map._angle_encoding_specs = {}
 
         with pytest.raises(RuntimeError, match="missing angle_encoding_specs"):
             FidelityKernel(
                 feature_map=feature_map,
-                input_state=[1, 0, 1, 0],
+                input_state=[1, 0, 1],
                 computation_space=ComputationSpace.FOCK,
             )
 
     def test_simple_kernel_rejects_missing_angle_encoding_scales(self):
         feature_map = FeatureMap.simple(
             input_size=2,
-            n_modes=4,
             angle_encoding_scale=0.5,
         )
         feature_map._angle_encoding_specs["input"]["scales"] = {}
@@ -613,7 +621,7 @@ class TestFidelityKernel:
         with pytest.raises(RuntimeError, match="missing angle-encoding scale entries"):
             FidelityKernel(
                 feature_map=feature_map,
-                input_state=[1, 0, 1, 0],
+                input_state=[1, 0, 1],
                 computation_space=ComputationSpace.FOCK,
             )
 
@@ -636,6 +644,133 @@ class TestFidelityKernel:
         assert torch.all(real_eigenvals >= -1e-10), (
             f"Matrix has negative eigenvalues: {real_eigenvals[real_eigenvals < -1e-10]}"
         )
+
+
+class TestFidelityKernelInputStateDerivation:
+    """Tests for automatic input_state derivation and n_photons parameter."""
+
+    def _make_feature_map(self, n_modes: int) -> FeatureMap:
+        params = [pcvl.P(f"x{i}") for i in range(n_modes)]
+        circuit = pcvl.Circuit(n_modes)
+        for p in params:
+            circuit //= pcvl.PS(p)
+        return FeatureMap(
+            circuit=circuit,
+            input_size=n_modes,
+            input_parameters="x",
+        )
+
+    # ------------------------------------------------------------------
+    # input_state=None (no n_photons)
+    # ------------------------------------------------------------------
+
+    def test_default_input_state_is_alternating(self):
+        """input_state=None defaults to [1, 0, 1, 0, ...] of length circuit.m."""
+        fm = self._make_feature_map(4)
+        kernel = FidelityKernel(feature_map=fm)
+        assert kernel.input_state == [1, 0, 1, 0]
+
+    def test_default_input_state_odd_modes(self):
+        """For odd mode count, alternating default ends on 1."""
+        fm = self._make_feature_map(5)
+        kernel = FidelityKernel(feature_map=fm)
+        assert kernel.input_state == [1, 0, 1, 0, 1]
+
+    # ------------------------------------------------------------------
+    # n_photons with input_state=None
+    # ------------------------------------------------------------------
+
+    def test_n_photons_alternating_pattern(self):
+        """n_photons below the alternating slot count uses alternating positions."""
+        fm = self._make_feature_map(6)
+        kernel = FidelityKernel(feature_map=fm, n_photons=2)
+        assert kernel.input_state == [1, 0, 1, 0, 0, 0]
+        assert sum(kernel.input_state) == 2
+
+    def test_n_photons_fills_all_alternating_positions(self):
+        """n_photons == ceil(m / 2) exactly fills the alternating pattern."""
+        fm = self._make_feature_map(6)
+        kernel = FidelityKernel(feature_map=fm, n_photons=3)
+        assert kernel.input_state == [1, 0, 1, 0, 1, 0]
+        assert sum(kernel.input_state) == 3
+
+    def test_n_photons_fills_all_odd_mode_alternating_positions_without_warning(self):
+        """n_photons == ceil(m / 2) exactly fills an odd-mode alternating pattern."""
+        fm = self._make_feature_map(5)
+        kernel = FidelityKernel(feature_map=fm, n_photons=3)
+        assert kernel.input_state == [1, 0, 1, 0, 1]
+        assert sum(kernel.input_state) == 3
+
+    def test_n_photons_overflow_fills_even_then_odd(self):
+        """n_photons above the alternating slot count fills remaining positions."""
+        fm = self._make_feature_map(6)
+        with pytest.warns(UserWarning, match="Alternating positions are filled first"):
+            kernel = FidelityKernel(feature_map=fm, n_photons=4)
+        assert kernel.input_state == [1, 1, 1, 0, 1, 0]
+        assert sum(kernel.input_state) == 4
+
+    def test_n_photons_all_modes_warns(self):
+        """n_photons == m fills all modes and warns."""
+        fm = self._make_feature_map(4)
+        with pytest.warns(UserWarning, match="Alternating positions are filled first"):
+            kernel = FidelityKernel(
+                feature_map=fm,
+                n_photons=4,
+                computation_space=ComputationSpace.FOCK,
+            )
+        assert kernel.input_state == [1, 1, 1, 1]
+
+    def test_n_photons_one_photon(self):
+        """n_photons=1 places a single photon in mode 0."""
+        fm = self._make_feature_map(4)
+        kernel = FidelityKernel(feature_map=fm, n_photons=1)
+        assert kernel.input_state == [1, 0, 0, 0]
+
+    # ------------------------------------------------------------------
+    # n_photons with explicit input_state
+    # ------------------------------------------------------------------
+
+    def test_n_photons_matches_input_state_accepted(self):
+        """Providing matching n_photons and input_state is accepted."""
+        fm = self._make_feature_map(4)
+        kernel = FidelityKernel(
+            feature_map=fm,
+            input_state=[1, 0, 1, 0],
+            n_photons=2,
+        )
+        assert kernel.input_state == [1, 0, 1, 0]
+
+    def test_n_photons_mismatch_input_state_raises(self):
+        """n_photons that disagrees with sum(input_state) raises ValueError."""
+        fm = self._make_feature_map(4)
+        with pytest.raises(ValueError, match="n_photons=3 does not match"):
+            FidelityKernel(
+                feature_map=fm,
+                input_state=[1, 0, 1, 0],
+                n_photons=3,
+            )
+
+    # ------------------------------------------------------------------
+    # Invalid n_photons values
+    # ------------------------------------------------------------------
+
+    def test_n_photons_zero_raises(self):
+        """n_photons=0 raises ValueError."""
+        fm = self._make_feature_map(4)
+        with pytest.raises(ValueError, match="n_photons must be between"):
+            FidelityKernel(feature_map=fm, n_photons=0)
+
+    def test_n_photons_negative_raises(self):
+        """Negative n_photons raises ValueError."""
+        fm = self._make_feature_map(4)
+        with pytest.raises(ValueError, match="n_photons must be between"):
+            FidelityKernel(feature_map=fm, n_photons=-1)
+
+    def test_n_photons_exceeds_modes_raises(self):
+        """n_photons > m raises ValueError."""
+        fm = self._make_feature_map(4)
+        with pytest.raises(ValueError, match="n_photons must be between"):
+            FidelityKernel(feature_map=fm, n_photons=5)
 
 
 class TestFeatureMapDescriptor:
@@ -818,39 +953,44 @@ class TestFeatureMapFactoryMethods:
 
     def test_simple_factory_method(self):
         """Test the simple FeatureMap factory method."""
-        feature_map = FeatureMap.simple(input_size=2, n_modes=6)
+        feature_map = FeatureMap.simple(input_size=2)
 
         assert feature_map.input_size == 2
-        assert feature_map.circuit.m == 6
+        assert feature_map.circuit.m == 3  # input_size + 1
         assert feature_map.is_trainable
         assert "LI_simple" in feature_map.trainable_parameters
         assert "RI_simple" in feature_map.trainable_parameters
 
     def test_simple_factory_default_photons(self):
-        """Test simple factory with default n_photons (should equal input_size)."""
-        feature_map = FeatureMap.simple(input_size=3, n_modes=6)
+        """Test simple factory with default n_modes (should equal input_size + 1)."""
+        feature_map = FeatureMap.simple(input_size=3)
 
         assert feature_map.input_size == 3
-        # Should default to a 3-photon configuration
+        assert feature_map.circuit.m == 4  # input_size + 1
+
+    def test_simple_n_modes_override_emits_deprecation_warning(self):
+        """Passing n_modes to FeatureMap.simple must emit a DeprecationWarning."""
+        with pytest.warns(DeprecationWarning, match="n_modes"):
+            feature_map = FeatureMap.simple(input_size=2, n_modes=6)
+        assert feature_map.circuit.m == 6
 
     def test_simple_factory_raises_when_input_exceeds_modes(self):
-        with pytest.raises(
-            ValueError, match="You cannot encore more features than mode with Builder"
-        ):
-            FeatureMap.simple(input_size=5, n_modes=4)
+        with pytest.warns(DeprecationWarning):
+            with pytest.raises(
+                ValueError, match="You cannot encore more features than mode with Builder"
+            ):
+                FeatureMap.simple(input_size=5, n_modes=4)
 
     def test_simple_factory_raises_when_input_or_modes_exceeds_20(self):
         with pytest.raises(ValueError):
-            FeatureMap.simple(input_size=21, n_modes=21)
-        with pytest.raises(ValueError):
             FeatureMap.simple(input_size=21)
+        with pytest.warns(DeprecationWarning):
+            with pytest.raises(ValueError):
+                FeatureMap.simple(input_size=21, n_modes=21)
 
     def test_simple_num_photons_modes_and_input_state(self):
         for i in range(1, 15):
             kernel = FeatureMap.simple(input_size=i)
-            assert kernel.circuit.m == i + 1
-        for i in range(1, 15):
-            kernel = FeatureMap.simple(input_size=1, n_modes=i + 1)
             assert kernel.circuit.m == i + 1
 
     def test_simple_trainable(self):
@@ -909,7 +1049,8 @@ class TestFidelityKernelFactoryMethods:
 
     def test_simple_factory_method(self):
         """Test the simple FidelityKernel factory method."""
-        kernel = FidelityKernel.simple(input_size=2, n_modes=4)
+        with pytest.warns(DeprecationWarning, match="n_modes"):
+            kernel = FidelityKernel.simple(input_size=2, n_modes=4)
 
         assert kernel.input_size == 2
         assert kernel.feature_map.circuit.m == 4
@@ -917,13 +1058,33 @@ class TestFidelityKernelFactoryMethods:
         assert sum(kernel.input_state) == 2
         assert kernel.input_state == [1, 0, 1, 0]
 
+    def test_simple_factory_warns_once_for_forwarded_n_modes(self):
+        """FidelityKernel.simple suppresses duplicate forwarded n_modes warnings."""
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always", DeprecationWarning)
+            kernel = FidelityKernel.simple(input_size=2, n_modes=4)
+
+        messages = [str(warning.message) for warning in warning_list]
+        n_modes_messages = [
+            message
+            for message in messages
+            if "Parameter 'n_modes' is deprecated" in message
+        ]
+
+        assert len(n_modes_messages) == 1
+        assert any(
+            "FidelityKernel.simple() is deprecated" in message for message in messages
+        )
+        assert kernel.feature_map.circuit.m == 4
+
     def test_simple_factory_default_photons(self):
-        """Test simple factory with default n_photons."""
-        kernel = FidelityKernel.simple(input_size=3, n_modes=6)
+        """Test simple factory with default n_modes (should equal input_size + 1)."""
+        kernel = FidelityKernel.simple(input_size=3)
 
         assert kernel.input_size == 3
-        assert sum(kernel.input_state) == 3  # Should default to input_size photons
-        assert kernel.input_state == [1, 0, 1, 0, 1, 0]
+        assert kernel.feature_map.circuit.m == 4  # input_size + 1
+        assert sum(kernel.input_state) == 2
+        assert kernel.input_state == [1, 0, 1, 0]
 
     def test_simple_num_photons_modes_and_input_state(self):
         for i in range(1, 15):
@@ -938,7 +1099,8 @@ class TestFidelityKernelFactoryMethods:
                     input_state[j] = 1
             assert kernel.input_state == input_state
         for i in range(1, 15):
-            kernel = FidelityKernel.simple(input_size=1, n_modes=i + 1)
+            with pytest.warns(DeprecationWarning, match="n_modes"):
+                kernel = FidelityKernel.simple(input_size=1, n_modes=i + 1)
             assert kernel.feature_map.circuit.m == i + 1
             assert np.sum(kernel.input_state) == int(np.ceil((i + 1) / 2))
             assert len(kernel.input_state) == i + 1
@@ -1020,6 +1182,15 @@ class TestKernelCircuitBuilder:
         assert len(kernel.input_state) == 4
         assert sum(kernel.input_state) == 2
         assert kernel.input_state == [1, 0, 1, 0]
+
+    def test_builder_build_fidelity_kernel_uses_feature_map_mode_count(self):
+        """Default builder kernel state length follows the built feature map."""
+        builder = KernelCircuitBuilder()
+        kernel = builder.input_size(4).build_fidelity_kernel()
+
+        assert kernel.input_size == 4
+        assert kernel.feature_map.circuit.m == 5
+        assert len(kernel.input_state) == 5
 
     def test_builder_fidelity_kernel_with_custom_input_state(self):
         """Test building FidelityKernel with custom input state."""
@@ -1129,7 +1300,8 @@ class TestKernelConstructionConsistency:
         pcvl.pdisplay(fm_manual.circuit, output_format=pcvl.Format.TEXT)
 
         # Method 2: simple factory
-        fm_simple = FeatureMap.simple(input_size=2, n_modes=3)
+        with pytest.warns(DeprecationWarning, match="n_modes"):
+            fm_simple = FeatureMap.simple(input_size=2, n_modes=3)
         print("Simple factory circuit:")
         pcvl.pdisplay(fm_simple.circuit, output_format=pcvl.Format.TEXT)
 
@@ -1160,10 +1332,11 @@ class TestKernelConstructionConsistency:
         )
 
         # Simple factory
-        k_simple = FidelityKernel.simple(
-            input_size=2,
-            n_modes=4,
-        )
+        with pytest.warns(DeprecationWarning, match="n_modes"):
+            k_simple = FidelityKernel.simple(
+                input_size=2,
+                n_modes=4,
+            )
 
         # Builder API
         builder_api = KernelCircuitBuilder()
@@ -1758,7 +1931,8 @@ def test_kernel_constructor_performance_comparison():
 
     # Time Method 1: Simple factory
     start = time.time()
-    kernel1 = FidelityKernel.simple(input_size=3, n_modes=4)
+    with pytest.warns(DeprecationWarning, match="n_modes"):
+        kernel1 = FidelityKernel.simple(input_size=3, n_modes=4)
     time1 = time.time() - start
     methods.append("FidelityKernel.simple()")
     times.append(time1)

@@ -52,7 +52,7 @@ Quick Start Decision Guide
 --------------------------
 
 **"I want to quickly try quantum kernels on my data"**
-    → Use ``FidelityKernel.simple()`` with default parameters
+    → Build a feature map with :meth:`~merlin.algorithms.kernels.FeatureMap.simple` and pass it to :class:`~merlin.algorithms.kernels.FidelityKernel`
 
 **"I need to customize the circuit architecture"**
     → Use ``KernelCircuitBuilder`` for declarative circuit construction
@@ -228,13 +228,16 @@ Minimal example (factory)
 
    import torch
    from merlin import ComputationSpace
-   from merlin.algorithms.kernels import FidelityKernel
+   from merlin.algorithms.kernels import FeatureMap, FidelityKernel
 
-   # Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
-   kernel = FidelityKernel.simple(
-       input_size=2,
-       n_modes=4,  # Optional; defaults to input_size + 1
-       computation_space=ComputationSpace.FOCK,  # Allow bunched outcomes if needed
+   # Build a feature map with default circuit topology (n_modes = input_size + 1 = 3)
+   feature_map = FeatureMap.simple(input_size=2)
+
+   # Wrap it in a fidelity kernel
+   kernel = FidelityKernel(
+       feature_map=feature_map,
+       input_state=[1, 0, 1],  # 3 modes = input_size + 1
+       computation_space=ComputationSpace.FOCK,
        dtype=torch.float32,
        device=torch.device("cpu"),
    )
@@ -329,7 +332,8 @@ Comparing quantum vs classical kernels
     X_test_t = torch.tensor(X_test, dtype=torch.float32)
 
     # Quantum kernel
-    qkernel = FidelityKernel.simple(input_size=4, n_modes=6)     # Here the number of modes is optional, if n_modes is not given, n_modes=input_size+1
+    feature_map = FeatureMap.simple(input_size=4)  # n_modes = input_size + 1 = 5
+    qkernel = FidelityKernel(feature_map=feature_map, input_state=[1, 0, 1, 0, 1])
     K_train_q = qkernel(X_train_t).numpy()
     K_test_q = qkernel(X_test_t, X_train_t).numpy()
 

@@ -63,16 +63,18 @@ Quickstart: Fidelity kernel in a few lines
 
     import torch
     from merlin import ComputationSpace
-    from merlin.algorithms.kernels import FidelityKernel
+    from merlin.algorithms.kernels import FeatureMap, FidelityKernel
 
-    # Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
-    kernel = FidelityKernel.simple(
+    # Build a kernel where inputs of size 2 are encoded in a 3-mode circuit
+    feature_map = FeatureMap.simple(
         input_size=2,
-        n_modes=4,               # Here the number of modes is optional, if n_modes is not given, n_modes=input_size+1
-        shots=0,                 # exact probabilities (no sampling)
-        computation_space=ComputationSpace.FOCK,       # allow bunched outcomes if needed
         dtype=torch.float32,
         device=torch.device("cpu"),
+    )
+    kernel = FidelityKernel(
+        feature_map=feature_map,
+        shots=0,                 # exact probabilities (no sampling)
+        computation_space=ComputationSpace.FOCK,       # allow bunched outcomes if needed
     )
 
     # X_train: (N, 2), X_test: (M, 2)
@@ -127,10 +129,11 @@ Use with scikit-learn (precomputed kernel)
 
     import torch
     from sklearn.svm import SVC
-    from merlin.algorithms.kernels import FidelityKernel
+    from merlin.algorithms.kernels import FeatureMap, FidelityKernel
 
     # Build kernel and compute Gram matrices
-    kernel = FidelityKernel.simple(input_size=4, n_modes=6)
+    feature_map = FeatureMap.simple(input_size=4)
+    kernel = FidelityKernel(feature_map=feature_map)
     K_train = kernel(X_train)
     K_test = kernel(X_test, X_train)
 
