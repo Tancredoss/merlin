@@ -303,7 +303,7 @@ Declarative builder + kernel
 .. note::
 
   ``input_state=[...]`` is accepted for convenience and is converted to a Perceval
-  `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ internally.
+  `pcvl.BasicState <https://perceval.quandela.net/docs/v1.2/reference/utils/states.html>`_ internally.
 
 Using with scikit‑learn (precomputed kernel)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
