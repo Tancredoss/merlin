@@ -13,6 +13,7 @@ import numpy as np
 import perceval as pcvl
 import pytest
 import torch
+from exqalibur import FSArray
 from perceval import BasicState, Circuit, Matrix, Unitary
 from perceval.algorithm import Sampler
 from perceval.components import PERM
@@ -423,6 +424,57 @@ def test_feedforward_block_matches_perceval_distribution():
 
     assert set(block_probs.keys()) == set(perceval_probs.keys())
     for key, prob in block_probs.items():
-        assert math.isclose(prob, perceval_probs[key], rel_tol=1e-5, abs_tol=1e-5), (
-            f"Mismatch for key {key}: Merlin={prob}, Perceval={perceval_probs[key]}"
+        assert math.isclose(
+            prob, perceval_probs[key], rel_tol=1e-5, abs_tol=1e-5
+        ), f"Mismatch for key {key}: Merlin={prob}, Perceval={perceval_probs[key]}"
+
+
+def test_feedforwardblock_params_only_in_branches():
+    m = 6
+    k = 4
+    n = 4
+
+    possible_measurements = list(FSArray(k, n - 1))
+
+    def gi_func(idx):
+        return (
+            Circuit(2)
+            // pcvl.PS(pcvl.P(f"A{2 * idx}"))
+            // pcvl.BS()
+            // pcvl.PS(pcvl.P(f"A{2 * idx + 1}"))
+            // pcvl.BS()
         )
+
+    def g(measurement):
+        return possible_measurements.index(measurement) + 1
+
+    def adaptive_mzi(measurement):
+        g_val = g(measurement)
+        return (
+            Circuit(2)
+            // pcvl.PS(g_val * pcvl.P("x"))
+            // pcvl.BS()
+            // pcvl.PS(pcvl.P(f"B{g_val-1}"))
+            // pcvl.BS()
+        )
+
+    gi = pcvl.GenericInterferometer(m, gi_func)
+
+    feedforward_config = pcvl.FFCircuitProvider(k, 0, Circuit(2))
+    for measurement in possible_measurements:
+        feedforward_config.add_configuration(measurement, adaptive_mzi(measurement))
+
+    experiment = pcvl.Experiment(m)
+    experiment.add(0, gi)
+
+    for i in range(k):
+        experiment.add(i, pcvl.Detector.pnr())
+
+    experiment.add(0, feedforward_config)
+
+    FeedForwardBlock(
+        experiment,
+        input_state=BasicState([1] * n + [0] * (m - n)),
+        trainable_parameters=["A", "B"],
+        input_parameters=["x"],
+    )
