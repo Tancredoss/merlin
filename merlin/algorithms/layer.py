@@ -64,6 +64,7 @@ from ..utils.deprecations import (
     sanitize_parameters,
 )
 from ..utils.grouping import ModGrouping
+from ..utils.combinadics import Combinadics
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
     InitializationContext,
@@ -762,26 +763,38 @@ class QuantumLayer(MerlinModule):
 
         # With partial measurement, the amplitude input size cannot be verified using `output_keys` (reduced by the partial measurement)
         # Instead it should be confirmed with `_raw_output_keys`.
-        if (
-            isinstance(self._raw_output_keys, list)
-            and self._raw_output_keys
-            and isinstance(self._raw_output_keys[0], list)
-        ):
-            if (
-                isinstance(self.measurement_strategy, MeasurementStrategy)
-                and self.measurement_strategy.type is MeasurementKind.PARTIAL
-            ):
-                expected_dim = len([len(key) for key in self._raw_output_keys])
-            else:
-                expected_dim = len(self.output_keys)
+        g2_noise = False
+        if self._noise_groups is not None:
+            if self._noise_groups.source is not None:
+                if "g2" in self._noise_groups.source:
+                    g2_noise = True
+        if g2_noise or not self._photon_loss_is_identity:
+            expected_dim = Combinadics(
+                scheme=self.computation_space.lower(),
+                n=self.n_photons,
+                m=self.circuit.m,
+            )
         else:
             if (
-                isinstance(self.measurement_strategy, MeasurementStrategy)
-                and self.measurement_strategy.type is MeasurementKind.PARTIAL
+                isinstance(self._raw_output_keys, list)
+                and self._raw_output_keys
+                and isinstance(self._raw_output_keys[0], list)
             ):
-                expected_dim = len(self._raw_output_keys)
+                if (
+                    isinstance(self.measurement_strategy, MeasurementStrategy)
+                    and self.measurement_strategy.type is MeasurementKind.PARTIAL
+                ):
+                    expected_dim = len([len(key) for key in self._raw_output_keys])
+                else:
+                    expected_dim = len(self.output_keys)
             else:
-                expected_dim = len(self.output_keys)
+                if (
+                    isinstance(self.measurement_strategy, MeasurementStrategy)
+                    and self.measurement_strategy.type is MeasurementKind.PARTIAL
+                ):
+                    expected_dim = len(self._raw_output_keys)
+                else:
+                    expected_dim = len(self.output_keys)
 
         feature_dim = amplitude.shape[-1]
         if feature_dim != expected_dim:
@@ -899,7 +912,7 @@ class QuantumLayer(MerlinModule):
 
         Returns
         -------
-        torch.Tensor | PartialMeasurement | merlin.core.state_vector.StateVector | ProbabilityDistribution | SectoredDistribution
+        torch.Tensor | PartialMeasurement | merlin.core.state_vector.StateVector | ProbabilityDistribution
             Output after measurement mapping.
             Depending on the return_object argument and measurement strategy defined in the input, the output
             type will be different. Check the constructor for more details.
@@ -1090,9 +1103,7 @@ class QuantumLayer(MerlinModule):
         # Change the sectored distribution to a tensor
         if isinstance(results, SectoredDistribution):
             keys, results = results.to_tensor(return_keys=True)
-            self._detector_keys = keys
             self._raw_output_keys = keys
-            self._detector_keys = keys
 
         if (
             _resolve_measurement_kind(self.measurement_strategy)

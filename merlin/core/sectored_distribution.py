@@ -236,15 +236,11 @@ class SectoredDistribution:
         """
         is_batched = len(self.sectors[0].tensor.shape) > 1
         if not is_batched:
-            output_shape = sum(
-                sector.tensor.shape[0] for sector in self.sectors
-            )
+            output_shape = sum(sector.tensor.shape[0] for sector in self.sectors)
         else:
             output_shape = (
                 self.sectors[0].tensor.shape[0],
-                sum(
-                    sector.tensor.shape[1] for sector in self.sectors
-                ),
+                sum(sector.tensor.shape[1] for sector in self.sectors),
             )
         output_tensor = torch.zeros(
             output_shape,

@@ -233,8 +233,9 @@ This noise can change the output type considerably when running the ``forward`` 
     )
     output = layer()
 
-    for sector in output.sectors:
-        print(f"{sector.n_photons}-photon sector had probabilities of {sector.tensor}")
+    #Printing the probabilities
+    for key, prob in zip(layer.output_keys, output.flatten()):
+        print(f"Output probability of state {key} is {prob}")
 
 
 Output:
@@ -242,9 +243,7 @@ Output:
     - 3-photon sector had probabilities of tensor([[0.1066, 0.0355, 0.0355, 0.1066]])
     - 4-photon sector had probabilities of tensor([[0.0110, 0.0000, 0.0074, 0.0000, 0.0110]])
 
-We observe that the output is not a :class:`torch.Tensor` even though it contains probabilities. Indeed, because the space analyzed by a quantum interferometer depends on the number of input photons (the Fock space dimension for n photons and m modes is defined by :math:`\binom{m+n-1}{n}`), the output of the :class:`~merlin.algorithms.layer.QuantumLayer`'s forward method cannot be stored in a single tensor. The output is a :class:`~merlin.core.sectored_distribution.SectoredDistribution` that contains :class:`~merlin.core.sectored_distribution.SectorResult` objects, each describing a sector's probability distribution. Thus, g2 noise simulations explore a larger space and are handled differently in the output of the :class:`~merlin.algorithms.layer.QuantumLayer`'s forward method. Photon loss and detectors are applied to each sector independently.
-
-Noisy simulations with ``g2>0`` cannot use a grouping strategy. Indeed, since this noise creates input states with more photons than expected, multiple photon sectors are explored. The Fock spaces explored range from n_photons to 2*n_photons in m modes, each with a different dimension. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult` objects of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector.
+We observe that the output is a large :class:`torch.Tensor`. Indeed, because the space analyzed by a quantum interferometer depends on the number of input photons (the Fock space dimension for n photons and m modes is defined by :math:`\binom{m+n-1}{n}`).  Thus, g2 noise simulations explore a larger space and are handled differently in the output of the :class:`~merlin.algorithms.layer.QuantumLayer`'s forward method. Photon loss and detectors are applied to each sector independently.
 
 The default value of the ``g2`` parameter of the ``NoiseModel`` is 0.0. This is the case where no extra photons are ever generated.
 
