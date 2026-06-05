@@ -1089,6 +1089,11 @@ class QuantumLayer(MerlinModule):
             ):
                 grouping = self.measurement_strategy.grouping
 
+        # Change the sectored distribution to a tensor
+        if isinstance(results, SectoredDistribution):
+            keys, distribution = distribution.to_tensor(return_keys=True)
+            self._raw_output_keys = keys
+
         results = strategy.process(
             distribution=distribution,
             amplitudes=amplitudes,
@@ -1099,11 +1104,6 @@ class QuantumLayer(MerlinModule):
             apply_detectors=self._apply_detector_transform,
             grouping=grouping,
         )
-
-        # Change the sectored distribution to a tensor
-        if isinstance(results, SectoredDistribution):
-            keys, results = results.to_tensor(return_keys=True)
-            self._raw_output_keys = keys
 
         if (
             _resolve_measurement_kind(self.measurement_strategy)

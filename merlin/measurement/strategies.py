@@ -143,21 +143,11 @@ class DistributionStrategy(BaseMeasurementStrategy):
         # Distribution strategies apply detector/noise transforms before sampling.
         distribution = apply_photon_loss(distribution)
         distribution = apply_detectors(distribution)
-        if isinstance(distribution, SectoredDistribution):
-            if grouping:
-                raise RuntimeError(
-                    f"A grouping strategy cannot be applied to the output of a simulation with g2 noise. Indeed, since this noise creates input states with more photons than expected, multiple photon sectors are explored. The fock spaces explored are m={distribution.sectors[0].n_modes} modes and n_photons={min(distribution._photon_map.keys())} to 2*n_photons={max(distribution._photon_map.keys())} that all have different space dimensions. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult`s of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector."
-                )
-            if apply_sampling and effective_shots > 0:
-                distribution = sampler.pcvl_sampler_g2(distribution, effective_shots)
-            # Return SectoredDistribution cast to match base class type annotation
-            return distribution  # type: ignore[return-value]
-        else:
-            if apply_sampling and effective_shots > 0:
-                distribution = sampler.pcvl_sampler(distribution, effective_shots)
-            if grouping is not None:
-                return grouping(distribution)
-            return distribution
+        if apply_sampling and effective_shots > 0:
+            distribution = sampler.pcvl_sampler(distribution, effective_shots)
+        if grouping is not None:
+            return grouping(distribution)
+        return distribution
 
 
 class ProbabilitiesStrategy(DistributionStrategy):
@@ -434,12 +424,14 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash((
-            self.type,
-            self.measured_modes,
-            self.computation_space,
-            self.grouping,
-        ))
+        return hash(
+            (
+                self.type,
+                self.measured_modes,
+                self.computation_space,
+                self.grouping,
+            )
+        )
 
     def validate_modes(self, n_modes: int) -> None:
         """Validate mode indices and warn when the selection covers all modes."""
