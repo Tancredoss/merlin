@@ -52,7 +52,7 @@ Quick Start Decision Guide
 --------------------------
 
 **"I want to quickly try quantum kernels on my data"**
-    → Build a feature map with ``FeatureMap.simple()`` and pass it to :class:`~merlin.algorithms.kernels.FidelityKernel`
+    → Build a feature map with :meth:`~merlin.algorithms.kernels.FeatureMap.simple` and pass it to :class:`~merlin.algorithms.kernels.FidelityKernel`
 
 **"I need to customize the circuit architecture"**
     → Use ``KernelCircuitBuilder`` for declarative circuit construction
@@ -303,7 +303,7 @@ Declarative builder + kernel
 .. note::
 
   ``input_state=[...]`` is accepted for convenience and is converted to a Perceval
-  `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_ internally.
+  `pcvl.BasicState <https://perceval.quandela.net/docs/v1.2/reference/utils/states.html>`_ internally.
 
 Using with scikit‑learn (precomputed kernel)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

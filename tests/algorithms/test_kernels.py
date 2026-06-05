@@ -1000,6 +1000,25 @@ class TestFidelityKernelFactoryMethods:
         assert sum(kernel.input_state) == 2
         assert kernel.input_state == [1, 0, 1, 0]
 
+    def test_simple_factory_warns_once_for_forwarded_n_modes(self):
+        """FidelityKernel.simple suppresses duplicate forwarded n_modes warnings."""
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always", DeprecationWarning)
+            kernel = FidelityKernel.simple(input_size=2, n_modes=4)
+
+        messages = [str(warning.message) for warning in warning_list]
+        n_modes_messages = [
+            message
+            for message in messages
+            if "Parameter 'n_modes' is deprecated" in message
+        ]
+
+        assert len(n_modes_messages) == 1
+        assert any(
+            "FidelityKernel.simple() is deprecated" in message for message in messages
+        )
+        assert kernel.feature_map.circuit.m == 4
+
     def test_simple_factory_default_photons(self):
         """Test simple factory with default n_modes (should equal input_size + 1)."""
         kernel = FidelityKernel.simple(input_size=3)

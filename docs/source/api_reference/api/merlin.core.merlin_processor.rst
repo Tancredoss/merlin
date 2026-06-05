@@ -12,7 +12,7 @@ classical layers local. It supports two backend paths:
 
 * **Perceval** :class:`~pcvl.RemoteProcessor` — the original
   Quandela Cloud path.
-* **Perceval** `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v0.11/providers.html#scaleway>`_ — the preferred path
+* **Perceval** `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v1.2/providers.html#scaleway>`_ — the preferred path
   for Scaleway-hosted platforms (and any future session-based providers).
 
 Both paths support batched execution with chunking, limited intra-leaf
@@ -80,7 +80,7 @@ MerlinProcessor
       :class:`~pcvl.RemoteProcessor` (simulator or QPU-backed).
       Merlin clones it per chunk so concurrent jobs have independent state.
       Type: ``RemoteProcessor | None``.
-   :param session: A Perceval `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v0.11/providers.html#scaleway>`_
+   :param session: A Perceval `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v1.2/providers.html#scaleway>`_
       object — e.g. from ``pcvl.providers.scaleway.Session``. Merlin calls
       ``session.build_remote_processor()`` per chunk, giving each chunk
       an independent RP. Type: ``ISession | None``.

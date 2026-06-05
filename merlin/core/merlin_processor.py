@@ -4,10 +4,11 @@ import time
 import uuid
 import warnings
 import zlib
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any, cast
+from numbers import Integral
+from typing import Any, Protocol, cast, runtime_checkable
 
 import numpy as np
 import perceval as pcvl
@@ -38,6 +39,271 @@ class BackendCapabilities:
 
     name: str
     available_commands: tuple[str]
+
+
+_ALLOWED_STATE_TYPES = (
+    pcvl.StateVector,
+    pcvl.FockState,
+    pcvl.NoisyFockState,
+    pcvl.BasicState,
+    pcvl.LogicalState,
+)
+
+
+def check_sequence(input: Any) -> Sequence[Any] | None:
+    """
+    Check whether an object can be treated as a sequence.
+
+    Parameters
+    ----------
+    input : Any
+        Object to validate.
+
+    Returns
+    -------
+    Sequence | None
+        The original object if it is an instance of
+        ``collections.abc.Sequence``.
+
+        Otherwise, if the object is iterable, a tuple containing its
+        elements.
+
+        Returns None if the object is not iterable.
+
+    Notes
+    -----
+    This helper accepts objects that are not instances of
+    ``collections.abc.Sequence`` but can be iterated over, such as
+    NumPy arrays and PyTorch tensors. Such objects are converted to
+    tuples before being returned.
+
+    Examples
+    --------
+    >>> check_sequence([1, 2, 3])
+    [1, 2, 3]
+
+    >>> check_sequence((1, 2, 3))
+    (1, 2, 3)
+
+    >>> check_sequence(np.array([1, 2, 3]))
+    (1, 2, 3)
+
+    >>> check_sequence(42)
+    None
+    """
+
+    if isinstance(input, Sequence) and not isinstance(input, (str, bytes)):
+        return input
+    try:
+        return tuple(input)
+    except TypeError:
+        return None
+
+
+class ValidatedLayerConfig:
+    """
+    Validate and normalize the configuration dictionary returned by
+    ``export_config()``.
+
+    Parameters
+    ----------
+    config_to_verify : dict
+        Configuration dictionary containing the layer definition.
+
+    Attributes
+    ----------
+    circuit : pcvl.ACircuit
+        Perceval circuit associated with the layer.
+
+    input_state : Sequence[Integral] | pcvl.BasicState | pcvl.StateVector | pcvl.BSDistribution | pcvl.SVDistribution | None
+        Input state for the circuit. May be ``None``, a sequence of integers,
+        or one of the supported Perceval state objects. Sequence-like inputs
+        are normalized through ``check_sequence()``.
+
+    input_param_order : Sequence[str] | None
+        Ordered names of the circuit parameters expected by the layer.
+        Sequence-like inputs are normalized through ``check_sequence()``.
+
+    Raises
+    ------
+    KeyError
+        If one of the required configuration keys is missing:
+
+        - ``"circuit"``
+        - ``"input_state"``
+        - ``"input_param_order"``
+
+    ValueError
+        If:
+
+        - ``circuit`` is not a ``pcvl.ACircuit``.
+        - ``input_state`` is neither ``None``, a supported Perceval state
+          object, nor a sequence.
+        - ``input_state`` is a sequence containing non-integer elements.
+        - ``input_param_order`` is neither ``None`` nor a sequence.
+        - ``input_param_order`` contains non-string elements.
+
+    Notes
+    -----
+    Sequence validation relies on ``check_sequence()``. Accepted sequence
+    implementations may include Python sequences as well as array-like objects
+    supported by that helper.
+    """
+
+    def __init__(self, config_to_verify: dict):
+        """
+        Validate and normalize a layer configuration dictionary.
+
+        Parameters
+        ----------
+        config_to_verify : dict
+            Configuration dictionary containing the following required keys:
+
+            - ``"circuit"``: a ``pcvl.ACircuit`` instance.
+            - ``"input_state"``: ``None``, a sequence of integers, or a supported
+            Perceval state object.
+            - ``"input_param_order"``: ``None`` or a sequence of strings.
+
+        Raises
+        ------
+        KeyError
+            If one of the required keys is missing from ``config_to_verify``.
+
+        ValueError
+            If:
+
+            - ``config_to_verify["circuit"]`` is not a ``pcvl.ACircuit``.
+            - ``config_to_verify["input_state"]`` is neither ``None``, a valid
+            Perceval state object, nor a sequence.
+            - ``config_to_verify["input_state"]`` contains non-integer elements.
+            - ``config_to_verify["input_param_order"]`` is neither ``None`` nor a
+            sequence.
+            - ``config_to_verify["input_param_order"]`` contains non-string
+            elements.
+
+        Notes
+        -----
+        Sequence-like inputs are normalized using ``check_sequence()``. Objects
+        that are iterable but not instances of ``collections.abc.Sequence``
+        (e.g. NumPy arrays or PyTorch tensors) may therefore be accepted and
+        converted to tuples.
+        """
+        # circuit
+        try:
+            self.circuit: pcvl.ACircuit = config_to_verify["circuit"]
+        except KeyError:
+            raise KeyError(
+                "There must be a key 'circuit' in the configs dictionary that is associated with a perceval.ACircuit."
+            )
+        if not isinstance(self.circuit, pcvl.ACircuit):
+            raise ValueError(
+                f"The 'circuit' key of the config dictionary must be a perceval.ACircuit, got {type(self.circuit)}."
+            )
+
+        # input_state
+        try:
+            self.input_state: (
+                Sequence[Integral]
+                | pcvl.BasicState
+                | pcvl.StateVector
+                | pcvl.BSDistribution
+                | pcvl.SVDistribution
+                | None
+            ) = config_to_verify["input_state"]
+        except KeyError:
+            raise KeyError(
+                "There must be a key 'input_state' in the configs dictionary that is associated with a Sequence[Integral], a Perceval State object or None."
+            )
+        if self.input_state is not None:
+            if isinstance(self.input_state, _ALLOWED_STATE_TYPES):
+                pass
+
+            else:
+                input_state_sequence: Sequence[Integral] | None = check_sequence(
+                    self.input_state
+                )
+                if input_state_sequence is None:
+                    raise ValueError(
+                        "'input_state' must be None, a sequence of integers, "
+                        "or an Perceval state object "
+                        f"(got {type(self.input_state).__name__})."
+                    )
+                self.input_state = input_state_sequence
+                bad_types = {
+                    type(x).__name__
+                    for x in self.input_state
+                    if not isinstance(x, Integral)
+                }
+
+                if bad_types:
+                    raise ValueError(
+                        f"'input_state' must contain only integers when it is a sequence. "
+                        f"Got sequence type {type(self.input_state).__name__} "
+                        f"with non-integer element types: {sorted(bad_types)}."
+                    )
+
+        # input_param_order
+        try:
+            self.input_param_order: Sequence[str] | None = config_to_verify[
+                "input_param_order"
+            ]
+        except KeyError:
+            raise KeyError(
+                "There must be a key 'input_param_order' in the configs dictionary that is associated with a Sequence[str] or None."
+            )
+        if self.input_param_order is not None:
+            input_param_order_sequence: Sequence[str] | None = check_sequence(
+                self.input_param_order
+            )
+            if input_param_order_sequence is None:
+                raise ValueError(
+                    f"'input_param_order' must be a sequence of strings or None, got {type(self.input_param_order).__name__}."
+                )
+            self.input_param_order = input_param_order_sequence
+            bad_types = {
+                type(x).__name__
+                for x in self.input_param_order
+                if not isinstance(x, str)
+            }
+
+            if bad_types:
+                raise ValueError(
+                    f"'input_param_order' must contain only strings. "
+                    f"Got sequence type {type(self.input_param_order).__name__} "
+                    f"with non-integer element types: {sorted(bad_types)}."
+                )
+
+
+@runtime_checkable
+class SupportsExportConfig(Protocol):
+    """
+    Protocol for objects that can export their configuration as a dictionary.
+
+    Implementations must provide an ``export_config()`` method returning a
+    dictionary containing the information required to reconstruct or validate
+    the object's configuration.
+
+    Notes
+    -----
+    This protocol is marked as ``@runtime_checkable``, allowing runtime checks
+    with ``isinstance()`` and ``issubclass()``.
+
+    Examples
+    --------
+    >>> isinstance(obj, SupportsExportConfig)
+    True
+    """
+
+    def export_config(self) -> dict:
+        """
+        Export the object's configuration.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the configuration of the object.
+        """
+        ...
 
 
 class MerlinProcessor:
@@ -219,18 +485,19 @@ class MerlinProcessor:
                 stacklevel=2,
             )
 
-        # Auto-extract the token from the RP's handler when not
-        # explicitly provided, so cloned RPs inherit it.
-        if self._token is None:
-            self._token = self._extract_rp_token(remote_processor)
+        if self.session is None:
+            # Auto-extract the token from the RP's handler when not
+            # explicitly provided, so cloned RPs inherit it.
+            if self._token is None:
+                self._token = self._extract_rp_token(remote_processor)
 
-        if self._token is None:
-            raise ValueError(
-                "Could not extract auth token from RemoteProcessor. "
-                "Either pass token= to MerlinProcessor or call "
-                "RemoteConfig.set_token() before constructing the "
-                "RemoteProcessor."
-            )
+            if self._token is None:
+                raise ValueError(
+                    "Could not extract auth token from RemoteProcessor. "
+                    "Either pass token= to MerlinProcessor or call "
+                    "RemoteConfig.set_token() before constructing the "
+                    "RemoteProcessor."
+                )
 
         self.microbatch_size = microbatch_size
         self.default_timeout = float(timeout)
@@ -244,7 +511,7 @@ class MerlinProcessor:
         self.chunk_concurrency = max(1, int(chunk_concurrency))
 
         # Caches & global tracking
-        self._layer_cache: dict[int, dict] = {}
+        self._layer_cache: dict[uuid.UUID, dict[str, Any]] = {}
         self._job_history: list[RemoteJob] = []
 
         # Lifecycle/cancellation
@@ -298,9 +565,6 @@ class MerlinProcessor:
         with self._lock:
             if self._closed:
                 raise RuntimeError("MerlinProcessor is closed")
-        # Start session lifecycle if provided
-        if self.session is not None and hasattr(self.session, "__enter__"):
-            self.session.__enter__()
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -309,8 +573,6 @@ class MerlinProcessor:
             self.cancel_all()
         finally:
             # End session lifecycle if provided
-            if self.session is not None and hasattr(self.session, "__exit__"):
-                suppress_exception = bool(self.session.__exit__(exc_type, exc, tb))
             with self._lock:
                 self._closed = True
         return suppress_exception
@@ -564,10 +826,14 @@ class MerlinProcessor:
         if input_tensor.is_cuda:
             input_tensor = input_tensor.cpu()
 
-        cache = self._layer_cache.get(id(layer))
+        cache = self._layer_cache.get(layer.uid)
         if cache is None:
-            config = cast(Any, layer).export_config()
-            self._layer_cache[id(layer)] = {"config": config}
+            if not isinstance(layer, SupportsExportConfig):
+                raise TypeError(
+                    "The layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|'perceval state object'|None, 'input_param_order': Sequence[str]|None}."
+                )
+            config = ValidatedLayerConfig(layer.export_config())
+            self._layer_cache[layer.uid] = {"config": config}
         else:
             config = cache["config"]
 
@@ -586,7 +852,7 @@ class MerlinProcessor:
     def _run_chunks_pooled(
         self,
         layer: MerlinModule,
-        config: dict,
+        config: ValidatedLayerConfig,
         input_tensor: torch.Tensor,
         chunks: list[tuple[int, int]],
         nsample: int | None,
@@ -655,7 +921,7 @@ class MerlinProcessor:
     def _run_chunk(
         self,
         layer: MerlinModule,
-        config: dict,
+        config: ValidatedLayerConfig,
         input_chunk: torch.Tensor,
         nsample: int | None,
         state: dict,
@@ -706,11 +972,11 @@ class MerlinProcessor:
             # Build a fresh RemoteProcessor and Sampler on each attempt so that
             # a corrupted RP doesn't poison retries.
             rp = self._create_fresh_rp()
-            rp.set_circuit(config["circuit"])
-            if config.get("input_state"):
-                input_state = pcvl.BasicState(config["input_state"])
+            rp.set_circuit(config.circuit)
+            if config.input_state:
+                input_state = pcvl.BasicState(config.input_state)
                 rp.with_input(input_state)
-                n_photons = sum(config["input_state"])
+                n_photons = sum(config.input_state)
                 rp.min_detected_photons_filter(n_photons)
 
             max_shots_arg = (
@@ -800,6 +1066,7 @@ class MerlinProcessor:
             cmd = "probs"
             if job_base_label:
                 job.name = _capped_name(job_base_label, cmd)
+            self._ensure_serializable_sampler_iterator(job, sampler)
             return job.execute_async(), is_probability
 
         use_shots = self.DEFAULT_SHOTS_PER_CALL if nsample is None else int(nsample)
@@ -816,7 +1083,42 @@ class MerlinProcessor:
 
         if job_base_label:
             job.name = _capped_name(job_base_label, cmd)
+        self._ensure_serializable_sampler_iterator(job, sampler)
         return job.execute_async(max_samples=use_shots), is_probability
+
+    @staticmethod
+    def _ensure_serializable_sampler_iterator(job: RemoteJob, sampler: Sampler) -> None:
+        """Replace Perceval 1.2 iterator objects with JSON-serializable data.
+
+        Parameters
+        ----------
+        job : RemoteJob
+            Prepared Perceval remote job whose private request payload may contain
+            a sampler iterator.
+        sampler : Sampler
+            Perceval sampler used to prepare the job.
+
+        Notes
+        -----
+        Perceval 1.1 stores sampler iterations as a plain list. Perceval 1.2
+        stores them in a ``ParameterIterator`` object, but the Scaleway session
+        handler still serializes ``payload["payload"]`` with ``json.dumps``.
+        Until Perceval exposes a public serializer for that object, Merlin
+        normalizes the remote-job payload back to the list shape accepted by the
+        cloud side.
+        """
+        iterator = getattr(sampler, "_iterator", None)
+        iterations = getattr(iterator, "iterations", None)
+        if not iterations:
+            return
+
+        request_data = getattr(job, "_request_data", None)
+        if not isinstance(request_data, dict):
+            return
+
+        payload = request_data.get("payload")
+        if isinstance(payload, dict) and payload.get("iterator") is iterator:
+            payload["iterator"] = list(iterations)
 
     def _poll_job(
         self,
@@ -1055,9 +1357,9 @@ class MerlinProcessor:
         for child in children:
             yield from self._iter_layers_in_order(child)
 
-    def _extract_input_params(self, config: dict) -> list[str]:
+    def _extract_input_params(self, config: ValidatedLayerConfig) -> list[str]:
         """Extract circuit parameter names that correspond to model inputs."""
-        return list(config["input_param_order"])
+        return list(config.input_param_order)
 
     def _process_batch_results(
         self,
@@ -1240,10 +1542,11 @@ class MerlinProcessor:
         ValueError
             If ``input`` is not one- or two-dimensional.
         """
-        if not hasattr(layer, "export_config") or not callable(
-            cast(Any, layer).export_config
-        ):
-            raise TypeError("layer must provide export_config() for shot estimation")
+        if not isinstance(layer, SupportsExportConfig):
+            raise TypeError(
+                "For shot estimation, the layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|'perceval state object'|None, 'input_param_order': Sequence[str]|None}."
+            )
+        config = ValidatedLayerConfig(layer.export_config())
 
         if input.dim() == 1:
             x = input.unsqueeze(0)
@@ -1252,14 +1555,18 @@ class MerlinProcessor:
         else:
             raise ValueError("input must be 1D or 2D tensor")
 
-        config = cast(Any, layer).export_config()
+        if not isinstance(layer, SupportsExportConfig):
+            raise TypeError(
+                "The layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, Sequence[Integral]|'perceval state object'|None, 'input_param_order': Sequence[str]|None}."
+            )
+        config = ValidatedLayerConfig(layer.export_config())
         child_rp = self._create_fresh_rp()
-        child_rp.set_circuit(config["circuit"])
+        child_rp.set_circuit(config.circuit)
 
-        if config.get("input_state"):
-            input_state = pcvl.BasicState(config["input_state"])
+        if config.input_state:
+            input_state = pcvl.BasicState(config.input_state)
             child_rp.with_input(input_state)
-            n_photons = sum(config["input_state"])
+            n_photons = sum(config.input_state)
             child_rp.min_detected_photons_filter(n_photons)
 
         input_param_names = self._extract_input_params(config)

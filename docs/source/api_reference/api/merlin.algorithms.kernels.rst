@@ -70,7 +70,7 @@ Quickstart: Fidelity kernel in a few lines
     from merlin import ComputationSpace
     from merlin.algorithms.kernels import FeatureMap, FidelityKernel
 
-    # Build a kernel where inputs of size 2 are encoded in a 4-mode circuit
+    # Build a kernel where inputs of size 2 are encoded in a 3-mode circuit
     feature_map = FeatureMap.simple(
         input_size=2,
         dtype=torch.float32,
