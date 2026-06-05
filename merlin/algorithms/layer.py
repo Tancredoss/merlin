@@ -1090,7 +1090,7 @@ class QuantumLayer(MerlinModule):
                 grouping = self.measurement_strategy.grouping
 
         # Change the sectored distribution to a tensor
-        if isinstance(results, SectoredDistribution):
+        if isinstance(distribution, SectoredDistribution):
             keys, distribution = distribution.to_tensor(return_keys=True)
             self._raw_output_keys = keys
 
