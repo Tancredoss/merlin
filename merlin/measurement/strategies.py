@@ -34,7 +34,10 @@ import torch
 
 from merlin.core.computation_space import ComputationSpace
 from merlin.core.partial_measurement import PartialMeasurement
-from merlin.core.sectored_distribution import SectoredDistribution
+from merlin.core.sectored_distribution import (
+    SectoredDistribution,
+    clean_sectored_distribution,
+)
 from merlin.measurement.process import SamplingProcess, partial_measurement
 from merlin.utils.deprecations import warn_deprecated_enum_access
 from merlin.utils.grouping import LexGrouping, ModGrouping
@@ -146,6 +149,7 @@ class DistributionStrategy(BaseMeasurementStrategy):
         # Change the sectored distribution to a tensor
         self.keys = None
         if isinstance(distribution, SectoredDistribution):
+            distribution = clean_sectored_distribution(distribution)
             self.keys, distribution = distribution.to_tensor(return_keys=True)
         if apply_sampling and effective_shots > 0:
             distribution = sampler.pcvl_sampler(distribution, effective_shots)
@@ -428,12 +432,14 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash((
-            self.type,
-            self.measured_modes,
-            self.computation_space,
-            self.grouping,
-        ))
+        return hash(
+            (
+                self.type,
+                self.measured_modes,
+                self.computation_space,
+                self.grouping,
+            )
+        )
 
     def validate_modes(self, n_modes: int) -> None:
         """Validate mode indices and warn when the selection covers all modes."""

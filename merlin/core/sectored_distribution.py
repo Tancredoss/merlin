@@ -192,7 +192,7 @@ class SectoredDistribution:
 
     def to_tensor(
         self, return_keys: bool = False
-    ) -> torch.Tensor | torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
+    ) -> torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
         """Convert the SectoredDistribution to a single concatenated tensor.
 
         Concatenates probability tensors from all sectors in photon-number order.
@@ -334,14 +334,24 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
     photon_numbers = list(dist._photon_map.keys())
     sector_shape = dist.sectors[0].tensor.shape
 
-    # Creating new sectors to add the corrsponding probs
+    # Combinatics per photon sector for faster indexing
+    combinadics_per_sector = {
+        i: Combinadics(scheme="fock", n=i, m=dist.sectors[0].n_modes)
+        for i in photon_numbers
+    }
+    # Creating keys per photon sector
+    keys_per_sector = {
+        i: combinadics_per_sector[i].enumerate_states() for i in photon_numbers
+    }
+
+    # Creating new sectors to add the corresponding probs
     if len(sector_shape) == 1:
         is_batched = False
+
+        # Tensor per sector
         sectors = {
             i: torch.zeros(
-                Combinadics(
-                    scheme="fock", n=i, m=dist.sectors[0].n_modes
-                ).compute_space_size(),
+                combinadics_per_sector[i].compute_space_size(),
                 device=dist.sectors[0].tensor.device,
                 dtype=dist.sectors[0].tensor.dtype,
             )
@@ -349,25 +359,18 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
         }
     else:
         is_batched = True
+        # Tensor per sector
         sectors = {
             i: torch.zeros(
                 (
                     sector_shape[0],
-                    Combinadics(
-                        scheme="fock", n=i, m=dist.sectors[0].n_modes
-                    ).compute_space_size(),
+                    combinadics_per_sector[i].compute_space_size(),
                 ),
                 device=dist.sectors[0].tensor.device,
                 dtype=dist.sectors[0].tensor.dtype,
             )
             for i in photon_numbers
         }
-
-    # Creating keys per photon sector
-    keys_per_sector = {
-        i: Combinadics(scheme="fock", n=i, m=dist.sectors[0].n_modes).enumerate_states()
-        for i in photon_numbers
-    }
 
     for photon_number in photon_numbers.copy():
         sector_to_fix = dist.get_sector(photon_number)
@@ -376,20 +379,24 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
                 # Checking if the photon sector exists, otherwise add it to the sectors and keys
                 number_of_photons_in_state = sum(key)
                 if number_of_photons_in_state not in photon_numbers:
-                    keys_per_sector[number_of_photons_in_state] = Combinadics(
+
+                    combinadics_per_sector[number_of_photons_in_state] = Combinadics(
                         scheme="fock",
                         n=number_of_photons_in_state,
                         m=dist.sectors[0].n_modes,
-                    ).enumerate_states()
+                    )
+                    keys_per_sector[number_of_photons_in_state] = (
+                        combinadics_per_sector[
+                            number_of_photons_in_state
+                        ].enumerate_states()
+                    )
 
                     sectors[number_of_photons_in_state] = torch.zeros(
                         (
                             sector_shape[0],
-                            Combinadics(
-                                scheme="fock",
-                                n=number_of_photons_in_state,
-                                m=dist.sectors[0].n_modes,
-                            ).compute_space_size(),
+                            combinadics_per_sector[
+                                number_of_photons_in_state
+                            ].compute_space_size(),
                         ),
                         device=dist.sectors[0].tensor.device,
                         dtype=dist.sectors[0].tensor.dtype,
@@ -397,13 +404,14 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
                     photon_numbers.append(number_of_photons_in_state)
 
                 # Adding the corresponding probs
-                column_in_new_tensor = keys_per_sector[
+                column_in_new_tensor = combinadics_per_sector[
                     number_of_photons_in_state
                 ].index(key)
 
-                sectors[number_of_photons_in_state][:, column_in_new_tensor] = (
-                    sectors[number_of_photons_in_state][:, column_in_new_tensor]
-                    + (sector_to_fix.tensor[:, col_index_in_previous_sector])
+                sectors[number_of_photons_in_state][:, column_in_new_tensor] = sectors[
+                    number_of_photons_in_state
+                ][:, column_in_new_tensor] + (
+                    sector_to_fix.tensor[:, col_index_in_previous_sector]
                 )
 
         else:
@@ -413,27 +421,30 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
                 # Checking if the photon sector exists, otherwise add it to the sectors and keys
                 number_of_photons_in_state = sum(key)
                 if number_of_photons_in_state not in photon_numbers:
-                    keys_per_sector[number_of_photons_in_state] = Combinadics(
+                    combinadics_per_sector[number_of_photons_in_state] = Combinadics(
                         scheme="fock",
                         n=number_of_photons_in_state,
                         m=dist.sectors[0].n_modes,
-                    ).enumerate_states()
+                    )
+                    keys_per_sector[number_of_photons_in_state] = (
+                        combinadics_per_sector[
+                            number_of_photons_in_state
+                        ].enumerate_states()
+                    )
 
                     sectors[number_of_photons_in_state] = torch.zeros(
-                        Combinadics(
-                            scheme="fock",
-                            n=number_of_photons_in_state,
-                            m=dist.sectors[0].n_modes,
-                        ).compute_space_size(),
+                        combinadics_per_sector[
+                            number_of_photons_in_state
+                        ].compute_space_size(),
                         device=dist.sectors[0].tensor.device,
                         dtype=dist.sectors[0].tensor.dtype,
                     )
                     photon_numbers.append(number_of_photons_in_state)
 
                 # Adding the corresponding probs
-                index_in_new_tensor = keys_per_sector[number_of_photons_in_state].index(
-                    key
-                )
+                index_in_new_tensor = combinadics_per_sector[
+                    number_of_photons_in_state
+                ].index(key)
 
                 sectors[number_of_photons_in_state][index_in_new_tensor] = (
                     sectors[number_of_photons_in_state][index_in_new_tensor] + value

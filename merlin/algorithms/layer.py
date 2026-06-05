@@ -44,7 +44,6 @@ from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
 from ..core.sectored_distribution import (
     SectoredDistribution,
-    clean_sectored_distribution,
 )
 from ..core.state import StatePattern, generate_state
 from ..core.state_vector import StateVector
@@ -1535,10 +1534,9 @@ class QuantumLayer(MerlinModule):
                     distribution_copy.sectors[i].keys = tuple(
                         self._photon_loss_transform[index].output_keys
                     )
-                return clean_sectored_distribution(distribution_copy)
-            return clean_sectored_distribution(
-                self._photon_loss_transform(distribution)
-            )
+                return distribution_copy
+            return self._photon_loss_transform(distribution)
+
         if isinstance(self._photon_loss_transform, Sequence):
             raise RuntimeError(
                 "Invalid photon-loss transform for non-sectored distribution."
@@ -1565,8 +1563,8 @@ class QuantumLayer(MerlinModule):
                     distribution_copy.sectors[i].keys = tuple(
                         self._detector_transform[index].output_keys
                     )
-                return clean_sectored_distribution(distribution_copy)
-            return clean_sectored_distribution(self._detector_transform(distribution))
+                return distribution_copy
+            return self._detector_transform(distribution)
         if isinstance(self._detector_transform, Sequence):
             raise RuntimeError(
                 "Invalid detector transform for non-sectored distribution."
