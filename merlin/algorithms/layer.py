@@ -63,6 +63,7 @@ from ..utils.grouping import ModGrouping
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
     InitializationContext,
+    _build_simple_circuit,
     apply_angle_encoding,
     compute_new_memristive_ps_angles,
     feature_count_for_prefix,
@@ -1580,20 +1581,7 @@ class QuantumLayer(MerlinModule):
         n_photons = sum(input_state)
         input_state = pcvl.BasicState(input_state)
 
-        builder = CircuitBuilder(n_modes=n_modes)
-
-        # Trainable entangling layer before encoding
-        builder.add_entangling_layer(trainable=True, name="LI_simple")
-
-        # Angle encoding
-        builder.add_angle_encoding(
-            modes=list(range(input_size)),
-            name="input",
-            subset_combinations=False,
-        )
-
-        # Trainable entangling layer after encoding
-        builder.add_entangling_layer(trainable=True, name="RI_simple")
+        builder = _build_simple_circuit(input_size)
 
         # new API forces explicit measurement strategy definition, so we set it here to match the old default behavior of returning probabilities
         measurement_strategy = MeasurementStrategy.probs(

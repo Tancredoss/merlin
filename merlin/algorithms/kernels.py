@@ -42,6 +42,7 @@ from ..pcvl_pytorch.locirc_to_tensor import CircuitConverter
 from ..utils.deprecations import sanitize_parameters
 from ..utils.dtypes import to_torch_dtype
 from .layer import QuantumLayer
+from .layer_utils import _build_simple_circuit
 from .module import MerlinModule
 
 
@@ -268,9 +269,13 @@ class FeatureMap:
             resolved_circuit = circuit
             self.experiment = pcvl.Experiment(resolved_circuit)
         elif experiment is not None:
+            _post_select_fn = experiment.post_select_fn
+            _has_non_trivial_post_select = (
+                _post_select_fn is not None and _post_select_fn != pcvl.PostSelect()
+            )
             if (
                 not experiment.is_unitary
-                or not experiment.post_select_fn == pcvl.PostSelect()
+                or _has_non_trivial_post_select
                 or experiment.heralds
             ):
                 raise ValueError(
@@ -642,9 +647,12 @@ class FeatureMap:
         dtype: str | torch.dtype = torch.float32,
         device: torch.device | None = None,
         angle_encoding_scale: float = 1.0,
+        # TODO: In release 0.5.x, remove the n_modes parameter.
         n_modes: int | None = None,
     ) -> "FeatureMap":
         """Simple factory method to create a FeatureMap with minimal configuration.
+
+        The circuit uses ``n_modes = input_size + 1`` by default.
 
         Parameters
         ----------
@@ -657,8 +665,13 @@ class FeatureMap:
         angle_encoding_scale : float
             Global scaling applied to angle encoding features. Default is ``1.0``.
         n_modes : int | None
-            Number of photonic modes used by the helper circuit. If omitted,
-            ``n_modes = input_size + 1``. Maximum is 20.
+            .. warning:: *Deprecated since version 0.4:*
+                Passing ``n_modes`` is deprecated and will be removed in
+                release 0.5. The value is still honoured in 0.4, but in
+                0.5 the mode count will be fixed to ``input_size + 1``
+                and this parameter will be removed. Use
+                :class:`~merlin.builder.circuit_builder.CircuitBuilder`
+                directly if you need a different mode count.
 
         Returns
         -------
@@ -668,10 +681,12 @@ class FeatureMap:
         Raises
         ------
         ValueError
-            If ``input_size`` or ``n_modes`` is outside the supported range.
+            If ``input_size`` is outside the supported range.
         """
+        # TODO: In release 0.5.x, remove n_modes handling and always use input_size + 1.
         if n_modes is None:
             n_modes = input_size + 1
+
         if n_modes < 2:
             raise ValueError(f"The number of modes must be at least 2, got {n_modes}")
         if input_size > 19 or n_modes > 20:
@@ -684,25 +699,8 @@ class FeatureMap:
         if input_size > n_modes:
             raise ValueError(ANGLE_ENCODING_MODE_ERROR)
 
-        builder = CircuitBuilder(n_modes=n_modes)
-
-        # Trainable entangling layer before encoding
-        builder.add_entangling_layer(
-            trainable=True,
-            name="LI_simple",
-        )
-
-        # Angle encoding
-        builder.add_angle_encoding(
-            modes=list(range(int(input_size))),
-            name="input",
-            subset_combinations=False,
-            scale=angle_encoding_scale,
-        )
-
-        # Trainable entangling layer after encoding
-        builder.add_entangling_layer(trainable=True, name="RI_simple")
-
+        builder = _build_simple_circuit(input_size, n_modes, angle_encoding_scale)
+        # input_parameters=None indicates that the builder's input layer is inferred by FeatureMap
         return cls(
             builder=builder,
             input_size=input_size,
@@ -948,9 +946,10 @@ class KernelCircuitBuilder:
         """
         feature_map = self.build_feature_map()
 
-        # Generate default input state if not provided
+        # TODO: In release 0.5.x, remove KernelCircuitBuilder default
+        # input_state generation and let FidelityKernel infer it directly.
         if input_state is None:
-            n_modes = self._n_modes or max(self._input_size or 2, 4)
+            n_modes = feature_map.circuit.m
             n_photons = self._n_photons or (self._input_size or 2)
             input_state = list(generate_state(n_modes, n_photons, StatePattern.SPACED))
 
@@ -1458,8 +1457,21 @@ class FidelityKernel(MerlinModule):
     ----------
     feature_map : FeatureMap
         Feature map object that encodes a given datapoint within its circuit.
-    input_state : list[int]
-        Input state into the circuit.
+    input_state : list[int] | None
+        Input Fock state occupation list. If ``None``, the state is derived
+        from ``n_photons`` when given, otherwise defaults to an alternating
+        single-photon state ``[1, 0, 1, 0, ...]`` of length
+        ``feature_map.circuit.m``.
+    n_photons : int | None
+        Number of photons to place in the input state when ``input_state`` is
+        ``None``. If ``n_photons <= ceil(m / 2)`` (where ``m`` is the number of
+        circuit modes), photons are spread in the alternating pattern
+        ``[1, 0, 1, 0, ...]``; otherwise all alternating positions are filled
+        first and then remaining positions are filled left to right
+        (e.g. 4 photons in 6 modes → ``[1, 1, 1, 0, 1, 0]``), and a
+        ``UserWarning`` is emitted.  If ``input_state`` is also provided,
+        ``sum(input_state)`` must equal ``n_photons``, otherwise a
+        ``ValueError`` is raised.  Default: ``None``.
     shots : int | None
         Number of circuit shots. If ``None``, the exact transition
         probabilities are returned. Default: ``None``.
@@ -1517,8 +1529,9 @@ class FidelityKernel(MerlinModule):
     def __init__(
         self,
         feature_map: FeatureMap,
-        input_state: list[int],
+        input_state: list[int] | None = None,
         *,
+        n_photons: int | None = None,
         shots: int | None = None,
         sampling_method: str = "multinomial",
         computation_space: ComputationSpace | str | None = None,
@@ -1533,8 +1546,21 @@ class FidelityKernel(MerlinModule):
         feature_map : FeatureMap
             Feature-map descriptor that provides the circuit or experiment,
             parameter prefixes, input size, dtype, and device.
-        input_state : list[int]
-            Input Fock state occupation list.
+        input_state : list[int] | None
+            Input Fock state occupation list. If ``None``, the state is derived
+            from ``n_photons`` when given, otherwise defaults to an alternating
+            single-photon state ``[1, 0, 1, 0, ...]`` of length
+            ``feature_map.circuit.m``.
+        n_photons : int | None
+            Number of photons used to derive ``input_state`` when
+            ``input_state`` is ``None``.  Must satisfy
+            ``1 <= n_photons <= feature_map.circuit.m``. If
+            ``n_photons <= ceil(m / 2)``, an alternating state is produced;
+            otherwise all alternating positions are filled first, then the
+            remaining positions are filled left to right, and a ``UserWarning``
+            is emitted.
+            If ``input_state`` is also provided, its photon count must equal
+            ``n_photons``.  Default is ``None``.
         shots : int | None
             Number of pseudo-sampling shots. If omitted or ``None``, exact
             probabilities are used. Default is ``None``.
@@ -1570,7 +1596,6 @@ class FidelityKernel(MerlinModule):
             computation_space = ComputationSpace.coerce(computation_space)
         self.computation_space = computation_space
         self.feature_map = feature_map
-        self.input_state = input_state
         self.shots = shots or 0
         self.sampling_method = sampling_method
         self.no_bunching = self.computation_space is not ComputationSpace.FOCK
@@ -1588,6 +1613,54 @@ class FidelityKernel(MerlinModule):
             self.dtype = to_torch_dtype(dtype, default=feature_map.dtype)
         self.input_size = self.feature_map.input_size
         backend_input_size = self._resolve_backend_input_size()
+
+        m = self.feature_map.circuit.m
+        # Validate that the provided input state and n_photons are compatible if both are given
+        if input_state is not None and n_photons is not None:
+            if sum(input_state) != n_photons:
+                raise ValueError(
+                    f"n_photons={n_photons} does not match the photon count "
+                    f"{sum(input_state)} of the provided input_state."
+                )
+        # We infer the input states if not given
+        elif input_state is None:
+            # If n_photons is not given, default to all alternating positions.
+            if n_photons is None:
+                input_state = [1 if i % 2 == 0 else 0 for i in range(m)]
+            # Otherwise, we generate the input state based on n_photons and m
+            else:
+                # Validation of n_photons
+                if n_photons <= 0 or n_photons > m:
+                    raise ValueError(
+                        f"n_photons must be between 1 and {m} (the number of "
+                        f"circuit modes), got {n_photons}."
+                    )
+                alternating_slot_count = (m + 1) // 2
+                if n_photons <= alternating_slot_count:
+                    state = [0] * m
+                    for i in range(n_photons):
+                        state[2 * i] = 1
+                    input_state = state
+                # More photons than alternating positions: fill them first,
+                # then continue filling remaining positions left to right.
+                else:
+                    warnings.warn(
+                        f"n_photons={n_photons} exceeds the {alternating_slot_count} "
+                        "available alternating positions. Alternating positions "
+                        "are filled first, then remaining positions are filled "
+                        "left to right, which may not correspond to a physically "
+                        "realistic hardware configuration.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                    state = [1 if i % 2 == 0 else 0 for i in range(m)]
+                    remaining = n_photons - sum(state)
+                    for i in range(1, m, 2):
+                        if remaining <= 0:
+                            break
+                        state[i] = 1
+                        remaining -= 1
+                    input_state = state
 
         if self.feature_map.circuit.m != len(input_state):
             raise ValueError("Input state length does not match circuit size.")
@@ -1651,6 +1724,17 @@ class FidelityKernel(MerlinModule):
         )
 
         self.is_trainable = feature_map.is_trainable
+
+    @property
+    def input_state(self) -> list[int]:
+        """Input Fock state occupation list used for kernel evaluation.
+
+        Returns
+        -------
+        list[int]
+            Copy of the input Fock state used by the kernel backend.
+        """
+        return list(self._quantum_layer._kernel_input_state)
 
     def forward(
         self,
@@ -1741,6 +1825,7 @@ class FidelityKernel(MerlinModule):
             sampling_method=self.sampling_method,
         )
 
+    # TODO: In release 0.5.x, remove FidelityKernel.simple.
     @classmethod
     @sanitize_parameters
     def simple(
@@ -1754,9 +1839,15 @@ class FidelityKernel(MerlinModule):
         dtype: str | torch.dtype = torch.float32,
         device: torch.device | None = None,
         angle_encoding_scale: float = 1.0,
+        # TODO: In release 0.5.x, remove the n_modes parameter.
         n_modes: int | None = None,
     ) -> "FidelityKernel":
         """Create a simple fidelity kernel with minimal configuration.
+
+        .. warning:: *Deprecated since version 0.4:*
+            This factory method is deprecated and will be removed in release 0.5.
+            Build a feature map with :meth:`FeatureMap.simple` and pass it
+            directly to :class:`FidelityKernel`.
 
         Parameters
         ----------
@@ -1779,7 +1870,13 @@ class FidelityKernel(MerlinModule):
         angle_encoding_scale : float
             Global scaling applied to angle encoding features. Default is ``1.0``.
         n_modes : int | None
-            Number of photonic modes used by the helper construction.
+            .. warning:: *Deprecated since version 0.4:*
+                Passing ``n_modes`` is deprecated and will be removed in
+                release 0.5. The value is still honoured in 0.4, but in
+                0.5 the mode count will be fixed to ``input_size + 1``
+                and this parameter will be removed. Use
+                :class:`~merlin.builder.circuit_builder.CircuitBuilder`
+                directly if you need a different mode count.
 
         Returns
         -------
@@ -1795,18 +1892,24 @@ class FidelityKernel(MerlinModule):
             If the generated experiment configuration is incompatible with the
             requested computation space.
         """
-        feature_map = FeatureMap.simple(
-            input_size=input_size,
-            n_modes=n_modes,
-            dtype=dtype,
-            device=device,
-            angle_encoding_scale=angle_encoding_scale,
-        )
+        # TODO: In release 0.5.x, remove n_modes handling; always use input_size + 1.
+        state_size = n_modes if n_modes is not None else input_size + 1
 
         if n_modes is None:
-            state_size = input_size + 1
+            feature_map = FeatureMap.simple(
+                input_size=input_size,
+                dtype=dtype,
+                device=device,
+                angle_encoding_scale=angle_encoding_scale,
+            )
         else:
-            state_size = n_modes
+            feature_map = FeatureMap.simple(
+                input_size=input_size,
+                n_modes=n_modes,
+                dtype=dtype,
+                device=device,
+                angle_encoding_scale=angle_encoding_scale,
+            )
 
         input_state = state_size * [0]
         for i in range(state_size):
@@ -1849,7 +1952,7 @@ class FidelityKernel(MerlinModule):
         -------
         int
             Number of encoded circuit input parameters expected by the
-            internal :class:`_CCInvQuantumLayer` backend.
+            kernel backend.
 
         Warns
         -----
@@ -1910,9 +2013,13 @@ class FidelityKernel(MerlinModule):
     @staticmethod
     def _validate_experiment(experiment: pcvl.Experiment) -> None:
         """Validate that the provided experiment is compatible with fidelity kernels."""
+        post_select_fn = experiment.post_select_fn
+        has_non_trivial_post_select = (
+            post_select_fn is not None and post_select_fn != pcvl.PostSelect()
+        )
         if (
             not experiment.is_unitary
-            or not experiment.post_select_fn == pcvl.PostSelect()
+            or has_non_trivial_post_select
             or experiment.heralds
             or experiment.in_heralds
         ):
