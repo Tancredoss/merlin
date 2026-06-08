@@ -280,7 +280,6 @@ class FeedForwardBlock(MerlinModule):
                 stage,
                 base_input_state=self._base_input_state,
                 initial_amplitudes=self._initial_amplitudes,
-                trainable_parameters=trainable_parameters,
                 input_parameters=input_parameters,
                 is_first=(idx == 0),
             )
@@ -554,7 +553,40 @@ class FeedForwardBlock(MerlinModule):
         trainable_parameters: list[str] | None = None,
         input_parameters: list[str] | None = None,
     ) -> None:
+        """Map parameter prefixes to their matching Perceval circuit parameters.
 
+        Validates that all circuit parameters are covered by exactly one prefix
+        (either trainable or input), and constructs bidirectional mapping tables
+        for parameter lookup during stage runtime construction. Parameters from
+        provider circuits are also scanned and included.
+
+        Parameters
+        ----------
+        experiment : pcvl.Experiment
+            Perceval experiment containing all circuit parameters to be mapped.
+        trainable_parameters : list[str] | None
+            Parameter name prefixes that should remain learnable. Each prefix
+            matches all parameters starting with that string.
+        input_parameters : list[str] | None
+            Parameter name prefixes that receive classical inputs. Each prefix
+            matches all parameters starting with that string.
+
+        Raises
+        ------
+        ValueError
+            If a prefix has no matching parameters, if a parameter matches
+            multiple prefixes, or if any parameter is not covered by a prefix.
+
+        Notes
+        -----
+        Sets three instance attributes:
+        - ``prefix_to_params_mapping`` : dict mapping prefixes to their matching
+          parameter names
+        - ``trainable_params_to_prefix_mapping`` : dict mapping trainable parameter
+          names to their prefix
+        - ``input_params_to_prefix_mapping`` : dict mapping input parameter names
+          to their prefix
+        """
         self.prefix_to_params_mapping = {}
         self.trainable_params_to_prefix_mapping = {}
         self.input_params_to_prefix_mapping = {}
@@ -623,7 +655,6 @@ class FeedForwardBlock(MerlinModule):
         *,
         base_input_state: list[int] | pcvl.BasicState | None,
         initial_amplitudes: torch.Tensor | None,
-        trainable_parameters: list[str] | None,
         input_parameters: list[str] | None,
         is_first: bool,
     ) -> StageRuntime:
@@ -696,6 +727,15 @@ class FeedForwardBlock(MerlinModule):
             conditional_circuits,
             default_key,
         ) = self._build_conditional_layers(stage.provider)
+
+        # Also include parameters from conditional circuits in the stage's trainable parameters
+        for circuit in conditional_circuits.values():
+            for param in circuit.params:
+                if param in self.trainable_params_to_prefix_mapping:
+                    trainable_params_set.add(
+                        self.trainable_params_to_prefix_mapping[param]
+                    )
+
         classical_input_size = (
             pre_layer.input_size
             if (pre_layer is not None and not amplitude_encoding)
@@ -1132,6 +1172,9 @@ class FeedForwardBlock(MerlinModule):
             raise ValueError("Remaining photon count cannot be negative.")
         layer = runtime.pre_layers.get(remaining_n)
         if layer is None:
+            trainable_params_set = set()
+            for param in runtime.circuit.params:
+                trainable_params_set.add(self.trainable_params_to_prefix_mapping[param])
             layer = QuantumLayer(
                 input_size=None,
                 circuit=runtime.circuit.copy(),
@@ -1142,7 +1185,7 @@ class FeedForwardBlock(MerlinModule):
                 ),
                 device=self.device,
                 dtype=self.dtype,
-                trainable_parameters=runtime.trainable_parameters,
+                trainable_parameters=list(trainable_params_set),
             )
             runtime.pre_layers[remaining_n] = layer
             self._register_layer(
@@ -1232,6 +1275,9 @@ class FeedForwardBlock(MerlinModule):
         layer = runtime.conditional_layer_cache.get(cache_key)
         if layer is None:
             circuit = circuits[actual_key]
+            trainable_params_set = set()
+            for param in circuit.params:
+                trainable_params_set.add(self.trainable_params_to_prefix_mapping[param])
             layer = QuantumLayer(
                 input_size=None,
                 circuit=circuit.copy(),
@@ -1242,7 +1288,7 @@ class FeedForwardBlock(MerlinModule):
                 ),
                 device=self.device,
                 dtype=self.dtype,
-                trainable_parameters=runtime.trainable_parameters,
+                trainable_parameters=list(trainable_params_set),
             )
             runtime.conditional_layer_cache[cache_key] = layer
             self._register_layer(
