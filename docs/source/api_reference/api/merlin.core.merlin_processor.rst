@@ -78,16 +78,12 @@ BackendCapabilities
 
 MerlinProcessor
 ---------------
-.. class:: MerlinProcessor(processor=None, remote_processor=None, session=None, microbatch_size=32, timeout=3600.0, max_shots_per_call=None, chunk_concurrency=1, token=None)
+.. class:: MerlinProcessor(remote_processor=None, session=None, microbatch_size=32, timeout=3600.0, max_shots_per_call=None, chunk_concurrency=1, token=None, *, processor=None)
 
    Create a processor that offloads quantum leaves to a Perceval backend.
    Exactly **one** of ``processor``, ``remote_processor``, or ``session`` must
    be provided.
 
-   :param processor: Perceval ``perceval.runtime.AProcessor``. Local processors
-      execute through synchronous local Perceval jobs and do not require remote
-      token extraction. RemoteProcessor instances passed here are normalized to
-      the existing remote backend. Type: ``AProcessor | None``.
    :param remote_processor: Authenticated Perceval
       :class:`~pcvl.RemoteProcessor` (simulator or QPU-backed).
       Merlin clones it per chunk so concurrent jobs have independent state.
@@ -111,6 +107,11 @@ MerlinProcessor
       processors. If omitted, Merlin extracts the token from the
       RemoteProcessor's RPC handler. Ignored for local and session paths.
       Type: ``str | None``.
+   :param processor: Keyword-only Perceval ``perceval.runtime.AProcessor``.
+      Local processors execute through synchronous local Perceval jobs and do
+      not require remote token extraction. RemoteProcessor instances passed here
+      are normalized to the existing remote backend. Type:
+      ``AProcessor | None``.
 
    :raises TypeError: If exactly one backend is not provided, if the provided
       argument is not the expected type, or if ``processor`` is an unsupported

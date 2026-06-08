@@ -371,11 +371,6 @@ class MerlinProcessor:
 
     Parameters
     ----------
-    processor : AProcessor | None
-        Perceval processor entry point. Local, non-remote processors are stored
-        for the local backend path, rebuilt for each local execution, and do not
-        require remote token extraction. RemoteProcessor instances passed here
-        are normalized to the remote processor path.
     remote_processor : RemoteProcessor | None
         Perceval remote processor used in the direct remote path. Cloned per chunk
         for thread safety.
@@ -403,6 +398,11 @@ class MerlinProcessor:
         Optional authentication token forwarded to cloned remote processors.
         If not provided, extracted from the processor's RPC handler. Ignored
         for local processors.
+    processor : AProcessor | None
+        Keyword-only Perceval processor entry point. Local, non-remote processors
+        are stored for the local backend path, rebuilt for each local execution,
+        and do not require remote token extraction. RemoteProcessor instances
+        passed here are normalized to the remote processor path.
 
     Attributes
     ----------
@@ -424,7 +424,6 @@ class MerlinProcessor:
 
     def __init__(
         self,
-        processor: AProcessor | None = None,
         remote_processor: RemoteProcessor | None = None,
         session: ISession | None = None,
         microbatch_size: int = 32,
@@ -432,6 +431,8 @@ class MerlinProcessor:
         max_shots_per_call: int | None = None,
         chunk_concurrency: int = 1,
         token: str | None = None,
+        *,
+        processor: AProcessor | None = None,
     ):
         """Initialize the Merlin processor backend.
 
@@ -459,12 +460,6 @@ class MerlinProcessor:
 
         Parameters
         ----------
-        processor : AProcessor | None
-            Perceval ``AProcessor``. Local processors use the local backend and
-            do not require remote token extraction. RemoteProcessor instances
-            passed here use the existing remote backend. Exactly one of
-            ``processor``, ``remote_processor``, or ``session`` must be
-            provided. Default: None.
         remote_processor : RemoteProcessor | None
             Perceval ``RemoteProcessor`` (simulator or QPU-backed). Exactly
             one of ``processor``, ``remote_processor``, or ``session`` must be
@@ -492,6 +487,12 @@ class MerlinProcessor:
             Optional authentication token forwarded to cloned remote processors.
             If not provided, extracted from the processor's RPC handler.
             Ignored for local processors. Default: None.
+        processor : AProcessor | None
+            Keyword-only Perceval ``AProcessor``. Local processors use the
+            local backend and do not require remote token extraction.
+            RemoteProcessor instances passed here use the existing remote
+            backend. Exactly one of ``processor``, ``remote_processor``, or
+            ``session`` must be provided. Default: None.
 
         Raises
         ------

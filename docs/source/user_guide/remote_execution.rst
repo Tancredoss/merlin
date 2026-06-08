@@ -180,9 +180,13 @@ Instantiation & Options
         timeout=3600.0,
         max_shots_per_call=None,
         chunk_concurrency=1,
+        token=None,
+        *,
+        processor=None,              # AProcessor — keyword-only local/normalized path
     )
 
-Exactly **one** of ``remote_processor`` or ``session`` must be provided.
+Exactly **one** of ``remote_processor``, ``session``, or ``processor`` must be
+provided.
 
 * **remote_processor (RemoteProcessor | None)**: Quandela Cloud backend.
   Merlin clones it internally per chunk so multiple jobs can run safely in
@@ -210,6 +214,14 @@ Exactly **one** of ``remote_processor`` or ``session`` must be provided.
 * **chunk_concurrency (int)**: maximum number of **chunks** submitted in
   parallel **per quantum leaf**. Default ``1`` (serial). Increase for higher
   throughput when the backend allows it.
+
+* **token (str | None)**: authentication token forwarded to cloned remote
+  processors. If omitted, Merlin extracts it from the ``RemoteProcessor`` RPC
+  handler. Ignored for local and session paths.
+
+* **processor (AProcessor | None)**: keyword-only Perceval processor entry
+  point. Local processors use the local backend path. ``RemoteProcessor``
+  instances passed here are normalized to the remote processor path.
 
 Computation Spaces
 ------------------
@@ -549,7 +561,7 @@ API Reference (Summary)
 
 **Constructor**
 
-* ``MerlinProcessor(remote_processor=None, session=None, microbatch_size=32, timeout=3600.0, max_shots_per_call=None, chunk_concurrency=1)``
+* ``MerlinProcessor(remote_processor=None, session=None, microbatch_size=32, timeout=3600.0, max_shots_per_call=None, chunk_concurrency=1, token=None, *, processor=None)``
 
 **Execution**
 

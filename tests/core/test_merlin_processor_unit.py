@@ -415,6 +415,20 @@ def test_merlinprocessor_accepts_remote_processor_through_remote_processor_argum
     assert proc.backend_kind == "remote_processor"
 
 
+def test_merlinprocessor_preserves_positional_remote_processor_argument():
+    """The first positional argument still binds to remote_processor."""
+    remote_processor = make_remote_processor_mock(["probs"])
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(remote_processor, None, 16)
+
+    assert proc.processor is None
+    assert proc.remote_processor is remote_processor
+    assert proc.session is None
+    assert proc.microbatch_size == 16
+    assert proc.backend_kind == "remote_processor"
+
+
 def test_merlinprocessor_accepts_session_backend():
     """Existing session= construction remains supported."""
     session = MagicMock(spec=ISession)
@@ -425,6 +439,21 @@ def test_merlinprocessor_accepts_session_backend():
         proc = MerlinProcessor(session=session)
 
     extract.assert_not_called()
+    assert proc.processor is None
+    assert proc.remote_processor is None
+    assert proc.session is session
+    assert proc.backend_kind == "session"
+    assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
+
+
+def test_merlinprocessor_preserves_positional_session_argument():
+    """The second positional argument still binds to session."""
+    session = MagicMock(spec=ISession)
+    remote_processor = make_remote_processor_mock(["probs", "sample_count"])
+    session.build_remote_processor.return_value = remote_processor
+
+    proc = MerlinProcessor(None, session)
+
     assert proc.processor is None
     assert proc.remote_processor is None
     assert proc.session is session
