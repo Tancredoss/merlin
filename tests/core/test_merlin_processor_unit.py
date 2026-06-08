@@ -1330,6 +1330,38 @@ def test_run_chunk_local_accepts_layer_with_different_mode_count_than_original_p
     torch.testing.assert_close(output, torch.tensor([[1.0, 0.0]]))
 
 
+def test_run_chunk_local_rejects_postselection_with_different_mode_count():
+    """Local execution rejects postselection tied to another mode layout."""
+    original_processor = Processor("SLOS")
+    original_processor.set_circuit(pcvl.Circuit(3))
+    original_processor.set_postselection("[2]==1")
+    proc = MerlinProcessor(processor=original_processor)
+    layer = FakeLayer(final_keys=[(1, 0), (0, 1)])
+    config = SimpleNamespace(
+        circuit=pcvl.Circuit(2),
+        input_state=[1, 0],
+        input_param_order=[],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Local processor experiment metadata is tied to circuit size 3, "
+            "but the execution circuit has size 2."
+        ),
+    ):
+        proc._run_chunk_local(
+            layer,
+            config,
+            torch.empty((1, 0)),
+            nsample=None,
+            state=make_state(),
+            deadline=None,
+        )
+
+    assert str(original_processor.post_select_fn) == "[2] == 1"
+
+
 def test_run_chunk_local_does_not_mutate_original_real_processor_input():
     """Local execution does not rewrite the caller's real Perceval Processor."""
     original_processor = Processor("SLOS")

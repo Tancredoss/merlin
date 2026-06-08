@@ -65,6 +65,7 @@ class _LocalExperimentMetadata:
             or bool(self.out_ports)
             or any(detector is not None for detector in self.detectors)
             or bool(self.detectors_injected)
+            or self.postselection != pcvl.PostSelect()
         )
 
 
