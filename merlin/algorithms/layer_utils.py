@@ -1177,10 +1177,6 @@ def validate_noisy_measurement_strategy(
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )
-    if not active_noise and output == "amplitudes":
-        raise ValueError(
-            "When doing a noisy simulation, the probabilities measurement strategy must be used."
-        )
     if strategy is not None and strategy.upper() != "SLOS":
         raise NotImplementedError(
             f"Backend '{strategy}' is not supported. "
