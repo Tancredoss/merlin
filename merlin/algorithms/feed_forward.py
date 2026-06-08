@@ -268,14 +268,12 @@ class FeedForwardBlock(MerlinModule):
         self._layer_registry_counter = 0
         self._basis_cache: dict[tuple[int, int], tuple[tuple[int, ...], ...]] = {}
 
-        # Global parameter validation
-        # TODO, Change because the trainable_parameters and input_parameters are prefixes, not all params names
-        self._experiment_params = experiment.get_circuit_parameters()
-        if self._experiment_params is not None:
-            if trainable_parameters is not None:
-                assert set(trainable_parameters).issubset(self._experiment_params)
-            if input_parameters is not None:
-                assert set(input_parameters).issubset(self._experiment_params)
+        # Global parameter validation and parameter mapping
+        self._map_prefix_to_params(
+            experiment=experiment,
+            trainable_parameters=trainable_parameters,
+            input_parameters=input_parameters,
+        )
 
         for idx, stage in enumerate(self.stages):
             runtime = self._build_stage_runtime(
@@ -550,6 +548,75 @@ class FeedForwardBlock(MerlinModule):
             partial_measurement=True,
         )
 
+    def _map_prefix_to_params(
+        self,
+        experiment: pcvl.Experiment,
+        trainable_parameters: list[str] | None = None,
+        input_parameters: list[str] | None = None,
+    ) -> None:
+
+        self.prefix_to_params_mapping = {}
+        self.trainable_params_to_prefix_mapping = {}
+        self.input_params_to_prefix_mapping = {}
+
+        assigned_params = {}
+        total_matching_params = set()
+        all_params = experiment.get_circuit_parameters().keys()
+
+        # Trainable parameters
+        if trainable_parameters is not None:
+            for prefix in trainable_parameters:
+                matching_params = [p for p in all_params if p.startswith(prefix)]
+
+                if not matching_params:
+                    raise ValueError(
+                        f"No parameters in the experiment matching prefix '{prefix}'"
+                    )
+
+                for p in matching_params:
+                    if p in assigned_params:
+                        raise ValueError(
+                            f"Parameter '{p}' matches multiple prefixes: "
+                            f"'{assigned_params[p]}' and '{prefix}'"
+                        )
+
+                    assigned_params[p] = prefix
+                    self.trainable_params_to_prefix_mapping[p] = prefix
+                    total_matching_params.add(p)
+
+                self.prefix_to_params_mapping[prefix] = matching_params
+
+        # Input parameters
+        if input_parameters is not None:
+            for prefix in input_parameters:
+                matching_params = [p for p in all_params if p.startswith(prefix)]
+
+                if not matching_params:
+                    raise ValueError(
+                        f"No parameters in the experiment matching prefix '{prefix}'"
+                    )
+
+                for p in matching_params:
+                    if p in assigned_params:
+                        raise ValueError(
+                            f"Parameter '{p}' matches multiple prefixes: "
+                            f"'{assigned_params[p]}' and '{prefix}'"
+                        )
+
+                    assigned_params[p] = prefix
+                    self.input_params_to_prefix_mapping[p] = prefix
+                    total_matching_params.add(p)
+
+                self.prefix_to_params_mapping[prefix] = matching_params
+
+        # Non matched parameters
+        non_matched_params = set(all_params) - total_matching_params
+        if non_matched_params:
+            raise ValueError(
+                f"Parameters '{non_matched_params}' not covered by any "
+                "trainable or input spec"
+            )
+
     def _build_stage_runtime(
         self,
         stage: FFStage,
@@ -580,13 +647,24 @@ class FeedForwardBlock(MerlinModule):
                 raise ValueError(
                     "Amplitude-encoded input states cannot be combined with classical input parameters."
                 )
+
+            input_params_set = set()
+            trainable_params_set = set()
+            for param in stage.unitary.params:
+                if param in self.input_params_to_prefix_mapping:
+                    input_params_set.add(self.input_params_to_prefix_mapping[param])
+                else:
+                    trainable_params_set.add(
+                        self.trainable_params_to_prefix_mapping[param]
+                    )
+
             pre_layer = QuantumLayer(
                 input_size=None if (amplitude_encoding or input_parameters) else 0,
                 circuit=stage.unitary,
                 input_state=base_input_state,
                 n_photons=self.n_photons,
-                trainable_parameters=trainable_parameters,
-                input_parameters=input_parameters,
+                trainable_parameters=list(trainable_params_set),
+                input_parameters=list(input_params_set),
                 measurement_strategy=MeasurementStrategy.amplitudes(
                     self.computation_space
                 ),
@@ -605,8 +683,13 @@ class FeedForwardBlock(MerlinModule):
             pre_layer = None
             detector_transform = None
             initial_amplitudes = None
+
+            trainable_params_set = set()
+            for param in stage.unitary.params:
+                trainable_params_set.add(self.trainable_params_to_prefix_mapping[param])
+
             pre_layers = self._initialize_amplitude_pre_layers(
-                stage, trainable_parameters
+                stage, list(trainable_params_set)
             )
 
         (
@@ -630,7 +713,7 @@ class FeedForwardBlock(MerlinModule):
             detectors=stage.detectors,
             provider=stage.provider,
             pre_layers=pre_layers,
-            trainable_parameters=trainable_parameters,
+            trainable_parameters=list(trainable_params_set),
             initial_amplitudes=initial_amplitudes if is_first else None,
             classical_input_size=classical_input_size,
         )
