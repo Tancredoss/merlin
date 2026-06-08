@@ -523,6 +523,50 @@ def test_amplitude_encoding_requires_valid_configuration():
         )
 
 
+def test_amplitude_encoding_requires_input_state_for_more_photons_than_modes():
+    circuit = pcvl.Circuit(3)
+
+    with pytest.raises(ValueError, match="Provide an explicit input_state"):
+        QuantumLayer(
+            circuit=circuit,
+            n_photons=5,
+            amplitude_encoding=True,
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK
+            ),
+        )
+
+
+def test_amplitude_encoding_accepts_explicit_bunched_fock_input_state():
+    circuit = pcvl.Circuit(3)
+
+    layer = QuantumLayer(
+        circuit=circuit,
+        input_state=[5, 0, 0],
+        n_photons=5,
+        amplitude_encoding=True,
+        measurement_strategy=MeasurementStrategy.probs(
+            computation_space=ComputationSpace.FOCK
+        ),
+    )
+
+    assert layer.input_state == pcvl.BasicState([5, 0, 0])
+
+
+def test_amplitude_encoding_unbunched_rejects_more_photons_than_modes():
+    circuit = pcvl.Circuit(3)
+
+    with pytest.raises(ValueError, match="Provide an explicit input_state"):
+        QuantumLayer(
+            circuit=circuit,
+            n_photons=5,
+            amplitude_encoding=True,
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.UNBUNCHED
+            ),
+        )
+
+
 def test_dual_rail_requires_even_mode_count():
     circuit = pcvl.Circuit(6)
 

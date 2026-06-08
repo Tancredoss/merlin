@@ -46,7 +46,7 @@ import torch
 
 from ..builder.circuit_builder import CircuitBuilder
 from ..core.computation_space import ComputationSpace
-from ..core.state import StatePattern, generate_state
+from ..core.state import StatePattern, _generate_default_input_state, generate_state
 from ..core.state_vector import StateVector
 from ..measurement.detectors import resolve_detectors
 from ..measurement.photon_loss import resolve_photon_loss
@@ -516,7 +516,11 @@ def prepare_input_state(
                 raise ValueError(
                     "circuit_m must be provided to generate default state for amplitude encoding."
                 )
-            input_state = [1] * n_photons + [0] * (circuit_m - n_photons)
+            input_state = _generate_default_input_state(
+                circuit_m,
+                n_photons,
+                computation_space,
+            )
         else:
             if circuit_m is None:
                 raise ValueError(

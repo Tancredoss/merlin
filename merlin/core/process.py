@@ -51,6 +51,7 @@ from ..utils.deprecations import raise_no_bunching_deprecated
 from ..utils.normalization import normalize_probabilities, probabilities_from_amplitudes
 from .base import AbstractComputationProcess
 from .computation_space import ComputationSpace
+from .state import _generate_default_input_state
 
 
 class ComputationProcess(AbstractComputationProcess):
@@ -248,14 +249,18 @@ class ComputationProcess(AbstractComputationProcess):
             self.simulation_graph, NoisySLOSComputeGraph
         ) or isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph)
 
-    def _default_fock_input_state(self) -> list[int]:
-        """Return the default fixed Fock state used for tensor input placeholders."""
-        return [1] * self.n_photons + [0] * (self.m - self.n_photons)
+    def _default_fixed_input_state(self) -> list[int]:
+        """Return the default fixed input state used for tensor input placeholders."""
+        return _generate_default_input_state(
+            self.m,
+            self.n_photons,
+            self.computation_space,
+        )
 
     def _fixed_input_state_for_compute(self) -> list[int] | torch.Tensor:
         """Return the fixed input state used by direct SLOS graph calls."""
         if isinstance(self.input_state, torch.Tensor):
-            return self._default_fock_input_state()
+            return self._default_fixed_input_state()
         return self.input_state
 
     def _compute_source_probabilities_for_unitary(

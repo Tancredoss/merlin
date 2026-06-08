@@ -43,7 +43,7 @@ from ..core.partial_measurement import PartialMeasurement
 from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
 from ..core.sectored_distribution import SectoredDistribution
-from ..core.state import StatePattern, generate_state
+from ..core.state import StatePattern, _generate_default_input_state, generate_state
 from ..core.state_vector import StateVector
 from ..measurement import OutputMapper
 from ..measurement.autodiff import AutoDiffProcess
@@ -421,7 +421,11 @@ class QuantumLayer(MerlinModule):
                     circuit.m, n_photons, StatePattern.SPACED
                 )
             else:
-                self.input_state = [1] * n_photons + [0] * (circuit.m - n_photons)
+                self.input_state = _generate_default_input_state(
+                    circuit.m,
+                    n_photons,
+                    self.computation_space,
+                )
         else:
             raise ValueError("Either input_state or n_photons must be provided")
 
@@ -435,9 +439,7 @@ class QuantumLayer(MerlinModule):
                 n_photons if n_photons is not None else self.input_state.n_photons
             )
             # Pass a placeholder list to ComputationProcess to avoid tensor dimension validation
-            process_input_state = [1] * resolved_n_photons + [0] * (
-                circuit.m - resolved_n_photons
-            )
+            process_input_state = list(self.input_state.basis[0])
             statevector_input = self.input_state
         elif isinstance(self.input_state, torch.Tensor):
             resolved_n_photons = (
