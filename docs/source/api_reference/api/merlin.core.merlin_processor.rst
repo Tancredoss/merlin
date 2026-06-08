@@ -12,7 +12,7 @@ classical layers local. It supports two backend paths:
 
 * **Perceval** :class:`~pcvl.RemoteProcessor` — the original
   Quandela Cloud path.
-* **Perceval** `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v0.11/providers.html#scaleway>`_ — the preferred path
+* **Perceval** `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v1.2/providers.html#scaleway>`_ — the preferred path
   for Scaleway-hosted platforms (and any future session-based providers).
 
 Both paths support batched execution with chunking, limited intra-leaf
@@ -41,6 +41,34 @@ Key Capabilities
 Class Reference
 ===============
 
+BackendCapabilities
+-------------------
+.. class:: BackendCapabilities(name, available_commands)
+
+   Immutable dataclass encapsulating backend capabilities extracted from a
+   RemoteProcessor or ISession.
+
+   **Attributes**
+
+   .. attribute:: name
+
+      ``str`` — Backend platform name (e.g., ``"sim:slos"``,
+      ``"perceval-qpu:scaleway"``).
+
+   .. attribute:: available_commands
+
+      ``list[str]`` — Commands supported by the backend (e.g., ``"probs"``,
+      ``"sample_count"``, ``"samples"``).
+
+   **Example**
+
+   .. code-block:: python
+
+      proc = MerlinProcessor(remote_processor=rp)
+      caps = proc.backend_capabilities
+      print(f"Platform: {caps.name}")
+      print(f"Supports: {caps.available_commands}")
+
 MerlinProcessor
 ---------------
 .. class:: MerlinProcessor(remote_processor=None, session=None, microbatch_size=32, timeout=3600.0, max_shots_per_call=None, chunk_concurrency=1)
@@ -52,7 +80,7 @@ MerlinProcessor
       :class:`~pcvl.RemoteProcessor` (simulator or QPU-backed).
       Merlin clones it per chunk so concurrent jobs have independent state.
       Type: ``RemoteProcessor | None``.
-   :param session: A Perceval `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v0.11/providers.html#scaleway>`_
+   :param session: A Perceval `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v1.2/providers.html#scaleway>`_
       object — e.g. from ``pcvl.providers.scaleway.Session``. Merlin calls
       ``session.build_remote_processor()`` per chunk, giving each chunk
       an independent RP. Type: ``ISession | None``.
@@ -71,6 +99,24 @@ MerlinProcessor
 
    **Attributes**
 
+   .. attribute:: backend_capabilities
+
+      :class:`BackendCapabilities` — Encapsulates backend name and available
+      commands extracted at initialization time. This is the primary way to
+      access backend capabilities.
+
+   .. attribute:: backend_name
+
+      ``str`` — Backward-compatibility property. Equivalent to
+      ``backend_capabilities.name``. Best-effort backend name from the remote
+      processor or session (e.g., ``"sim:slos"``).
+
+   .. attribute:: available_commands
+
+      ``list[str]`` — Backward-compatibility property. Equivalent to
+      ``backend_capabilities.available_commands``. Commands exposed by the
+      backend (e.g., ``"probs"``, ``"sample_count"``, ``"samples"``).
+
    .. attribute:: remote_processor
 
       ``RemoteProcessor | None`` — set when constructed with
@@ -80,15 +126,6 @@ MerlinProcessor
 
       ``ISession | None`` — set when constructed with ``session``;
       ``None`` for the RemoteProcessor path.
-
-   .. attribute:: backend_name
-
-      ``str`` — best-effort backend name from the remote processor or session.
-
-   .. attribute:: available_commands
-
-      ``list[str]`` — commands exposed by the backend (e.g., ``"probs"``,
-      ``"sample_count"``, ``"samples"``). Always empty for the ISession path.
 
    .. attribute:: microbatch_size
                   default_timeout
@@ -209,12 +246,15 @@ Batching & Chunking
 
 Backends & Commands
 ^^^^^^^^^^^^^^^^^^^
-* If the backend exposes ``"probs"``, the processor queries exact probabilities
-  and ignores ``nsample``.
+* Backend capabilities (name and available commands) are extracted once at
+  initialization and stored in ``backend_capabilities``. Both the
+  RemoteProcessor path (via the original RP) and ISession path (via the
+  first processor built from the session) use this snapshot.
+* If the backend exposes ``"probs"`` and  ``nsample`` is None or 0, the processor queries exact probabilities.
 * Otherwise it uses ``"sample_count"`` or ``"samples"`` with
   ``nsample or DEFAULT_SHOTS_PER_CALL``.
-* Command detection is only available on the RemoteProcessor path;
-  the ISession path always uses sampling.
+* The backward-compatibility properties ``backend_name`` and
+  ``available_commands`` provide direct access to the capabilities.
 
 Timeouts & Cancellation
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -236,9 +276,11 @@ Threading & Fresh RPs
 
   * **RemoteProcessor path**: clones the original RP (independent RPC handler).
   * **ISession path**: calls ``session.build_remote_processor()`` (independent
-    RP per chunk).
+    RP per chunk). The session's lifecycle is managed by the context manager
+    (``__enter__`` and ``__exit__`` delegate to the session if provided).
 
-  This ensures concurrent chunks and retries never share mutable RP state.
+  This ensures concurrent chunks and retries never share mutable RP state, and
+  session resources are properly initialized and cleaned up.
 
 Return Shapes & Mapping
 ^^^^^^^^^^^^^^^^^^^^^^^
