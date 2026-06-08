@@ -430,6 +430,7 @@ def test_feedforward_block_matches_perceval_distribution():
 
 
 def test_feedforwardblock_params_only_in_branches():
+    """Verify that trainable parameters are correctly assigned to stages and their layers."""
     m = 6
     k = 4
     n = 4
@@ -448,7 +449,7 @@ def test_feedforwardblock_params_only_in_branches():
     def g(measurement):
         return possible_measurements.index(measurement) + 1
 
-    def adaptive_mzi(measurement):
+    def adaptive_mzi_stage1(measurement):
         g_val = g(measurement)
         return (
             Circuit(2)
@@ -460,9 +461,12 @@ def test_feedforwardblock_params_only_in_branches():
 
     gi = pcvl.GenericInterferometer(m, gi_func)
 
-    feedforward_config = pcvl.FFCircuitProvider(k, 0, Circuit(2))
+    # Stage 1: after first k detectors
+    feedforward_config_1 = pcvl.FFCircuitProvider(k, 0, Circuit(2))
     for measurement in possible_measurements:
-        feedforward_config.add_configuration(measurement, adaptive_mzi(measurement))
+        feedforward_config_1.add_configuration(
+            measurement, adaptive_mzi_stage1(measurement)
+        )
 
     experiment = pcvl.Experiment(m)
     experiment.add(0, gi)
@@ -470,11 +474,9 @@ def test_feedforwardblock_params_only_in_branches():
     for i in range(k):
         experiment.add(i, pcvl.Detector.pnr())
 
-    experiment.add(0, feedforward_config)
+    experiment.add(0, feedforward_config_1)
 
-    print(experiment.get_circuit_parameters().keys())
-
-    FeedForwardBlock(
+    ff_block = FeedForwardBlock(
         experiment,
         input_state=BasicState([1] * n + [0] * (m - n)),
         trainable_parameters=["A", "B"],

@@ -701,6 +701,7 @@ class FeedForwardBlock(MerlinModule):
             if (pre_layer is not None and not amplitude_encoding)
             else 0
         )
+
         return StageRuntime(
             circuit=stage.unitary,
             pre_layer=pre_layer,
