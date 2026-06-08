@@ -591,7 +591,7 @@ class FeedForwardBlock(MerlinModule):
         self.trainable_params_to_prefix_mapping = {}
         self.input_params_to_prefix_mapping = {}
 
-        assigned_params = {}
+        assigned_params: dict[str, str] = {}
         total_matching_params = set()
         all_params = experiment.get_circuit_parameters().keys()
 
