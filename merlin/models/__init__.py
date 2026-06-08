@@ -24,8 +24,24 @@
 Merlin models package containing various quantum machine learning models.
 """
 
+from .photonic_generator import (
+    GeneratorMeasurements,
+    ImageAdapter,
+    LatentDistribution,
+    NormalLatent,
+    OutputAdapter,
+    PhotonicGenerator,
+    VectorAdapter,
+)
 from .qcnn import QCNNClassifier
 
 __all__ = [
+    "GeneratorMeasurements",
+    "ImageAdapter",
+    "LatentDistribution",
+    "NormalLatent",
+    "OutputAdapter",
+    "PhotonicGenerator",
     "QCNNClassifier",
+    "VectorAdapter",
 ]

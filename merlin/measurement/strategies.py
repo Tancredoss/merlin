@@ -80,6 +80,7 @@ class BaseMeasurementStrategy:
         sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
         apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
         apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        readout: Callable[[torch.Tensor], torch.Tensor] | None = None,
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> torch.Tensor | PartialMeasurement:
         """Return the processed result for the selected measurement strategy.
@@ -100,6 +101,8 @@ class BaseMeasurementStrategy:
             Photon-loss transform.
         apply_detectors : Callable[[torch.Tensor], torch.Tensor]
             Detector transform.
+        readout : Callable[[torch.Tensor], torch.Tensor] | None
+            Optional readout applied to probabilities before grouping.
         grouping : Callable[[torch.Tensor], torch.Tensor] | None
             Optional grouping applied to the resulting probabilities.
 
@@ -127,6 +130,7 @@ class DistributionStrategy(BaseMeasurementStrategy):
         sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
         apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
         apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        readout: Callable[[torch.Tensor], torch.Tensor] | None = None,
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> torch.Tensor:
         # Distribution strategies apply detector/noise transforms before sampling.
@@ -135,6 +139,8 @@ class DistributionStrategy(BaseMeasurementStrategy):
 
         if apply_sampling and effective_shots > 0:
             distribution = sample_fn(distribution, effective_shots)
+        if readout is not None:
+            distribution = readout(distribution)
         if grouping is not None:
             return grouping(distribution)
         return distribution
@@ -188,6 +194,7 @@ class PartialMeasurementStrategy(BaseMeasurementStrategy):
         sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
         apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
         apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        readout: Callable[[torch.Tensor], torch.Tensor] | None = None,
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> PartialMeasurement:
         if apply_sampling and effective_shots > 0:
@@ -245,13 +252,19 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
     computation_space : ComputationSpace | None
         Computation space used by the strategy.
     grouping : LexGrouping | ModGrouping | None
-        Optional grouping applied to probability outputs.
+        Optional grouping applied to probability outputs. If
+        ``occupancy_readout`` is ``True``, grouping is applied after the
+        occupancy readout.
+    occupancy_readout : bool
+        Whether probability outputs are collapsed to binary occupied/unoccupied
+        output keys. Default value is ``False``.
     """
 
     type: MeasurementKind
     measured_modes: tuple[int, ...] = ()
     computation_space: ComputationSpace | None = None
     grouping: LexGrouping | ModGrouping | None = None
+    occupancy_readout: bool = False
     if TYPE_CHECKING:
         # Type-checker-only legacy/compat attributes. At runtime, the metaclass
         # resolves these names to either a new API instance (NONE) or legacy enums.
@@ -265,6 +278,8 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
     def probs(
         computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
         grouping: LexGrouping | ModGrouping | None = None,
+        *,
+        occupancy_readout: bool = False,
     ) -> MeasurementStrategy:
         """Create a probability-output measurement strategy.
 
@@ -273,19 +288,42 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         computation_space : ComputationSpace
             Computation space used to enumerate the output basis.
         grouping : LexGrouping | ModGrouping | None
-            Optional grouping applied to the resulting probabilities.
+            Optional grouping applied to the resulting probabilities. If
+            ``occupancy_readout`` is ``True``, grouping is applied after the
+            occupancy readout.
+        occupancy_readout : bool
+            Whether to collapse count-resolved Fock output keys into binary
+            occupied/unoccupied keys before returning probabilities. Only
+            supported with ``ComputationSpace.FOCK``. Default value is
+            ``False``.
 
         Returns
         -------
         MeasurementStrategy
             Probability measurement strategy.
+
+        Raises
+        ------
+        TypeError
+            If ``occupancy_readout`` is not a bool.
+        ValueError
+            If occupancy readout is requested outside ``ComputationSpace.FOCK``.
         """
         # Full measurement returning a probability distribution.
         computation_space = ComputationSpace.coerce(computation_space)
+        if type(occupancy_readout) is not bool:
+            raise TypeError("occupancy_readout must be a bool.")
+        if occupancy_readout:
+            if computation_space is not ComputationSpace.FOCK:
+                raise ValueError(
+                    "occupancy_readout=True is only supported with "
+                    "computation_space=ComputationSpace.FOCK."
+                )
         return MeasurementStrategy(
             type=MeasurementKind["PROBABILITIES"],
             computation_space=computation_space,
             grouping=grouping,
+            occupancy_readout=occupancy_readout,
         )
 
     @staticmethod
@@ -388,6 +426,7 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
                 and self.measured_modes == other.measured_modes
                 and self.computation_space == other.computation_space
                 and self.grouping == other.grouping
+                and self.occupancy_readout == other.occupancy_readout
             )
         if isinstance(other, _LegacyMeasurementStrategy):
             return self.type.name == other.name
@@ -403,6 +442,7 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
             self.measured_modes,
             self.computation_space,
             self.grouping,
+            self.occupancy_readout,
         ))
 
     def validate_modes(self, n_modes: int) -> None:
