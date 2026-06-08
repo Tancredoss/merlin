@@ -6,6 +6,8 @@ Tests in this module verify that deprecated APIs emit the expected
 TODO: In release 0.5.x, remove this module along with the deprecated APIs.
 """
 
+import warnings
+
 import numpy as np
 import perceval as pcvl
 import pytest
@@ -437,6 +439,25 @@ class TestDeprecatedFidelityKernelSimple:
         assert sum(kernel.input_state) == 2
         assert kernel.input_state == [1, 0, 1, 0]
 
+    def test_simple_factory_warns_once_for_forwarded_n_modes(self):
+        """FidelityKernel.simple suppresses duplicate forwarded n_modes warnings."""
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always", DeprecationWarning)
+            kernel = FidelityKernel.simple(input_size=2, n_modes=4)
+
+        messages = [str(warning.message) for warning in warning_list]
+        n_modes_messages = [
+            message
+            for message in messages
+            if "Parameter 'n_modes' is deprecated" in message
+        ]
+
+        assert len(n_modes_messages) == 1
+        assert any(
+            "FidelityKernel.simple() is deprecated" in message for message in messages
+        )
+        assert kernel.feature_map.circuit.m == 4
+
     def test_simple_factory_default_photons(self):
         """Test simple factory with default n_modes (should equal input_size + 1)."""
         kernel = FidelityKernel.simple(input_size=3)
@@ -627,3 +648,97 @@ class TestDeprecatedKernelCircuitBuilder:
         """build_fidelity_kernel emits DeprecationWarning."""
         with pytest.warns(DeprecationWarning, match="KernelCircuitBuilder"):
             KernelCircuitBuilder().input_size(2).n_modes(4).build_fidelity_kernel()
+
+
+class TestDeprecatedConstructorConsistency:
+    """Tests comparing deprecated kernel constructors with current constructors."""
+
+    def test_feature_map_unitary_consistency(self):
+        """Feature maps built through legacy APIs share the same topology."""
+        x1, x2 = pcvl.P("x1"), pcvl.P("x2")
+        manual_feature_map = FeatureMap(
+            circuit=pcvl.Circuit(3)
+            // pcvl.PS(x1)
+            // pcvl.BS()
+            // pcvl.PS(x2)
+            // pcvl.BS(),
+            input_size=2,
+            input_parameters="x",
+        )
+
+        with pytest.warns(DeprecationWarning, match="n_modes"):
+            simple_feature_map = FeatureMap.simple(input_size=2, n_modes=3)
+
+        legacy_builder = KernelCircuitBuilder()
+        builder_feature_map = legacy_builder.input_size(2).n_modes(3).build_feature_map()
+
+        assert (
+            manual_feature_map.input_size
+            == simple_feature_map.input_size
+            == builder_feature_map.input_size
+        )
+        assert (
+            manual_feature_map.circuit.m
+            == simple_feature_map.circuit.m
+            == builder_feature_map.circuit.m
+        )
+
+    def test_kernel_computation_consistency(self):
+        """Deprecated constructors yield kernels compatible with current kernels."""
+        builder = CircuitBuilder(n_modes=4)
+        builder.add_superpositions(depth=1, name="phi_1_")
+        builder.add_angle_encoding(modes=[0, 1], name="input")
+        builder.add_superpositions(depth=1, name="phi_2_")
+        current_feature_map = FeatureMap(
+            builder=builder,
+            input_size=2,
+            input_parameters=None,
+        )
+        current_kernel = FidelityKernel(
+            feature_map=current_feature_map,
+            input_state=[1, 1, 0, 0],
+        )
+
+        with pytest.warns(DeprecationWarning, match="n_modes"):
+            simple_kernel = FidelityKernel.simple(
+                input_size=2,
+                n_modes=4,
+            )
+
+        legacy_builder = KernelCircuitBuilder()
+        builder_kernel = (
+            legacy_builder
+            .input_size(2)
+            .n_modes(4)
+            .trainable(False)
+            .build_fidelity_kernel()
+        )
+
+        assert (
+            current_kernel.input_size
+            == simple_kernel.input_size
+            == builder_kernel.input_size
+            == 2
+        )
+        assert (
+            current_kernel.feature_map.circuit.m
+            == simple_kernel.feature_map.circuit.m
+            == builder_kernel.feature_map.circuit.m
+            == 4
+        )
+        assert (
+            len(current_kernel.input_state)
+            == len(simple_kernel.input_state)
+            == len(builder_kernel.input_state)
+        )
+        assert (
+            sum(current_kernel.input_state)
+            == sum(simple_kernel.input_state)
+            == sum(builder_kernel.input_state)
+        )
+
+        X = torch.tensor([[0.1, 0.2]], dtype=torch.float32)
+        for kernel in (current_kernel, simple_kernel, builder_kernel):
+            result = kernel(X)
+            assert result.shape == (1, 1)
+            assert torch.isfinite(result).all()
