@@ -50,7 +50,7 @@ Four components cooperate to build and evaluate kernels:
 	 kernel-matrix construction to the backend.
 
 4. :class:`~merlin.builder.circuit_builder.CircuitBuilder` – declarative
-	 helper to produce a standard feature map and fidelity kernel.
+	 helper to build circuits for ``FeatureMap(builder=...)`` (and therefore ``FidelityKernel``).
 
 Data encoding pipeline
 ----------------------
