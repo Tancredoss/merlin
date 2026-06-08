@@ -32,6 +32,10 @@ from merlin.algorithms.layer_utils import NoiseGroups
 from merlin.core.computation_space import ComputationSpace
 from merlin.core.process import ComputationProcess, ComputationProcessFactory
 from merlin.core.sectored_distribution import SectoredDistribution
+from merlin.utils.normalization import (
+    normalize_probabilities,
+    probabilities_from_amplitudes,
+)
 
 
 def _mzi_circuit() -> pcvl.Circuit:
@@ -99,6 +103,45 @@ def _manual_phase_error_average(
     return accumulated / process._n_phase_error_samples
 
 
+def _manual_coherent_phase_error_average(
+    process: ComputationProcess,
+    parameters: list[torch.Tensor],
+) -> torch.Tensor:
+    accumulated: torch.Tensor | None = None
+    for _sample_index in range(process._n_phase_error_samples):
+        unitary = process.converter.to_tensor(*parameters, apply_phase_error=True)
+        amplitudes = process._compute_superposition_amplitudes_for_unitary(unitary)
+        probabilities = probabilities_from_amplitudes(amplitudes)
+        probabilities = normalize_probabilities(
+            probabilities, process.computation_space
+        )
+        accumulated = (
+            probabilities if accumulated is None else accumulated + probabilities
+        )
+
+    assert accumulated is not None
+    return accumulated / process._n_phase_error_samples
+
+
+def _manual_incoherent_phase_error_average(
+    process: ComputationProcess,
+    parameters: list[torch.Tensor],
+) -> torch.Tensor:
+    accumulated: torch.Tensor | None = None
+    for _sample_index in range(process._n_phase_error_samples):
+        unitary = process.converter.to_tensor(*parameters, apply_phase_error=True)
+        probabilities = process._compute_source_probabilities_for_unitary(
+            unitary, amplitude_encoding=True
+        )
+        assert isinstance(probabilities, torch.Tensor)
+        accumulated = (
+            probabilities if accumulated is None else accumulated + probabilities
+        )
+
+    assert accumulated is not None
+    return accumulated / process._n_phase_error_samples
+
+
 def test_no_noise_compute_returns_amplitudes():
     process = _process()
 
@@ -157,7 +200,7 @@ def test_phase_error_matches_manual_probability_average():
 
 def test_phase_error_with_tensor_superposition_averages_probabilities():
     input_state = torch.tensor(
-        [1.0, 1.0],
+        [1.0, 1.0j],
         dtype=torch.complex128,
     )
     process = _process(
@@ -170,13 +213,15 @@ def test_phase_error_with_tensor_superposition_averages_probabilities():
     torch.manual_seed(123)
     output = process.compute(parameters, amplitude_encoding=True)
     torch.manual_seed(123)
-    expected = _manual_phase_error_average(
-        process, parameters, amplitude_encoding=True
-    )
+    expected = _manual_coherent_phase_error_average(process, parameters)
+    torch.manual_seed(123)
+    incoherent_mixture = _manual_incoherent_phase_error_average(process, parameters)
 
     assert isinstance(output, torch.Tensor)
     assert isinstance(expected, torch.Tensor)
+    assert not output.is_complex()
     assert torch.allclose(output, expected)
+    assert not torch.allclose(expected, incoherent_mixture)
     assert torch.allclose(
         output.sum(dim=-1),
         torch.ones(output.shape[:-1], dtype=output.dtype, device=output.device),

@@ -409,7 +409,7 @@ class ComputationProcess(AbstractComputationProcess):
         ``mean_k |SLOS(U_k) @ psi|^2`` rather than
         ``|mean_k SLOS(U_k) @ psi|^2``.
         """
-        if self._returns_probabilities():
+        if self._has_source_noise():
             return self._compute_source_probabilities_for_unitary(
                 unitary, amplitude_encoding=amplitude_encoding
             )
