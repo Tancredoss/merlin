@@ -1100,11 +1100,13 @@ def validate_noisy_measurement_strategy(
         raise NotImplementedError(
             "The noise computation with the return_object feature set at True is not yet implemented."
         )
-    if output == "amplitudes" or "partial":
+    if output == "amplitudes":
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )
-    if output == "mode_expectations" and noise is not None:
+    if (
+        output == "mode_expectations" or output == "mode_expectations"
+    ) and noise is not None:
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )
@@ -1196,5 +1198,7 @@ def _normalize_sector_keys(
     keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]],
 ) -> tuple[tuple[int, ...], ...]:
     if keys and isinstance(keys[0], list):
-        return tuple(tuple(k) for key_list in keys for k in key_list)
-    return tuple(tuple(k) for k in cast(list[tuple[int, ...]], keys))
+        nested_keys = cast(list[list[tuple[int, ...]]], keys)
+        return tuple(tuple(k) for key_list in nested_keys for k in key_list)
+    flat_keys = cast(list[tuple[int, ...]], keys)
+    return tuple(tuple(k) for k in flat_keys)
