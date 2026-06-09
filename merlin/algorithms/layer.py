@@ -66,6 +66,7 @@ from ..utils.grouping import ModGrouping
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
     InitializationContext,
+    _normalize_sector_keys,
     apply_angle_encoding,
     feature_count_for_prefix,
     normalize_noise,
@@ -77,7 +78,6 @@ from .layer_utils import (
     validate_and_resolve_circuit_source,
     validate_encoding_mode,
     vet_experiment,
-    _normalize_sector_keys,
 )
 from .module import MerlinModule
 
