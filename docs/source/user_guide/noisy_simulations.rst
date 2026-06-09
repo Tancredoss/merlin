@@ -5,11 +5,11 @@ Noisy simulations with SLOS
 Introduction
 =============
 
-Current quantum architectures are in the NISQ (noisy intermediate-scale quantum) regime, which makes the computation noisy. That means your current MerLin simulations, which are theoretically correct, will not give the same results as a run on current photonic devices.
+Current quantum architectures, as the ones Quandela offer on the cloud (Ascella and Belenos), are in the NISQ (noisy intermediate-scale quantum) regime, which makes the computation noisy. That means your current MerLin simulations, which are theoretically correct, will not give the same results as a run on current photonic devices. Because runs will be noisy on the QPU when your simulation was not, the actual unitary computed on the quantum device is not the one expected by your model that expects a perfect simulation.
 
-This can create a problem because models trained on a simulator will not perform well on hardware when the output is modified. The solution is to use tunable noisy simulations to train your models locally so they perform well on hardware.
+This can create a problem because models trained on a simulator will not perform well on hardware when the output is modified. The solution is to use tunable noisy simulations model/replicate that noise so your models are trained on a simulator closer to the actual hardware's performances.
 
-Since MerLin 0.4, noise has been added to the SLOS background to allow this type of training to better match hardware.
+Since MerLin 0.4, realistic noise has been added to the SLOS background to allow more realistic training and close the gap between simulation and hardware.
 
 
 Add Noise to the SLOS Simulation
@@ -260,6 +260,16 @@ Noisy Simulations Guidelines
 
 For noisy simulations, there are a couple of rules that need to be followed:
 
-1. All noisy simulations must be run with the probabilities measurement strategy.
+1. All noisy simulations must be run with the probabilities measurement strategy to reflect what is the actual output on the quantum device.
 2. Noisy simulations cannot use ``return_object=True``.
 3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning.
+
+
+Noise Detectors to restrict the Fock Space
+===========================================
+
+As mentioned in the previous section, noisy simulations only support the Fock computation space as g2 errors may create bunched input states in this computation space. However, current detectors on the hardware are not not photon resolving. That means that the output space explored by the quantum computer is smaller than the full complete Fock basis. 
+
+In order to simulate the quantum process as closely as possible to the quantum hardware, we can impose these limitations on the photon detcetors using :class:`pcvl.Detector` objects in a :class:`pcvl.Experiment`. Here is a quick example on how to use them.
+
+TODO Will be completed in next commit
