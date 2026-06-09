@@ -372,8 +372,9 @@ class MerlinProcessor:
     Parameters
     ----------
     remote_processor : RemoteProcessor | None
-        Perceval remote processor used in the direct remote path. Cloned per chunk
-        for thread safety.
+        Deprecated Perceval remote processor entry point. Pass the same
+        RemoteProcessor through ``processor=`` instead. Cloned per chunk for
+        thread safety.
     session : ISession | None
         Perceval session (e.g. Scaleway) used to build remote processors.
         ``session.build_remote_processor()`` is called per chunk. Exactly one of
@@ -461,9 +462,10 @@ class MerlinProcessor:
         Parameters
         ----------
         remote_processor : RemoteProcessor | None
-            Perceval ``RemoteProcessor`` (simulator or QPU-backed). Exactly
-            one of ``processor``, ``remote_processor``, or ``session`` must be
-            provided. Default: None.
+            Deprecated Perceval ``RemoteProcessor`` entry point (simulator or
+            QPU-backed). Pass the same object through ``processor=`` instead.
+            Exactly one of ``processor``, ``remote_processor``, or ``session``
+            must be provided. Default: None.
         session : ISession | None
             Perceval session (e.g. ``pcvl.providers.scaleway.Session``).
             Exactly one of ``processor``, ``remote_processor``, or ``session``
@@ -503,6 +505,11 @@ class MerlinProcessor:
         ValueError
             If no token can be resolved from the RemoteProcessor path or
             explicitly provided.
+
+        Warns
+        -----
+        DeprecationWarning
+            If ``remote_processor`` is provided instead of ``processor``.
         """
         n_backends = sum(
             backend is not None for backend in (processor, remote_processor, session)
@@ -516,6 +523,15 @@ class MerlinProcessor:
             raise TypeError(
                 "'processor', 'remote_processor', and 'session' are mutually "
                 "exclusive; provide exactly one."
+            )
+        if remote_processor is not None:
+            warnings.warn(
+                "The 'remote_processor' argument is deprecated and will be "
+                "removed in a future release. Pass the RemoteProcessor through "
+                "'processor=' instead; the processor argument will become the "
+                "source of truth.",
+                DeprecationWarning,
+                stacklevel=2,
             )
 
         self.processor: AProcessor | None = None
@@ -1690,13 +1706,22 @@ class MerlinProcessor:
         RemoteProcessor
             A new, independent ``RemoteProcessor`` instance ready to set circuit,
             configure iterations, and submit sampler jobs.
+
+        Raises
+        ------
+        RuntimeError
+            If called for a local processor backend.
         """
         if self.session is not None:
             # Session path: create a fresh processor from the session
             return self.session.build_remote_processor()
-        else:
-            # RemoteProcessor path: clone the stored processor
-            return self._clone_remote_processor(self.remote_processor)
+        if self.remote_processor is None:
+            raise RuntimeError(
+                "Fresh RemoteProcessor creation is only available for remote "
+                "processor or session backends."
+            )
+        # RemoteProcessor path: clone the stored processor
+        return self._clone_remote_processor(self.remote_processor)
 
     # ---------------- Utilities & mapping ----------------
 
@@ -2018,7 +2043,17 @@ class MerlinProcessor:
             If ``layer`` does not provide ``export_config()``.
         ValueError
             If ``input`` is not one- or two-dimensional.
+        RuntimeError
+            If called on a local processor backend. Shot estimation uses the
+            Perceval remote estimator and is remote-only.
         """
+        if self.backend_kind == "local_processor":
+            raise RuntimeError(
+                "estimate_required_shots_per_input() is only available for "
+                "remote processor or session backends; local processor backends "
+                "do not expose the Perceval remote estimator."
+            )
+
         if not isinstance(layer, SupportsExportConfig):
             raise TypeError(
                 "For shot estimation, the layer must have a export_config() method returning a dictionary of this type: {'circuit':perceval.ACircuit, 'input_state': Sequence[Integral]|'perceval state object'|None, 'input_param_order': Sequence[str]|None}."

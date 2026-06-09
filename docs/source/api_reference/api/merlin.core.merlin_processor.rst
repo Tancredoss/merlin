@@ -71,7 +71,7 @@ BackendCapabilities
 
    .. code-block:: python
 
-      proc = MerlinProcessor(remote_processor=rp)
+      proc = MerlinProcessor(processor=rp)
       caps = proc.backend_capabilities
       print(f"Platform: {caps.name}")
       print(f"Supports: {caps.available_commands}")
@@ -84,10 +84,15 @@ MerlinProcessor
    Exactly **one** of ``processor``, ``remote_processor``, or ``session`` must
    be provided.
 
-   :param remote_processor: Authenticated Perceval
-      :class:`~pcvl.RemoteProcessor` (simulator or QPU-backed).
-      Merlin clones it per chunk so concurrent jobs have independent state.
-      Type: ``RemoteProcessor | None``.
+   .. warning:: *Deprecated since version 0.4:*
+      The ``remote_processor`` constructor argument is deprecated and will be
+      removed in a future release. Pass the same
+      :class:`~pcvl.RemoteProcessor` through ``processor=`` instead.
+
+   :param remote_processor: Deprecated authenticated Perceval
+      :class:`~pcvl.RemoteProcessor` entry point. Pass the same object through
+      ``processor=`` instead. Merlin clones it per chunk so concurrent jobs
+      have independent state. Type: ``RemoteProcessor | None``.
    :param session: A Perceval `pcvl.runtime.session.ISession <https://perceval.quandela.net/docs/v1.2/providers.html#scaleway>`_
       object — e.g. from ``pcvl.providers.scaleway.Session``. Merlin calls
       ``session.build_remote_processor()`` per chunk, giving each chunk
@@ -248,7 +253,8 @@ Shot Estimation (No Submission)
 .. method:: estimate_required_shots_per_input(layer, input, desired_samples_per_input) -> list[int]
 
    Ask the platform estimator how many shots are required **per input row** to
-   reach a target number of *useful* samples.
+   reach a target number of *useful* samples. This helper is available only
+   for remote processor and session backends.
 
    :param torch.nn.Module layer: A quantum leaf (must implement
       ``export_config()``).
@@ -258,6 +264,7 @@ Shot Estimation (No Submission)
    :returns: ``list[int]`` of length ``B`` (``0`` indicates "not viable" under
       current settings).
    :rtype: list[int]
+   :raises RuntimeError: If called on a local ``processor=`` backend.
    :raises TypeError: If ``layer`` does not expose ``export_config()``.
    :raises ValueError: If ``input`` is not 1D or 2D.
 
@@ -351,7 +358,7 @@ Synchronous execution (RemoteProcessor)
 ----------------------------------------
 .. code-block:: python
 
-   proc = MerlinProcessor(pcvl.RemoteProcessor("sim:slos"))
+   proc = MerlinProcessor(processor=pcvl.RemoteProcessor("sim:slos"))
    y = proc.forward(model, X, nsample=20_000)
 
 Synchronous execution (ISession)

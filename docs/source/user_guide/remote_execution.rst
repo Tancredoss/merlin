@@ -174,7 +174,7 @@ Instantiation & Options
 .. code-block:: text
 
     MerlinProcessor(
-        remote_processor=None,       # RemoteProcessor — legacy path
+        remote_processor=None,       # RemoteProcessor — deprecated legacy path
         session=None,                # ISession — preferred path
         microbatch_size=32,
         timeout=3600.0,
@@ -188,7 +188,13 @@ Instantiation & Options
 Exactly **one** of ``remote_processor``, ``session``, or ``processor`` must be
 provided.
 
-* **remote_processor (RemoteProcessor | None)**: Quandela Cloud backend.
+.. warning:: *Deprecated since version 0.4:*
+   The ``remote_processor`` constructor argument is deprecated and will be
+   removed in a future release. Pass the same ``RemoteProcessor`` through
+   ``processor=`` instead.
+
+* **remote_processor (RemoteProcessor | None)**: Deprecated Quandela Cloud
+  backend entry point. Pass the same object through ``processor=`` instead.
   Merlin clones it internally per chunk so multiple jobs can run safely in
   parallel without altering your original instance.
 
@@ -328,7 +334,8 @@ Estimating Required Shots
 -------------------------
 
 Merlin includes a helper that proxies Perceval's built-in estimator and **does
-not** submit jobs:
+not** submit jobs. The estimator is available only for remote processor and
+session backends; local ``processor=`` backends raise ``RuntimeError``:
 
 .. code-block:: python
 
@@ -405,7 +412,7 @@ Works with both computation spaces — just adjust the output dimension:
         nn.Softmax(dim=-1),
     ).eval()
 
-    proc = MerlinProcessor(pcvl.RemoteProcessor("sim:slos"))
+    proc = MerlinProcessor(processor=pcvl.RemoteProcessor("sim:slos"))
     X = torch.rand(6, 3)
     y = proc.forward(model, X, nsample=5000)
 
@@ -451,7 +458,7 @@ using SciPy:
                 off += sz
 
     x0 = get_flat().double().numpy()
-    proc = MerlinProcessor(pcvl.RemoteProcessor("sim:slos"))
+    proc = MerlinProcessor(processor=pcvl.RemoteProcessor("sim:slos"))
     X = torch.rand(8, 3)
 
     # Objective: maximise mean scalar output → minimise negative
@@ -473,7 +480,7 @@ Local vs remote A/B (force simulation)
 
     q = QuantumLayer(...).eval()
     X = torch.rand(4, q.input_size)
-    proc = MerlinProcessor(pcvl.RemoteProcessor("sim:slos"))
+    proc = MerlinProcessor(processor=pcvl.RemoteProcessor("sim:slos"))
 
     # Remote path (offloaded)
     y_remote = proc.forward(q, X, nsample=5000)
@@ -562,6 +569,8 @@ API Reference (Summary)
 **Constructor**
 
 * ``MerlinProcessor(remote_processor=None, session=None, microbatch_size=32, timeout=3600.0, max_shots_per_call=None, chunk_concurrency=1, token=None, *, processor=None)``
+  ``remote_processor`` is deprecated; pass remote processors through
+  ``processor=``.
 
 **Execution**
 
@@ -590,7 +599,9 @@ Version Notes
 -------------
 
 * ``session`` parameter added for ``ISession``-based backends (Scaleway).
-  Exactly one of ``remote_processor`` or ``session`` must be provided. A 
+  Exactly one of ``processor``, ``remote_processor``, or ``session`` must be
+  provided. ``remote_processor`` is deprecated and remains supported for
+  compatibility. A
   given session then uses its remote processor from the ``session.build_remote_processor()``
   method to define the available commands. Both remote paths support chunking and ``chunk_concurrency`` — each chunk
   gets an independent ``RemoteProcessor`` via ``session.build_remote_processor()``.

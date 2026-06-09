@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import threading
 import time
+import warnings
 from collections.abc import Sequence
 from concurrent.futures import CancelledError
 from dataclasses import dataclass
 from numbers import Integral
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 import perceval as pcvl
@@ -384,7 +385,9 @@ def test_merlinprocessor_accepts_remote_processor_through_processor_argument():
     remote_processor = make_remote_processor_mock(["probs", "sample_count"])
 
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
-        proc = MerlinProcessor(processor=remote_processor)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            proc = MerlinProcessor(processor=remote_processor)
 
     assert proc.processor is None
     assert proc.remote_processor is remote_processor
@@ -407,7 +410,8 @@ def test_merlinprocessor_accepts_remote_processor_through_remote_processor_argum
     remote_processor = make_remote_processor_mock(["probs"])
 
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
-        proc = MerlinProcessor(remote_processor=remote_processor)
+        with pytest.warns(DeprecationWarning, match="'remote_processor' argument"):
+            proc = MerlinProcessor(remote_processor=remote_processor)
 
     assert proc.processor is None
     assert proc.remote_processor is remote_processor
@@ -420,7 +424,8 @@ def test_merlinprocessor_preserves_positional_remote_processor_argument():
     remote_processor = make_remote_processor_mock(["probs"])
 
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
-        proc = MerlinProcessor(remote_processor, None, 16)
+        with pytest.warns(DeprecationWarning, match="'remote_processor' argument"):
+            proc = MerlinProcessor(remote_processor, None, 16)
 
     assert proc.processor is None
     assert proc.remote_processor is remote_processor
@@ -567,7 +572,7 @@ def test_remote_processor_path_stores_backend_capabilities():
     remote_processor.proxies = None
 
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
-        proc = MerlinProcessor(remote_processor=remote_processor)
+        proc = MerlinProcessor(processor=remote_processor)
 
     assert proc.backend_capabilities.name == "sim:slos"
     assert proc.backend_capabilities.available_commands == ("probs", "sample_count")
@@ -581,7 +586,7 @@ def test_backend_name_property_backward_compatibility():
     remote_processor.proxies = None
 
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
-        proc = MerlinProcessor(remote_processor=remote_processor)
+        proc = MerlinProcessor(processor=remote_processor)
 
     # Old-style access should still work
     assert proc.backend_name == "sim:slos"
@@ -599,7 +604,7 @@ def test_available_commands_property_backward_compatibility():
     remote_processor.proxies = None
 
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
-        proc = MerlinProcessor(remote_processor=remote_processor)
+        proc = MerlinProcessor(processor=remote_processor)
 
     # Old-style access should still work
     assert proc.available_commands == ("probs", "samples")
@@ -653,7 +658,7 @@ def test_remote_processor_path_copies_available_commands():
     remote_processor.proxies = None
 
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
-        proc = MerlinProcessor(remote_processor=remote_processor)
+        proc = MerlinProcessor(processor=remote_processor)
 
     assert proc.remote_processor is remote_processor
     assert proc.session is None
@@ -1021,6 +1026,76 @@ def test_local_aprocessor_backend_executes_quantum_leaf_without_chunking():
     torch.testing.assert_close(output, torch.ones(3, 2))
     assert proc._run_chunk_local.call_count == 1
     assert [chunk.shape[0] for chunk in observed_chunks] == [3]
+
+
+def test_estimate_required_shots_rejects_local_processor_backend():
+    """Shot estimation is remote-only and fails clearly for local processors."""
+
+    class LocalQuantumLeaf(MerlinModule):
+        def export_config(self):
+            return {
+                "circuit": pcvl.Circuit(m=2),
+                "input_state": [1, 0],
+                "input_param_order": ["theta_0", "theta_1"],
+            }
+
+    proc = MerlinProcessor(processor=make_local_aprocessor(["probs"]))
+    proc._create_fresh_rp = MagicMock(side_effect=AssertionError("unexpected RP"))
+
+    with pytest.raises(RuntimeError, match="remote processor or session backends"):
+        proc.estimate_required_shots_per_input(
+            LocalQuantumLeaf(),
+            torch.tensor([[0.1, 0.2]], dtype=torch.float32),
+            desired_samples_per_input=100,
+        )
+
+    proc._create_fresh_rp.assert_not_called()
+
+
+def test_estimate_required_shots_uses_remote_processor_passed_through_processor():
+    """RemoteProcessor passed through processor= can use the remote estimator."""
+
+    class RemoteEstimationLayer(MerlinModule):
+        def export_config(self):
+            return {
+                "circuit": pcvl.Circuit(m=2),
+                "input_state": [1, 0],
+                "input_param_order": ["theta_0", "theta_1"],
+            }
+
+    remote_processor = make_remote_processor_mock(["probs"])
+    child_remote_processor = MagicMock(spec=RemoteProcessor)
+    child_remote_processor.estimate_required_shots.side_effect = [123, 456]
+
+    with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
+        proc = MerlinProcessor(processor=remote_processor)
+
+    proc._create_fresh_rp = MagicMock(return_value=child_remote_processor)
+    input_tensor = torch.tensor(
+        [[0.25, 0.5], [0.75, 1.0]], dtype=torch.float64
+    )
+
+    estimates = proc.estimate_required_shots_per_input(
+        RemoteEstimationLayer(),
+        input_tensor,
+        desired_samples_per_input=100,
+    )
+
+    assert estimates == [123, 456]
+    proc._create_fresh_rp.assert_called_once_with()
+    child_remote_processor.set_circuit.assert_called_once()
+    child_remote_processor.with_input.assert_called_once_with(pcvl.BasicState([1, 0]))
+    child_remote_processor.min_detected_photons_filter.assert_called_once_with(1)
+    assert child_remote_processor.estimate_required_shots.call_args_list == [
+        call(
+            100,
+            param_values={"theta_0": 0.25 * np.pi, "theta_1": 0.5 * np.pi},
+        ),
+        call(
+            100,
+            param_values={"theta_0": 0.75 * np.pi, "theta_1": 1.0 * np.pi},
+        ),
+    ]
 
 
 def test_run_chunk_local_uses_fresh_processor_per_execution():
@@ -1861,7 +1936,7 @@ def test_create_fresh_rp_remote_processor_path_clones_with_token():
     original_rp.proxies = None
 
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="test_token"):
-        proc = MerlinProcessor(remote_processor=original_rp)
+        proc = MerlinProcessor(processor=original_rp)
 
     # Verify session is None (RemoteProcessor path)
     assert proc.session is None
@@ -1932,6 +2007,14 @@ def test_create_fresh_rp_session_path_creates_independent_processors():
     assert session.build_remote_processor.call_count == 4  # init + 3 calls
 
 
+def test_create_fresh_rp_rejects_local_processor_backend():
+    """Fresh RemoteProcessor creation is invalid for local processor backends."""
+    proc = MerlinProcessor(processor=make_local_aprocessor(["probs"]))
+
+    with pytest.raises(RuntimeError, match="Fresh RemoteProcessor creation"):
+        proc._create_fresh_rp()
+
+
 def test_create_fresh_rp_remote_processor_path_maintains_available_commands():
     """RemoteProcessor path preserves available_commands through cloning."""
     original_rp = MagicMock(spec=RemoteProcessor)
@@ -1940,7 +2023,7 @@ def test_create_fresh_rp_remote_processor_path_maintains_available_commands():
     original_rp.proxies = None
 
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
-        proc = MerlinProcessor(remote_processor=original_rp)
+        proc = MerlinProcessor(processor=original_rp)
 
     # Verify available_commands was captured at init
     assert proc.available_commands == ("probs", "sample_count", "samples")
@@ -1998,7 +2081,7 @@ def test_create_fresh_rp_remote_processor_path_with_cloning_disabled():
     original_rp.proxies = None
 
     with patch.object(MerlinProcessor, "_extract_rp_token", return_value="token"):
-        proc = MerlinProcessor(remote_processor=original_rp)
+        proc = MerlinProcessor(processor=original_rp)
 
     # Verify remote_processor is stored
     assert proc.remote_processor is original_rp
