@@ -520,9 +520,9 @@ def test_feedforwardblock_params_only_in_branches():
 
     # Verify input parameters are handled by the FeedForwardBlock
     # Note: "x" was specified as an input_parameter and exists in provider circuits.
-    # However, pre_layer is built from the unitary circuit where "x" doesn't exist,
-    # so "x" won't appear in pre_layer.input_parameters. The FeedForwardBlock will
-    # route classical inputs through the feed-forward provider circuits.
+    # However, the first-stage pre_layer is built from the unitary circuit where "x" doesn't exist,
+    # so "x" won't appear in pre_layer.input_parameters. FeedForwardBlock currently consumes
+    # classical inputs in the first stage only; this assertion only verifies prefix mapping.
 
     # Verify the FeedForwardBlock's input parameter mapping
     assert ff_block.input_params_to_prefix_mapping is not None
