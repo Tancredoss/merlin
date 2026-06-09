@@ -1555,7 +1555,7 @@ class QuantumLayer(MerlinModule):
             if isinstance(self._photon_loss_transform, PhotonLossTransform):
                 return self._photon_loss_transform(distribution)
             raise ValueError(
-                f"Since noisy simulations cannot be ran with partial measurement, there should be only one photon loss transform."
+                "Since noisy simulations cannot be ran with partial measurement, there should be only one photon loss transform."
             )
 
         # If it is not a SectoredDistribution, wrap it in one.
@@ -1612,7 +1612,7 @@ class QuantumLayer(MerlinModule):
             if isinstance(self._detector_transform, DetectorTransform):
                 return self._detector_transform(distribution)
             raise ValueError(
-                f"Since noisy simulations cannot be ran with partial measurement, there should be only one detector transform."
+                "Since noisy simulations cannot be ran with partial measurement, there should be only one detector transform."
             )
         # If it is not a SectoredDistribution, wrap it in one.
         if isinstance(distribution, torch.Tensor):
