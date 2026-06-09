@@ -1551,8 +1551,12 @@ class QuantumLayer(MerlinModule):
             _resolve_measurement_kind(self.measurement_strategy).name.lower()
             == "partial"
         ):
-            # If it is partial measurmeent, return the tensor as it is supposed to.
-            return self._photon_loss_transform(distribution)
+            # If it is partial measurement, return the tensor as it is supposed to.
+            if isinstance(self._photon_loss_transform, PhotonLossTransform):
+                return self._photon_loss_transform(distribution)
+            raise ValueError(
+                f"Since noisy simulations cannot be ran with partial measurement, there should be only one photon loss transform."
+            )
 
         # If it is not a SectoredDistribution, wrap it in one.
         if isinstance(distribution, torch.Tensor):
@@ -1563,7 +1567,7 @@ class QuantumLayer(MerlinModule):
                 keys=_normalize_sector_keys(self._raw_output_keys),
             )
             distribution_to_use: SectoredDistribution = SectoredDistribution(
-                tuple([sector_result])
+                (sector_result,)
             )
         else:
             distribution_to_use: SectoredDistribution = distribution
@@ -1604,8 +1608,12 @@ class QuantumLayer(MerlinModule):
             _resolve_measurement_kind(self.measurement_strategy).name.lower()
             == "partial"
         ):
-            # If it is partial measurmeent, return the tensor as it is supposed to
-            return self._detector_transform(distribution)
+            # If it is partial measurement, return the tensor as it is supposed to
+            if isinstance(self._detector_transform, DetectorTransform):
+                return self._detector_transform(distribution)
+            raise ValueError(
+                f"Since noisy simulations cannot be ran with partial measurement, there should be only one detector transform."
+            )
         # If it is not a SectoredDistribution, wrap it in one.
         if isinstance(distribution, torch.Tensor):
             sector_result: SectorResult = SectorResult(
@@ -1615,7 +1623,7 @@ class QuantumLayer(MerlinModule):
                 keys=_normalize_sector_keys(self._raw_output_keys),
             )
             distribution_to_use: SectoredDistribution = SectoredDistribution(
-                tuple([sector_result])
+                (sector_result,)
             )
         else:
             distribution_to_use: SectoredDistribution = distribution
