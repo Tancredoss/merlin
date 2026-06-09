@@ -84,7 +84,7 @@ We explain each one below and its impact on quantum computations.
 Post-Measurement Noise
 -----------------------
 
-These noises only affect the probabilities of measurement at the end of the interferometer. 
+These noises only affect the probabilities of measurement at the end of the interferometer. They are in green in the figure.
 
 1. Brightness and 2. Transmittance
 -----------------------------------
@@ -102,7 +102,7 @@ The output size of a simulation with this type of noise will be larger than the 
 Circuit Noise
 -----------------------
 
-These noises affect the precision of the operations in the quantum layer.
+These noises affect the precision of the operations in the quantum layer. They are in blue in the figure.
 
 3. Phase Imprecision
 -----------------------------------
@@ -119,7 +119,7 @@ This noise type reflects the maximum random noise applied to the phase shifters 
 Source Noise
 -----------------------
 
-These noises describe the imperfections of the photon emitter (source).
+These noises describe the imperfections of the photon emitter (source). They are in red in the figure.
 
 5. Indistinguishability
 -----------------------------------
@@ -265,11 +265,89 @@ For noisy simulations, there are a couple of rules that need to be followed:
 3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning.
 
 
-Noise Detectors to restrict the Fock Space
+Noise Detectors to Restrict the Fock Space
 ===========================================
 
 As mentioned in the previous section, noisy simulations only support the Fock computation space as g2 errors may create bunched input states in this computation space. However, current detectors on the hardware are not not photon resolving. That means that the output space explored by the quantum computer is smaller than the full complete Fock basis. 
 
-In order to simulate the quantum process as closely as possible to the quantum hardware, we can impose these limitations on the photon detcetors using :class:`pcvl.Detector` objects in a :class:`pcvl.Experiment`. Here is a quick example on how to use them.
+In order to simulate the quantum process as closely as possible to the quantum hardware, we can impose these limitations on the photon detectors using :class:`pcvl.Detector` objects (threshold ones for this use case) in a :class:`pcvl.Experiment`. Here is a quick example on how to use them.
 
-TODO Will be completed in next commit
+.. code-block:: python
+
+    import perceval as pcvl
+    import merlin as ml
+
+    circuit = pcvl.Circuit(2)
+    circuit.add([0, 1], pcvl.BS.H())
+
+    ## Defining the layer without detectors
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=circuit,
+        input_state=[1, 1],
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        noise=pcvl.NoiseModel(g2=0.25, brightness=0.5),
+    )
+    output = layer()
+
+
+    print(f"The layer without detectors has output size {layer.output_size}")
+    for key, prob in zip(layer.output_keys, output.flatten()):
+        print(f"Output probability of state {key} is {prob}")
+    print()
+
+
+    ## Defining the layer with detectors
+    # Define a perceval experiment
+    experiment = pcvl.Experiment(
+        m_circuit=circuit,
+    )
+    # Define one detector per mode, here we use the threshold detector which can detect if there is photons or not
+    experiment.detectors[0] = pcvl.Detector.threshold()
+    experiment.detectors[1] = pcvl.Detector.threshold()
+
+    layer = ml.QuantumLayer(
+        input_size=0,
+        experiment=experiment,
+        input_state=[1, 1],
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        noise=pcvl.NoiseModel(g2=0.25, brightness=0.5),
+    )
+    output = layer()
+    print(f"The layer with detectors has output size {layer.output_size}")
+
+
+    for key, prob in zip(layer.output_keys, output.flatten()):
+        print(f"Output probability of state {key} is {prob}")
+
+
+Output:
+
+    The layer without detectors has output size 15
+
+    - Output probability of state (2, 0) is 0.1348033845424652
+    - Output probability of state (1, 0) is 0.2285533845424652
+    - Output probability of state (0, 0) is 0.2089466005563736
+    - Output probability of state (1, 1) is 0.019606785848736763
+    - Output probability of state (0, 1) is 0.2285533845424652
+    - Output probability of state (0, 2) is 0.1348033845424652
+    - Output probability of state (3, 0) is 0.016084961593151093
+    - Output probability of state (2, 1) is 0.0053616538643836975
+    - Output probability of state (1, 2) is 0.0053616538643836975
+    - Output probability of state (0, 3) is 0.016084961593151093
+    - Output probability of state (4, 0) is 0.0006899359868839383
+    - Output probability of state (3, 1) is 0.0
+    - Output probability of state (2, 2) is 0.00045995728578418493
+    - Output probability of state (1, 3) is 0.0
+    - Output probability of state (0, 4) is 0.0006899359868839383
+
+    The layer with detectors has output size 4
+
+    - Output probability of state (1, 0) is 0.38013163208961487
+    - Output probability of state (0, 0) is 0.2089466005563736
+    - Output probability of state (1, 1) is 0.030790047720074654
+    - Output probability of state (0, 1) is 0.38013163208961487
