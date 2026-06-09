@@ -1384,15 +1384,23 @@ class QuantumLayer(MerlinModule):
             and self._raw_output_keys
             and isinstance(self._raw_output_keys[0], list)
         ):
-            self._photon_loss_transform = [
-                PhotonLossTransform(
+            # Build transforms with their corresponding photon counts
+            transform_with_photon_counts = []
+            for keys in self._raw_output_keys:
+                transform = PhotonLossTransform(
                     keys,
                     self._photon_survival_probs,
                     dtype=self.dtype,
                     device=self.device,
                 )
-                for keys in self._raw_output_keys
-            ]
+                # Compute photon count from first key (sum of Fock state values)
+                photon_count = sum(keys[0]) if keys else 0
+                transform_with_photon_counts.append((transform, photon_count))
+
+            # Sort by photon count (smallest to biggest)
+            transform_with_photon_counts.sort(key=lambda x: x[1])
+            self._photon_loss_transform = [t for t, _ in transform_with_photon_counts]
+
             # Deduplicate photon loss keys across photon numbers (photon loss can cause overlaps)
             all_photon_loss_keys_set: set[tuple[int, ...]] = set()
             deduplicated_photon_loss_keys: list[list[tuple[int, ...]]] = []
@@ -1460,18 +1468,34 @@ class QuantumLayer(MerlinModule):
             ]
             partial = True
         if g2_noise:
-            detector_transform_list: list[DetectorTransform] = [
-                DetectorTransform(
-                    cast(Iterable[Sequence[int]], photon_loss_key),
+            # Build detector transforms with their corresponding photon counts
+            # Use output keys from each photon loss transform (not deduplicated) to get correct basis size
+            transform_with_photon_counts = []
+            if not isinstance(self._photon_loss_transform, Sequence):
+                raise RuntimeError(
+                    "g2_noise requires photon loss transform to be a Sequence"
+                )
+            for photon_loss_transform in self._photon_loss_transform:
+                photon_loss_output_keys = cast(
+                    list[tuple[int, ...]], photon_loss_transform.output_keys
+                )
+                transform = DetectorTransform(
+                    cast(Iterable[Sequence[int]], photon_loss_output_keys),
                     detectors,
                     dtype=self.dtype,
                     device=self.device,
                     partial_measurement=partial,
                 )
-                for photon_loss_key in cast(
-                    list[list[tuple[int, ...]]], self._photon_loss_keys
+                # Compute photon count from first key (sum of Fock state values)
+                photon_count = (
+                    sum(photon_loss_output_keys[0]) if photon_loss_output_keys else 0
                 )
-            ]
+                transform_with_photon_counts.append((transform, photon_count))
+
+            # Sort by photon count (smallest to biggest)
+            transform_with_photon_counts.sort(key=lambda x: x[1])
+            detector_transform_list = [t for t, _ in transform_with_photon_counts]
+
             self._detector_transform = detector_transform_list
             # Deduplicate detector keys across photon numbers (photon loss can cause overlaps)
             all_detector_keys_set: set[tuple[int, ...]] = set()
@@ -1527,6 +1551,7 @@ class QuantumLayer(MerlinModule):
             if isinstance(self._photon_loss_transform, Sequence):
                 distribution_copy = distribution.clone()
                 for i, sector in enumerate(distribution_copy.sectors):
+                    # Here num photon_min is evidently the n_photons
                     index = sector.n_photons - self.n_photons
                     distribution_copy.sectors[i].tensor = self._photon_loss_transform[
                         index
@@ -1556,7 +1581,9 @@ class QuantumLayer(MerlinModule):
             if isinstance(self._detector_transform, Sequence):
                 distribution_copy = distribution.clone()
                 for i, sector in enumerate(distribution_copy.sectors):
+                    # Here num photon_min is evidently the n_photons since we dont clean the dist
                     index = sector.n_photons - self.n_photons
+
                     distribution_copy.sectors[i].tensor = self._detector_transform[
                         index
                     ](sector.tensor)
