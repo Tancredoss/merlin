@@ -1100,7 +1100,7 @@ def validate_noisy_measurement_strategy(
         raise NotImplementedError(
             "The noise computation with the return_object feature set at True is not yet implemented."
         )
-    if output == "amplitudes":
+    if output == "amplitudes" or "partial":
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )
