@@ -1190,3 +1190,11 @@ def normalize_noise(
         output_nm.g2_distinguishable = False
 
     return output_nm
+
+
+def _normalize_sector_keys(
+    keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]],
+) -> tuple[tuple[int, ...], ...]:
+    if keys and isinstance(keys[0], list):
+        return tuple(tuple(k) for key_list in keys for k in key_list)
+    return tuple(tuple(k) for k in cast(list[tuple[int, ...]], keys))

@@ -77,6 +77,7 @@ from .layer_utils import (
     validate_and_resolve_circuit_source,
     validate_encoding_mode,
     vet_experiment,
+    _normalize_sector_keys,
 )
 from .module import MerlinModule
 
@@ -1546,20 +1547,20 @@ class QuantumLayer(MerlinModule):
         if self._photon_loss_is_identity:
             return distribution
 
-        # If it is not a SectoredDistribution, use a SectoredDistribution
+        # If it is not a SectoredDistribution, wrap it in one.
         if isinstance(distribution, torch.Tensor):
             distribution_to_use = SectorResult(
                 tensor=distribution,
                 n_modes=self.circuit.m,
                 n_photons=self.n_photons,
-                keys=self._raw_output_keys,
+                keys=_normalize_sector_keys(self._raw_output_keys),
             )
-            distribution_to_use = SectoredDistribution([distribution_to_use])
+            distribution_to_use = SectoredDistribution((distribution_to_use,))
         else:
             distribution_to_use = distribution
 
         if isinstance(self._photon_loss_transform, Sequence):
-            distribution_copy = distribution.clone()
+            distribution_copy = distribution_to_use.clone()
             for i, sector in enumerate(distribution_copy.sectors):
                 # Here num photon_min is evidently the n_photons
                 index = sector.n_photons - self.n_photons
@@ -1570,7 +1571,7 @@ class QuantumLayer(MerlinModule):
                     self._photon_loss_transform[index].output_keys
                 )
             return distribution_copy
-        return self._photon_loss_transform(distribution)
+        return self._photon_loss_transform(distribution_to_use)
 
     def _apply_detector_transform(
         self, distribution: torch.Tensor | SectoredDistribution
@@ -1582,20 +1583,20 @@ class QuantumLayer(MerlinModule):
         if self._detector_is_identity:
             return distribution
 
-        # If it is not a SectoredDistribution, use a SectoredDistribution
+        # If it is not a SectoredDistribution, wrap it in one.
         if isinstance(distribution, torch.Tensor):
             distribution_to_use = SectorResult(
                 tensor=distribution,
                 n_modes=self.circuit.m,
                 n_photons=self.n_photons,
-                keys=self._raw_output_keys,
+                keys=_normalize_sector_keys(self._raw_output_keys),
             )
-            distribution_to_use = SectoredDistribution([distribution_to_use])
+            distribution_to_use = SectoredDistribution((distribution_to_use,))
         else:
             distribution_to_use = distribution
 
         if isinstance(self._detector_transform, Sequence):
-            distribution_copy = distribution.clone()
+            distribution_copy = distribution_to_use.clone()
             for i, sector in enumerate(distribution_copy.sectors):
                 # Here num photon_min is evidently the n_photons since we dont clean the dist
                 index = sector.n_photons - self.n_photons
@@ -1607,7 +1608,7 @@ class QuantumLayer(MerlinModule):
                     self._detector_transform[index].output_keys
                 )
             return distribution_copy
-        return self._detector_transform(distribution)
+        return self._detector_transform(distribution_to_use)
 
     # =====================  EXPORT API FOR REMOTE PROCESSORS  =====================
 
