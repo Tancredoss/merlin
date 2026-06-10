@@ -54,7 +54,7 @@ from merlin.utils.grouping import LexGrouping, ModGrouping
 # - If external compatibility is still needed, provide a separate shim module.
 
 
-### Note, kept some Legacy to keep the None measurement strategy
+# Note: kept some Legacy to keep the None measurement strategy
 
 
 class _LegacyMeasurementStrategy(Enum):
