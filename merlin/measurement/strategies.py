@@ -160,7 +160,7 @@ class AmplitudesStrategy(BaseMeasurementStrategy):
         apply_sampling = bool(kwargs.get("apply_sampling", False))
         if apply_sampling:
             raise RuntimeError(
-                "Sampling cannot be applied when measurement_strategy=MeasurementStrategy.AMPLITUDES."
+                "Sampling cannot be applied when measurement_strategy=MeasurementStrategy.amplitudes()."
             )
         return amplitudes
 

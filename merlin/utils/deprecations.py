@@ -386,7 +386,7 @@ def normalize_measurement_strategy(
 
         # CONFLICT CHECK: Constructor computation_space + new factory method
         if computation_space_provided:
-            raise TypeError(
+            raise AttributeError(
                 "Cannot specify 'computation_space' in QuantumLayer's constructor. "
                 "Move 'computation_space' into the factory method instead. Deprecated since v0.4. "
                 "For example: MeasurementStrategy.probs(computation_space=ComputationSpace.FOCK) "
@@ -408,26 +408,6 @@ def normalize_measurement_strategy(
         computation_space = ComputationSpace.UNBUNCHED
     else:
         computation_space = ComputationSpace.coerce(computation_space)
-
-    # if isinstance(measurement_strategy, _LegacyMeasurementStrategy):
-    #     # LEGACY API: Enum-style access (PROBABILITIES, MODE_EXPECTATIONS, AMPLITUDES)
-    #     # These are allowed with constructor computation_space for backward compat
-    #     if computation_space_provided:
-    #         warnings.warn(
-    #             "Passing 'computation_space' without a measurement strategy is deprecated since v0.4. "
-    #             "Move computation_space into MeasurementStrategy.probs(computation_space=...) instead. "
-    #         )
-
-    #     if measurement_strategy == _LegacyMeasurementStrategy.PROBABILITIES:
-    #         measurement_strategy = MeasurementStrategy.probs(computation_space)
-    #     elif measurement_strategy == _LegacyMeasurementStrategy.MODE_EXPECTATIONS:
-    #         measurement_strategy = MeasurementStrategy.mode_expectations(
-    #             computation_space
-    #         )
-    #     elif measurement_strategy == _LegacyMeasurementStrategy.AMPLITUDES:
-    #         measurement_strategy = MeasurementStrategy.amplitudes(computation_space)
-    #     elif measurement_strategy == _LegacyMeasurementStrategy.NONE:
-    #         measurement_strategy = MeasurementStrategy.amplitudes(computation_space)
 
     return measurement_strategy, computation_space
 

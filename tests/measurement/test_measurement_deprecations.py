@@ -28,25 +28,40 @@ from merlin.core.computation_space import ComputationSpace
 
 
 class TestMeasurementStrategyDeprecations:
-    def test_probabilities_enum_raises_deprecation_warning(self):
-        with pytest.warns(DeprecationWarning, match="v0.4"):
+    def test_probabilities_enum_raises_deprecation_error(self):
+        with pytest.raises(
+            AttributeError,
+            match="v0.4",
+        ):
             _ = MeasurementStrategy.PROBABILITIES
 
-    def test_mode_expectations_enum_raises_deprecation_warning(self):
-        with pytest.warns(DeprecationWarning, match="v0.4"):
+    def test_mode_expectations_enum_raises_deprecation_error(self):
+        with pytest.raises(
+            AttributeError,
+            match="v0.4",
+        ):
             _ = MeasurementStrategy.MODE_EXPECTATIONS
 
-    def test_amplitudes_enum_raises_deprecation_warning(self):
-        with pytest.warns(DeprecationWarning, match="v0.4"):
+    def test_amplitudes_enum_raises_deprecation_error(self):
+        with pytest.raises(
+            AttributeError,
+            match="v0.4",
+        ):
             _ = MeasurementStrategy.AMPLITUDES
 
-    def test_deprecation_warning_includes_migration_hint(self):
-        with pytest.warns(DeprecationWarning, match="Use MeasurementStrategy.probs"):
+    def test_deprecation_error_includes_migration_hint(self):
+        with pytest.raises(
+            AttributeError,
+            match="Use MeasurementStrategy.probs",
+        ):
             _ = MeasurementStrategy.PROBABILITIES
 
     def test_deprecated_enum_still_works_in_quantum_layer(self):
         circuit = pcvl.Circuit(2)
-        with pytest.warns(DeprecationWarning):
+        with pytest.raises(
+            AttributeError,
+            match="Use MeasurementStrategy.probs",
+        ):
             layer = QuantumLayer(
                 input_size=0,
                 circuit=circuit,
@@ -54,10 +69,3 @@ class TestMeasurementStrategyDeprecations:
                 computation_space=ComputationSpace.FOCK,
                 measurement_strategy=MeasurementStrategy.PROBABILITIES,
             )
-        assert layer.measurement_strategy is not None
-
-    def test_multiple_enum_accesses_warn_each_time(self):
-        with pytest.warns(DeprecationWarning):
-            _ = MeasurementStrategy.PROBABILITIES
-        with pytest.warns(DeprecationWarning):
-            _ = MeasurementStrategy.PROBABILITIES
