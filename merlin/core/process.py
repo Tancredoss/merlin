@@ -250,7 +250,14 @@ class ComputationProcess(AbstractComputationProcess):
         ) or isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph)
 
     def _default_fixed_input_state(self) -> list[int]:
-        """Return the default fixed input state used for tensor input placeholders."""
+        """Return the default fixed input state for tensor input placeholders.
+
+        Returns
+        -------
+        list[int]
+            Occupation-number input state generated from the process mode count,
+            photon count, and computation space.
+        """
         return _generate_default_input_state(
             self.m,
             self.n_photons,
@@ -258,7 +265,18 @@ class ComputationProcess(AbstractComputationProcess):
         )
 
     def _fixed_input_state_for_compute(self) -> list[int] | torch.Tensor:
-        """Return the fixed input state used by direct SLOS graph calls."""
+        """Return the fixed input state used by direct SLOS graph calls.
+
+        Tensor ``input_state`` values represent superposition data only when the
+        caller explicitly requests superposition handling. Direct fixed-state
+        graph calls therefore use the deterministic default Fock input instead
+        of passing the tensor through.
+
+        Returns
+        -------
+        list[int] | torch.Tensor
+            Fixed Fock input state for direct SLOS graph calls.
+        """
         if isinstance(self.input_state, torch.Tensor):
             return self._default_fixed_input_state()
         return self.input_state
@@ -269,7 +287,39 @@ class ComputationProcess(AbstractComputationProcess):
         *,
         amplitude_encoding: bool,
     ) -> torch.Tensor | SectoredDistribution:
-        """Compute source-noise probabilities for one precomputed unitary."""
+        """Compute source-noise probabilities for one precomputed unitary.
+
+        When ``input_state`` is a tensor and ``amplitude_encoding`` is True, the
+        tensor is treated as a superposition over input basis states. Source
+        noise is applied as an incoherent mixture: every active input basis state
+        is propagated independently and weighted by the corresponding
+        :math:`|c_i|^2`. For g2 noise, each photon-number sector is accumulated
+        separately and aligned by sector keys before addition.
+
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Precomputed circuit unitary. A 2D tensor represents one parameter
+            set and a 3D tensor represents a batch of parameter sets.
+        amplitude_encoding : bool
+            Whether tensor ``input_state`` values should be interpreted as a
+            superposition over input basis states.
+
+        Returns
+        -------
+        torch.Tensor | SectoredDistribution
+            Output probabilities. g2 source noise returns a
+            ``SectoredDistribution`` while other source-noise paths return a
+            probability tensor.
+
+        Raises
+        ------
+        RuntimeError
+            If tensor-superposition handling finds no active input basis states.
+        ValueError
+            If g2 sector outputs cannot be aligned by basis keys while
+            accumulating active input states.
+        """
         if isinstance(self.input_state, torch.Tensor) and amplitude_encoding:
             # Amplitude-encoded input: treat each row as a probability distribution
             # over Fock basis states and produce a weighted mixture of noisy output
@@ -345,7 +395,38 @@ class ComputationProcess(AbstractComputationProcess):
         *,
         simultaneous_processes: int = 1,
     ) -> torch.Tensor:
-        """Compute coherent superposition amplitudes for one precomputed unitary."""
+        """Compute coherent superposition amplitudes for one precomputed unitary.
+
+        The stored tensor ``input_state`` is normalized and interpreted as
+        complex amplitudes over the configured input basis. Each active basis
+        state is propagated through the SLOS graph, the per-input amplitudes are
+        normalized, and the final output amplitudes are formed by the coherent
+        weighted sum over input coefficients.
+
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Precomputed circuit unitary. A 2D tensor represents one parameter
+            set and a 3D tensor represents a batch of parameter sets.
+        simultaneous_processes : int
+            Maximum number of active input basis states propagated in one
+            ``compute_batch`` call. Default is 1.
+
+        Returns
+        -------
+        torch.Tensor
+            Coherent output amplitudes. The leading batch dimensions are
+            squeezed when they contain a single element to preserve existing
+            caller expectations.
+
+        Raises
+        ------
+        TypeError
+            If ``input_state`` is not a tensor.
+        ValueError
+            If the tensor ``input_state`` does not match the configured
+            computation-space basis size.
+        """
         prepared_state = self._prepare_superposition_tensor()
 
         batched_parameters = unitary.dim() == 3
@@ -414,6 +495,26 @@ class ComputationProcess(AbstractComputationProcess):
         those probabilities. Phase-error Monte Carlo averaging therefore uses
         ``mean_k |SLOS(U_k) @ psi|^2`` rather than
         ``|mean_k SLOS(U_k) @ psi|^2``.
+
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Precomputed circuit unitary used for the current probability sample.
+        amplitude_encoding : bool
+            Whether tensor ``input_state`` values should be interpreted as a
+            coherent superposition for this sample.
+
+        Returns
+        -------
+        torch.Tensor | SectoredDistribution
+            Output probabilities for the supplied unitary. g2 source noise may
+            return a ``SectoredDistribution``.
+
+        Raises
+        ------
+        ValueError
+            If coherent superposition handling is requested and ``input_state``
+            does not match the configured computation-space basis size.
         """
         if self._has_source_noise():
             return self._compute_source_probabilities_for_unitary(
@@ -431,7 +532,24 @@ class ComputationProcess(AbstractComputationProcess):
 
     @staticmethod
     def _validate_sector_keys(sector: SectorResult) -> tuple[tuple[int, ...], ...]:
-        """Return sector keys after validating they align with the tensor basis."""
+        """Return sector keys after validating they align with the tensor basis.
+
+        Parameters
+        ----------
+        sector : SectorResult
+            Sector whose key metadata should be validated.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            Basis keys associated with the final tensor dimension.
+
+        Raises
+        ------
+        ValueError
+            If keys are missing, duplicated, or inconsistent with the sector
+            tensor basis dimension.
+        """
         if sector.keys is None:
             raise ValueError("Sector basis keys are required to align probabilities.")
         if sector.tensor.ndim == 0:
@@ -450,7 +568,27 @@ class ComputationProcess(AbstractComputationProcess):
         source_sector: SectorResult,
         target_sector: SectorResult,
     ) -> torch.Tensor:
-        """Return ``source_sector.tensor`` reordered to ``target_sector.keys``."""
+        """Return a source sector tensor reordered to target sector keys.
+
+        Parameters
+        ----------
+        source_sector : SectorResult
+            Sector containing the tensor to reorder.
+        target_sector : SectorResult
+            Sector whose basis-key order defines the desired output order.
+
+        Returns
+        -------
+        torch.Tensor
+            ``source_sector.tensor`` indexed along its final dimension so it
+            matches ``target_sector.keys``.
+
+        Raises
+        ------
+        ValueError
+            If sector metadata differs, batch dimensions differ, keys are
+            invalid, or the two sectors do not contain the same basis keys.
+        """
         if source_sector.n_photons != target_sector.n_photons:
             raise ValueError("Cannot align sectors with different photon numbers.")
         if source_sector.n_modes != target_sector.n_modes:
@@ -470,14 +608,18 @@ class ComputationProcess(AbstractComputationProcess):
 
         source_index_by_key = {key: idx for idx, key in enumerate(source_keys)}
         if set(source_index_by_key) != set(target_keys):
-            raise ValueError("Sector basis keys mismatch while aligning probabilities.")
+            raise ValueError(
+                "Sector basis keys mismatch while aligning probabilities."
+            )
 
         indices = torch.tensor(
             [source_index_by_key[key] for key in target_keys],
             dtype=torch.long,
             device=source_sector.tensor.device,
         )
-        return source_sector.tensor.index_select(source_sector.tensor.ndim - 1, indices)
+        return source_sector.tensor.index_select(
+            source_sector.tensor.ndim - 1, indices
+        )
 
     def _add_sectored_distributions(
         self,
@@ -532,7 +674,21 @@ class ComputationProcess(AbstractComputationProcess):
         distribution: SectoredDistribution,
         divisor: int,
     ) -> SectoredDistribution:
-        """Divide every sector tensor by ``divisor``."""
+        """Divide every sector tensor by a scalar divisor.
+
+        Parameters
+        ----------
+        distribution : SectoredDistribution
+            Sectored distribution to scale.
+        divisor : int
+            Positive divisor applied to each sector tensor.
+
+        Returns
+        -------
+        SectoredDistribution
+            Distribution with each sector tensor divided by ``divisor`` while
+            preserving sector metadata and basis keys.
+        """
         return SectoredDistribution(
             tuple(
                 SectorResult(
@@ -882,7 +1038,20 @@ class ComputationProcess(AbstractComputationProcess):
         return keys, amplitudes
 
     def _expected_superposition_size(self) -> int:
-        """Expected number of Fock states given current computation space."""
+        """Return the expected superposition basis size.
+
+        Returns
+        -------
+        int
+            Number of input basis states expected for tensor superposition data
+            in the configured computation space.
+
+        Raises
+        ------
+        ValueError
+            If the photon count or mode count is incompatible with the selected
+            computation space.
+        """
         if self.n_photons < 0:
             raise ValueError("Number of photons must be non-negative.")
         if self.computation_space is ComputationSpace.DUAL_RAIL:
@@ -904,7 +1073,22 @@ class ComputationProcess(AbstractComputationProcess):
         return math.comb(self.m + self.n_photons - 1, self.n_photons)
 
     def _validate_superposition_state_shape(self, input_state: torch.Tensor) -> None:
-        """Ensure the provided superposition state matches the configured computation space."""
+        """Validate a tensor superposition input shape.
+
+        Parameters
+        ----------
+        input_state : torch.Tensor
+            Tensor whose final dimension should match the expected
+            superposition basis size.
+
+        Raises
+        ------
+        TypeError
+            If ``input_state`` is not a tensor.
+        ValueError
+            If ``input_state`` is not 1D or 2D, or if its final dimension does
+            not match the configured computation-space basis size.
+        """
         if not isinstance(input_state, torch.Tensor):
             raise TypeError("Input state should be a tensor")
 
@@ -929,7 +1113,10 @@ class ComputationProcess(AbstractComputationProcess):
                     f"expected 2**n_photons = 2**{self.n_photons} = {expected}"
                 )
             elif self.computation_space is ComputationSpace.UNBUNCHED:
-                explanation = f"expected C(m, n_photons) = C({self.m}, {self.n_photons}) = {expected}"
+                explanation = (
+                    f"expected C(m, n_photons) = C({self.m}, "
+                    f"{self.n_photons}) = {expected}"
+                )
             else:
                 explanation = (
                     f"expected C(m + n_photons - 1, n_photons) = "
@@ -941,7 +1128,19 @@ class ComputationProcess(AbstractComputationProcess):
             )
 
     def _should_defer_state_validation(self, tensor: torch.Tensor) -> bool:
-        """Detect amplitude tensors that will be validated after configuring dual-rail space."""
+        """Detect tensors that need delayed dual-rail validation.
+
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            Candidate superposition tensor.
+
+        Returns
+        -------
+        bool
+            True when an UNBUNCHED tensor has the dual-rail logical dimension
+            and should be validated after the computation space is configured.
+        """
         if tensor.dim() == 1:
             state_dim = tensor.shape[0]
         elif tensor.dim() == 2:
@@ -961,7 +1160,21 @@ class ComputationProcess(AbstractComputationProcess):
     def _coerce_superposition_tensor_shape(
         self, tensor: torch.Tensor
     ) -> torch.Tensor | None:
-        """Attempt to reconcile tensors encoded in a smaller logical basis."""
+        """Lift compatible reduced-basis tensors into the Fock basis.
+
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            Candidate tensor encoded either in the full Fock basis or a smaller
+            logical basis.
+
+        Returns
+        -------
+        torch.Tensor | None
+            Tensor expanded into the configured Fock basis when the reduced
+            basis can be mapped unambiguously. Returns None when no coercion
+            applies.
+        """
         if self.computation_space is not ComputationSpace.FOCK:
             return None
 
@@ -975,7 +1188,7 @@ class ComputationProcess(AbstractComputationProcess):
         else:
             return None
 
-        # Detect tensors encoded in the UNBUNCHED basis and lift them to the Fock basis.
+        # Detect tensors encoded in the UNBUNCHED basis and lift them to Fock.
         unbunched_size = math.comb(self.m, self.n_photons)
         if feature_dim != unbunched_size:
             return None
@@ -1009,7 +1222,22 @@ class ComputationProcess(AbstractComputationProcess):
         return expanded
 
     def _prepare_superposition_tensor(self) -> torch.Tensor:
-        """Validate, normalise, and convert the stored superposition state to the correct dtype."""
+        """Validate, normalize, and store tensor superposition input.
+
+        Returns
+        -------
+        torch.Tensor
+            Normalized 2D complex tensor whose final dimension matches the
+            configured input basis.
+
+        Raises
+        ------
+        TypeError
+            If ``input_state`` is not a tensor or has an unsupported dtype.
+        ValueError
+            If ``input_state`` does not match the configured computation-space
+            basis size.
+        """
         if not isinstance(self.input_state, torch.Tensor):
             raise TypeError("Input state should be a tensor")
 
