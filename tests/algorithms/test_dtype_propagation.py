@@ -320,7 +320,7 @@ class TestQuantumLayerDtypePropagation:
         self, circuit_2mode_no_params
     ):
         """
-        MeasurementStrategy.AMPLITUDES (amplitude_encoding=True):
+        MeasurementStrategy.amplitudes() (amplitude_encoding=True):
         ensure dtype=torch.float64 leads to complex128 (torch.cdouble) amplitudes.
         """
         layer = QuantumLayer(

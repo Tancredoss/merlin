@@ -49,6 +49,9 @@ class TestMeasurementStrategyDeprecations:
         ):
             _ = MeasurementStrategy.AMPLITUDES
 
+    def test_none_enum_raises_no_error(self):
+        _ = MeasurementStrategy.NONE
+
     def test_deprecation_error_includes_migration_hint(self):
         with pytest.raises(
             AttributeError,
@@ -56,7 +59,7 @@ class TestMeasurementStrategyDeprecations:
         ):
             _ = MeasurementStrategy.PROBABILITIES
 
-    def test_deprecated_enum_still_works_in_quantum_layer(self):
+    def test_deprecated_enum_fails_in_quantum_layer(self):
         circuit = pcvl.Circuit(2)
         with pytest.raises(
             AttributeError,
@@ -69,3 +72,233 @@ class TestMeasurementStrategyDeprecations:
                 computation_space=ComputationSpace.FOCK,
                 measurement_strategy=MeasurementStrategy.PROBABILITIES,
             )
+
+        with pytest.raises(
+            AttributeError,
+            match="Use MeasurementStrategy.amplitudes",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+                measurement_strategy=MeasurementStrategy.AMPLITUDES,
+            )
+
+        with pytest.raises(
+            AttributeError,
+            match="Use MeasurementStrategy.mode_expectations",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+                measurement_strategy=MeasurementStrategy.MODE_EXPECTATIONS,
+            )
+
+    def test_deprecated_enum_none_sill_passes_in_quantum_layer(self):
+        circuit = pcvl.Circuit(2)
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+            measurement_strategy=MeasurementStrategy.NONE,
+        )
+
+    def test_probabilities_str_raises_deprecation_error(self):
+        circuit = pcvl.Circuit(2)
+        with pytest.raises(
+            TypeError,
+            match="Passing measurement_strategy as a string is deprecated since v0.4.",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+                measurement_strategy="PROBABILITIES",
+            )
+
+    def test_amplitudes_str_raises_deprecation_error(self):
+        circuit = pcvl.Circuit(2)
+        with pytest.raises(
+            TypeError,
+            match="Passing measurement_strategy as a string is deprecated since v0.4.",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+                measurement_strategy="AMPLITUDES",
+            )
+
+    def test_mode_expectations_str_raises_deprecation_error(self):
+        circuit = pcvl.Circuit(2)
+        with pytest.raises(
+            TypeError,
+            match="Passing measurement_strategy as a string is deprecated since v0.4.",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+                measurement_strategy="MODE_EXPECTATIONS",
+            )
+
+    def test_computation_space_in_constructor_fails(self):
+        circuit = pcvl.Circuit(2)
+        with pytest.raises(
+            AttributeError,
+            match="Passing 'computation_space' without an explicit measurement_strategy is deprecated since v0.4.",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+            )
+        with pytest.raises(
+            AttributeError,
+            match="Cannot specify 'computation_space' in QuantumLayer's constructor.",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+                measurement_strategy=MeasurementStrategy.probs(),
+            )
+        with pytest.raises(
+            AttributeError,
+            match="Cannot specify 'computation_space' in QuantumLayer's constructor.",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+                measurement_strategy=MeasurementStrategy.amplitudes(),
+            )
+
+        with pytest.raises(
+            AttributeError,
+            match="Cannot specify 'computation_space' in QuantumLayer's constructor.",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+                measurement_strategy=MeasurementStrategy.mode_expectations(),
+            )
+
+        with pytest.raises(
+            AttributeError,
+            match="Cannot specify 'computation_space' in QuantumLayer's constructor.",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+                measurement_strategy=MeasurementStrategy.partial(modes=[0]),
+            )
+
+        with pytest.raises(
+            AttributeError,
+            match="Cannot specify 'computation_space' in QuantumLayer's constructor.",
+        ):
+            layer = QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=[1, 0],
+                computation_space=ComputationSpace.FOCK,
+                measurement_strategy=MeasurementStrategy.NONE,
+            )
+
+    def modern_factory_raises_no_error():
+        circuit = pcvl.Circuit(2)
+
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+        )
+
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+            measurement_strategy=MeasurementStrategy.NONE,
+        )
+
+        # probs
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+            measurement_strategy=MeasurementStrategy.probs(),
+        )
+
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK
+            ),
+        )
+
+        # amplitudes
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+            measurement_strategy=MeasurementStrategy.amplitudes(),
+        )
+
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+            measurement_strategy=MeasurementStrategy.amplitudes(
+                computation_space=ComputationSpace.FOCK
+            ),
+        )
+
+        # mode expectation
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+            measurement_strategy=MeasurementStrategy.mode_expectations(),
+        )
+
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+            measurement_strategy=MeasurementStrategy.mode_expectations(
+                computation_space=ComputationSpace.FOCK
+            ),
+        )
+
+        # Partial
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+            measurement_strategy=MeasurementStrategy.partial(modes=[0]),
+        )
+
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=circuit,
+            input_state=[1, 0],
+            measurement_strategy=MeasurementStrategy.partial(
+                modes=[0], computation_space=ComputationSpace.FOCK
+            ),
+        )
