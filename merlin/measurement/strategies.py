@@ -35,7 +35,7 @@ import torch
 from merlin.core.computation_space import ComputationSpace
 from merlin.core.partial_measurement import PartialMeasurement
 from merlin.measurement.process import partial_measurement
-from merlin.utils.deprecations import warn_deprecated_enum_access
+from merlin.utils.deprecations import error_deprecated_enum_access
 from merlin.utils.grouping import LexGrouping, ModGrouping
 
 # Deprecation guide (target: v0.4):
@@ -58,9 +58,6 @@ class _LegacyMeasurementStrategy(Enum):
     """Legacy enum kept only for backward compatibility (deprecated API)."""
 
     NONE = "none"
-    PROBABILITIES = "probabilities"
-    MODE_EXPECTATIONS = "mode_expectations"
-    AMPLITUDES = "amplitudes"
 
 
 class BaseMeasurementStrategy:
@@ -224,9 +221,9 @@ class _MeasurementStrategyMeta(type):
         # Backward compatibility shim: allow MeasurementStrategy.NONE for amplitudes.
         if name == "NONE":
             return MeasurementStrategy.amplitudes()
-        # All other enum-style access is deprecated; warn and return legacy enum.
-        if warn_deprecated_enum_access("MeasurementStrategy", name):
-            return _LegacyMeasurementStrategy[name]
+        # All other enum-style access is deprecated; Fail
+        error_deprecated_enum_access("MeasurementStrategy", name)
+
         raise AttributeError(
             f"type object 'MeasurementStrategy' has no attribute {name!r}"
         )
@@ -256,10 +253,6 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         # Type-checker-only legacy/compat attributes. At runtime, the metaclass
         # resolves these names to either a new API instance (NONE) or legacy enums.
         NONE: ClassVar[MeasurementStrategy]
-        # TODO: verify if we want NONE or method none()
-        PROBABILITIES: ClassVar[_LegacyMeasurementStrategy]
-        MODE_EXPECTATIONS: ClassVar[_LegacyMeasurementStrategy]
-        AMPLITUDES: ClassVar[_LegacyMeasurementStrategy]
 
     @staticmethod
     def probs(
@@ -398,12 +391,14 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash((
-            self.type,
-            self.measured_modes,
-            self.computation_space,
-            self.grouping,
-        ))
+        return hash(
+            (
+                self.type,
+                self.measured_modes,
+                self.computation_space,
+                self.grouping,
+            )
+        )
 
     def validate_modes(self, n_modes: int) -> None:
         """Validate mode indices and warn when the selection covers all modes."""

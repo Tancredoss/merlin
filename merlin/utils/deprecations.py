@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 _MEASUREMENT_STRATEGY_ENUM_MIGRATIONS = {
     "PROBABILITIES": "probs(computation_space)",
     "MODE_EXPECTATIONS": "mode_expectations(computation_space)",
-    "AMPLITUDES": "NONE (amplitudes)",
+    "AMPLITUDES": "amplitudes(computation_space) (amplitudes)",
 }
 
 _ACTIVE_DEPRECATION_MESSAGES: ContextVar[frozenset[str]] = ContextVar(
@@ -352,7 +352,6 @@ def normalize_measurement_strategy(
     from ..measurement.strategies import (
         MeasurementKind,
         MeasurementStrategy,
-        _LegacyMeasurementStrategy,
     )
 
     # Track whether computation_space was explicitly provided by user
@@ -361,32 +360,20 @@ def normalize_measurement_strategy(
     if measurement_strategy is None:
         if computation_space is None:
             computation_space = ComputationSpace.UNBUNCHED
+            measurement_strategy = MeasurementStrategy.probs(computation_space)
+            return measurement_strategy, computation_space
         else:
             computation_space = ComputationSpace.coerce(computation_space)
-            warnings.warn(
-                "Passing 'computation_space' without an explicit measurement_strategy is deprecated. "
+            raise AttributeError(
+                "Passing 'computation_space' without an explicit measurement_strategy is deprecated since v0.4. "
                 "Use MeasurementStrategy.probs(computation_space=...) instead. "
-                "Will be removed in 0.4 (v0.4).",
-                DeprecationWarning,
-                stacklevel=2,
             )
-        measurement_strategy = MeasurementStrategy.probs(computation_space)
-        return measurement_strategy, computation_space
 
     if isinstance(measurement_strategy, str):
-        warnings.warn(
-            "Passing measurement_strategy as a string is deprecated. "
-            "Use MeasurementStrategy.probs(...) instead. Will be removed in v0.4.",
-            DeprecationWarning,
-            stacklevel=2,
+        raise TypeError(
+            "Passing measurement_strategy as a string is deprecated since v0.4. "
+            "Use MeasurementStrategy.probs(...) instead .",
         )
-        normalized = measurement_strategy.upper()
-        try:
-            measurement_strategy = _LegacyMeasurementStrategy[normalized]
-        except KeyError as exc:
-            raise TypeError(
-                f"Unknown measurement_strategy: {measurement_strategy}"
-            ) from exc
 
     if isinstance(measurement_strategy, MeasurementStrategy):
         # NEW API: MeasurementStrategy instance (e.g., from .probs(), .partial(), etc)
@@ -400,9 +387,8 @@ def normalize_measurement_strategy(
         # CONFLICT CHECK: Constructor computation_space + new factory method
         if computation_space_provided:
             raise TypeError(
-                "Cannot specify 'computation_space' in QuantumLayer constructor "
-                "when using MeasurementStrategy.probs(), .mode_expectations(), or .partial(). "
-                "Move 'computation_space' into the factory method instead. "
+                "Cannot specify 'computation_space' in QuantumLayer's constructor. "
+                "Move 'computation_space' into the factory method instead. Deprecated since v0.4. "
                 "For example: MeasurementStrategy.probs(computation_space=ComputationSpace.FOCK) "
                 "instead of QuantumLayer(..., computation_space=..., measurement_strategy=...)."
             )
@@ -423,34 +409,30 @@ def normalize_measurement_strategy(
     else:
         computation_space = ComputationSpace.coerce(computation_space)
 
-    if isinstance(measurement_strategy, _LegacyMeasurementStrategy):
-        # LEGACY API: Enum-style access (PROBABILITIES, MODE_EXPECTATIONS, AMPLITUDES)
-        # These are allowed with constructor computation_space for backward compat
-        if computation_space_provided:
-            warnings.warn(
-                "Passing 'computation_space' as a separate argument with legacy "
-                "MeasurementStrategy enum values is deprecated. "
-                "Move computation_space into MeasurementStrategy.probs(computation_space=...) instead. "
-                "Will be removed in 0.4 (v0.4).",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+    # if isinstance(measurement_strategy, _LegacyMeasurementStrategy):
+    #     # LEGACY API: Enum-style access (PROBABILITIES, MODE_EXPECTATIONS, AMPLITUDES)
+    #     # These are allowed with constructor computation_space for backward compat
+    #     if computation_space_provided:
+    #         warnings.warn(
+    #             "Passing 'computation_space' without a measurement strategy is deprecated since v0.4. "
+    #             "Move computation_space into MeasurementStrategy.probs(computation_space=...) instead. "
+    #         )
 
-        if measurement_strategy == _LegacyMeasurementStrategy.PROBABILITIES:
-            measurement_strategy = MeasurementStrategy.probs(computation_space)
-        elif measurement_strategy == _LegacyMeasurementStrategy.MODE_EXPECTATIONS:
-            measurement_strategy = MeasurementStrategy.mode_expectations(
-                computation_space
-            )
-        elif measurement_strategy == _LegacyMeasurementStrategy.AMPLITUDES:
-            measurement_strategy = MeasurementStrategy.amplitudes(computation_space)
-        elif measurement_strategy == _LegacyMeasurementStrategy.NONE:
-            measurement_strategy = MeasurementStrategy.amplitudes(computation_space)
+    #     if measurement_strategy == _LegacyMeasurementStrategy.PROBABILITIES:
+    #         measurement_strategy = MeasurementStrategy.probs(computation_space)
+    #     elif measurement_strategy == _LegacyMeasurementStrategy.MODE_EXPECTATIONS:
+    #         measurement_strategy = MeasurementStrategy.mode_expectations(
+    #             computation_space
+    #         )
+    #     elif measurement_strategy == _LegacyMeasurementStrategy.AMPLITUDES:
+    #         measurement_strategy = MeasurementStrategy.amplitudes(computation_space)
+    #     elif measurement_strategy == _LegacyMeasurementStrategy.NONE:
+    #         measurement_strategy = MeasurementStrategy.amplitudes(computation_space)
 
     return measurement_strategy, computation_space
 
 
-def warn_deprecated_enum_access(owner: str, name: str) -> bool:
+def error_deprecated_enum_access(owner: str, name: str) -> bool:
     """
     Warn on deprecated enum-style attribute access.
 
@@ -469,14 +451,10 @@ def warn_deprecated_enum_access(owner: str, name: str) -> bool:
     """
     if owner == "MeasurementStrategy" and name in _MEASUREMENT_STRATEGY_ENUM_MIGRATIONS:
         replacement = _MEASUREMENT_STRATEGY_ENUM_MIGRATIONS[name]
-        warnings.warn(
+        raise AttributeError(
             f"{owner}.{name} is deprecated. Use {owner}.{replacement} instead. "
-            "Will be removed in 0.4 (v0.4).",
-            DeprecationWarning,
-            stacklevel=2,
+            "(Deprecated since v0.4).",
         )
-        return True
-    return False
 
 
 # ---------------------------------------------------------------------------
