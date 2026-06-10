@@ -110,6 +110,53 @@ phase shifter, builds one unitary, computes probabilities, then averages the
 probability distributions. Amplitudes are not averaged. Use
 ``torch.manual_seed(...)`` to make the sampled perturbations reproducible.
 
+Coherent and incoherent error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A coherent error is represented by a unitary transformation. It preserves the
+phase relations between components of a quantum state, so amplitudes can still
+interfere before they are converted to probabilities. In Merlin, deterministic
+``phase_imprecision`` is coherent within a forward pass: it changes the phase
+values used to build the unitary, but the circuit is still evaluated as one
+unitary.
+
+``phase_error`` is a stochastic coherent error at the sample level. Each Monte
+Carlo sample draws one perturbed unitary and evaluates the quantum evolution
+coherently for that unitary. Merlin then converts that sample's output
+amplitudes to probabilities and averages the probabilities over all sampled
+unitaries:
+
+.. math::
+
+   \frac{1}{K}\sum_{k=1}^{K} p(U_k, \psi)
+   =
+   \frac{1}{K}\sum_{k=1}^{K} \left|U_k\psi\right|^2
+
+This is different from averaging amplitudes or unitaries first:
+
+.. math::
+
+   \left|\frac{1}{K}\sum_{k=1}^{K} U_k\psi\right|^2
+
+Merlin does not use this second expression for ``phase_error``.
+
+An incoherent error is represented as a classical mixture of alternatives. The
+relative phases between alternatives are not used for interference; Merlin
+combines probabilities, not amplitudes. Source noise is handled this way. For a
+tensor input state interpreted as a superposition, source-noise simulations
+propagate each active input basis state independently and combine the resulting
+probability distributions with weights :math:`|c_i|^2`.
+
+The practical consequence is:
+
+- with circuit phase noise only, a tensor input superposition remains coherent
+  inside each sampled unitary;
+- with source noise, tensor input components are treated as an incoherent
+  mixture over basis states;
+- with ``phase_error``, the final reported distribution is an incoherent Monte
+  Carlo average of probability distributions, even though each sampled unitary
+  is evaluated coherently.
+
 When both circuit phase noises are active, Merlin first quantizes the phase and
 then samples the stochastic perturbation around the quantized value:
 
