@@ -25,7 +25,7 @@ Quantum computation processes and factories.
 """
 
 import math
-from typing import Literal, overload
+from typing import Any, Literal, overload
 
 import perceval as pcvl
 import torch
@@ -786,24 +786,35 @@ class ComputationProcess(AbstractComputationProcess):
             unitary, simultaneous_processes=simultaneous_processes
         )
 
-    def compute_with_keys(self, parameters: list[torch.Tensor]):
+    def compute_with_keys(
+        self,
+        parameters: list[torch.Tensor],
+        *,
+        use_input_state_superposition: bool = False,
+    ) -> tuple[Any, torch.Tensor | SectoredDistribution]:
         """Compute output values and return them with basis keys.
 
         Parameters
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
+        use_input_state_superposition : bool
+            If True and ``input_state`` is a tensor, use tensor-superposition
+            handling when phase error is active. If omitted, tensor
+            ``input_state`` follows the same default fixed-Fock-state behavior
+            as :meth:`compute`.
+            Default is False.
 
         Returns
         -------
-        tuple[Any, torch.Tensor]
+        tuple[Any, torch.Tensor | SectoredDistribution]
             Simulation-graph keys and corresponding probabilities if source
             noise or phase error is active, and amplitudes otherwise.
         """
         if self._has_phase_error():
             probabilities = self._compute_phase_error_probabilities(
                 parameters,
-                amplitude_encoding=isinstance(self.input_state, torch.Tensor),
+                amplitude_encoding=use_input_state_superposition,
             )
             if isinstance(probabilities, SectoredDistribution):
                 return None, probabilities

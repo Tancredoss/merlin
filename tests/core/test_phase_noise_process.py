@@ -228,6 +228,57 @@ def test_phase_error_with_tensor_superposition_averages_probabilities():
     )
 
 
+def test_compute_with_keys_phase_error_matches_compute_default_for_tensor_input_state():
+    input_state = torch.tensor(
+        [1.0, 1.0j],
+        dtype=torch.complex128,
+    )
+    process = _process(
+        NoiseGroups(source=None, circuit={"phase_error": 0.2}, post_measurement=None),
+        input_state=input_state,
+        n_phase_error_samples=4,
+    )
+    parameters = _phase_parameter()
+
+    torch.manual_seed(123)
+    unkeyed_output = process.compute(parameters)
+    torch.manual_seed(123)
+    keys, keyed_output = process.compute_with_keys(parameters)
+
+    assert keys == process.simulation_graph.mapped_keys
+    assert isinstance(unkeyed_output, torch.Tensor)
+    assert isinstance(keyed_output, torch.Tensor)
+    assert torch.allclose(keyed_output, unkeyed_output)
+
+
+def test_compute_with_keys_phase_error_can_use_tensor_superposition():
+    input_state = torch.tensor(
+        [1.0, 1.0j],
+        dtype=torch.complex128,
+    )
+    process = _process(
+        NoiseGroups(source=None, circuit={"phase_error": 0.2}, post_measurement=None),
+        input_state=input_state,
+        n_phase_error_samples=4,
+    )
+    parameters = _phase_parameter()
+
+    torch.manual_seed(123)
+    keys, keyed_output = process.compute_with_keys(
+        parameters,
+        use_input_state_superposition=True,
+    )
+    torch.manual_seed(123)
+    expected = _manual_coherent_phase_error_average(process, parameters)
+    torch.manual_seed(123)
+    default_output = process.compute(parameters)
+
+    assert keys == process.simulation_graph.mapped_keys
+    assert isinstance(keyed_output, torch.Tensor)
+    assert torch.allclose(keyed_output, expected)
+    assert not torch.allclose(keyed_output, default_output)
+
+
 def test_phase_error_with_source_noise_averages_noisy_probabilities():
     process = _process(
         NoiseGroups(
