@@ -44,18 +44,6 @@ jobs:
               body = payload.review?.body ?? '';
               authorAssociation = payload.review?.author_association ?? '';
               isPullRequestEvent = true;
-
-              const reviewComments = await github.paginate(
-                'GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews/{review_id}/comments',
-                {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: payload.pull_request.number,
-                  review_id: payload.review.id,
-                  per_page: 100,
-                }
-              );
-              body = [body, ...reviewComments.map((comment) => comment.body ?? '')].join('\n');
             }
 
             try {
