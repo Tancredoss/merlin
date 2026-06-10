@@ -301,9 +301,10 @@ class ComputationProcess(AbstractComputationProcess):
                         output_distribution = probs
                     else:
                         for sector in output_distribution.sectors:
-                            sector.tensor = (
-                                sector.tensor
-                                + probs.get_sector(sector.n_photons).tensor
+                            next_sector = probs.get_sector(sector.n_photons)
+                            sector.tensor = sector.tensor + self._align_sector_tensor(
+                                next_sector,
+                                sector,
                             )
 
                 if output_distribution is None:
@@ -428,6 +429,56 @@ class ComputationProcess(AbstractComputationProcess):
         _keys, probs = self.simulation_graph.compute_probs(unitary, input_state)
         return probs
 
+    @staticmethod
+    def _validate_sector_keys(sector: SectorResult) -> tuple[tuple[int, ...], ...]:
+        """Return sector keys after validating they align with the tensor basis."""
+        if sector.keys is None:
+            raise ValueError("Sector basis keys are required to align probabilities.")
+        if sector.tensor.ndim == 0:
+            raise ValueError("Sector tensor must have a basis dimension.")
+        if sector.tensor.shape[-1] != len(sector.keys):
+            raise ValueError(
+                "Sector tensor basis dimension does not match the number of keys."
+            )
+        if len(set(sector.keys)) != len(sector.keys):
+            raise ValueError("Sector basis keys must be unique.")
+        return sector.keys
+
+    @classmethod
+    def _align_sector_tensor(
+        cls,
+        source_sector: SectorResult,
+        target_sector: SectorResult,
+    ) -> torch.Tensor:
+        """Return ``source_sector.tensor`` reordered to ``target_sector.keys``."""
+        if source_sector.n_photons != target_sector.n_photons:
+            raise ValueError("Cannot align sectors with different photon numbers.")
+        if source_sector.n_modes != target_sector.n_modes:
+            raise ValueError("Cannot align sectors with different mode counts.")
+        if source_sector.computation_space != target_sector.computation_space:
+            raise ValueError("Cannot align sectors with different computation spaces.")
+
+        source_keys = cls._validate_sector_keys(source_sector)
+        target_keys = cls._validate_sector_keys(target_sector)
+        if source_sector.tensor.shape[:-1] != target_sector.tensor.shape[:-1]:
+            raise ValueError(
+                "Sector tensor batch dimensions differ while aligning probabilities."
+            )
+
+        if source_keys == target_keys:
+            return source_sector.tensor
+
+        source_index_by_key = {key: idx for idx, key in enumerate(source_keys)}
+        if set(source_index_by_key) != set(target_keys):
+            raise ValueError("Sector basis keys mismatch while aligning probabilities.")
+
+        indices = torch.tensor(
+            [source_index_by_key[key] for key in target_keys],
+            dtype=torch.long,
+            device=source_sector.tensor.device,
+        )
+        return source_sector.tensor.index_select(source_sector.tensor.ndim - 1, indices)
+
     def _add_sectored_distributions(
         self,
         left: SectoredDistribution,
@@ -451,7 +502,7 @@ class ComputationProcess(AbstractComputationProcess):
         ------
         ValueError
             If the two distributions do not contain the same photon-number
-            sectors or if matching sector tensors have different shapes.
+            sectors or if matching sectors cannot be aligned by basis keys.
         """
         left_photons = {sector.n_photons for sector in left.sectors}
         right_photons = {sector.n_photons for sector in right.sectors}
@@ -463,13 +514,10 @@ class ComputationProcess(AbstractComputationProcess):
         sectors: list[SectorResult] = []
         for left_sector in left.sectors:
             right_sector = right.get_sector(left_sector.n_photons)
-            if left_sector.tensor.shape != right_sector.tensor.shape:
-                raise ValueError(
-                    "Phase-error sector tensor shape mismatch while averaging SectoredDistribution samples."
-                )
+            right_tensor = self._align_sector_tensor(right_sector, left_sector)
             sectors.append(
                 SectorResult(
-                    left_sector.tensor + right_sector.tensor,
+                    left_sector.tensor + right_tensor,
                     n_modes=left_sector.n_modes,
                     n_photons=left_sector.n_photons,
                     computation_space=left_sector.computation_space,

@@ -31,7 +31,7 @@ import torch
 from merlin.algorithms.layer_utils import NoiseGroups
 from merlin.core.computation_space import ComputationSpace
 from merlin.core.process import ComputationProcess, ComputationProcessFactory
-from merlin.core.sectored_distribution import SectoredDistribution
+from merlin.core.sectored_distribution import SectoredDistribution, SectorResult
 from merlin.utils.normalization import (
     normalize_probabilities,
     probabilities_from_amplitudes,
@@ -140,6 +140,110 @@ def _manual_incoherent_phase_error_average(
 
     assert accumulated is not None
     return accumulated / process._n_phase_error_samples
+
+
+def test_add_sectored_distributions_aligns_basis_keys():
+    process = _process()
+    left_keys = ((1, 0), (0, 1))
+    right_keys = ((0, 1), (1, 0))
+    left = SectoredDistribution(
+        (
+            SectorResult(
+                torch.tensor([[1.0, 2.0]], dtype=torch.float64),
+                n_modes=2,
+                n_photons=1,
+                keys=left_keys,
+            ),
+        )
+    )
+    right = SectoredDistribution(
+        (
+            SectorResult(
+                torch.tensor([[30.0, 10.0]], dtype=torch.float64),
+                n_modes=2,
+                n_photons=1,
+                keys=right_keys,
+            ),
+        )
+    )
+
+    result = process._add_sectored_distributions(left, right)
+
+    assert result.sectors[0].keys == left_keys
+    assert torch.allclose(
+        result.sectors[0].tensor,
+        torch.tensor([[11.0, 32.0]], dtype=torch.float64),
+    )
+
+
+def test_add_sectored_distributions_rejects_duplicate_basis_keys():
+    process = _process()
+    left = SectoredDistribution(
+        (
+            SectorResult(
+                torch.tensor([1.0, 2.0], dtype=torch.float64),
+                n_modes=2,
+                n_photons=1,
+                keys=((1, 0), (0, 1)),
+            ),
+        )
+    )
+    right = SectoredDistribution(
+        (
+            SectorResult(
+                torch.tensor([3.0, 4.0], dtype=torch.float64),
+                n_modes=2,
+                n_photons=1,
+                keys=((1, 0), (1, 0)),
+            ),
+        )
+    )
+
+    with pytest.raises(ValueError, match="unique"):
+        process._add_sectored_distributions(left, right)
+
+
+def test_g2_source_superposition_accumulation_aligns_sector_keys(monkeypatch):
+    input_state = torch.tensor([1.0, 1.0], dtype=torch.complex128)
+    process = _process(
+        NoiseGroups(
+            source={
+                "g2": 0.1,
+                "g2_distinguishable": False,
+                "indistinguishability": 1.0,
+            },
+            circuit=None,
+            post_measurement=None,
+        ),
+        input_state=input_state,
+    )
+    left_keys = ((1, 0), (0, 1))
+    right_keys = ((0, 1), (1, 0))
+
+    def compute_probs(_unitary, fock_state):
+        if tuple(fock_state) == (1, 0):
+            tensor = torch.tensor([1.0, 2.0], dtype=torch.float64)
+            keys = left_keys
+        else:
+            tensor = torch.tensor([30.0, 10.0], dtype=torch.float64)
+            keys = right_keys
+        return SectoredDistribution(
+            (SectorResult(tensor, n_modes=2, n_photons=1, keys=keys),)
+        )
+
+    monkeypatch.setattr(process.simulation_graph, "compute_probs", compute_probs)
+
+    output = process._compute_source_probabilities_for_unitary(
+        torch.eye(2, dtype=torch.complex128),
+        amplitude_encoding=True,
+    )
+
+    assert isinstance(output, SectoredDistribution)
+    assert output.sectors[0].keys == left_keys
+    assert torch.allclose(
+        output.sectors[0].tensor,
+        torch.tensor([[5.5, 16.0]], dtype=torch.float64),
+    )
 
 
 def test_no_noise_compute_returns_amplitudes():

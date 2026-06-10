@@ -476,13 +476,14 @@ class SLOSComputeGraph:
             self.vectorized_operations.append((sources, destinations, modes))
 
         # Store only the final layer combinations if needed for output mapping or keys
-        self.final_keys = (
-            list(last_combinations.keys())
-            if self.keep_keys or self.output_map_func
-            else None
-        )
+        # Extract both keys and norm factors from the same iteration to ensure consistency
+        keys_and_factors = list(last_combinations.items())
+        if self.keep_keys or self.output_map_func:
+            self.final_keys = [k for k, v in keys_and_factors]
+        else:
+            self.final_keys = None
         self.norm_factor_output = torch.tensor(
-            [v[0] for v in last_combinations.values()], dtype=self.dtype
+            [v[0] for k, v in keys_and_factors], dtype=self.dtype
         )
         del last_combinations
 
