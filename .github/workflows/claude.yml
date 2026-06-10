@@ -14,6 +14,7 @@ jobs:
     permissions:
       contents: read         # Read-only access to code
       pull-requests: write   # Can post comments/reviews on PRs
+      issues: write          # Can reply to PR conversation comments
       id-token: write        # Required for authentication
       actions: read          # Required for Claude to read CI results on PRs
     steps:
