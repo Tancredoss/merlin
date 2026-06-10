@@ -226,9 +226,9 @@ class FeedForwardBlockLegacy(torch.nn.Module):
         else:
             tuples = self.generate_possible_tuples()
             self.tuples = tuples
-            assert len(tuples) == len(
-                layers
-            ), "Mismatch between number of tuples and provided layers."
+            assert len(tuples) == len(layers), (
+                "Mismatch between number of tuples and provided layers."
+            )
             self.layers = {tuples[k]: layers[k] for k in range(len(layers))}
 
             start = 0
