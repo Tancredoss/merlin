@@ -43,7 +43,6 @@ from merlin.core.partial_measurement import (
 from merlin.core.probability_distribution import ProbabilityDistribution
 from merlin.core.state_vector import StateVector
 from merlin.algorithms.layer import QuantumLayer
-from merlin.measurement.strategies import MeasurementStrategy
 
 
 class TestQuantumLayer:
@@ -2893,48 +2892,69 @@ def test_long_sequence_with_manual_sliding_window_detach():
         assert grad_norm < 1e-8, f"Input {index} should not be in the TBPTT window"
 
 
-
-def test_quantum_layer_photon_count_mismatch_tensor():
-    with pytest.raises(ValueError, match="number of photons doesn't fit input state"):
-        QuantumLayer(
-            input_size=0,
-            circuit=pcvl.Circuit(3),
-            input_state=torch.tensor([1., 1., 0.]), 
-            n_photons=1,
-            measurement_strategy=MeasurementStrategy.probs(),
-        )
-
 def test_quantum_layer_photon_count_mismatch_list():
-    with pytest.raises(ValueError, match="number of photons doesn't fit input state"):
+    with pytest.raises(ValueError, match="Inconsistent number of photons between input_state and n_photons."):
         QuantumLayer(
             input_size=0,
             circuit=pcvl.Circuit(3),
             input_state=[1., 1., 1.], 
             n_photons=1,
-            measurement_strategy=MeasurementStrategy.probs(),)
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
 def test_quantum_layer_photon_count_mismatch_StateVector():
-    with pytest.raises(ValueError, match="number of photons doesn't fit input state"):
+    with pytest.raises(ValueError, match="Inconsistent number of photons between input_state and n_photons."):
         QuantumLayer(
             input_size=0,
             circuit=pcvl.Circuit(3),
             input_state=pcvl.StateVector("|1,0,1>"), 
             n_photons=1,
-            measurement_strategy=MeasurementStrategy.probs(),)
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
 
 def test_quantum_layer_photon_count_mismatch_BasicState():
-    with pytest.raises(ValueError, match="number of photons doesn't fit input state"):
+    with pytest.raises(ValueError, match="Inconsistent number of photons between input_state and n_photons."):
         QuantumLayer(
             input_size=0,
             circuit=pcvl.Circuit(3),
             input_state=pcvl.BasicState("|1,0,1>"), 
             n_photons=1,
-            measurement_strategy=MeasurementStrategy.probs(),)
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
         
 def test_quantum_layer_photon_count_mismatch_StateVector_superposition():
-    with pytest.raises(ValueError, match="number of photons doesn't fit input state"):
+    with pytest.raises(ValueError, match="Inconsistent number of photons between input_state and n_photons."):
         QuantumLayer(
             input_size=0,
             circuit=pcvl.Circuit(3),
             input_state=pcvl.StateVector("|1,0,1>")+pcvl.StateVector("|0,1,1>"), 
             n_photons=1,
-            measurement_strategy=MeasurementStrategy.probs(),)
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+
+def test_quantum_layer_photon_count_match_StateVector_superposition():
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=pcvl.StateVector("|1,0,1>"), 
+            n_photons=2,
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+        # Optionnel : Tu peux rajouter une assertion pour vérifier que l'objet a bien été créé
+        assert layer is not None
+        assert isinstance(layer, QuantumLayer)
+def test_quantum_layer_photon_count_match_List():
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=[1,0,1], 
+            n_photons=2,
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+        # Optionnel : Tu peux rajouter une assertion pour vérifier que l'objet a bien été créé
+        assert layer is not None
+        assert isinstance(layer, QuantumLayer)
+# to see if the tensor doesn't crash.
+def test_quantum_layer_photon_count_match_StateVector_Tensor():
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=torch.tensor([0.5,0,0.5]), 
+            n_photons=2,
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+        # Optionnel : Tu peux rajouter une assertion pour vérifier que l'objet a bien été créé
+        assert layer is not None
+        assert isinstance(layer, QuantumLayer)

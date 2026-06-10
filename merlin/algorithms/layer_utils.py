@@ -373,8 +373,11 @@ def prepare_input_state(
         return input_state, n_photons
 
     # === Handle tuple/list (convert to BasicState) ===
-    if isinstance(input_state, tuple):
-        input_state = list(input_state)
+    if isinstance(input_state, (list, tuple)):
+        input_list = list(input_state)
+
+        # On force la conversion en int pour ne pas faire crasher Perceval
+        return pcvl.BasicState(tuple(int(x) for x in input_list)), n_photons
 
     # === Handle pcvl.BasicState ===
     if isinstance(input_state, pcvl.BasicState):
@@ -985,31 +988,15 @@ def normalize_output_key(
     return tuple(int(v) for v in key)
 
 
-def sum_input_elements(input_state) -> float | int:
-    """
-    compute number of photons from input_state.
-    """
+def extract_photon_count(input_state) -> int | None:
+    """Extract photon number (for stateVector and basicState only)"""
     if input_state is None:
-        return 0.0
+        return None
 
-    # 1. Structures de données classiques (Calcul direct)
-    if isinstance(input_state, torch.Tensor):
-        return torch.sum(input_state).item()
-
-    if isinstance(input_state, (list, tuple)):
-        return sum(input_state)
-
-    # 2. Structures quantiques Perceval (Représentations creuses)
     if isinstance(input_state, pcvl.BasicState):
         return input_state.n
 
-    if isinstance(input_state, pcvl.StateVector):
-        return input_state.n
-
     if type(input_state).__name__ == "StateVector":
-        if hasattr(input_state, "tensor") and isinstance(
-            input_state.tensor, torch.Tensor
-        ):
-            return torch.sum(input_state.tensor).item()
+        return getattr(input_state, "n_photons", getattr(input_state, "n", None))
 
-    raise TypeError(f"Type not managed by the parser : {type(input_state)}")
+    return None

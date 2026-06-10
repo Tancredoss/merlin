@@ -66,13 +66,13 @@ from .layer_utils import (
     _build_simple_circuit,
     apply_angle_encoding,
     compute_new_memristive_ps_angles,
+    extract_photon_count,
     feature_count_for_prefix,
     prepare_input_encoding,
     prepare_input_state,
     resolve_circuit,
     setup_noise_and_detectors,
     split_inputs_by_prefix,
-    sum_input_elements,
     validate_and_resolve_circuit_source,
     validate_encoding_mode,
     vet_experiment,
@@ -254,12 +254,6 @@ class QuantumLayer(MerlinModule):
         circuit_source = validate_and_resolve_circuit_source(
             builder, circuit, experiment, trainable_parameters, input_parameters
         )
-        if (
-            sum_input_elements(input_state) != n_photons
-            and input_state is not None
-            and n_photons is not None
-        ):
-            raise ValueError("number of photons doesn't fit input state")
 
         # Phase 4: encoding validation (post-resolution)
         encoding_config = validate_encoding_mode(
@@ -286,7 +280,20 @@ class QuantumLayer(MerlinModule):
             circuit_m=resolved_circuit.circuit.m,
             amplitude_encoding=amplitude_encoding,
         )
+        # Phase 8.5 : We count number of photons from input_state and compare it to n_photons to see if it match.
+
+        extracted_n = extract_photon_count(input_state)
+        if (
+            extracted_n is not None
+            and n_photons is not None
+            and extracted_n != n_photons
+        ):
+            raise ValueError(
+                "Inconsistent number of photons between input_state and n_photons."
+            )
+
         # Phase 9: noise + detector setup
+
         noise_and_detectors = setup_noise_and_detectors(
             resolved_circuit.experiment,
             resolved_circuit.circuit,
