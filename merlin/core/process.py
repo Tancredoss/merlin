@@ -608,18 +608,14 @@ class ComputationProcess(AbstractComputationProcess):
 
         source_index_by_key = {key: idx for idx, key in enumerate(source_keys)}
         if set(source_index_by_key) != set(target_keys):
-            raise ValueError(
-                "Sector basis keys mismatch while aligning probabilities."
-            )
+            raise ValueError("Sector basis keys mismatch while aligning probabilities.")
 
         indices = torch.tensor(
             [source_index_by_key[key] for key in target_keys],
             dtype=torch.long,
             device=source_sector.tensor.device,
         )
-        return source_sector.tensor.index_select(
-            source_sector.tensor.ndim - 1, indices
-        )
+        return source_sector.tensor.index_select(source_sector.tensor.ndim - 1, indices)
 
     def _add_sectored_distributions(
         self,
