@@ -309,7 +309,7 @@ def normalize_measurement_strategy(
     computation_space: ComputationSpace | str | None,
 ) -> tuple[MeasurementStrategyLike, ComputationSpace]:
     """
-    Normalize measurement strategy and computation space with deprecation warnings.
+    Normalize measurement strategy and computation space with deprecation errors.
 
     Enforces the v0.3 requirement that ``computation_space`` must live inside
     ``MeasurementStrategy`` when using the new factory methods.
@@ -330,8 +330,10 @@ def normalize_measurement_strategy(
     Raises
     ------
     TypeError
-        If the provided strategy is incompatible with the separate
-        ``computation_space`` argument or cannot be normalized.
+        If the provided strategy is a string: which is an invalid measurement strategy.
+    AttributeError
+        - If ComputationSpace is defined in the quantum layer's constructor without a measurement strategy.
+        - If ComputationSpace is defined in the quantum layer's constructor with a valid measurement strategy.
     ValueError
         If a modern ``MeasurementStrategy`` does not define a computation
         space.
@@ -342,16 +344,18 @@ def normalize_measurement_strategy(
 
     1. If MeasurementStrategy instance (new API) + constructor computation_space provided
        → ERROR: user must move computation_space into the factory method
-    2. If measurement_strategy is None and computation_space provided
-       → OK with deprecation warning (default to MeasurementStrategy.probs(computation_space))
-    3. If legacy enum (PROBABILITIES, etc) + constructor computation_space
-       → OK with deprecation warning (backward compat)
+    2. If measurement_strategy is None or MeasurementStrategy.NONE and computation_space provided
+       → ERROR: user must define a measurement strategy with the computation space inside
+    3. If measurement strategy factory is not None + constructor computation_space
+       → ERROR: user must define  the computation space inside the measurement strategy
     4. If MeasurementStrategy instance only → use its computation_space
-    5. If legacy enum only → wrap with computation_space param
+    5. If MeasurementStrategy.NONE -> use amplitudes with the default computation space
+
     """
     from ..measurement.strategies import (
         MeasurementKind,
         MeasurementStrategy,
+        _LegacyMeasurementStrategy,
     )
 
     # Track whether computation_space was explicitly provided by user
@@ -395,6 +399,15 @@ def normalize_measurement_strategy(
 
         return measurement_strategy, strategy_space
 
+    if isinstance(measurement_strategy, _LegacyMeasurementStrategy):
+        if computation_space_provided:
+            raise AttributeError(
+                "Cannot specify 'computation_space' in QuantumLayer's constructor. "
+                "Move 'computation_space' into the factory method instead. Deprecated since v0.4. "
+                "For example: MeasurementStrategy.probs(computation_space=ComputationSpace.FOCK) "
+                "instead of QuantumLayer(..., computation_space=..., measurement_strategy=...)."
+            )
+
     if isinstance(measurement_strategy, MeasurementKind):
         raise TypeError(
             "MeasurementKind is not a supported public measurement_strategy input. "
@@ -409,12 +422,16 @@ def normalize_measurement_strategy(
     else:
         computation_space = ComputationSpace.coerce(computation_space)
 
+    if isinstance(measurement_strategy, _LegacyMeasurementStrategy):
+        if measurement_strategy == _LegacyMeasurementStrategy.NONE:
+            measurement_strategy = MeasurementStrategy.amplitudes(computation_space)
+
     return measurement_strategy, computation_space
 
 
-def error_deprecated_enum_access(owner: str, name: str) -> bool:
+def error_deprecated_enum_access(owner: str, name: str) -> None:
     """
-    Warn on deprecated enum-style attribute access.
+    Fails on deprecated enum-style attribute access.
 
     Parameters
     ----------
@@ -425,9 +442,7 @@ def error_deprecated_enum_access(owner: str, name: str) -> bool:
 
     Returns
     -------
-    bool
-        ``True`` if the access was recognized and handled, ``False``
-        otherwise.
+    None
     """
     if owner == "MeasurementStrategy" and name in _MEASUREMENT_STRATEGY_ENUM_MIGRATIONS:
         replacement = _MEASUREMENT_STRATEGY_ENUM_MIGRATIONS[name]
