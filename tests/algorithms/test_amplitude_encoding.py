@@ -341,17 +341,12 @@ def test_amplitude_encoding_sparse_superposition_matches_dense(make_layer):
     dense = torch.arange(1, num_states + 1, dtype=torch.float32).to(torch.complex64)
     dense = dense / dense.norm(p=2)
     indices = torch.arange(num_states, dtype=torch.long).unsqueeze(0)
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message="Sparse invariant checks are implicitly disabled.*",
-        )
-        sparse = torch.sparse_coo_tensor(
-            indices,
-            dense.clone(),
-            (num_states,),
-            dtype=torch.complex64,
-        ).coalesce()
+    sparse = torch.sparse_coo_tensor(
+        indices,
+        dense.clone(),
+        (num_states,),
+        dtype=torch.complex64,
+    ).coalesce()
 
     dense_output = layer(dense, simultaneous_processes=2)
     sparse_output = layer(sparse, simultaneous_processes=2)
