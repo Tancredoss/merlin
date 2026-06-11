@@ -162,9 +162,9 @@ def test_amplitude_encoding_gradients_follow_computation_space(
     assert amplitude_input.grad.shape == amplitude_input.shape
 
     trainable_params = [p for p in layer.parameters() if p.requires_grad]
-    assert trainable_params, (
-        "Expected at least one trainable parameter for gradient check"
-    )
+    assert (
+        trainable_params
+    ), "Expected at least one trainable parameter for gradient check"
     for param in trainable_params:
         assert param.grad is not None
         assert param.grad.shape == param.shape
@@ -341,12 +341,17 @@ def test_amplitude_encoding_sparse_superposition_matches_dense(make_layer):
     dense = torch.arange(1, num_states + 1, dtype=torch.float32).to(torch.complex64)
     dense = dense / dense.norm(p=2)
     indices = torch.arange(num_states, dtype=torch.long).unsqueeze(0)
-    sparse = torch.sparse_coo_tensor(
-        indices,
-        dense.clone(),
-        (num_states,),
-        dtype=torch.complex64,
-    ).coalesce()
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Sparse invariant checks are implicitly disabled.*",
+        )
+        sparse = torch.sparse_coo_tensor(
+            indices,
+            dense.clone(),
+            (num_states,),
+            dtype=torch.complex64,
+        ).coalesce()
 
     dense_output = layer(dense, simultaneous_processes=2)
     sparse_output = layer(sparse, simultaneous_processes=2)
@@ -883,9 +888,9 @@ def test_amplitude_encoding_superposition_matches_basis_sum():
     combined_output = layer(amplitude_input)
     expected_output = torch.sum(coefficients[:, None, None] * basis_outputs, dim=0)
     difference = combined_output - expected_output
-    assert torch.allclose(combined_output, expected_output, atol=1e-6, rtol=1e-6), (
-        f"Max deviation {difference.abs().max().item():.2e}"
-    )
+    assert torch.allclose(
+        combined_output, expected_output, atol=1e-6, rtol=1e-6
+    ), f"Max deviation {difference.abs().max().item():.2e}"
 
     with pytest.raises(ValueError, match="Amplitude input expects"):
         layer(torch.ones(layer.input_size + 1, dtype=torch.complex64))
@@ -1024,9 +1029,9 @@ def test_ebs_wrt_quantumlayer(
             single_unitary = single_layer.computation_process.converter.to_tensor(
                 *single_params
             )
-            assert torch.allclose(single_unitary, ebs_unitary, rtol=1e-6, atol=1e-8), (
-                "Expected identical unitaries between EBS and single-state layers."
-            )
+            assert torch.allclose(
+                single_unitary, ebs_unitary, rtol=1e-6, atol=1e-8
+            ), "Expected identical unitaries between EBS and single-state layers."
             assert (
                 single_layer.computation_process.simulation_graph.mapped_keys
                 == ebs_layer.computation_process.simulation_graph.mapped_keys
@@ -1044,6 +1049,6 @@ def test_ebs_wrt_quantumlayer(
         p=2, dim=1, keepdim=True
     ).clamp_min(1e-12)
     # TODO: investigate why this tests failed with rtol=1e-6, atol=1e-8
-    assert torch.allclose(ebs_output, expected_output, rtol=1e-4, atol=1e-6), (
-        "EBS output deviates from the superposed QuantumLayer results."
-    )
+    assert torch.allclose(
+        ebs_output, expected_output, rtol=1e-4, atol=1e-6
+    ), "EBS output deviates from the superposed QuantumLayer results."
