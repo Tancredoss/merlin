@@ -237,6 +237,26 @@ def test_local_max_error_uses_component_half_width():
     assert torch.allclose(unitary, expected)
 
 
+def test_multiple_local_max_errors_use_component_half_widths():
+    circuit = pcvl.Circuit(2)
+    circuit.add(0, pcvl.PS(pcvl.P("phi0"), max_error=0.1))
+    circuit.add(1, pcvl.PS(pcvl.P("phi1"), max_error=0.3))
+    converter = CircuitConverter(circuit, ["phi"], dtype=torch.float64)
+    phases = torch.tensor([0.74, -0.31], dtype=torch.float64)
+
+    torch.manual_seed(1234)
+    first_sample = torch.empty((), dtype=torch.float64).uniform_(-0.1, 0.1)
+    second_sample = torch.empty((), dtype=torch.float64).uniform_(-0.3, 0.3)
+    expected = torch.diag(
+        torch.exp(1j * (phases + torch.stack([first_sample, second_sample])))
+    )
+
+    torch.manual_seed(1234)
+    unitary = converter.to_tensor(phases, apply_phase_error=True)
+
+    assert torch.allclose(unitary, expected)
+
+
 def test_local_max_error_warns_and_overrides_global_phase_error():
     circuit = pcvl.Circuit(1) // pcvl.PS(pcvl.P("phi"), max_error=0.25)
     phase = torch.tensor([0.74], dtype=torch.float64)
