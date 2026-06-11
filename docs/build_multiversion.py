@@ -242,6 +242,7 @@ def build_metadata(
             "name": version_name,
             "version": version_name,
             "release": version_name,
+            "rst_prolog": "",
             "is_released": True,
             "source": "tags",
             "source_tag": tag,
