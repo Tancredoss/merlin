@@ -360,7 +360,7 @@ def test_phase_error_perturbations_do_not_require_gradients():
     torch.manual_seed(42)
     unitary1 = converter.to_tensor(phase, apply_phase_error=True)
 
-    # Compute loss and backward pass
+    # Compute loss and backward pass (safe because 1x1 PS)
     loss1 = unitary1.real.sum()
     loss1.backward()
     grad1 = phase.grad.clone()
