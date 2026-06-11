@@ -120,7 +120,7 @@ class QuantumLayer(MerlinModule):
         measurement_strategy: MeasurementStrategyLike | None = None,
         return_object: bool = False,
         noise: pcvl.NoiseModel | None = None,
-        n_phase_error_samples: int = 10,
+        n_phase_error_samples: int = 1,
         # device and dtype
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
@@ -202,8 +202,8 @@ class QuantumLayer(MerlinModule):
             ``phase_error`` is present. Each sample builds one perturbed
             unitary, computes probabilities, and contributes to the averaged
             probability distribution. Amplitudes are not averaged. Runtime
-            scales roughly linearly with this value. If omitted, 10 samples
-            are used.
+            scales roughly linearly with this value. If omitted, one sample is
+            used.
         device : torch.device | None
             Target device for internal tensors (e.g., ``torch.device("cuda")``).
         dtype : torch.dtype | None

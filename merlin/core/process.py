@@ -105,7 +105,7 @@ class ComputationProcess(AbstractComputationProcess):
         no_bunching: bool | None = None,
         output_map_func=None,
         noise_groups: NoiseGroups | None = None,
-        n_phase_error_samples: int = 10,
+        n_phase_error_samples: int = 1,
     ):
         """Initialize a computation process.
 
@@ -139,7 +139,7 @@ class ComputationProcess(AbstractComputationProcess):
             one perturbed unitary; the process averages those probabilities.
             This matters for coherent tensor superpositions: amplitudes are
             converted to probabilities per sample before averaging. Default
-            value is 10.
+            value is 1.
 
         Raises
         ------
@@ -1280,7 +1280,7 @@ class ComputationProcessFactory:
         input_parameters: list[str],
         computation_space: ComputationSpace | None = None,
         noise_groups: NoiseGroups | None = None,
-        n_phase_error_samples: int = 10,
+        n_phase_error_samples: int = 1,
         **kwargs,
     ) -> ComputationProcess:
         """Create a computation process.
@@ -1301,7 +1301,7 @@ class ComputationProcessFactory:
             The noise groups applied to the circuit to be ran.
         n_phase_error_samples : int
             Number of Monte Carlo unitary samples used when active
-            ``phase_error`` is present. Default value is 10.
+            ``phase_error`` is present. Default value is 1.
         **kwargs
             Additional keyword arguments forwarded to
             :class:`ComputationProcess`.

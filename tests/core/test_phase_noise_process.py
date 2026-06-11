@@ -465,6 +465,25 @@ def test_n_phase_error_samples_must_be_at_least_one():
         _process(n_phase_error_samples=0)
 
 
+def test_computation_process_defaults_to_one_phase_error_sample():
+    process = ComputationProcess(
+        circuit=_mzi_circuit(),
+        input_state=[1, 0],
+        trainable_parameters=["phi"],
+        input_parameters=[],
+        n_photons=1,
+        dtype=torch.float64,
+        computation_space=ComputationSpace.FOCK,
+        noise_groups=NoiseGroups(
+            source=None,
+            circuit={"phase_error": 0.2},
+            post_measurement=None,
+        ),
+    )
+
+    assert process._n_phase_error_samples == 1
+
+
 def test_compute_superposition_state_raises_with_phase_error():
     process = _process(
         NoiseGroups(source=None, circuit={"phase_error": 0.2}, post_measurement=None)
@@ -517,3 +536,22 @@ def test_factory_forwards_n_phase_error_samples():
     )
 
     assert process._n_phase_error_samples == 7
+
+
+def test_factory_defaults_to_one_phase_error_sample():
+    process = ComputationProcessFactory.create(
+        circuit=_mzi_circuit(),
+        input_state=[1, 0],
+        trainable_parameters=["phi"],
+        input_parameters=[],
+        n_photons=1,
+        dtype=torch.float64,
+        computation_space=ComputationSpace.FOCK,
+        noise_groups=NoiseGroups(
+            source=None,
+            circuit={"phase_error": 0.2},
+            post_measurement=None,
+        ),
+    )
+
+    assert process._n_phase_error_samples == 1

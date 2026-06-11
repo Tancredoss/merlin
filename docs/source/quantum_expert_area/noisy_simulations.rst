@@ -176,12 +176,13 @@ the deterministic quantized phase.
 
 The ``n_phase_error_samples`` constructor parameter controls how many sampled
 unitaries are averaged when active ``phase_error`` is present. If omitted,
-Merlin uses 10 samples. Runtime scales roughly linearly with this value when
+Merlin uses 1 sample. Runtime scales roughly linearly with this value when
 ``phase_error > 0``.
 
 Suggested values:
 
-- ``5`` to ``10`` for quick prototyping.
+- ``1`` for Perceval-like stochastic circuit sampling.
+- ``5`` to ``10`` for quick expected-noise estimates.
 - ``50`` to ``100`` for validation studies.
 - ``200`` or more for production or publication results.
 

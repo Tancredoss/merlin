@@ -309,6 +309,23 @@ def test_phase_error_with_probs_constructs_and_forwards():
     assert layer.computation_process._n_phase_error_samples == 4
 
 
+def test_phase_error_with_probs_defaults_to_one_sample():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_phase_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(phase_error=0.2),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    assert layer.computation_process._n_phase_error_samples == 1
+
+
 def test_component_phase_error_with_probs_constructs_and_forwards_without_noise_model():
     layer = ml.QuantumLayer(
         input_size=0,
