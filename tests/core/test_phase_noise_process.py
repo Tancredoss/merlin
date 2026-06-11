@@ -327,6 +327,25 @@ def test_phase_error_matches_manual_probability_average():
     assert torch.allclose(output, expected)
 
 
+def test_phase_error_rejects_probability_key_order_mismatch(monkeypatch):
+    process = _process(
+        NoiseGroups(source=None, circuit={"phase_error": 0.2}, post_measurement=None),
+        n_phase_error_samples=1,
+    )
+    reversed_keys = list(reversed(process.simulation_graph.mapped_keys))
+
+    def compute_probs(_unitary, _input_state):
+        return reversed_keys, torch.ones(
+            len(reversed_keys),
+            dtype=torch.float64,
+        )
+
+    monkeypatch.setattr(process.simulation_graph, "compute_probs", compute_probs)
+
+    with pytest.raises(ValueError, match="Probability keys"):
+        process.compute(_phase_parameter())
+
+
 def test_phase_error_with_tensor_superposition_averages_probabilities():
     input_state = torch.tensor(
         [1.0, 1.0j],

@@ -533,8 +533,29 @@ class ComputationProcess(AbstractComputationProcess):
             return normalize_probabilities(probabilities, self.computation_space)
 
         input_state = self._fixed_input_state_for_compute()
-        _keys, probs = self.simulation_graph.compute_probs(unitary, input_state)
+        keys, probs = self.simulation_graph.compute_probs(unitary, input_state)
+        self._validate_probability_keys(keys)
         return probs
+
+    def _validate_probability_keys(self, keys: Any) -> None:
+        """Validate probability tensor keys against the simulation graph order.
+
+        Parameters
+        ----------
+        keys : Any
+            Keys returned with a probability tensor by the simulation graph.
+
+        Raises
+        ------
+        ValueError
+            If the returned keys do not match
+            ``self.simulation_graph.mapped_keys``.
+        """
+        if keys != self.simulation_graph.mapped_keys:
+            raise ValueError(
+                "Probability keys returned by the simulation graph do not match "
+                "the mapped output-key order."
+            )
 
     @staticmethod
     def _validate_sector_keys(sector: SectorResult) -> tuple[tuple[int, ...], ...]:
