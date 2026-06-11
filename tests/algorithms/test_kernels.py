@@ -20,19 +20,26 @@ from merlin.builder import CircuitBuilder
 from merlin.core.computation_space import ComputationSpace
 
 
+def _two_mode_mixed_feature_map(
+    x1: pcvl.P, x2: pcvl.P, theta: pcvl.P | None = None
+) -> pcvl.Circuit:
+    """Build a two-mode mix-encode-mix circuit for feature-map tests."""
+    circuit = pcvl.Circuit(2)
+    circuit.add(0, pcvl.BS(theta) if theta is not None else pcvl.BS())
+    circuit.add(0, pcvl.PS(x1))
+    circuit.add(0, pcvl.BS(theta) if theta is not None else pcvl.BS())
+    circuit.add(0, pcvl.PS(x2))
+    circuit.add(0, pcvl.BS(theta) if theta is not None else pcvl.BS())
+    return circuit
+
+
 class TestCCInvBackend:
     """Tests for _CCInvQuantumLayer as the FidelityKernel computation backend."""
 
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
         theta = pcvl.P("theta")
-        self.circuit = (
-            pcvl.Circuit(2)
-            // pcvl.PS(x1)
-            // pcvl.BS(theta)
-            // pcvl.PS(x2)
-            // pcvl.BS(theta)
-        )
+        self.circuit = _two_mode_mixed_feature_map(x1, x2, theta)
         self.feature_map = FeatureMap(
             circuit=self.circuit,
             input_size=2,
@@ -249,9 +256,7 @@ class TestFidelityKernelInternals:
 
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2)
         self.feature_map = FeatureMap(
             circuit=circuit,
             input_size=2,
@@ -293,9 +298,7 @@ class TestFidelityKernelInternals:
 class TestFidelityKernel:
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2)
         self.feature_map = FeatureMap(
             circuit=circuit,
             input_size=2,
@@ -318,13 +321,7 @@ class TestFidelityKernel:
     def test_fidelity_kernel_with_trainable_feature_map(self):
         theta = pcvl.P("theta")
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2)
-            // pcvl.PS(x1)
-            // pcvl.BS(theta)
-            // pcvl.PS(x2)
-            // pcvl.BS(theta)
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2, theta)
 
         feature_map = FeatureMap(
             circuit=circuit,
@@ -825,9 +822,7 @@ class TestFeatureMapFactoryMethods:
     def test_from_pcvl_circuit(self):
         """FeatureMap can be built directly from a pcvl.Circuit."""
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2)
 
         feature_map = FeatureMap(
             circuit=circuit,
@@ -909,9 +904,7 @@ class TestFidelityKernelFactoryMethods:
     def test_from_feature_map_pcvl_circuit(self):
         """FidelityKernel can wrap a FeatureMap built from pcvl.Circuit."""
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2)
         feature_map = FeatureMap(
             circuit=circuit,
             input_size=2,
@@ -1140,6 +1133,7 @@ class TestKernelConstructionConsistency:
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
         fm_manual = FeatureMap(
             circuit=pcvl.Circuit(3)
+            // pcvl.BS()
             // pcvl.PS(x1)
             // pcvl.BS()
             // pcvl.PS(x2)
@@ -1231,9 +1225,7 @@ class TestKernelIntegration:
 
         # Set up kernel
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2)
         feature_map = FeatureMap(
             circuit=circuit,
             input_size=2,
@@ -1265,13 +1257,7 @@ class TestKernelIntegration:
         # Trainable kernel
         theta = pcvl.P("theta")
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2)
-            // pcvl.PS(x1)
-            // pcvl.BS(theta)
-            // pcvl.PS(x2)
-            // pcvl.BS(theta)
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2, theta)
 
         feature_map = FeatureMap(
             circuit=circuit,
