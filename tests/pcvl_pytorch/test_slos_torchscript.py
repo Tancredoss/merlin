@@ -157,7 +157,10 @@ def test_slos_compute_slos_distribution_with_output_map_function():
         return state[::-1]
 
     output_map_func = reverse_state
-    with pytest.warns(DeprecationWarning, match=r"torch\.jit\.script.*deprecated"):
+    with pytest.warns(
+        DeprecationWarning,
+        match=r"torch\.jit\.script.*(deprecated|not supported)",
+    ):
         keys, amplitudes = compute_slos_distribution(
             unitary=U_torch,
             input_state=input_state,
