@@ -21,7 +21,7 @@ merlin.algorithms.layer module
 
    ``phase_error`` is sampled after any ``phase_imprecision`` quantization. With both active, each sampled unitary uses ``round(phi / phase_imprecision) * phase_imprecision + epsilon`` where ``epsilon`` is drawn from ``Uniform(-phase_error, phase_error)``.
 
-   ``n_phase_error_samples`` controls the Monte Carlo sample count used for active ``phase_error`` circuit noise. Each ``phase_error`` sample is a coherent unitary evolution: tensor input superpositions interfere before that sample is converted to probabilities. MerLin then averages the sampled probability distributions, not amplitudes or unitaries. Source-noise simulations are incoherent mixtures: tensor input components are propagated independently and combined with weights ``|c_i|^2``. Runtime scales roughly linearly with this value when ``phase_error > 0``; the default is 1 sample.
+   ``n_phase_error_samples`` controls the Monte Carlo sample count used for active ``phase_error`` circuit noise. Each ``phase_error`` sample is a coherent unitary evolution: tensor input superpositions interfere before that sample is converted to probabilities. MerLin then averages the sampled probability distributions, not amplitudes or unitaries. Source-noise simulations are incoherent mixtures: tensor input components are propagated independently and combined with weights ``|c_i|^2``. Runtime scales roughly linearly with this value when ``phase_error > 0``; when source noise or ``g2`` is also active, each phase-error sample runs the full source-noise mixture, so the worst-case cost is roughly ``n_phase_error_samples * n_active_input_states * SLOS``. The default is 1 sample.
 
 Example: Quickstart QuantumLayer
 --------------------------------

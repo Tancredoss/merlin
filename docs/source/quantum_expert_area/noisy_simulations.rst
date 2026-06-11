@@ -177,7 +177,10 @@ the deterministic quantized phase.
 The ``n_phase_error_samples`` constructor parameter controls how many sampled
 unitaries are averaged when active ``phase_error`` is present. If omitted,
 Merlin uses 1 sample. Runtime scales roughly linearly with this value when
-``phase_error > 0``.
+``phase_error > 0``. When source noise or ``g2`` is also active, the cost is
+multiplicative: each phase-error sample runs the full source-noise mixture, so
+the worst-case runtime is roughly
+``n_phase_error_samples * n_active_input_states * SLOS``.
 
 Suggested values:
 

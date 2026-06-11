@@ -202,8 +202,9 @@ class QuantumLayer(MerlinModule):
             ``phase_error`` is present. Each sample builds one perturbed
             unitary, computes probabilities, and contributes to the averaged
             probability distribution. Amplitudes are not averaged. Runtime
-            scales roughly linearly with this value. If omitted, one sample is
-            used.
+            scales roughly linearly with this value; with source noise or
+            ``g2``, each phase-error sample runs the full source-noise mixture.
+            If omitted, one sample is used.
         device : torch.device | None
             Target device for internal tensors (e.g., ``torch.device("cuda")``).
         dtype : torch.dtype | None
