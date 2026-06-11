@@ -38,6 +38,8 @@ from merlin.pcvl_pytorch.noisy_slos import (
 
 from ..algorithms.layer_utils import (
     NoiseGroups,
+    _circuit_has_phase_error,
+    _with_component_phase_error,
     has_circuit_noise,
     has_phase_error,
     has_source_noise,
@@ -160,7 +162,11 @@ class ComputationProcess(AbstractComputationProcess):
         self.input_parameters = input_parameters
         self.dtype = dtype
         self.device = device
-        self.noise_groups = noise_groups
+        self.noise_groups = (
+            _with_component_phase_error(noise_groups)
+            if _circuit_has_phase_error(circuit)
+            else noise_groups
+        )
         self._n_phase_error_samples = n_phase_error_samples
         self._phase_imprecision = 0.0
         self._phase_error = 0.0
@@ -205,7 +211,7 @@ class ComputationProcess(AbstractComputationProcess):
             return
         if "phase_imprecision" in circuit_noise:
             self._phase_imprecision = float(circuit_noise["phase_imprecision"])
-        if "phase_error" in circuit_noise:
+        if "phase_error" in circuit_noise and circuit_noise["phase_error"] is not None:
             self._phase_error = float(circuit_noise["phase_error"])
 
     def _has_source_noise(self) -> bool:

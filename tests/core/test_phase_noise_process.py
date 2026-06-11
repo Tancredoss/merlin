@@ -46,16 +46,25 @@ def _mzi_circuit() -> pcvl.Circuit:
     return circuit
 
 
+def _mzi_circuit_with_component_phase_error() -> pcvl.Circuit:
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+    circuit.add(0, pcvl.PS(pcvl.P("phi"), max_error=0.2))
+    circuit.add((0, 1), pcvl.BS.H())
+    return circuit
+
+
 def _process(
     noise_groups: NoiseGroups | None = None,
     *,
+    circuit: pcvl.Circuit | None = None,
     input_state: list[int] | torch.Tensor | None = None,
     n_phase_error_samples: int = 3,
 ) -> ComputationProcess:
     if input_state is None:
         input_state = [1, 0]
     return ComputationProcess(
-        circuit=_mzi_circuit(),
+        circuit=_mzi_circuit() if circuit is None else circuit,
         input_state=input_state,
         trainable_parameters=["phi"],
         input_parameters=[],
@@ -280,6 +289,22 @@ def test_phase_error_compute_returns_probabilities():
     torch.manual_seed(12)
     output = process.compute(_phase_parameter())
 
+    assert isinstance(output, torch.Tensor)
+    assert not output.is_complex()
+    assert torch.allclose(output.sum(dim=-1), torch.tensor(1.0, dtype=output.dtype))
+
+
+def test_component_phase_error_compute_returns_probabilities_without_noise_model():
+    process = _process(
+        circuit=_mzi_circuit_with_component_phase_error(),
+        n_phase_error_samples=4,
+    )
+
+    torch.manual_seed(12)
+    output = process.compute(_phase_parameter())
+
+    assert process.noise_groups is not None
+    assert process.noise_groups.circuit == {"phase_error": None}
     assert isinstance(output, torch.Tensor)
     assert not output.is_complex()
     assert torch.allclose(output.sum(dim=-1), torch.tensor(1.0, dtype=output.dtype))

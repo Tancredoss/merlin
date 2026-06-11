@@ -194,6 +194,71 @@ def test_tiny_nonzero_phase_error_keeps_constant_ps_dynamic():
     assert any(isinstance(component, pcvl.PS) for _, component in converter.list_rct)
 
 
+def test_constant_ps_with_local_max_error_remains_dynamic():
+    circuit = pcvl.Circuit(1) // pcvl.PS(0.25, max_error=0.5)
+    converter = CircuitConverter(circuit, dtype=torch.float64)
+
+    assert any(isinstance(component, pcvl.PS) for _, component in converter.list_rct)
+
+    torch.manual_seed(1234)
+    first = converter.to_tensor(apply_phase_error=True)
+    torch.manual_seed(5678)
+    second = converter.to_tensor(apply_phase_error=True)
+
+    assert not torch.allclose(first, second)
+
+
+def test_local_max_error_is_inactive_without_apply_phase_error_flag():
+    circuit = pcvl.Circuit(1) // pcvl.PS(0.25, max_error=0.5)
+    converter = CircuitConverter(circuit, dtype=torch.float64)
+
+    torch.manual_seed(1234)
+    first = converter.to_tensor()
+    torch.manual_seed(5678)
+    second = converter.to_tensor()
+
+    expected = _expected_phase_unitary(0.25, torch.float64)
+    assert torch.allclose(first, expected)
+    assert torch.allclose(second, expected)
+
+
+def test_local_max_error_uses_component_half_width():
+    circuit = pcvl.Circuit(1) // pcvl.PS(pcvl.P("phi"), max_error=0.25)
+    converter = CircuitConverter(circuit, ["phi"], dtype=torch.float64)
+    phase = torch.tensor([0.74], dtype=torch.float64)
+
+    torch.manual_seed(1234)
+    phase_error_sample = torch.empty((), dtype=torch.float64).uniform_(-0.25, 0.25)
+    expected = _expected_phase_unitary(phase + phase_error_sample, torch.float64)
+
+    torch.manual_seed(1234)
+    unitary = converter.to_tensor(phase, apply_phase_error=True)
+
+    assert torch.allclose(unitary, expected)
+
+
+def test_local_max_error_warns_and_overrides_global_phase_error():
+    circuit = pcvl.Circuit(1) // pcvl.PS(pcvl.P("phi"), max_error=0.25)
+    phase = torch.tensor([0.74], dtype=torch.float64)
+
+    with pytest.warns(UserWarning, match="max_error overrides phase_error"):
+        converter = CircuitConverter(
+            circuit,
+            ["phi"],
+            dtype=torch.float64,
+            phase_error=0.75,
+        )
+
+    torch.manual_seed(1234)
+    phase_error_sample = torch.empty((), dtype=torch.float64).uniform_(-0.25, 0.25)
+    expected = _expected_phase_unitary(phase + phase_error_sample, torch.float64)
+
+    torch.manual_seed(1234)
+    unitary = converter.to_tensor(phase, apply_phase_error=True)
+
+    assert torch.allclose(unitary, expected)
+
+
 def test_constant_ps_can_be_precomputed_with_only_phase_imprecision():
     circuit = pcvl.Circuit(1) // pcvl.PS(0.74)
     converter = CircuitConverter(

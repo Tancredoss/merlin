@@ -43,6 +43,7 @@ from typing import Any, Literal, cast
 import exqalibur as xqlbr
 import perceval as pcvl
 import torch
+from perceval.components import PS, AComponent
 
 from ..builder.circuit_builder import CircuitBuilder
 from ..core.computation_space import ComputationSpace
@@ -247,12 +248,83 @@ def has_phase_error(noise_groups: NoiseGroups | None) -> bool:
     Returns
     -------
     bool
-        True when ``phase_error`` is present in the circuit noise group.
+        True when ``phase_error`` is present in the circuit noise group. A
+        ``None`` value means the stochastic half-width is stored locally on one
+        or more Perceval phase shifters.
     """
     if not has_circuit_noise(noise_groups):
         return False
     circuit_noise = cast(dict[str, float | None], noise_groups.circuit)
     return "phase_error" in circuit_noise
+
+
+def _phase_shifter_max_error(component: AComponent) -> float:
+    """Return the local phase-error half-width stored on a Perceval phase shifter.
+
+    Parameters
+    ----------
+    component : AComponent
+        Component to inspect.
+
+    Returns
+    -------
+    float
+        Positive local phase-error half-width, or 0.0 when no local stochastic
+        phase-error is configured.
+    """
+    if not isinstance(component, PS):
+        return 0.0
+    return float(getattr(component, "_max_error", 0.0))
+
+
+def _circuit_has_phase_error(circuit: pcvl.Circuit) -> bool:
+    """Return whether a circuit contains local phase-shifter error.
+
+    Parameters
+    ----------
+    circuit : pcvl.Circuit
+        Circuit whose components are inspected.
+
+    Returns
+    -------
+    bool
+        True when at least one :class:`pcvl.PS` component has a positive
+        ``max_error`` value.
+    """
+    return any(_phase_shifter_max_error(component) > 0.0 for _, component in circuit)
+
+
+def _with_component_phase_error(
+    noise_groups: NoiseGroups | None,
+) -> NoiseGroups:
+    """Mark classified noise groups as containing local phase-error noise.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Existing noise groups derived from a :class:`pcvl.NoiseModel`, if any.
+
+    Returns
+    -------
+    NoiseGroups
+        Noise groups with ``phase_error`` present in the circuit group. A
+        ``None`` value is used when the stochastic width is provided by
+        individual phase shifters rather than by :class:`pcvl.NoiseModel`.
+    """
+    if noise_groups is None:
+        return NoiseGroups(
+            source=None,
+            circuit={"phase_error": None},
+            post_measurement=None,
+        )
+
+    circuit_noise = dict(noise_groups.circuit or {})
+    circuit_noise.setdefault("phase_error", None)
+    return NoiseGroups(
+        source=noise_groups.source,
+        circuit=circuit_noise,
+        post_measurement=noise_groups.post_measurement,
+    )
 
 
 @dataclass(frozen=True)
@@ -793,6 +865,8 @@ def setup_noise_and_detectors(
 
     # Validating and sorting the noise model
     noise_groups = None if noise is None else classify_noise(noise)
+    if _circuit_has_phase_error(circuit):
+        noise_groups = _with_component_phase_error(noise_groups)
     validate_noisy_measurement_strategy(
         backend,
         output=measurement_kind.name.lower(),

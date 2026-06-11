@@ -22,6 +22,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import torch
 from multipledispatch import dispatch
 from perceval.components import (
@@ -47,6 +49,41 @@ Components:
     Unitary: Generic unitary matrix (no parameters)
     Barrier: Synchronization barrier (removed during compilation)
 """
+
+
+def _phase_shifter_max_error(component: AComponent) -> float:
+    """Return the local Perceval phase-error half-width for a phase shifter.
+
+    Parameters
+    ----------
+    component : AComponent
+        Perceval component to inspect.
+
+    Returns
+    -------
+    float
+        Positive stochastic phase-error half-width stored on the component,
+        or 0.0 when the component has no local phase-error setting.
+    """
+    if not isinstance(component, PS):
+        return 0.0
+    return float(getattr(component, "_max_error", 0.0))
+
+
+def _circuit_has_local_phase_error(circuit: Circuit) -> bool:
+    """Return whether a circuit contains phase shifters with local error.
+
+    Parameters
+    ----------
+    circuit : Circuit
+        Perceval circuit to inspect.
+
+    Returns
+    -------
+    bool
+        True when at least one phase shifter has ``max_error > 0``.
+    """
+    return any(_phase_shifter_max_error(component) > 0.0 for _, component in circuit)
 
 
 class CircuitConverter:
@@ -264,6 +301,14 @@ class CircuitConverter:
             f"Expected a Perceval LO circuit, but got {type(circuit).__name__}"
         )
         self.circuit = circuit
+        if self._phase_error > 0.0 and _circuit_has_local_phase_error(self.circuit):
+            warnings.warn(
+                "Circuit contains pcvl.PS(max_error > 0) while phase_error is "
+                "configured. Local PS max_error overrides phase_error for those "
+                "phase shifters.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         # Create parameter mapping - it will map parameter names to their index in the input tensors
         self.param_mapping = {}
@@ -387,7 +432,9 @@ class CircuitConverter:
             # because fresh perturbations must be drawn on each call to to_tensor().
             # In contrast, phase_imprecision-only PS can still be precomputed since
             # quantization is deterministic.
-            is_phase_error_sensitive = isinstance(c, PS) and self._phase_error > 0.0
+            is_phase_error_sensitive = isinstance(c, PS) and (
+                self._phase_error > 0.0 or _phase_shifter_max_error(c) > 0.0
+            )
             if not c.get_parameters(all_params=False) and not is_phase_error_sensitive:
                 # we can already compute the tensor for this component
                 curr_comp_tensor = self._compute_tensor(c)
@@ -750,12 +797,16 @@ class CircuitConverter:
         # draws fresh Uniform(-phase_error, phase_error) samples. The samples
         # are noise, not trainable parameters; gradients flow only through the
         # commanded phase value.
-        if self._apply_phase_error and self._phase_error > 0.0:
+        component_phase_error = _phase_shifter_max_error(comp)
+        phase_error_half_width = (
+            component_phase_error if component_phase_error > 0.0 else self._phase_error
+        )
+        if self._apply_phase_error and phase_error_half_width > 0.0:
             # Use torch.empty_like() to ensure perturbations follow the same
             # device, dtype, and batch structure as the phase tensor.
             phase_error = torch.empty_like(phase).uniform_(
-                -self._phase_error,
-                self._phase_error,
+                -phase_error_half_width,
+                phase_error_half_width,
             )
             phase = phase + phase_error
 

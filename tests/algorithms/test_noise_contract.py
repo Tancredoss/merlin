@@ -252,6 +252,15 @@ def _phase_circuit() -> pcvl.Circuit:
     return circuit
 
 
+def _component_phase_error_circuit() -> pcvl.Circuit:
+    """Create a small circuit with local Perceval phase-shifter error."""
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+    circuit.add(0, pcvl.PS(pcvl.P("phi"), max_error=0.2))
+    circuit.add((0, 1), pcvl.BS.H())
+    return circuit
+
+
 def _assert_normalized_distribution(output: torch.Tensor, size: int) -> None:
     assert output.shape[-1] == size
     assert not output.is_complex()
@@ -298,6 +307,31 @@ def test_phase_error_with_probs_constructs_and_forwards():
 
     _assert_normalized_distribution(output, 2)
     assert layer.computation_process._n_phase_error_samples == 4
+
+
+def test_component_phase_error_with_probs_constructs_and_forwards_without_noise_model():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_component_phase_error_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        n_phase_error_samples=4,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    torch.manual_seed(123)
+    output = layer()
+
+    _assert_normalized_distribution(output, 2)
+    assert has_phase_error(layer._noise_groups)
+    # Component-local PS(max_error) is a phase-error source, but it must stay
+    # local to the phase shifter. The converter's _phase_error field represents
+    # only NoiseModel.phase_error, which is not configured in this test.
+    assert layer.computation_process.converter._phase_error == 0.0
 
 
 def test_phase_imprecision_and_phase_error_construct_and_forward():
