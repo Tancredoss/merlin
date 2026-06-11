@@ -110,7 +110,7 @@ class TestMeasurementStrategyDeprecations:
         circuit = pcvl.Circuit(2)
         with pytest.raises(
             TypeError,
-            match="Passing measurement_strategy as a string is deprecated since v0.4.",
+            match="Passing measurement_strategy as a string is no longer supported as of v0.4.",
         ):
             layer = QuantumLayer(
                 input_size=0,
@@ -124,7 +124,7 @@ class TestMeasurementStrategyDeprecations:
         circuit = pcvl.Circuit(2)
         with pytest.raises(
             TypeError,
-            match="Passing measurement_strategy as a string is deprecated since v0.4.",
+            match="Passing measurement_strategy as a string is no longer supported as of v0.4.",
         ):
             layer = QuantumLayer(
                 input_size=0,
@@ -138,7 +138,7 @@ class TestMeasurementStrategyDeprecations:
         circuit = pcvl.Circuit(2)
         with pytest.raises(
             TypeError,
-            match="Passing measurement_strategy as a string is deprecated since v0.4.",
+            match="Passing measurement_strategy as a string is no longer supported as of v0.4.",
         ):
             layer = QuantumLayer(
                 input_size=0,
@@ -152,7 +152,7 @@ class TestMeasurementStrategyDeprecations:
         circuit = pcvl.Circuit(2)
         with pytest.raises(
             AttributeError,
-            match="Passing 'computation_space' without an explicit measurement_strategy is deprecated since v0.4.",
+            match="Passing 'computation_space' without an explicit measurement_strategy is no longer supported as of v0.4.",
         ):
             layer = QuantumLayer(
                 input_size=0,

@@ -435,7 +435,6 @@ def _resolve_measurement_kind(
         if measurement_strategy == _LegacyMeasurementStrategy.NONE:
             # Legacy NONE aliases amplitudes.
             return MeasurementKind.AMPLITUDES
-        error_deprecated_enum_access("MeasurementStrategy", measurement_strategy.name)
     raise TypeError(f"Unknown measurement_strategy: {measurement_strategy}")
 
 

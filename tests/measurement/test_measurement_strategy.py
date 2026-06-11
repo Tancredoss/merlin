@@ -991,7 +991,7 @@ class TestComputationSpaceConflictResolution:
         assert layer.measurement_strategy.type == MeasurementKind.PROBABILITIES
 
     def test_constructor_computation_space_fails(self):
-        """Legacy enum (PROBABILITIES) with constructor computation_space should WARN but work."""
+        """Legacy enum (PROBABILITIES) with constructor computation_space should fail."""
         builder = ML.CircuitBuilder(n_modes=3)
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
@@ -1010,7 +1010,7 @@ class TestComputationSpaceConflictResolution:
             )
 
     def test_new_ms_without_constructor_computation_space_defaults(self):
-        """Legacy enum without computation_space should default to UNBUNCHED."""
+        """New factory method should default to UNBUNCHED."""
         builder = ML.CircuitBuilder(n_modes=3)
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
