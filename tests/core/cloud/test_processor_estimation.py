@@ -95,7 +95,9 @@ class TestOutputAndExport:
         X = torch.randn(6, 3)
         for _ in range(4):
             opt.zero_grad()
-            q(X).sum().backward()
+            _ = q(X)
+            loss = sum(param.sum() for param in q.parameters())
+            loss.backward()
             opt.step()
         q.eval()
         changed = any(
