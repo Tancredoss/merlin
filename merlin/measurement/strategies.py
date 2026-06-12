@@ -34,7 +34,10 @@ import torch
 
 from merlin.core.computation_space import ComputationSpace
 from merlin.core.partial_measurement import PartialMeasurement
-from merlin.core.sectored_distribution import SectoredDistribution
+from merlin.core.sectored_distribution import (
+    SectoredDistribution,
+    clean_sectored_distribution,
+)
 from merlin.measurement.process import SamplingProcess, partial_measurement
 from merlin.utils.deprecations import warn_deprecated_enum_access
 from merlin.utils.grouping import LexGrouping, ModGrouping
@@ -139,25 +142,20 @@ class DistributionStrategy(BaseMeasurementStrategy):
             [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
         ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    ) -> torch.Tensor | SectoredDistribution:
+    ) -> torch.Tensor:
         # Distribution strategies apply detector/noise transforms before sampling.
         distribution = apply_photon_loss(distribution)
         distribution = apply_detectors(distribution)
+        # Change the sectored distribution to a tensor
+        self.keys = None
         if isinstance(distribution, SectoredDistribution):
-            if grouping:
-                raise RuntimeError(
-                    f"A grouping strategy cannot be applied to the output of a simulation with g2 noise. Indeed, since this noise creates input states with more photons than expected, multiple photon sectors are explored. The fock spaces explored are m={distribution.sectors[0].n_modes} modes and n_photons={min(distribution._photon_map.keys())} to 2*n_photons={max(distribution._photon_map.keys())} that all have different space dimensions. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult`s of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector."
-                )
-            if apply_sampling and effective_shots > 0:
-                distribution = sampler.pcvl_sampler_g2(distribution, effective_shots)
-            # Return SectoredDistribution cast to match base class type annotation
-            return distribution  # type: ignore[return-value]
-        else:
-            if apply_sampling and effective_shots > 0:
-                distribution = sampler.pcvl_sampler(distribution, effective_shots)
-            if grouping is not None:
-                return grouping(distribution)
-            return distribution
+            distribution = clean_sectored_distribution(distribution)
+            self.keys, distribution = distribution.to_tensor(return_keys=True)
+        if apply_sampling and effective_shots > 0:
+            distribution = sampler.pcvl_sampler(distribution, effective_shots)
+        if grouping is not None:
+            return grouping(distribution)
+        return distribution
 
 
 class ProbabilitiesStrategy(DistributionStrategy):

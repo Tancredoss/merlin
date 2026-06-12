@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 import numpy as np
+import re
 import perceval as pcvl
 import pytest
 import torch
@@ -502,6 +503,11 @@ def test_phase_noise_via_experiment_constructs_and_forwards():
     circuit = _phase_circuit()
     experiment = pcvl.Experiment(circuit)
     experiment.noise = pcvl.NoiseModel(
+        brightness=0.1,
+        indistinguishability=0.2,
+        g2=0.3,
+        g2_distinguishable=True,
+        transmittance=0.4,
         phase_imprecision=0.5,
         phase_error=0.2,
     )
@@ -1279,9 +1285,9 @@ def test_g2_gradient_regression():
 
     x = torch.randn(1, 2, requires_grad=True)
     output = layer(x)
-    state = torch.zeros_like(output.sectors[0].tensor)
+    state = torch.zeros_like(output)
     state[0] = 1
-    loss = ((output.sectors[0].tensor - state) ** 2).mean()
+    loss = ((output - state) ** 2).mean()
     loss.backward()
 
     # # Verify gradients are computed
@@ -1295,3 +1301,140 @@ def test_g2_gradient_regression():
 
     for param in layer.thetas:
         assert param.grad is not None
+
+
+def test_g2_output_keys_match_tensor_order_with_forward():
+    """Verify that g2 noise (with and without photon loss) produces correct output_keys matching tensor order.
+
+    Also validates output key coverage against Perceval simulations using fixed circuits.
+    """
+
+    # Test 1: G2 noise only (no photon loss)
+    circ_g2_only = ml.CircuitBuilder(n_modes=2)
+    circ_g2_only.add_entangling_layer()
+    circ_g2_only.add_angle_encoding()
+
+    layer_g2 = ml.QuantumLayer(
+        n_photons=1,
+        input_size=2,
+        builder=circ_g2_only,
+        noise=pcvl.NoiseModel(g2=0.1, g2_distinguishable=False),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    # Forward pass with g2 only
+    x_g2 = torch.zeros(1, 2)
+    output_g2 = layer_g2(x_g2)
+    keys_g2 = layer_g2.output_keys
+
+    # Verify keys are flat (not nested) for g2 case
+    assert isinstance(keys_g2, list)
+    assert all(
+        isinstance(k, tuple) for k in keys_g2
+    ), "G2 output keys should be flat tuples"
+
+    # Verify no duplicates in keys
+    assert len(keys_g2) == len(
+        set(keys_g2)
+    ), f"Duplicate keys found in g2 case: {keys_g2}"
+
+    # Verify output size matches keys
+    assert output_g2.shape[-1] == len(
+        keys_g2
+    ), f"Output tensor size {output_g2.shape[-1]} doesn't match keys count {len(keys_g2)}"
+
+    # Verify keys are valid Fock states for 1 photon in 2 modes
+    expected_keys_g2 = {(0, 1), (1, 1), (2, 0), (0, 2), (1, 0)}
+    assert (
+        set(keys_g2) == expected_keys_g2
+    ), f"Expected {expected_keys_g2}, got {set(keys_g2)}"
+
+    # Verify probabilities sum to 1
+    assert torch.isclose(
+        output_g2.sum(), torch.tensor(1.0), atol=1e-5
+    ), f"G2 output probabilities don't sum to 1: {output_g2.sum()}"
+
+    # Compare with Perceval for g2 only case using fixed circuit (no variable params)
+    fixed_circuit_g2 = pcvl.Circuit(2)
+    fixed_circuit_g2.add((0, 1), pcvl.BS.H())
+
+    noise_g2 = pcvl.NoiseModel(g2=0.1, g2_distinguishable=False)
+    source_g2 = pcvl.Source.from_noise_model(noise_g2)
+    backend = pcvl.BackendFactory.get_backend("SLOS")
+    sim = pcvl.Simulator(backend)
+    sim.set_circuit(deepcopy(fixed_circuit_g2))
+
+    # Input state [1,0] for Perceval - compare key structure at least
+    perceval_result_g2 = sim.probs_svd((source_g2, pcvl.BasicState([1, 0])))["results"]
+
+    # Verify that all Perceval output states are represented in our keys
+    perceval_states = {tuple(state) for state in perceval_result_g2.keys()}
+    assert perceval_states.issubset(
+        set(keys_g2)
+    ), f"Some Perceval states not in Merlin keys. Perceval: {perceval_states}, Merlin: {set(keys_g2)}"
+
+    # Test 2: G2 + Photon loss (brightness)
+    circ_g2_pl = ml.CircuitBuilder(n_modes=2)
+    circ_g2_pl.add_entangling_layer()
+    circ_g2_pl.add_angle_encoding()
+
+    layer_g2_pl = ml.QuantumLayer(
+        n_photons=1,
+        input_size=2,
+        builder=circ_g2_pl,
+        noise=pcvl.NoiseModel(g2=0.1, g2_distinguishable=False, brightness=0.2),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    # Forward pass with g2 + photon loss
+    x_g2_pl = torch.zeros(1, 2)
+    output_g2_pl = layer_g2_pl(x_g2_pl)
+    keys_g2_pl = layer_g2_pl.output_keys
+
+    # Verify keys are flat (not nested) for g2 + photon loss case
+    assert isinstance(keys_g2_pl, list)
+    assert all(
+        isinstance(k, tuple) for k in keys_g2_pl
+    ), "G2+PL output keys should be flat tuples"
+
+    # Verify no duplicates in keys
+    assert len(keys_g2_pl) == len(
+        set(keys_g2_pl)
+    ), f"Duplicate keys found in g2+PL case: {keys_g2_pl}"
+
+    # Verify output size matches keys
+    assert output_g2_pl.shape[-1] == len(
+        keys_g2_pl
+    ), f"Output tensor size {output_g2_pl.shape[-1]} doesn't match keys count {len(keys_g2_pl)}"
+
+    # With photon loss, we can have 0 or 1 photon states
+    expected_keys_g2_pl = {(0, 1), (0, 0), (1, 1), (2, 0), (0, 2), (1, 0)}
+    assert (
+        set(keys_g2_pl) == expected_keys_g2_pl
+    ), f"Expected {expected_keys_g2_pl}, got {set(keys_g2_pl)}"
+
+    # Verify probabilities sum to 1
+    assert torch.isclose(
+        output_g2_pl.sum(), torch.tensor(1.0), atol=1e-5
+    ), f"G2+PL output probabilities don't sum to 1: {output_g2_pl.sum()}"
+
+    # Compare with Perceval for g2 + photon loss case using fixed circuit
+    sim_pl = pcvl.Simulator(backend)
+    sim_pl.set_circuit(deepcopy(fixed_circuit_g2))
+
+    noise_g2_pl = pcvl.NoiseModel(g2=0.1, g2_distinguishable=False, brightness=0.2)
+    source_g2_pl = pcvl.Source.from_noise_model(noise_g2_pl)
+
+    perceval_result_g2_pl = sim_pl.probs_svd((source_g2_pl, pcvl.BasicState([1, 0])))[
+        "results"
+    ]
+
+    # Verify that all Perceval output states are represented in our keys
+    perceval_states_pl = {tuple(state) for state in perceval_result_g2_pl.keys()}
+    assert perceval_states_pl.issubset(
+        set(keys_g2_pl)
+    ), f"Some Perceval states not in Merlin keys. Perceval: {perceval_states_pl}, Merlin: {set(keys_g2_pl)}"

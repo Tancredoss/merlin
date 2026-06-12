@@ -377,9 +377,6 @@ class InitializationContext:
         Whether the layer returns structured objects instead of tensors.
     noise_groups: NoiseGroups | None
         The noise groups applied to the circuit to be ran.
-    n_phase_error_samples : int
-        Number of Monte Carlo unitary samples used when active stochastic
-        ``phase_error`` is present.
     """
 
     device: torch.device | None
@@ -1337,3 +1334,13 @@ def normalize_noise(
         output_nm.g2_distinguishable = False
 
     return output_nm
+
+
+def _normalize_sector_keys(
+    keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]],
+) -> tuple[tuple[int, ...], ...]:
+    if keys and isinstance(keys[0], list):
+        nested_keys = cast(list[list[tuple[int, ...]]], keys)
+        return tuple(tuple(k) for key_list in nested_keys for k in key_list)
+    flat_keys = cast(list[tuple[int, ...]], keys)
+    return tuple(tuple(k) for k in flat_keys)

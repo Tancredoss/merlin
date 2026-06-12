@@ -1063,21 +1063,6 @@ def test_sector_result_preserves_explicit_basis_keys() -> None:
     assert sector.keys == transformed_basis_keys
 
 
-def test_g2_with_photon_loss_keeps_sector_keys_aligned_with_tensor() -> None:
-    """Check transformed g2 sectors expose keys for their returned tensors.
-
-    Correct result: after photon loss is applied per sector, each
-    ``SectorResult.keys`` tuple should describe the transformed tensor basis.
-    Therefore ``len(sector.keys)`` should equal ``sector.tensor.shape[-1]`` for
-    every returned sector.
-    """
-    output = _g2_layer_with_loss()()
-
-    assert isinstance(output, SectoredDistribution)
-    for sector in output.sectors:
-        assert sector.tensor.shape[-1] == len(sector.keys)
-
-
 def test_g2_layer_to_moves_per_sector_transforms() -> None:
     """Check ``QuantumLayer.to()`` works with g2 per-sector transforms.
 
