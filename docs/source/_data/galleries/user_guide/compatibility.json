@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Compatibility",
+    "summary": "Supported MerLin, Perceval, PyTorch, and Python combinations.",
+    "image": "_static/img/merlin_black.png",
+    "doc": "user_guide/compatibility",
+    "tags": ["Compatibility","Versions"]
+  }
+]

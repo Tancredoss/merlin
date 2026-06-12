@@ -3,6 +3,16 @@
 Migration guide
 ===============
 
+Migrating dependency versions for MerLin 0.4
+--------------------------------------------
+
+MerLin 0.4 requires Perceval ``>=1.2.1``. Previous MerLin versions supported
+Perceval ``<=1.1``.
+
+MerLin 0.4 also supports PyTorch ``2.11`` and ``2.12``. See
+:doc:`/user_guide/compatibility` for the supported MerLin, Perceval, PyTorch,
+and Python version combinations.
+
 Migrating from ``no_bunching`` (deprecated)
 -------------------------------------------
 

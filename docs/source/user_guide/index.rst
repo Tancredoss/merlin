@@ -37,6 +37,13 @@ Specific algorithms
    :data: _data/galleries/user_guide/specific_algorithms.json
    :columns: 2
 
+Compatibility
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/compatibility.json
+   :columns: 2
+   :contour-color: #f2994a
+
 Migration guide
 ----------------------------------------
 .. merlin-gallery::
@@ -56,6 +63,7 @@ Migration guide
    kernels
    layer
    measurement_strategy
-   migration_guide
    quantum_bridge
    remote_execution
+   compatibility
+   migration_guide
