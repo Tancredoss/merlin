@@ -580,16 +580,16 @@ class FeedForwardBlock(MerlinModule):
         Notes
         -----
         Sets three instance attributes:
-        - ``prefix_to_params_mapping`` : dict mapping prefixes to their matching
+        - ``_prefix_to_params_mapping`` : dict mapping prefixes to their matching
           parameter names
-        - ``trainable_params_to_prefix_mapping`` : dict mapping trainable parameter
+        - ``_trainable_params_to_prefix_mapping`` : dict mapping trainable parameter
           names to their prefix
-        - ``input_params_to_prefix_mapping`` : dict mapping input parameter names
+        - ``_input_params_to_prefix_mapping`` : dict mapping input parameter names
           to their prefix
         """
-        self.prefix_to_params_mapping = {}
-        self.trainable_params_to_prefix_mapping = {}
-        self.input_params_to_prefix_mapping = {}
+        self._prefix_to_params_mapping = {}
+        self._trainable_params_to_prefix_mapping = {}
+        self._input_params_to_prefix_mapping = {}
 
         assigned_params: dict[str, str] = {}
         total_matching_params = set()
@@ -613,10 +613,10 @@ class FeedForwardBlock(MerlinModule):
                         )
 
                     assigned_params[p] = prefix
-                    self.trainable_params_to_prefix_mapping[p] = prefix
+                    self._trainable_params_to_prefix_mapping[p] = prefix
                     total_matching_params.add(p)
 
-                self.prefix_to_params_mapping[prefix] = matching_params
+                self._prefix_to_params_mapping[prefix] = matching_params
 
         # Input parameters
         if input_parameters is not None:
@@ -636,10 +636,10 @@ class FeedForwardBlock(MerlinModule):
                         )
 
                     assigned_params[p] = prefix
-                    self.input_params_to_prefix_mapping[p] = prefix
+                    self._input_params_to_prefix_mapping[p] = prefix
                     total_matching_params.add(p)
 
-                self.prefix_to_params_mapping[prefix] = matching_params
+                self._prefix_to_params_mapping[prefix] = matching_params
 
         # Non matched parameters
         non_matched_params = set(all_params) - total_matching_params
@@ -682,12 +682,20 @@ class FeedForwardBlock(MerlinModule):
             input_params_set = set()
             trainable_params_set = set()
             for param in stage.unitary.params:
-                if param in self.input_params_to_prefix_mapping:
-                    input_params_set.add(self.input_params_to_prefix_mapping[param])
+                if param in self._input_params_to_prefix_mapping:
+                    input_params_set.add(self._input_params_to_prefix_mapping[param])
                 else:
                     trainable_params_set.add(
-                        self.trainable_params_to_prefix_mapping[param]
+                        self._trainable_params_to_prefix_mapping[param]
                     )
+
+            if not input_params_set == set(
+                self._input_params_to_prefix_mapping.values()
+            ):
+                raise ValueError(
+                    "The first stage must use all of the input parameters. Create you own stages with variable "
+                    "input parameters with the partial measurement strategy instead"
+                )
 
             pre_layer = QuantumLayer(
                 input_size=None if (amplitude_encoding or input_parameters) else 0,
@@ -717,7 +725,10 @@ class FeedForwardBlock(MerlinModule):
 
             trainable_params_set = set()
             for param in stage.unitary.params:
-                trainable_params_set.add(self.trainable_params_to_prefix_mapping[param])
+                if param in self._trainable_params_to_prefix_mapping:
+                    trainable_params_set.add(
+                        self._trainable_params_to_prefix_mapping[param]
+                    )
 
             pre_layers = self._initialize_amplitude_pre_layers(
                 stage, list(trainable_params_set)
@@ -731,9 +742,9 @@ class FeedForwardBlock(MerlinModule):
         # Also include parameters from conditional circuits in the stage's trainable parameters
         for circuit in conditional_circuits.values():
             for param in circuit.params:
-                if param in self.trainable_params_to_prefix_mapping:
+                if param in self._trainable_params_to_prefix_mapping:
                     trainable_params_set.add(
-                        self.trainable_params_to_prefix_mapping[param]
+                        self._trainable_params_to_prefix_mapping[param]
                     )
 
         classical_input_size = (
@@ -1174,7 +1185,15 @@ class FeedForwardBlock(MerlinModule):
         if layer is None:
             trainable_params_set = set()
             for param in runtime.circuit.params:
-                trainable_params_set.add(self.trainable_params_to_prefix_mapping[param])
+                if param in self._trainable_params_to_prefix_mapping:
+                    trainable_params_set.add(
+                        self._trainable_params_to_prefix_mapping[param]
+                    )
+                else:
+                    raise ValueError(
+                        "Stages that are not the initial one can not have input parameters. Create your"
+                        "own QuantumLayers for each stages with the partial measurement measurement strategy."
+                    )
             layer = QuantumLayer(
                 input_size=None,
                 circuit=runtime.circuit.copy(),
@@ -1277,7 +1296,15 @@ class FeedForwardBlock(MerlinModule):
             circuit = circuits[actual_key]
             trainable_params_set = set()
             for param in circuit.params:
-                trainable_params_set.add(self.trainable_params_to_prefix_mapping[param])
+                if param in self._trainable_params_to_prefix_mapping:
+                    trainable_params_set.add(
+                        self._trainable_params_to_prefix_mapping[param]
+                    )
+                else:
+                    raise ValueError(
+                        "Stages that are not the initial one can not have input parameters. Create your"
+                        "own QuantumLayers for each stages with the partial measurement measurement strategy."
+                    )
             layer = QuantumLayer(
                 input_size=None,
                 circuit=circuit.copy(),
@@ -1368,14 +1395,16 @@ class FeedForwardBlock(MerlinModule):
                     != MeasurementKind["PROBABILITIES"]
                 ):
                     continue
-                entries.append((
-                    key,
-                    probability_total,
-                    amplitude_total,
-                    weight_total,
-                    basis_keys,
-                    remaining_n,
-                ))
+                entries.append(
+                    (
+                        key,
+                        probability_total,
+                        amplitude_total,
+                        weight_total,
+                        basis_keys,
+                        remaining_n,
+                    )
+                )
 
         if not entries:
             self._output_keys = []
@@ -1643,19 +1672,19 @@ class FeedForwardBlock(MerlinModule):
                     if src_idx is not None:
                         reordered[..., tgt_idx] = src[..., src_idx]
                 normalized_amplitudes = reordered
-            mixed_states.append((
-                key,
-                branch_probability,
-                remaining_n,
-                normalized_amplitudes,
-            ))
+            mixed_states.append(
+                (
+                    key,
+                    branch_probability,
+                    remaining_n,
+                    normalized_amplitudes,
+                )
+            )
         self._output_keys = [entry[0] for entry in mixed_states]
         self._output_state_sizes = None
         return mixed_states
 
-    def _aggregate_branch_list(
-        self, branch_list: list[BranchState]
-    ) -> tuple[
+    def _aggregate_branch_list(self, branch_list: list[BranchState]) -> tuple[
         torch.Tensor | None,
         torch.Tensor | None,
         torch.Tensor | None,

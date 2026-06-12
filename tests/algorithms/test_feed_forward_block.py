@@ -440,6 +440,9 @@ def test_feedforwardblock_params_only_in_branches():
     def gi_func(idx):
         return (
             Circuit(2)
+            // pcvl.BS()
+            // pcvl.PS(pcvl.P(f"x{idx}"))
+            // pcvl.BS()
             // pcvl.PS(pcvl.P(f"A{2 * idx}"))
             // pcvl.BS()
             // pcvl.PS(pcvl.P(f"A{2 * idx + 1}"))
@@ -451,13 +454,7 @@ def test_feedforwardblock_params_only_in_branches():
 
     def adaptive_mzi_stage1(measurement):
         g_val = g(measurement)
-        return (
-            Circuit(2)
-            // pcvl.PS(g_val * pcvl.P("x"))
-            // pcvl.BS()
-            // pcvl.PS(pcvl.P(f"B{g_val-1}"))
-            // pcvl.BS()
-        )
+        return Circuit(2) // pcvl.BS() // pcvl.PS(pcvl.P(f"B{g_val-1}")) // pcvl.BS()
 
     gi = pcvl.GenericInterferometer(m, gi_func)
 
@@ -499,8 +496,7 @@ def test_feedforwardblock_params_only_in_branches():
     assert stage_0.pre_layer is not None
     pre_layer_trainable = set(stage_0.pre_layer.trainable_parameters or [])
     assert "A" in pre_layer_trainable, "Pre-layer should have 'A' from unitary"
-    # Note: "x" is in the provider circuits, not the unitary, so it won't appear in pre_layer.input_parameters
-    # The pre_layer was created with input_parameters=["x"] but "x" only appears in conditional branches
+    # Note: "x" is included in the first-stage unitary, so it should be treated as a first-stage input parameter.
     assert (
         "B" not in pre_layer_trainable
     ), "Pre-layer should not have 'B' (only in conditional branches)"
@@ -525,10 +521,72 @@ def test_feedforwardblock_params_only_in_branches():
     # classical inputs in the first stage only; this assertion only verifies prefix mapping.
 
     # Verify the FeedForwardBlock's input parameter mapping
-    assert ff_block.input_params_to_prefix_mapping is not None
-    assert (
-        "x" in ff_block.input_params_to_prefix_mapping
+    assert ff_block._input_params_to_prefix_mapping is not None
+    assert "x" in ff_block._prefix_to_params_mapping
+    assert any(
+        prefix == "x" for prefix in ff_block._input_params_to_prefix_mapping.values()
     ), "Input parameter 'x' should be recognized by FeedForwardBlock"
+
+    # Verifying no forward bug
+    ff_block.forward(torch.rand([1, 15]))
+
+
+def test_feedforwardblock_input_at_send_layer_fails():
+    m = 6
+    k = 4
+    n = 4
+
+    possible_measurements = list(FSArray(k, n - 1))
+
+    def gi_func(idx):
+        return (
+            Circuit(2)
+            // pcvl.BS()
+            // pcvl.PS(pcvl.P(f"A{2 * idx}"))
+            // pcvl.BS()
+            // pcvl.PS(pcvl.P(f"A{2 * idx + 1}"))
+            // pcvl.BS()
+        )
+
+    def g(measurement):
+        return possible_measurements.index(measurement) + 1
+
+    def adaptive_mzi_stage1(measurement):
+        g_val = g(measurement)
+        return (
+            Circuit(2)
+            // pcvl.BS()
+            // pcvl.PS(g_val * pcvl.P("x"))
+            // pcvl.BS()
+            // pcvl.PS(pcvl.P(f"B{g_val-1}"))
+            // pcvl.BS()
+        )
+
+    gi = pcvl.GenericInterferometer(m, gi_func)
+
+    # Stage 1: after first k detectors
+    feedforward_config_1 = pcvl.FFCircuitProvider(k, 0, Circuit(2))
+    for measurement in possible_measurements:
+        feedforward_config_1.add_configuration(
+            measurement, adaptive_mzi_stage1(measurement)
+        )
+
+    experiment = pcvl.Experiment(m)
+    experiment.add(0, gi)
+
+    for i in range(k):
+        experiment.add(i, pcvl.Detector.pnr())
+
+    experiment.add(0, feedforward_config_1)
+    with pytest.raises(
+        ValueError, match="The first stage must use all of the input parameters"
+    ):
+        _ = FeedForwardBlock(
+            experiment,
+            input_state=BasicState([1] * n + [0] * (m - n)),
+            trainable_parameters=["A", "B"],
+            input_parameters=["x"],
+        )
 
 
 def test_feedforwardblock_params_multi_stage():
