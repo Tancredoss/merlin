@@ -165,6 +165,46 @@ class TestCCInvBackend:
 
         assert merlin_value == pytest.approx(perceval_value, rel=1e-5, abs=1e-6)
 
+    @pytest.mark.parametrize(
+        "noise",
+        [
+            pcvl.NoiseModel(g2=0.05, g2_distinguishable=False),
+            pcvl.NoiseModel(g2=0.05, g2_distinguishable=False, brightness=0.8),
+        ],
+    )
+    def test_kernel_backend_accepts_g2_sectored_outputs(
+        self,
+        noise: pcvl.NoiseModel,
+    ):
+        """FidelityKernel should handle NoisyG2SLOS sectored probabilities."""
+        circuit = pcvl.Circuit(2)
+        circuit.add(0, pcvl.PS(pcvl.P("x0")))
+        circuit.add((0, 1), pcvl.BS.H())
+        experiment = pcvl.Experiment(circuit)
+        experiment.noise = noise
+        feature_map = FeatureMap(
+            experiment=experiment,
+            input_size=1,
+            input_parameters="x",
+        )
+        kernel = FidelityKernel(
+            feature_map=feature_map,
+            input_state=[1, 0],
+            force_psd=False,
+        )
+
+        x = torch.tensor([[0.0], [0.3]], dtype=torch.float32)
+        kernel_matrix = kernel(x)
+
+        assert kernel_matrix.shape == (2, 2)
+        assert torch.isfinite(kernel_matrix).all()
+        assert torch.allclose(kernel_matrix, kernel_matrix.T, atol=1e-6)
+        assert torch.allclose(
+            torch.diag(kernel_matrix),
+            torch.ones(2, dtype=kernel_matrix.dtype),
+            atol=1e-6,
+        )
+
     def test_new_backend_matches_perceval_slos_unbunched(self):
         """New backend with UNBUNCHED space must match Perceval thresholded probability.
 
