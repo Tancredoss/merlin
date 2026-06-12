@@ -580,7 +580,6 @@ class FeedForwardBlock(MerlinModule):
                 measurement_strategy=MeasurementStrategy.amplitudes(
                     self.computation_space
                 ),
-                amplitude_encoding=amplitude_encoding,
                 device=self.device,
                 dtype=self.dtype,
             )
@@ -636,7 +635,6 @@ class FeedForwardBlock(MerlinModule):
             layer = QuantumLayer(
                 input_size=None,
                 circuit=stage.unitary.copy(),
-                amplitude_encoding=True,
                 n_photons=remaining,
                 measurement_strategy=MeasurementStrategy.amplitudes(
                     self.computation_space
@@ -1041,7 +1039,6 @@ class FeedForwardBlock(MerlinModule):
             layer = QuantumLayer(
                 input_size=None,
                 circuit=runtime.circuit.copy(),
-                amplitude_encoding=True,
                 n_photons=remaining_n,
                 measurement_strategy=MeasurementStrategy.amplitudes(
                     self.computation_space
@@ -1141,7 +1138,6 @@ class FeedForwardBlock(MerlinModule):
             layer = QuantumLayer(
                 input_size=None,
                 circuit=circuit.copy(),
-                amplitude_encoding=True,
                 n_photons=remaining_n,
                 measurement_strategy=MeasurementStrategy.amplitudes(
                     self.computation_space

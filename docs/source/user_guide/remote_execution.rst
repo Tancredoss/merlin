@@ -549,6 +549,21 @@ Scaleway session with context manager
         # MerlinProcessor context manager cancels any stray jobs on exit.
     # Scaleway session is closed on exit.
 
+Gradient Propagation
+---------------------
+* No gradient can flow through the MerLin processor. When calling backwards directly on a MerlinProcessor's
+  forward pass, this error will be shown::
+
+      element 0 of tensors does not require grad and does not have a grad_fn
+
+* If a MerLin processor is part of a bigger ``Pytorch`` module, the quantum layer's parameter gradient will be None.
+  This also means that every upstream models' (models called before the :class:`~merlin.algorithms.layer.QuantumLayer` in the model's forward) gradient will be None.
+
+* The gradient can not pass through right now as pytorch can not access
+  directly the computation on the QPU.
+
+* Differentiation through the MerLin processor will be implemented in v0.5.
+
 Troubleshooting
 ---------------
 

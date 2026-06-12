@@ -62,6 +62,7 @@ from ..utils.deprecations import (
 from ..utils.grouping import ModGrouping
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
+    _CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE,
     InitializationContext,
     _build_simple_circuit,
     apply_angle_encoding,
@@ -136,10 +137,9 @@ class QuantumLayer(MerlinModule):
         Parameters
         ----------
         input_size : int | None
-            Size of the classical input vector when angle encoding is used
-            (``amplitude_encoding=False``). If omitted, it is inferred from the
-            circuit metadata (input parameter prefixes and/or encoding specs).
-            Must be omitted when ``amplitude_encoding=True``.
+            Size of the classical input vector when angle encoding is used. If
+            omitted, it is inferred from the circuit metadata (input parameter
+            prefixes and/or encoding specs).
         builder : CircuitBuilder | None
             High-level circuit builder that defines trainable structure, input
             encoders and their prefixes. Mutually exclusive with ``circuit`` and
@@ -150,13 +150,14 @@ class QuantumLayer(MerlinModule):
         experiment : pcvl.Experiment | None
             A Perceval experiment. Must be unitary and without post-selection or
             heralding. Mutually exclusive with ``builder`` and ``circuit``.
-        input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
+        input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | None
             Logical input state of the circuit. Accepted forms:
             - ``StateVector`` (preferred, canonical type),
             - ``pcvl.StateVector`` (converted via ``StateVector.from_perceval()``),
             - ``pcvl.BasicState`` (converted via ``StateVector.from_basic_state()``),
-            - list/tuple of occupations (converted via ``StateVector.from_basic_state()``),
-            - ``torch.Tensor`` (DEPRECATED - will be removed in 0.4).
+            - list/tuple of occupations (converted via ``StateVector.from_basic_state()``).
+            Pass amplitude tensors to ``forward()``. Use
+            ``StateVector.from_tensor()`` when a constructor state object is needed.
             If QuantumLayer is built from an experiment, the experiment's input state is used.
             If omitted, ``n_photons`` must be provided to derive a default state.
         n_photons : int | None
@@ -171,12 +172,9 @@ class QuantumLayer(MerlinModule):
             Perceval parameter prefixes used for classical (angle) encoding. For
             amplitude encoding, this must be empty/None.
         amplitude_encoding : bool, default: False
-            DEPRECATED - will be removed in 0.4. Pass a ``StateVector`` to
-            ``forward()`` for amplitude encoding instead.
-            When True, the forward call expects an amplitude vector (or batch) on
-            the first positional argument and propagates it through the quantum
-            layer; ``input_size`` must not be set in this mode and
-            ``n_photons`` must be provided.
+            Removed compatibility flag. Passing ``True`` raises an error. Pass a
+            ``StateVector`` or complex tensor to ``forward()`` for amplitude
+            input handling instead.
         measurement_strategy : MeasurementStrategy | None, default: None
             Output mapping strategy. When omitted, defaults to
             ``MeasurementStrategy.probs(computation_space)``. Supported values
@@ -202,13 +200,11 @@ class QuantumLayer(MerlinModule):
         ValueError
             If an unexpected keyword argument is provided; if both or none of
             ``builder``, ``circuit``, ``experiment`` are provided; if
-            ``amplitude_encoding=True`` and ``input_size`` is set; if
-            ``amplitude_encoding=True`` and ``n_photons`` is not provided; if
-            classical ``input_parameters`` are combined with
-            ``amplitude_encoding=True``; if an ``experiment`` is not unitary or
-            uses post-selection/heralding; if neither ``input_state`` nor
-            ``n_photons`` is provided when required; or if an annotated
-            ``BasicState`` is passed (annotations are not supported).
+            ``amplitude_encoding=True`` is passed; if an ``experiment`` is not
+            unitary or uses post-selection/heralding; if neither
+            ``input_state`` nor ``n_photons`` is provided when required; if
+            ``torch.Tensor`` is passed as constructor ``input_state``; or if an
+            annotated ``BasicState`` is passed (annotations are not supported).
         TypeError
             If an unknown measurement strategy is selected during setup.
 
@@ -228,14 +224,8 @@ class QuantumLayer(MerlinModule):
         """
         super().__init__()
 
-        # === DEPRECATION WARNING: amplitude_encoding ===
         if amplitude_encoding:
-            warnings.warn(
-                "amplitude_encoding=True is deprecated and will be removed in 0.4. "
-                "Pass a StateVector to forward() for amplitude encoding instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+            raise ValueError(_CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE)
 
         # Phase 1: device + dtype normalization
         device, dtype, complex_dtype = MerlinModule.setup_device_and_dtype(
@@ -389,12 +379,10 @@ class QuantumLayer(MerlinModule):
             # Default behavior: place [1,0,1,0,...] in dual-rail, else distribute photons across modes
             if self.computation_space is ComputationSpace.DUAL_RAIL:
                 self.input_state = pcvl.BasicState(tuple([1, 0] * n_photons))
-            elif not self.amplitude_encoding:
+            else:
                 self.input_state = generate_state(
                     circuit.m, n_photons, StatePattern.SPACED
                 )
-            else:
-                self.input_state = [1] * n_photons + [0] * (circuit.m - n_photons)
         else:
             raise ValueError("Either input_state or n_photons must be provided")
 
@@ -412,13 +400,6 @@ class QuantumLayer(MerlinModule):
                 circuit.m - resolved_n_photons
             )
             statevector_input = self.input_state
-        elif isinstance(self.input_state, torch.Tensor):
-            resolved_n_photons = (
-                n_photons  # n_photons must be provided for tensor input
-            )
-            process_input_state = self._embed_amplitude_tensor(
-                self._validate_amplitude_input(self.input_state)
-            )
         elif isinstance(self.input_state, pcvl.BasicState):
             resolved_n_photons = (
                 n_photons if n_photons is not None else sum(self.input_state)
@@ -483,34 +464,28 @@ class QuantumLayer(MerlinModule):
             if not specs_provided:
                 expected_features = None
 
-        if not self.amplitude_encoding:
-            inferred_size = (
-                expected_features
-                if expected_features is not None
-                else total_input_params
-            )
+        inferred_size = (
+            expected_features if expected_features is not None else total_input_params
+        )
 
-            if self.input_size is None:
-                # When the caller omits input_size, take the size the circuit exposes via its metadata.
-                self.input_size = inferred_size
-            elif inferred_size != self.input_size:
-                if expected_features is not None:
-                    raise ValueError(
-                        f"Input size ({self.input_size}) must equal the number of encoded input features "
-                        f"generated by the circuit ({expected_features})."
-                    )
-                else:
-                    raise ValueError(
-                        f"Input size ({self.input_size}) must equal the number of input parameters "
-                        f"generated by the circuit ({total_input_params})."
-                    )
+        if self.input_size is None:
+            # When the caller omits input_size, take the size the circuit exposes via its metadata.
+            self.input_size = inferred_size
+        elif inferred_size != self.input_size:
+            if expected_features is not None:
+                raise ValueError(
+                    f"Input size ({self.input_size}) must equal the number of encoded input features "
+                    f"generated by the circuit ({expected_features})."
+                )
+            else:
+                raise ValueError(
+                    f"Input size ({self.input_size}) must equal the number of input parameters "
+                    f"generated by the circuit ({total_input_params})."
+                )
 
         # Setup parameters and measurement strategy
         self._setup_parameters_from_custom(trainable_parameters)
         self._setup_measurement_strategy_from_custom(measurement_strategy)
-
-        if self.amplitude_encoding:
-            self._init_amplitude_metadata()
 
     def _setup_parameters_from_custom(self, trainable_parameters: list[str] | None):
         """Setup parameters from custom circuit configuration."""
@@ -588,16 +563,6 @@ class QuantumLayer(MerlinModule):
                 keys,
                 dtype=self.dtype,
             )
-
-    def _init_amplitude_metadata(self) -> None:
-        logical_keys = getattr(
-            self.computation_process,
-            "logical_keys",
-            list(self.computation_process.simulation_graph.mapped_keys),
-        )
-        # TODO: here, the input_size corresponds to the size of the computation space
-        # In future, we might want to decouple those two concepts
-        self.input_size = len(logical_keys)
 
     def _create_dummy_parameters(self) -> list[torch.Tensor]:
         """Create dummy parameters for initialization."""
@@ -918,25 +883,6 @@ class QuantumLayer(MerlinModule):
             )
             # tensor_inputs stays empty
 
-        # Legacy amplitude_encoding=True flag
-        elif self.amplitude_encoding:
-            tensor_inputs = [x for x in input_parameters if isinstance(x, torch.Tensor)]
-            if not tensor_inputs:
-                raise ValueError(
-                    "QuantumLayer configured with amplitude_encoding=True expects an amplitude tensor input."
-                )
-            # Warn if using real tensor with amplitude_encoding (internal conversion is deprecated)
-            if tensor_inputs and not tensor_inputs[0].is_complex():
-                warnings.warn(
-                    "Passing real-valued tensor with amplitude_encoding=True is deprecated and will be "
-                    "removed in 0.4. Pass a StateVector or complex tensor to forward() instead.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-            amplitude_input, tensor_inputs, original_input_state = (
-                self._prepare_amplitude_input(tensor_inputs)
-            )
-
         # Float tensor(s) → angle encoding
         else:
             tensor_inputs = [x for x in input_parameters if isinstance(x, torch.Tensor)]
@@ -1162,21 +1108,6 @@ class QuantumLayer(MerlinModule):
     ) -> torch.Tensor:
         """Select the computation path based on the encoding mode and input state."""
 
-        if self.amplitude_encoding:
-            if inferred_state is None:
-                raise TypeError(
-                    "Amplitude encoding requires the computation process input_state to be a tensor."
-                )
-            batch_size = (
-                simultaneous_processes
-                if simultaneous_processes is not None
-                else (1 if inferred_state.dim() == 1 else inferred_state.shape[0])
-            )
-            return self.computation_process.compute_ebs_simultaneously(
-                params,
-                simultaneous_processes=batch_size,
-                memristive_current_state=self.memristive_state,
-            )
         if isinstance(inferred_state, torch.Tensor):
             if parameter_batch_dim:
                 chunk = simultaneous_processes or inferred_state.shape[-1]
@@ -1205,20 +1136,6 @@ class QuantumLayer(MerlinModule):
         return normalize_probabilities_and_amplitudes(
             amplitudes, self.computation_space
         )
-
-    def _prepare_amplitude_input(
-        self, inputs: list[torch.Tensor]
-    ) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor | None]:
-        """Validate amplitude-encoded input and return remaining inputs."""
-        if not inputs:
-            raise ValueError(
-                "QuantumLayer configured with amplitude_encoding=True expects an amplitude tensor input."
-            )
-        amplitude_input = self._embed_amplitude_tensor(
-            self._validate_amplitude_input(inputs[0])
-        )
-        original_input_state = getattr(self.computation_process, "input_state", None)
-        return amplitude_input, inputs[1:], original_input_state
 
     @contextmanager
     def _temporary_input_state(
