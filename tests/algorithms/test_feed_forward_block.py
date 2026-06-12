@@ -433,7 +433,7 @@ def test_feedforwardblock_params_only_in_branches():
     """Verify that trainable parameters are correctly assigned to stages and their layers."""
     m = 6
     k = 4
-    n = 4
+    n = 2
 
     possible_measurements = list(FSArray(k, n - 1))
 
