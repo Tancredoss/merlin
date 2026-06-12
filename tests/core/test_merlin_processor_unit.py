@@ -179,9 +179,13 @@ def make_poll_processor(output: torch.Tensor | None = None) -> MerlinProcessor:
     proc.processed_calls = []
 
     def process_results(raw_results, batch_size, layer, nsample, is_probability=False):
-        proc.processed_calls.append(
-            (raw_results, batch_size, layer, nsample, is_probability)
-        )
+        proc.processed_calls.append((
+            raw_results,
+            batch_size,
+            layer,
+            nsample,
+            is_probability,
+        ))
         return torch.tensor([[1.0]]) if output is None else output
 
     proc._process_batch_results = process_results
@@ -313,7 +317,9 @@ def test_session_path_does_not_require_remote_processor_token():
     remote_processor.proxies = None
     session.build_remote_processor.return_value = remote_processor
 
-    with patch.object(MerlinProcessor, "_extract_rp_token", return_value=None) as extract:
+    with patch.object(
+        MerlinProcessor, "_extract_rp_token", return_value=None
+    ) as extract:
         proc = MerlinProcessor(session=session)
 
     extract.assert_not_called()
@@ -944,13 +950,11 @@ def test_process_batch_results_zero_fills_missing_rows():
 
     assert torch.allclose(
         result,
-        torch.tensor(
-            [
-                [0.0, 1.0],
-                [0.0, 0.0],
-                [0.0, 0.0],
-            ]
-        ),
+        torch.tensor([
+            [0.0, 1.0],
+            [0.0, 0.0],
+            [0.0, 0.0],
+        ]),
     )
 
 
