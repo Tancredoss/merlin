@@ -1,17 +1,21 @@
-import re
+from copy import deepcopy
 
+import numpy as np
+import re
 import perceval as pcvl
 import pytest
+import torch
 
 import merlin as ml
-from merlin.core import StateVector
 from merlin.algorithms.layer_utils import (
     classify_noise,
+    has_active_noise,
+    has_circuit_noise,
+    has_phase_error,
+    has_source_noise,
     normalize_noise,
 )
-import numpy as np
-import torch
-from copy import deepcopy
+from merlin.core import StateVector
 
 
 @pytest.fixture
@@ -77,6 +81,31 @@ def test_transmittance_classified_as_post_measurement(noise_groups):
     assert noise_groups.post_measurement["transmittance"] == 0.4
     assert "transmittance" not in noise_groups.source.keys()
     assert "transmittance" not in noise_groups.circuit.keys()
+
+
+def test_noise_group_predicates_detect_active_groups():
+    neutral_groups = classify_noise(pcvl.NoiseModel())
+    assert not has_active_noise(neutral_groups)
+    assert not has_source_noise(neutral_groups)
+    assert not has_circuit_noise(neutral_groups)
+    assert not has_phase_error(neutral_groups)
+
+    source_groups = classify_noise(pcvl.NoiseModel(indistinguishability=0.9))
+    assert has_active_noise(source_groups)
+    assert has_source_noise(source_groups)
+    assert not has_circuit_noise(source_groups)
+    assert not has_phase_error(source_groups)
+
+    phase_imprecision_groups = classify_noise(pcvl.NoiseModel(phase_imprecision=0.5))
+    assert has_active_noise(phase_imprecision_groups)
+    assert has_circuit_noise(phase_imprecision_groups)
+    assert not has_source_noise(phase_imprecision_groups)
+    assert not has_phase_error(phase_imprecision_groups)
+
+    phase_error_groups = classify_noise(pcvl.NoiseModel(phase_error=0.5))
+    assert has_active_noise(phase_error_groups)
+    assert has_circuit_noise(phase_error_groups)
+    assert has_phase_error(phase_error_groups)
 
 
 # Validation tests
@@ -207,51 +236,245 @@ def test_noisy_layer_with_mode_expectations_strategy_raises_value_error():
     )
 
 
-def test_noisy_layer_with_probs_strategy_raises_not_implemented():
-    circ = ml.CircuitBuilder(n_modes=5)
-    circ.add_entangling_layer()
-    circ.add_angle_encoding()
-    circ.add_entangling_layer()
+def _phase_circuit() -> pcvl.Circuit:
+    """Create a small circuit whose phase shifter affects probabilities."""
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+    circuit.add(0, pcvl.PS(pcvl.P("phi")))
+    circuit.add((0, 1), pcvl.BS.H())
+    return circuit
 
-    with pytest.raises(
-        NotImplementedError,
-        match=re.escape(
-            "The following noises are not implemented yet for the QuantumLayer. Circuit noises: ['phase_imprecision']."
+
+def _component_phase_error_circuit() -> pcvl.Circuit:
+    """Create a small circuit with local Perceval phase-shifter error."""
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+    circuit.add(0, pcvl.PS(pcvl.P("phi"), max_error=0.2))
+    circuit.add((0, 1), pcvl.BS.H())
+    return circuit
+
+
+def _assert_normalized_distribution(output: torch.Tensor, size: int) -> None:
+    assert output.shape[-1] == size
+    assert not output.is_complex()
+    assert torch.allclose(output.sum(dim=-1), output.new_ones(output.shape[:-1]))
+
+
+def test_phase_imprecision_with_probs_constructs_and_forwards():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_phase_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(phase_imprecision=0.5),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
         ),
-    ):
-        _ = ml.QuantumLayer(
-            n_photons=2,
-            input_size=5,
-            builder=circ,
-            noise=pcvl.NoiseModel(
-                phase_imprecision=0.5,
-            ),
-        )
+        dtype=torch.float64,
+    )
 
-    with pytest.raises(
-        NotImplementedError,
-        match=re.escape(
-            "The following noises are not implemented yet for the QuantumLayer. Circuit noises: ['phase_error']."
+    output = layer()
+
+    _assert_normalized_distribution(output, 2)
+    assert layer.computation_process.converter._phase_imprecision == pytest.approx(0.5)
+
+
+def test_phase_error_with_probs_constructs_and_forwards():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_phase_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(phase_error=0.2),
+        n_phase_error_samples=4,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
         ),
-    ):
-        _ = ml.QuantumLayer(
-            n_photons=2,
-            input_size=5,
-            builder=circ,
-            noise=pcvl.NoiseModel(
-                phase_error=0.6,
-            ),
-        )
+        dtype=torch.float64,
+    )
+
+    torch.manual_seed(123)
+    output = layer()
+
+    _assert_normalized_distribution(output, 2)
+    assert layer.computation_process._n_phase_error_samples == 4
 
 
-# Entry-point normalization
-def test_noise_via_experiment_raises_not_implemented():
-    circ = ml.CircuitBuilder(n_modes=5)
-    circ.add_entangling_layer()
-    circ.add_angle_encoding()
-    circ.add_entangling_layer()
-    circuit = circ.to_pcvl_circuit()
+def test_phase_error_with_probs_defaults_to_one_sample():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_phase_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(phase_error=0.2),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
 
+    assert layer.computation_process._n_phase_error_samples == 1
+
+
+def test_component_phase_error_with_probs_constructs_and_forwards_without_noise_model():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_component_phase_error_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        n_phase_error_samples=4,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    torch.manual_seed(123)
+    output = layer()
+
+    _assert_normalized_distribution(output, 2)
+    assert has_phase_error(layer._noise_groups)
+    # Component-local PS(max_error) is a phase-error source, but it must stay
+    # local to the phase shifter. The converter's _phase_error field represents
+    # only NoiseModel.phase_error, which is not configured in this test.
+    assert layer.computation_process.converter._phase_error == 0.0
+
+
+def test_phase_imprecision_and_phase_error_construct_and_forward():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_phase_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(phase_imprecision=0.5, phase_error=0.2),
+        n_phase_error_samples=3,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    torch.manual_seed(123)
+    output = layer()
+
+    _assert_normalized_distribution(output, 2)
+
+
+def test_phase_error_with_indistinguishability_constructs_and_forwards():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_phase_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(indistinguishability=0.8, phase_error=0.2),
+        n_phase_error_samples=3,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    torch.manual_seed(123)
+    output = layer()
+
+    _assert_normalized_distribution(output, 2)
+
+
+def test_phase_error_with_g2_returns_tensor():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_phase_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(
+            g2=0.05,
+            g2_distinguishable=False,
+            phase_error=0.2,
+        ),
+        n_phase_error_samples=3,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    torch.manual_seed(123)
+    output = layer()
+
+    assert isinstance(output, torch.Tensor)
+    assert output.shape[-1] == len(layer.output_keys)
+    assert torch.all(output >= 0.0)
+    _assert_normalized_distribution(output, len(layer.output_keys))
+
+
+def test_phase_error_with_g2_and_statevector_input_is_reproducible():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_phase_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(
+            g2=0.05,
+            g2_distinguishable=False,
+            phase_error=0.2,
+        ),
+        n_phase_error_samples=3,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+    input_state = StateVector.from_basic_state(
+        [1, 0],
+        device=layer.device,
+        dtype=layer.complex_dtype,
+    )
+
+    torch.manual_seed(123)
+    first_output = layer(input_state)
+    torch.manual_seed(123)
+    second_output = layer(input_state)
+
+    assert isinstance(first_output, torch.Tensor)
+    assert isinstance(second_output, torch.Tensor)
+    assert torch.allclose(first_output, second_output)
+    assert torch.all(first_output >= 0.0)
+    _assert_normalized_distribution(first_output, len(layer.output_keys))
+
+
+def test_phase_error_with_brightness_applies_photon_loss_after_average():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=_phase_circuit(),
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(phase_error=0.2, brightness=0.5),
+        n_phase_error_samples=3,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    torch.manual_seed(123)
+    output = layer()
+
+    assert output.shape[-1] == 3
+    assert (0, 0) in layer.output_keys
+    assert torch.allclose(output.sum(dim=-1), output.new_ones(output.shape[:-1]))
+
+
+def test_phase_noise_via_experiment_constructs_and_forwards():
+    circuit = _phase_circuit()
     experiment = pcvl.Experiment(circuit)
     experiment.noise = pcvl.NoiseModel(
         brightness=0.1,
@@ -260,49 +483,27 @@ def test_noise_via_experiment_raises_not_implemented():
         g2_distinguishable=True,
         transmittance=0.4,
         phase_imprecision=0.5,
-        phase_error=0.6,
+        phase_error=0.2,
     )
 
-    with pytest.raises(
-        NotImplementedError,
-    ):
-        _ = ml.QuantumLayer(
-            n_photons=2,
-            input_size=5,
-            experiment=experiment,
-            input_state=[1, 0, 0, 0, 0],
-            measurement_strategy=ml.MeasurementStrategy.probs(
-                computation_space=ml.ComputationSpace.FOCK
-            ),
-        )
+    layer = ml.QuantumLayer(
+        input_size=0,
+        experiment=experiment,
+        input_state=[1, 0],
+        trainable_parameters=["phi"],
+        n_photons=1,
+        n_phase_error_samples=3,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
 
+    torch.manual_seed(123)
+    output = layer()
 
-def test_noise_via_direct_parameter_raises_not_implemented():
-    circ = ml.CircuitBuilder(n_modes=5)
-    circ.add_entangling_layer()
-    circ.add_angle_encoding()
-    circ.add_entangling_layer()
-
-    with pytest.raises(
-        NotImplementedError,
-    ):
-        _ = ml.QuantumLayer(
-            n_photons=2,
-            input_size=5,
-            builder=circ,
-            noise=pcvl.NoiseModel(
-                brightness=0.1,
-                indistinguishability=0.2,
-                g2=0.3,
-                g2_distinguishable=True,
-                transmittance=0.4,
-                phase_imprecision=0.5,
-                phase_error=0.6,
-            ),
-            measurement_strategy=ml.MeasurementStrategy.probs(
-                computation_space=ml.ComputationSpace.FOCK
-            ),
-        )
+    assert torch.all(output >= 0.0)
+    _assert_normalized_distribution(output, len(layer.output_keys))
 
 
 def test_normalise_noise():
@@ -326,7 +527,7 @@ def test_normalise_noise():
     assert output == noise
 
     output = normalize_noise(None, None)
-    assert output == None
+    assert output is None
 
     with pytest.raises(
         ValueError,
@@ -454,25 +655,19 @@ def test_brightness_only_classification_has_no_source_or_circuit_groups():
     assert groups.post_measurement == {"brightness": 0.3}
 
 
-def test_not_implemented_error_lists_classified_groups():
-    with pytest.warns(
-        UserWarning,
-        match=r"g2_distinguishable must be False since indistinguishable g2 photons \(indistinguishability=1\.0\) cannot be distinguished\.",
-    ):
-        with pytest.raises(NotImplementedError) as exc_info:
-            ml.QuantumLayer(
-                n_photons=2,
-                input_size=4,
-                builder=_builder(),
-                noise=pcvl.NoiseModel(g2=0.05, phase_error=0.1),
-                measurement_strategy=ml.MeasurementStrategy.probs(
-                    computation_space=ml.ComputationSpace.FOCK
-                ),
-            )
+def test_neutral_noise_model_does_not_force_noisy_measurement_policy():
+    layer = ml.QuantumLayer(
+        input_size=0,
+        circuit=pcvl.Circuit(2),
+        input_state=[1, 0],
+        n_photons=1,
+        noise=pcvl.NoiseModel(),
+        measurement_strategy=ml.MeasurementStrategy.amplitudes(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
 
-    message = str(exc_info.value)
-    assert "Circuit" in message
-    assert "phase_error" in message
+    assert layer._noise_groups is None
 
 
 def test_experiment_noise_amplitudes_uses_value_error_contract():
@@ -485,6 +680,24 @@ def test_experiment_noise_amplitudes_uses_value_error_contract():
             experiment=experiment,
             input_state=[1, 0, 1, 0],
             measurement_strategy=ml.MeasurementStrategy.AMPLITUDES,
+        )
+
+
+def test_active_noise_with_partial_measurement_raises_value_error():
+    with pytest.raises(
+        ValueError,
+        match="Partial measurement is not supported with active noise. Use full measurement or disable noise.",
+    ):
+        ml.QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(2),
+            input_state=[1, 0],
+            n_photons=1,
+            noise=pcvl.NoiseModel(brightness=0.5),
+            measurement_strategy=ml.MeasurementStrategy.partial(
+                modes=[0],
+                computation_space=ml.ComputationSpace.FOCK,
+            ),
         )
 
 
@@ -988,7 +1201,7 @@ def test_brightness_still_uses_post_measurement_approximation():
 
 
 def test_g2_layer_forward_returns_tensor():
-    """Regression: layer(x) returns Tensor when g2 > 0."""
+    """Regression: layer(x) returns a tensor when g2 > 0."""
     circ = ml.CircuitBuilder(n_modes=3)
     circ.add_entangling_layer()
     circ.add_angle_encoding(modes=[0, 1])
@@ -1008,7 +1221,10 @@ def test_g2_layer_forward_returns_tensor():
     output = layer(x)
 
     assert isinstance(output, torch.Tensor)
-    assert max(output.shape) == 31
+    assert output.shape[0] == x.shape[0]
+    assert output.shape[-1] == len(layer.output_keys)
+    assert torch.all(output >= 0.0)
+    _assert_normalized_distribution(output, len(layer.output_keys))
 
 
 def test_g2_gradient_regression():
@@ -1031,7 +1247,7 @@ def test_g2_gradient_regression():
     x = torch.randn(1, 2, requires_grad=True)
     output = layer(x)
     state = torch.zeros_like(output)
-    state[0] = 1
+    state[..., 0] = 1
     loss = ((output - state) ** 2).mean()
     loss.backward()
 

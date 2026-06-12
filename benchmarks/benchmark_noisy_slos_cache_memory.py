@@ -22,6 +22,7 @@ import argparse
 import gc
 import json
 import sys
+import time
 import tracemalloc
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
@@ -59,6 +60,8 @@ class CacheMemoryResult:
         Python allocation growth while populating the cache, in MiB.
     tracemalloc_peak_mb : float
         Peak Python allocation observed while populating the cache, in MiB.
+    forward_time_ms : float
+        Wall-clock time for the noisy forward pass, in milliseconds.
     cache_size_after_backward_mb : float
         Recursive cache size estimate after backward pass, in MiB.
     tracemalloc_delta_backward_mb : float
@@ -74,8 +77,44 @@ class CacheMemoryResult:
     layer_size_mb: float
     tracemalloc_delta_mb: float
     tracemalloc_peak_mb: float
+    forward_time_ms: float
     cache_size_after_backward_mb: float = 0.0
     tracemalloc_delta_backward_mb: float = 0.0
+
+
+@dataclass
+class NoiselessBaselineResult:
+    """Noiseless baseline measurements for one configuration.
+
+    Parameters
+    ----------
+    modes : int
+        Number of optical modes.
+    photons : int
+        Number of photons.
+    n_input_states : int
+        Number of Fock input states represented by the amplitude input.
+    graph_size_mb : float
+        Recursive size estimate for the noiseless SLOS graph, in MiB.
+    layer_size_mb : float
+        Recursive size estimate for the noiseless QuantumLayer, in MiB.
+    tracemalloc_delta_mb : float
+        Python allocation growth during the noiseless forward pass, in MiB.
+    tracemalloc_peak_mb : float
+        Peak Python allocation observed during the noiseless forward pass, in
+        MiB.
+    forward_time_ms : float
+        Wall-clock time for the noiseless forward pass, in milliseconds.
+    """
+
+    modes: int
+    photons: int
+    n_input_states: int
+    graph_size_mb: float
+    layer_size_mb: float
+    tracemalloc_delta_mb: float
+    tracemalloc_peak_mb: float
+    forward_time_ms: float
 
 
 @dataclass
@@ -149,6 +188,38 @@ def _build_noisy_layer(modes: int, photons: int, dtype: torch.dtype) -> QuantumL
         circuit=_build_fixed_circuit(modes),
         n_photons=photons,
         noise=pcvl.NoiseModel(indistinguishability=0.5),
+        measurement_strategy=MeasurementStrategy.probs(
+            computation_space=ComputationSpace.FOCK
+        ),
+        amplitude_encoding=True,
+        dtype=dtype,
+    )
+
+
+def _build_noiseless_layer(
+    modes: int, photons: int, dtype: torch.dtype
+) -> QuantumLayer:
+    """Create a noiseless ``QuantumLayer`` matching the noisy benchmark setup.
+
+    Parameters
+    ----------
+    modes : int
+        Number of optical modes.
+    photons : int
+        Number of photons.
+    dtype : torch.dtype
+        Merlin real dtype.
+
+    Returns
+    -------
+    QuantumLayer
+        Layer configured with the same circuit, Fock-space probabilities, and
+        amplitude encoding, but without source noise.
+    """
+
+    return QuantumLayer(
+        circuit=_build_fixed_circuit(modes),
+        n_photons=photons,
         measurement_strategy=MeasurementStrategy.probs(
             computation_space=ComputationSpace.FOCK
         ),
@@ -358,7 +429,9 @@ def measure_cache_memory(
     if measure_backward:
         amplitude_input.requires_grad = True
 
+    forward_start = time.perf_counter()
     output = layer(amplitude_input)
+    forward_time_ms = (time.perf_counter() - forward_start) * 1000.0
 
     if verbose:
         cache_keys = list(graph._slos_graph_per_input.keys())
@@ -409,8 +482,59 @@ def measure_cache_memory(
         layer_size_mb=_deep_size_bytes(layer) / 1024**2,
         tracemalloc_delta_mb=forward_delta_mb,
         tracemalloc_peak_mb=peak_bytes / 1024**2,
+        forward_time_ms=forward_time_ms,
         cache_size_after_backward_mb=cache_size_after_backward_mb,
         tracemalloc_delta_backward_mb=backward_delta_mb,
+    )
+
+
+def measure_noiseless_baseline_memory(
+    modes: int,
+    photons: int,
+    dtype: torch.dtype,
+) -> NoiselessBaselineResult:
+    """Run the matching noiseless layer and return baseline measurements.
+
+    Parameters
+    ----------
+    modes : int
+        Number of optical modes.
+    photons : int
+        Number of photons.
+    dtype : torch.dtype
+        Merlin real dtype.
+
+    Returns
+    -------
+    NoiselessBaselineResult
+        Memory and forward-time summary for the same circuit without source
+        noise.
+    """
+
+    gc.collect()
+    layer = _build_noiseless_layer(modes, photons, dtype)
+    graph = layer.computation_process.simulation_graph
+    amplitude_input = _build_equal_superposition_input(modes, photons, dtype)
+
+    tracemalloc.start()
+    baseline_current, _ = tracemalloc.get_traced_memory()
+
+    forward_start = time.perf_counter()
+    layer(amplitude_input)
+    forward_time_ms = (time.perf_counter() - forward_start) * 1000.0
+
+    current_bytes, peak_bytes = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    return NoiselessBaselineResult(
+        modes=modes,
+        photons=photons,
+        n_input_states=len(_enumerate_fock_inputs(modes, photons)),
+        graph_size_mb=_deep_size_bytes(graph) / 1024**2,
+        layer_size_mb=_deep_size_bytes(layer) / 1024**2,
+        tracemalloc_delta_mb=(current_bytes - baseline_current) / 1024**2,
+        tracemalloc_peak_mb=peak_bytes / 1024**2,
+        forward_time_ms=forward_time_ms,
     )
 
 
@@ -651,6 +775,11 @@ def main() -> None:
         action="store_true",
         help="Also measure memory after backward pass through a simple loss.",
     )
+    parser.add_argument(
+        "--baseline",
+        action="store_true",
+        help="Also measure the matching noiseless layer for graph, layer, and forward-time ratios.",
+    )
     args = parser.parse_args()
 
     modes_values = _parse_range(args.modes, default=[2, 4, 6, 8])
@@ -658,6 +787,7 @@ def main() -> None:
     dtype = torch.float32 if args.dtype == "float32" else torch.float64
 
     results: list[CacheMemoryResult] = []
+    baseline_results: list[NoiselessBaselineResult] = []
     for modes in modes_values:
         for photons in photon_values:
             if photons > modes:
@@ -671,14 +801,27 @@ def main() -> None:
                 measure_backward=args.backward,
             )
             results.append(result)
+            if args.baseline:
+                baseline_results.append(
+                    measure_noiseless_baseline_memory(modes, photons, dtype)
+                )
 
     if args.json:
-        print(json.dumps([asdict(result) for result in results], indent=2))
+        if args.baseline:
+            payload = {
+                "noisy": [asdict(result) for result in results],
+                "noiseless_baseline": [
+                    asdict(result) for result in baseline_results
+                ],
+            }
+            print(json.dumps(payload, indent=2))
+        else:
+            print(json.dumps([asdict(result) for result in results], indent=2))
         return
 
     header = (
         "modes photons n_inputs cache_entries cache_mb graph_mb layer_mb "
-        "tracemalloc_delta_mb tracemalloc_peak_mb"
+        "tracemalloc_delta_mb tracemalloc_peak_mb forward_ms"
     )
     print(header)
     for result in results:
@@ -687,8 +830,31 @@ def main() -> None:
             f"{result.cache_entries:>13} {result.cache_size_mb:>8.4f} "
             f"{result.graph_size_mb:>8.4f} {result.layer_size_mb:>8.4f} "
             f"{result.tracemalloc_delta_mb:>20.4f} "
-            f"{result.tracemalloc_peak_mb:>19.4f}"
+            f"{result.tracemalloc_peak_mb:>19.4f} "
+            f"{result.forward_time_ms:>10.2f}"
         )
+
+    if args.baseline:
+        print("\nNoiseless baseline comparison:")
+        baseline_by_config = {
+            (result.modes, result.photons): result for result in baseline_results
+        }
+        header_baseline = (
+            "modes photons noiseless_graph_mb noiseless_layer_mb "
+            "noiseless_forward_ms graph_ratio layer_ratio forward_ratio"
+        )
+        print(header_baseline)
+        for result in results:
+            baseline = baseline_by_config[(result.modes, result.photons)]
+            print(
+                f"{result.modes:>5} {result.photons:>7} "
+                f"{baseline.graph_size_mb:>18.4f} "
+                f"{baseline.layer_size_mb:>18.4f} "
+                f"{baseline.forward_time_ms:>20.2f} "
+                f"{result.graph_size_mb / baseline.graph_size_mb:>11.2f} "
+                f"{result.layer_size_mb / baseline.layer_size_mb:>11.2f} "
+                f"{result.forward_time_ms / baseline.forward_time_ms:>13.2f}"
+            )
 
     if args.plot is not None:
         _plot_results(results, args.plot)

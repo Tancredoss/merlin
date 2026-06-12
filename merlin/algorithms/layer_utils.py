@@ -43,10 +43,11 @@ from typing import Any, Literal, cast
 import exqalibur as xqlbr
 import perceval as pcvl
 import torch
+from perceval.components import PS, AComponent
 
 from ..builder.circuit_builder import CircuitBuilder
 from ..core.computation_space import ComputationSpace
-from ..core.state import StatePattern, generate_state
+from ..core.state import StatePattern, _generate_default_input_state, generate_state
 from ..core.state_vector import StateVector
 from ..measurement.detectors import resolve_detectors
 from ..measurement.photon_loss import resolve_photon_loss
@@ -183,6 +184,149 @@ class NoiseGroups:
     post_measurement: dict[str, float | None] | None
 
 
+def has_active_noise(noise_groups: NoiseGroups | None) -> bool:
+    """Return whether any classified noise group is active.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Classified noise groups returned by :func:`classify_noise`.
+
+    Returns
+    -------
+    bool
+        True when at least one source, circuit, or post-measurement noise group
+        is active.
+    """
+    if noise_groups is None:
+        return False
+    return bool(
+        noise_groups.source or noise_groups.circuit or noise_groups.post_measurement
+    )
+
+
+def has_source_noise(noise_groups: NoiseGroups | None) -> bool:
+    """Return whether source noise is active.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Classified noise groups returned by :func:`classify_noise`.
+
+    Returns
+    -------
+    bool
+        True when a source noise group is present.
+    """
+    return noise_groups is not None and bool(noise_groups.source)
+
+
+def has_circuit_noise(noise_groups: NoiseGroups | None) -> bool:
+    """Return whether circuit noise is active.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Classified noise groups returned by :func:`classify_noise`.
+
+    Returns
+    -------
+    bool
+        True when a circuit noise group is present.
+    """
+    return noise_groups is not None and bool(noise_groups.circuit)
+
+
+def has_phase_error(noise_groups: NoiseGroups | None) -> bool:
+    """Return whether stochastic phase-error noise is active.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Classified noise groups returned by :func:`classify_noise`.
+
+    Returns
+    -------
+    bool
+        True when ``phase_error`` is present in the circuit noise group. A
+        ``None`` value means the stochastic half-width is stored locally on one
+        or more Perceval phase shifters.
+    """
+    if not has_circuit_noise(noise_groups):
+        return False
+    circuit_noise = cast(dict[str, float | None], noise_groups.circuit)
+    return "phase_error" in circuit_noise
+
+
+def _phase_shifter_max_error(component: AComponent) -> float:
+    """Return the local phase-error half-width stored on a Perceval phase shifter.
+
+    Parameters
+    ----------
+    component : AComponent
+        Component to inspect.
+
+    Returns
+    -------
+    float
+        Positive local phase-error half-width, or 0.0 when no local stochastic
+        phase-error is configured.
+    """
+    if not isinstance(component, PS):
+        return 0.0
+    return float(getattr(component, "_max_error", 0.0))
+
+
+def _circuit_has_phase_error(circuit: pcvl.Circuit) -> bool:
+    """Return whether a circuit contains local phase-shifter error.
+
+    Parameters
+    ----------
+    circuit : pcvl.Circuit
+        Circuit whose components are inspected.
+
+    Returns
+    -------
+    bool
+        True when at least one :class:`pcvl.PS` component has a positive
+        ``max_error`` value.
+    """
+    return any(_phase_shifter_max_error(component) > 0.0 for _, component in circuit)
+
+
+def _with_component_phase_error(
+    noise_groups: NoiseGroups | None,
+) -> NoiseGroups:
+    """Mark classified noise groups as containing local phase-error noise.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Existing noise groups derived from a :class:`pcvl.NoiseModel`, if any.
+
+    Returns
+    -------
+    NoiseGroups
+        Noise groups with ``phase_error`` present in the circuit group. A
+        ``None`` value is used when the stochastic width is provided by
+        individual phase shifters rather than by :class:`pcvl.NoiseModel`.
+    """
+    if noise_groups is None:
+        return NoiseGroups(
+            source=None,
+            circuit={"phase_error": None},
+            post_measurement=None,
+        )
+
+    circuit_noise = dict(noise_groups.circuit or {})
+    circuit_noise.setdefault("phase_error", None)
+    return NoiseGroups(
+        source=noise_groups.source,
+        circuit=circuit_noise,
+        post_measurement=noise_groups.post_measurement,
+    )
+
+
 @dataclass(frozen=True)
 class InitializationContext:
     """Store immutable QuantumLayer initialization state.
@@ -257,6 +401,7 @@ class InitializationContext:
     warnings: list[str]
     return_object: bool
     noise_groups: NoiseGroups | None
+    n_phase_error_samples: int
 
 
 def validate_encoding_mode(
@@ -440,7 +585,11 @@ def prepare_input_state(
                 raise ValueError(
                     "circuit_m must be provided to generate default state for amplitude encoding."
                 )
-            input_state = [1] * n_photons + [0] * (circuit_m - n_photons)
+            input_state = _generate_default_input_state(
+                circuit_m,
+                n_photons,
+                computation_space,
+            )
         else:
             if circuit_m is None:
                 raise ValueError(
@@ -688,9 +837,7 @@ def setup_noise_and_detectors(
         If amplitude readout is requested together with custom detectors, or if
         amplitude readout or object return is incompatible with the noise model.
     NotImplementedError
-        If unsupported noise types (g2_distinguishable, g2, phase_imprecision,
-        phase_error) are detected in the noise model, or if a non-SLOS backend
-        is specified.
+        If a non-SLOS backend is specified.
     ValueError
         If measurement strategy is incompatible with noisy simulation.
     """
@@ -714,36 +861,24 @@ def setup_noise_and_detectors(
         )
 
     # Validating and sorting the noise model
+    noise_groups = None if noise is None else classify_noise(noise)
+    if _circuit_has_phase_error(circuit):
+        noise_groups = _with_component_phase_error(noise_groups)
     validate_noisy_measurement_strategy(
         backend,
         output=measurement_kind.name.lower(),
         noise=noise,
+        noise_groups=noise_groups,
         empty_detectors=empty_detectors,
         return_object=return_object,
+        measurement_kind=measurement_kind,
     )
-    noise_groups = None if noise is None else classify_noise(noise)
 
     # Post measurement error
-    photon_survival_probs, empty_post_measurement_noise = resolve_photon_loss(
+    photon_survival_probs, no_post_measurement_noise = resolve_photon_loss(
         noise_groups, circuit.m
     )
-    has_post_measurement_noise = not empty_post_measurement_noise
-
-    # Not implemented errors
-    if noise_groups is not None:
-        noises_not_implemented_circuit = []
-
-        if noise_groups.circuit is not None:
-            if "phase_imprecision" in noise_groups.circuit:
-                noises_not_implemented_circuit.append("phase_imprecision")
-
-            if "phase_error" in noise_groups.circuit:
-                noises_not_implemented_circuit.append("phase_error")
-
-        if len(noises_not_implemented_circuit) > 0:
-            raise NotImplementedError(
-                f"The following noises are not implemented yet for the QuantumLayer. Circuit noises: {noises_not_implemented_circuit}."
-            )
+    has_post_measurement_noise = not no_post_measurement_noise
 
     # Creating the noise config object
     return NoiseAndDetectorConfig(
@@ -993,15 +1128,16 @@ def classify_noise(noise: pcvl.NoiseModel | None) -> NoiseGroups | None:
         pass
     elif not noise.indistinguishability == 1.0:  # indistinguishability's default value
         source["indistinguishability"] = noise.indistinguishability
+    g2_active = noise.g2 is not None and noise.g2 != 0.0
     # g2_distinguishable
     if noise.g2_distinguishable is None:
         pass
-    elif noise.g2_distinguishable:  # g2_distinguishable's default value
+    elif noise.g2_distinguishable and g2_active:
         source["g2_distinguishable"] = True
     # g2
     if noise.g2 is None:
         pass
-    elif not noise.g2 == 0.0:  # g2's default value
+    elif g2_active:  # g2's default value
         source["g2"] = noise.g2
     if source == {}:
         source = None
@@ -1051,14 +1187,15 @@ def validate_noisy_measurement_strategy(
     strategy: str | None,
     output: str,
     noise: pcvl.NoiseModel | None = None,
+    noise_groups: NoiseGroups | None = None,
     empty_detectors: bool = False,
     return_object: bool = False,
+    measurement_kind: MeasurementKind | None = None,
 ) -> pcvl.NoiseModel | None:
     """Validate the noise model and QuantumLayer configurations so that they match.
 
     Validates that the noise model, measurement strategy, backend, and output
-    configuration are compatible. Automatically corrects incompatible noise
-    configurations (e.g., indistinguishable photons with g2_distinguishable=True).
+    configuration are compatible.
 
     Parameters
     ----------
@@ -1069,44 +1206,49 @@ def validate_noisy_measurement_strategy(
         The measurement strategy output type (e.g., "amplitudes", "probabilities",
         "mode_expectations"). Must be "probabilities" when noise is present.
     noise : pcvl.NoiseModel | None
-        The noise model to validate. If provided, the function checks for
-        incompatibilities and auto-corrects certain configurations. Default is None.
+        The noise model to validate. Default is None.
+    noise_groups : NoiseGroups | None
+        Classified active noise groups. Neutral noise models should pass None
+        here so they are not treated as active noise. Default is None.
     empty_detectors : bool
         Whether the circuit has no custom detectors. Used to determine early returns
         when there is no noise. Default is False.
     return_object : bool
         Whether the layer returns structured objects instead of tensors.
-        Cannot be True when noise is not None. Default is False.
+        Cannot be True when active noise is present. Default is False.
+    measurement_kind : MeasurementKind | None
+        Resolved measurement kind. Used to reject partial measurement with
+        active noise. Default is None.
 
     Returns
     -------
     pcvl.NoiseModel | None
-        The (potentially modified) noise model. If indistinguishability is 1.0
-        and g2 noise is present with g2_distinguishable=True, the function
-        automatically sets g2_distinguishable=False and emits a warning.
+        The input noise model.
 
     Raises
     ------
     NotImplementedError
-        If return_object=True and noise is not None, or if the backend
+        If return_object=True and active noise is present, or if the backend
         strategy is not "slos".
     ValueError
         If output measurement strategy is incompatible with noisy simulation
         (e.g., "amplitudes" or "mode_expectations" with noise).
     """
-    if noise is None and empty_detectors:
+    active_noise = has_active_noise(noise_groups)
+    if not active_noise and empty_detectors:
         return noise
-    if (noise is not None) and return_object:
+
+    if active_noise and return_object:
         raise NotImplementedError(
             "The noise computation with the return_object feature set at True is not yet implemented."
         )
-    if output == "amplitudes":
+    if active_noise and (
+        measurement_kind is MeasurementKind.PARTIAL or output == "partial"
+    ):
         raise ValueError(
-            "When doing a noisy simulation, the probabilities measurement strategy must be used."
+            "Partial measurement is not supported with active noise. Use full measurement or disable noise."
         )
-    if (
-        output == "mode_expectations" or output == "mode_expectations"
-    ) and noise is not None:
+    if active_noise and output != "probabilities":
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )

@@ -4,18 +4,28 @@
 Noisy Simulations
 ==============================================
 
-To run your first noisy simulation, consult the :doc:`/user_guide/noisy_simulations` page to understand the different noise types and run your first noisy :class:`~merlin.algorithms.layer.QuantumLayer`.
+This page describes how Merlin implements noisy SLOS simulations. For a
+practical introduction to the available noise parameters and a first
+:class:`~merlin.algorithms.layer.QuantumLayer` example, see
+:doc:`/user_guide/noisy_simulations`.
 
 ----------------------------------------------
-Noisy Simulation implementation
+Noisy Simulation Implementation
 ----------------------------------------------
 
-In this section, we discuss the general implementation details of the different noise calculations inside SLOS.
+SLOS normally propagates amplitudes. Active source noise and stochastic phase
+error are represented as probability mixtures, so Merlin computes and combines
+probability distributions for those cases. The implementation details below
+describe where each noise family enters the computation.
 
 Brightness and Transmittance
 ----------------------------------------------
 
-These two noises are implemented in the same workflow. As mentioned on the :doc:`/user_guide/noisy_simulations` page, the photon survival probability is defined by the product of these two noises. This survival probability is then used to create a transition matrix for the output probabilities of the interferometer. Indeed, the whole pipeline simulation is performed without considering these noises and generates a tensor of dimension (batch size, n and m Fock space), where n is the number of photons and m is the number of modes. We then apply brightness and transmittance noise to these results. First, we need to compute the transition matrix like so:
+Brightness and transmittance are implemented in the same workflow. Merlin first
+computes the ideal probability tensor for the fixed ``n``-photon, ``m``-mode
+Fock space, then applies photon survival as a transition matrix over the output
+probabilities. The survival probability for each photon is the product of
+brightness and transmittance.
 
 **Algorithm**
 
@@ -66,7 +76,174 @@ For g2 simulations, the photon loss algorithm is applied per n-photon sector at 
 Phase Error and Imprecision
 ----------------------------------------------
 
-**TODO, complete when implemented** 
+Circuit phase noise is applied while Merlin builds the differentiable circuit
+unitary.
+
+``phase_imprecision`` is deterministic. Each phase shifter value is quantized to
+the nearest multiple of ``phase_imprecision`` during the forward pass:
+
+.. math::
+
+   \phi_\text{quantized}
+   =
+   \operatorname{round}\left(\frac{\phi}{\Delta \phi}\right)\Delta \phi
+
+where :math:`\Delta \phi` is ``phase_imprecision``. This is nearest-grid
+rounding, not truncation. Merlin uses ``torch.round`` for this operation, so
+exact half-step ties follow PyTorch's rounding behavior. For example, if the
+commanded phase is :math:`\pi/8` and ``phase_imprecision`` is :math:`\pi/4`,
+then :math:`\phi / \Delta \phi = 0.5` and the quantized phase is ``0``. Values
+slightly above :math:`\pi/8` quantize to :math:`\pi/4`. Merlin uses a
+straight-through estimator, so gradients still flow through the commanded phase
+value even though the forward pass uses the quantized phase.
+
+``phase_error`` is stochastic. For each Monte Carlo sample, Merlin draws a fresh
+Torch random perturbation from ``Uniform(-phase_error, phase_error)`` for every
+phase shifter, builds one unitary, computes probabilities, then averages the
+probability distributions. Amplitudes are not averaged. Use
+``torch.manual_seed(...)`` to make the sampled perturbations reproducible.
+
+Coherent and incoherent error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A coherent error is represented by a unitary transformation. It preserves the
+phase relations between components of a quantum state, so amplitudes can still
+interfere before they are converted to probabilities. In Merlin, deterministic
+``phase_imprecision`` is coherent within a forward pass: it changes the phase
+values used to build the unitary, but the circuit is still evaluated as one
+unitary.
+
+``phase_error`` is a stochastic coherent error at the sample level. Each Monte
+Carlo sample draws one perturbed unitary and evaluates the quantum evolution
+coherently for that unitary. Merlin then converts that sample's output
+amplitudes to probabilities and averages the probabilities over all sampled
+unitaries:
+
+.. math::
+
+   \frac{1}{K}\sum_{k=1}^{K} p(U_k, \psi)
+   =
+   \frac{1}{K}\sum_{k=1}^{K} \left|U_k\psi\right|^2
+
+This is different from averaging amplitudes or unitaries first:
+
+.. math::
+
+   \left|\frac{1}{K}\sum_{k=1}^{K} U_k\psi\right|^2
+
+Merlin does not use this second expression for ``phase_error``.
+
+For example, consider two sampled output states:
+
+.. math::
+
+   \psi_+
+   =
+   \frac{1}{\sqrt{2}}\left(|10\rangle + |01\rangle\right),
+   \qquad
+   \psi_-
+   =
+   \frac{1}{\sqrt{2}}\left(|10\rangle - |01\rangle\right)
+
+Each sampled state has probability :math:`1/2` on :math:`|10\rangle` and
+probability :math:`1/2` on :math:`|01\rangle`, so averaging probabilities keeps
+the 50/50 distribution. Averaging amplitudes first cancels the
+:math:`|01\rangle` component. If that averaged amplitude vector is then
+renormalized, it becomes :math:`|10\rangle`, giving probability 1 on
+:math:`|10\rangle` and probability 0 on :math:`|01\rangle`. This is not the
+Monte Carlo probability mixture used by Merlin.
+
+An incoherent error is represented as a classical mixture of alternatives. The
+relative phases between alternatives are not used for interference; Merlin
+combines probabilities, not amplitudes. Source noise is handled this way. For a
+tensor input state interpreted as a superposition, source-noise simulations
+propagate each active input basis state independently and combine the resulting
+probability distributions with weights :math:`|c_i|^2`.
+
+The practical consequence is:
+
+- with circuit phase noise only, a tensor input superposition remains coherent
+  inside each sampled unitary;
+- with source noise, tensor input components are treated as an incoherent
+  mixture over basis states;
+- with ``phase_error``, the final reported distribution is an incoherent Monte
+  Carlo average of probability distributions, even though each sampled unitary
+  is evaluated coherently.
+
+When both circuit phase noises are active, Merlin first quantizes the phase and
+then samples the stochastic perturbation around the quantized value:
+
+.. math::
+
+   \phi_\text{effective}
+   =
+   \operatorname{round}\left(\frac{\phi}{\Delta \phi}\right)\Delta \phi
+   +
+   \epsilon,
+   \qquad
+   \epsilon \sim \operatorname{Uniform}(-e, e)
+
+where :math:`e` is ``phase_error``. If ``phase_imprecision`` is inactive, Merlin
+uses :math:`\phi + \epsilon`. If ``phase_error`` is inactive, Merlin uses only
+the deterministic quantized phase.
+
+The ``n_phase_error_samples`` constructor parameter controls how many sampled
+unitaries are averaged when active ``phase_error`` is present. If omitted,
+Merlin uses 1 sample. Runtime scales roughly linearly with this value when
+``phase_error > 0``. When source noise or ``g2`` is also active, the cost is
+multiplicative: each phase-error sample runs the full source-noise mixture, so
+the worst-case runtime is roughly
+``n_phase_error_samples * n_active_input_states * SLOS``.
+
+Suggested values:
+
+- ``1`` for Perceval-like stochastic circuit sampling.
+- ``5`` to ``10`` for quick expected-noise estimates.
+- ``50`` to ``100`` for validation studies.
+- ``200`` or more for production or publication results.
+
+The parameter is ignored when ``phase_error`` is ``None`` or ``0.0``.
+
+.. code-block:: python
+
+    import math
+
+    import perceval as pcvl
+    import torch
+    import merlin as ML
+
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+    circuit.add(0, pcvl.PS(pcvl.P("phi")))
+    circuit.add((0, 1), pcvl.BS.H())
+
+    layer = ML.QuantumLayer(
+        input_size=0,
+        circuit=circuit,
+        input_state=[1, 0],
+        n_photons=1,
+        trainable_parameters=["phi"],
+        noise=pcvl.NoiseModel(
+            phase_imprecision=math.pi / 4,
+            phase_error=0.1,
+        ),
+        n_phase_error_samples=50,
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+    )
+
+    torch.manual_seed(42)
+    probs_1 = layer()
+    torch.manual_seed(42)
+    probs_2 = layer()
+
+    assert torch.allclose(probs_1, probs_2)
+
+In this example, a commanded trainable phase equal to ``math.pi / 8`` would be
+quantized to ``0`` before the stochastic perturbation is added, because it lies
+exactly halfway between the ``0`` and ``math.pi / 4`` grid points and
+``torch.round(0.5)`` returns ``0``.
 
 Indistinguishability
 ----------------------------------------------
@@ -115,6 +292,17 @@ g2 and g2 distinguishable
 ----------------------------------------------
 
 These noises build on the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisySLOSComputeGraph` class to create the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisyG2SLOSComputeGraph` object. Indeed, the noisy simulation must be performed for multiple input states with photon duplication. Here are the main implementation steps.
+
+The ``g2`` value is converted to the probability :math:`p` that one source
+emits an extra photon:
+
+.. math::
+
+   p =
+   \frac{1-g^{(2)}-\sqrt{1-2g^{(2)}}}{2g^{(2)}}
+
+Only the no-extra-photon and one-extra-photon cases are modeled for each input
+photon. Higher-order emissions from the same source are not included.
 
 **Algorithm**
 
@@ -189,11 +377,8 @@ Here is an example of the output graph of this run.
    :width: 600px
    :alt: Memory need for the QuantumLayer with distinguishable photons per output size
 
-
-Also, as a reminder, here are the noisy simulation guidelines.
-
-1. All noisy simulations must be run with the probabilities measurement strategy. Indeed, we can only change the probabilities as computing the actual amplitude after the noise breaks the current implementation of SLOS simulations: density matrix representation would be needed instead of just vector states.
-
-2. Noisy simulations cannot use ``return_object=True``. It will be implemented in a future version.
-
-3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning. Indeed, since the noises can remove or add photons, remaining in a constrained space may remove some of the effects of the noise.
+The public API constraints are listed in :doc:`/user_guide/noisy_simulations`.
+The implementation reason is that Merlin does not currently use a density
+matrix representation for noisy SLOS. Noise paths that produce classical
+mixtures therefore return probabilities and cannot expose a single coherent
+output amplitude vector.

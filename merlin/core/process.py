@@ -25,26 +25,35 @@ Quantum computation processes and factories.
 """
 
 import math
-from typing import Literal, overload
+from typing import Any, Literal, overload
 
 import perceval as pcvl
 import torch
 
-from merlin.core.sectored_distribution import SectoredDistribution
+from merlin.core.sectored_distribution import SectoredDistribution, SectorResult
 from merlin.pcvl_pytorch.noisy_slos import (
     NoisyG2SLOSComputeGraph,
     NoisySLOSComputeGraph,
 )
 
-from ..algorithms.layer_utils import NoiseGroups
+from ..algorithms.layer_utils import (
+    NoiseGroups,
+    _circuit_has_phase_error,
+    _with_component_phase_error,
+    has_circuit_noise,
+    has_phase_error,
+    has_source_noise,
+)
 from ..pcvl_pytorch import (
     CircuitConverter,
     build_slos_distribution_computegraph,
 )
 from ..utils.combinadics import Combinadics
 from ..utils.deprecations import raise_no_bunching_deprecated
+from ..utils.normalization import normalize_probabilities, probabilities_from_amplitudes
 from .base import AbstractComputationProcess
 from .computation_space import ComputationSpace
+from .state import _generate_default_input_state
 
 
 class ComputationProcess(AbstractComputationProcess):
@@ -72,8 +81,15 @@ class ComputationProcess(AbstractComputationProcess):
         Deprecated legacy parameter.
     output_map_func : Any
         Optional output mapping function.
-    noise_groups: NoiseGroups | None
-            The noise groups applied to the circuit to be ran.
+    noise_groups : NoiseGroups | None
+        The noise groups applied to the circuit to be ran.
+    n_phase_error_samples : int
+        Number of Monte Carlo unitary samples used when active
+        ``phase_error`` is present. For each sample, the converter draws fresh
+        perturbations around the commanded phases after any
+        ``phase_imprecision`` quantization, computes probabilities for that
+        sampled unitary, and averages probabilities. Amplitudes are not
+        averaged.
     """
 
     def __init__(
@@ -89,6 +105,7 @@ class ComputationProcess(AbstractComputationProcess):
         no_bunching: bool | None = None,
         output_map_func=None,
         noise_groups: NoiseGroups | None = None,
+        n_phase_error_samples: int = 1,
     ):
         """Initialize a computation process.
 
@@ -114,9 +131,30 @@ class ComputationProcess(AbstractComputationProcess):
             Deprecated legacy parameter.
         output_map_func : Any
             Optional output mapping function.
-        noise_groups: NoiseGroups | None
-                The noise groups applied to the circuit to be ran.
+        noise_groups : NoiseGroups | None
+            The noise groups applied to the circuit to be ran.
+        n_phase_error_samples : int
+            Number of Monte Carlo unitary samples used when active
+            ``phase_error`` is present. Each sample computes probabilities for
+            one perturbed unitary; the process averages those probabilities.
+            This matters for coherent tensor superpositions: amplitudes are
+            converted to probabilities per sample before averaging. Default
+            value is 1.
+
+        Raises
+        ------
+        TypeError
+            If ``n_phase_error_samples`` is not an integer.
+        ValueError
+            If ``n_phase_error_samples`` is lower than 1.
         """
+        if not isinstance(n_phase_error_samples, int) or isinstance(
+            n_phase_error_samples, bool
+        ):
+            raise TypeError("n_phase_error_samples must be an integer.")
+        if n_phase_error_samples < 1:
+            raise ValueError("n_phase_error_samples must be at least 1.")
+
         self.circuit = circuit
         self.input_state = input_state
         self.n_photons = n_photons
@@ -124,7 +162,15 @@ class ComputationProcess(AbstractComputationProcess):
         self.input_parameters = input_parameters
         self.dtype = dtype
         self.device = device
-        self.noise_groups = noise_groups
+        self.noise_groups = (
+            _with_component_phase_error(noise_groups)
+            if _circuit_has_phase_error(circuit)
+            else noise_groups
+        )
+        self._n_phase_error_samples = n_phase_error_samples
+        self._phase_imprecision = 0.0
+        self._phase_error = 0.0
+        self._setup_phase_noise()
 
         if no_bunching is not None:
             raise_no_bunching_deprecated(stacklevel=2)
@@ -155,6 +201,31 @@ class ComputationProcess(AbstractComputationProcess):
             state_tensor: torch.Tensor = self.input_state
             self._validate_superposition_state_shape(state_tensor)
 
+    def _setup_phase_noise(self) -> None:
+        """Resolve process-local phase-noise settings from classified noise groups."""
+        if not has_circuit_noise(self.noise_groups):
+            return
+
+        circuit_noise = self.noise_groups.circuit
+        if circuit_noise is None:
+            return
+        if "phase_imprecision" in circuit_noise:
+            self._phase_imprecision = float(circuit_noise["phase_imprecision"])
+        if "phase_error" in circuit_noise and circuit_noise["phase_error"] is not None:
+            self._phase_error = float(circuit_noise["phase_error"])
+
+    def _has_source_noise(self) -> bool:
+        """Return whether this process uses a source-noise simulation graph."""
+        return has_source_noise(self.noise_groups)
+
+    def _has_phase_error(self) -> bool:
+        """Return whether this process must sample stochastic phase-error unitaries."""
+        return has_phase_error(self.noise_groups)
+
+    def _returns_probabilities(self) -> bool:
+        """Return whether :meth:`compute` returns probabilities instead of amplitudes."""
+        return self._has_source_noise() or self._has_phase_error()
+
     def _setup_computation_graphs(self):
         """Setup unitary and simulation computation graphs."""
         # Determine parameter specs
@@ -162,7 +233,12 @@ class ComputationProcess(AbstractComputationProcess):
 
         # Build unitary graph
         self.converter = CircuitConverter(
-            self.circuit, parameter_specs, dtype=self.dtype, device=self.device
+            self.circuit,
+            parameter_specs,
+            dtype=self.dtype,
+            device=self.device,
+            phase_imprecision=self._phase_imprecision,
+            phase_error=self._phase_error,
         )
 
         # Build simulation graph with correct parameters
@@ -179,115 +255,604 @@ class ComputationProcess(AbstractComputationProcess):
             self.simulation_graph, NoisySLOSComputeGraph
         ) or isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph)
 
-    def compute(
+    def _default_fixed_input_state(self) -> list[int]:
+        """Return the default fixed input state for tensor input placeholders.
+
+        Returns
+        -------
+        list[int]
+            Occupation-number input state generated from the process mode count,
+            photon count, and computation space.
+        """
+        return _generate_default_input_state(
+            self.m,
+            self.n_photons,
+            self.computation_space,
+        )
+
+    def _fixed_input_state_for_compute(self) -> list[int] | torch.Tensor:
+        """Return the fixed input state used by direct SLOS graph calls.
+
+        Tensor ``input_state`` values represent superposition data only when the
+        caller explicitly requests superposition handling. Direct fixed-state
+        graph calls therefore use the deterministic default Fock input instead
+        of passing the tensor through.
+
+        Returns
+        -------
+        list[int] | torch.Tensor
+            Fixed Fock input state for direct SLOS graph calls.
+        """
+        if isinstance(self.input_state, torch.Tensor):
+            return self._default_fixed_input_state()
+        return self.input_state
+
+    def _compute_source_probabilities_for_unitary(
+        self,
+        unitary: torch.Tensor,
+        *,
+        amplitude_encoding: bool,
+    ) -> torch.Tensor | SectoredDistribution:
+        """Compute source-noise probabilities for one precomputed unitary.
+
+        When ``input_state`` is a tensor and ``amplitude_encoding`` is True, the
+        tensor is treated as a superposition over input basis states. Source
+        noise is applied as an incoherent mixture: every active input basis state
+        is propagated independently and weighted by the corresponding
+        :math:`|c_i|^2`. For g2 noise, each photon-number sector is accumulated
+        separately and aligned by sector keys before addition.
+
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Precomputed circuit unitary. A 2D tensor represents one parameter
+            set and a 3D tensor represents a batch of parameter sets.
+        amplitude_encoding : bool
+            Whether tensor ``input_state`` values should be interpreted as a
+            superposition over input basis states.
+
+        Returns
+        -------
+        torch.Tensor | SectoredDistribution
+            Output probabilities. g2 source noise returns a
+            ``SectoredDistribution`` while other source-noise paths return a
+            probability tensor.
+
+        Raises
+        ------
+        RuntimeError
+            If tensor-superposition handling finds no active input basis states.
+        ValueError
+            If g2 sector outputs cannot be aligned by basis keys while
+            accumulating active input states.
+        """
+        if isinstance(self.input_state, torch.Tensor) and amplitude_encoding:
+            # Amplitude-encoded input: treat each row as a probability distribution
+            # over Fock basis states and produce a weighted mixture of noisy output
+            # probabilities. The mixture weight for each basis state is |c_i|^2.
+            prepared_state = self._prepare_superposition_tensor()
+            weights = prepared_state.abs().pow(2)
+
+            active_mask = torch.any(weights >= 1e-13, dim=0)
+            active_indices = torch.nonzero(active_mask, as_tuple=True)[0].tolist()
+            if isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph):
+                output_distribution: SectoredDistribution | None = None
+                for idx in active_indices:
+                    input_fock_state = self.simulation_graph.mapped_keys[0][idx]
+                    probs = self.simulation_graph.compute_probs(
+                        unitary, input_fock_state
+                    )
+
+                    for sector in probs.sectors:
+                        if sector.tensor.ndim == 1:
+                            sector.tensor = sector.tensor.unsqueeze(0)
+                        selected_weights = weights[:, idx].to(sector.tensor.dtype)
+                        sector.tensor = torch.einsum(
+                            "i,bo->ibo", selected_weights, sector.tensor
+                        )
+                        if sector.tensor.shape[1] == 1:
+                            sector.tensor = sector.tensor.squeeze(1)
+
+                    if output_distribution is None:
+                        output_distribution = probs
+                    else:
+                        for sector in output_distribution.sectors:
+                            next_sector = probs.get_sector(sector.n_photons)
+                            sector.tensor = sector.tensor + self._align_sector_tensor(
+                                next_sector,
+                                sector,
+                            )
+
+                if output_distribution is None:
+                    raise RuntimeError("No active input states were found.")
+                return output_distribution
+
+            tensor_probs_per_state: list[torch.Tensor] = []
+            for idx in active_indices:
+                input_fock_state = self.simulation_graph.mapped_keys[idx]
+                _, probs = self.simulation_graph.compute_probs(
+                    unitary, input_fock_state
+                )
+                if probs.ndim == 1:
+                    probs = probs.unsqueeze(0)
+                tensor_probs_per_state.append(probs)
+
+            if not tensor_probs_per_state:
+                raise RuntimeError("No active input states were found.")
+
+            probs_stacked = torch.stack(tensor_probs_per_state, dim=0)
+            selected_weights = weights[:, active_indices].to(probs_stacked.dtype)
+            mixed_probs = torch.einsum("is,sbo->ibo", selected_weights, probs_stacked)
+
+            if mixed_probs.shape[1] == 1:
+                mixed_probs = mixed_probs.squeeze(1)
+
+            return mixed_probs
+
+        result = self.simulation_graph.compute_probs(unitary, self.input_state)
+        if isinstance(result, SectoredDistribution):
+            return result
+        _keys, probs = result
+        return probs
+
+    def _compute_superposition_amplitudes_for_unitary(
+        self,
+        unitary: torch.Tensor,
+        *,
+        simultaneous_processes: int = 1,
+    ) -> torch.Tensor:
+        """Compute coherent superposition amplitudes for one precomputed unitary.
+
+        The stored tensor ``input_state`` is normalized and interpreted as
+        complex amplitudes over the configured input basis. Each active basis
+        state is propagated through the SLOS graph, the per-input amplitudes are
+        normalized, and the final output amplitudes are formed by the coherent
+        weighted sum over input coefficients.
+
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Precomputed circuit unitary. A 2D tensor represents one parameter
+            set and a 3D tensor represents a batch of parameter sets.
+        simultaneous_processes : int
+            Maximum number of active input basis states propagated in one
+            ``compute_batch`` call. Default is 1.
+
+        Returns
+        -------
+        torch.Tensor
+            Coherent output amplitudes. The leading batch dimensions are
+            squeezed when they contain a single element to preserve existing
+            caller expectations.
+
+        Raises
+        ------
+        TypeError
+            If ``input_state`` is not a tensor.
+        ValueError
+            If the tensor ``input_state`` does not match the configured
+            computation-space basis size.
+        """
+        prepared_state = self._prepare_superposition_tensor()
+
+        batched_parameters = unitary.dim() == 3
+        if not batched_parameters:
+            unitary = unitary.unsqueeze(0)
+        parameter_batch = unitary.shape[0]
+
+        mask = (prepared_state.real**2 + prepared_state.imag**2 < 1e-13).all(dim=0)
+        masked_input_state = (~mask).int().tolist()
+        input_states = [
+            (k, self.simulation_graph.mapped_keys[k])
+            for k, mask in enumerate(masked_input_state)
+            if mask == 1
+        ]
+
+        amplitudes = torch.zeros(
+            (
+                parameter_batch,
+                prepared_state.shape[-1],
+                len(self.simulation_graph.mapped_keys),
+            ),
+            dtype=unitary.dtype,
+            device=prepared_state.device,
+        )
+
+        for i in range(0, len(input_states), simultaneous_processes):
+            batch_end = min(i + simultaneous_processes, len(input_states))
+            batch_indices = []
+            batch_fock_states = []
+
+            for j in range(i, batch_end):
+                idx, fock_state = input_states[j]
+                batch_indices.append(idx)
+                batch_fock_states.append(fock_state)
+
+            _, batch_amplitudes = self.simulation_graph.compute_batch(
+                unitary, batch_fock_states
+            )
+            for k, idx in enumerate(batch_indices):
+                amplitudes[:, idx, :] = batch_amplitudes[:, :, k]
+
+        input_state = prepared_state.to(amplitudes.dtype)
+        amplitudes = amplitudes / amplitudes.norm(p=2, dim=-1, keepdim=True).clamp_min(
+            1e-12
+        )
+        final_amplitudes = torch.einsum("se, beo -> bso", input_state, amplitudes)
+
+        if final_amplitudes.shape[0] == 1:
+            final_amplitudes = final_amplitudes.squeeze(0)
+        if final_amplitudes.ndim == 3 and final_amplitudes.shape[1] == 1:
+            final_amplitudes = final_amplitudes.squeeze(1)
+
+        return final_amplitudes
+
+    def _compute_probabilities_for_unitary(
+        self,
+        unitary: torch.Tensor,
+        *,
+        amplitude_encoding: bool,
+    ) -> torch.Tensor | SectoredDistribution:
+        """Compute output probabilities for one precomputed unitary.
+
+        If ``self.input_state`` is a tensor superposition and no source noise is
+        active, this computes coherent output amplitudes for the sampled unitary,
+        converts those amplitudes to probabilities independently, and returns
+        those probabilities. Phase-error Monte Carlo averaging therefore uses
+        ``mean_k |SLOS(U_k) @ psi|^2`` rather than
+        ``|mean_k SLOS(U_k) @ psi|^2``.
+
+        Parameters
+        ----------
+        unitary : torch.Tensor
+            Precomputed circuit unitary used for the current probability sample.
+        amplitude_encoding : bool
+            Whether tensor ``input_state`` values should be interpreted as a
+            coherent superposition for this sample.
+
+        Returns
+        -------
+        torch.Tensor | SectoredDistribution
+            Output probabilities for the supplied unitary. g2 source noise may
+            return a ``SectoredDistribution``.
+
+        Raises
+        ------
+        ValueError
+            If coherent superposition handling is requested and ``input_state``
+            does not match the configured computation-space basis size.
+        """
+        if self._has_source_noise():
+            return self._compute_source_probabilities_for_unitary(
+                unitary, amplitude_encoding=amplitude_encoding
+            )
+
+        if isinstance(self.input_state, torch.Tensor) and amplitude_encoding:
+            amplitudes = self._compute_superposition_amplitudes_for_unitary(unitary)
+            probabilities = probabilities_from_amplitudes(amplitudes)
+            return normalize_probabilities(probabilities, self.computation_space)
+
+        input_state = self._fixed_input_state_for_compute()
+        keys, probs = self.simulation_graph.compute_probs(unitary, input_state)
+        self._validate_probability_keys(keys)
+        return probs
+
+    def _validate_probability_keys(self, keys: Any) -> None:
+        """Validate probability tensor keys against the simulation graph order.
+
+        Parameters
+        ----------
+        keys : Any
+            Keys returned with a probability tensor by the simulation graph.
+
+        Raises
+        ------
+        ValueError
+            If the returned keys do not match
+            ``self.simulation_graph.mapped_keys``.
+        """
+        if keys != self.simulation_graph.mapped_keys:
+            raise ValueError(
+                "Probability keys returned by the simulation graph do not match "
+                "the mapped output-key order."
+            )
+
+    @staticmethod
+    def _validate_sector_keys(sector: SectorResult) -> tuple[tuple[int, ...], ...]:
+        """Return sector keys after validating they align with the tensor basis.
+
+        Parameters
+        ----------
+        sector : SectorResult
+            Sector whose key metadata should be validated.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            Basis keys associated with the final tensor dimension.
+
+        Raises
+        ------
+        ValueError
+            If keys are missing, duplicated, or inconsistent with the sector
+            tensor basis dimension.
+        """
+        if sector.keys is None:
+            raise ValueError("Sector basis keys are required to align probabilities.")
+        if sector.tensor.ndim == 0:
+            raise ValueError("Sector tensor must have a basis dimension.")
+        if sector.tensor.shape[-1] != len(sector.keys):
+            raise ValueError(
+                "Sector tensor basis dimension does not match the number of keys."
+            )
+        if len(set(sector.keys)) != len(sector.keys):
+            raise ValueError("Sector basis keys must be unique.")
+        return sector.keys
+
+    @classmethod
+    def _align_sector_tensor(
+        cls,
+        source_sector: SectorResult,
+        target_sector: SectorResult,
+    ) -> torch.Tensor:
+        """Return a source sector tensor reordered to target sector keys.
+
+        Parameters
+        ----------
+        source_sector : SectorResult
+            Sector containing the tensor to reorder.
+        target_sector : SectorResult
+            Sector whose basis-key order defines the desired output order.
+
+        Returns
+        -------
+        torch.Tensor
+            ``source_sector.tensor`` indexed along its final dimension so it
+            matches ``target_sector.keys``.
+
+        Raises
+        ------
+        ValueError
+            If sector metadata differs, batch dimensions differ, keys are
+            invalid, or the two sectors do not contain the same basis keys.
+        """
+        if source_sector.n_photons != target_sector.n_photons:
+            raise ValueError("Cannot align sectors with different photon numbers.")
+        if source_sector.n_modes != target_sector.n_modes:
+            raise ValueError("Cannot align sectors with different mode counts.")
+        if source_sector.computation_space != target_sector.computation_space:
+            raise ValueError("Cannot align sectors with different computation spaces.")
+
+        source_keys = cls._validate_sector_keys(source_sector)
+        target_keys = cls._validate_sector_keys(target_sector)
+        if source_sector.tensor.shape[:-1] != target_sector.tensor.shape[:-1]:
+            raise ValueError(
+                "Sector tensor batch dimensions differ while aligning probabilities."
+            )
+
+        if source_keys == target_keys:
+            return source_sector.tensor
+
+        source_index_by_key = {key: idx for idx, key in enumerate(source_keys)}
+        if set(source_index_by_key) != set(target_keys):
+            raise ValueError("Sector basis keys mismatch while aligning probabilities.")
+
+        indices = torch.tensor(
+            [source_index_by_key[key] for key in target_keys],
+            dtype=torch.long,
+            device=source_sector.tensor.device,
+        )
+        return source_sector.tensor.index_select(source_sector.tensor.ndim - 1, indices)
+
+    def _add_sectored_distributions(
+        self,
+        left: SectoredDistribution,
+        right: SectoredDistribution,
+    ) -> SectoredDistribution:
+        """Add two sectored distributions by matching photon-number sectors.
+
+        Parameters
+        ----------
+        left : SectoredDistribution
+            Accumulated distribution.
+        right : SectoredDistribution
+            New distribution to add.
+
+        Returns
+        -------
+        SectoredDistribution
+            Distribution whose sector tensors are the pairwise sums.
+
+        Raises
+        ------
+        ValueError
+            If the two distributions do not contain the same photon-number
+            sectors or if matching sectors cannot be aligned by basis keys.
+        """
+        left_photons = {sector.n_photons for sector in left.sectors}
+        right_photons = {sector.n_photons for sector in right.sectors}
+        if left_photons != right_photons:
+            raise ValueError(
+                "Phase-error sector mismatch while averaging SectoredDistribution samples."
+            )
+
+        sectors: list[SectorResult] = []
+        for left_sector in left.sectors:
+            right_sector = right.get_sector(left_sector.n_photons)
+            right_tensor = self._align_sector_tensor(right_sector, left_sector)
+            sectors.append(
+                SectorResult(
+                    left_sector.tensor + right_tensor,
+                    n_modes=left_sector.n_modes,
+                    n_photons=left_sector.n_photons,
+                    computation_space=left_sector.computation_space,
+                    keys=left_sector.keys,
+                )
+            )
+
+        return SectoredDistribution(tuple(sectors))
+
+    def _divide_sectored_distribution(
+        self,
+        distribution: SectoredDistribution,
+        divisor: int,
+    ) -> SectoredDistribution:
+        """Divide every sector tensor by a scalar divisor.
+
+        Parameters
+        ----------
+        distribution : SectoredDistribution
+            Sectored distribution to scale.
+        divisor : int
+            Positive divisor applied to each sector tensor.
+
+        Returns
+        -------
+        SectoredDistribution
+            Distribution with each sector tensor divided by ``divisor`` while
+            preserving sector metadata and basis keys.
+        """
+        return SectoredDistribution(
+            tuple(
+                SectorResult(
+                    sector.tensor / divisor,
+                    n_modes=sector.n_modes,
+                    n_photons=sector.n_photons,
+                    computation_space=sector.computation_space,
+                    keys=sector.keys,
+                )
+                for sector in distribution.sectors
+            )
+        )
+
+    def _compute_phase_error_probabilities(
         self,
         parameters: list[torch.Tensor],
-        amplitude_encoding: bool = False,
+        *,
+        amplitude_encoding: bool,
     ) -> torch.Tensor | SectoredDistribution:
-        """Compute output amplitudes for the configured input state.
+        """Average probabilities over stochastic phase-error unitary samples.
+
+        The averaging order is:
+
+        ``mean_k probabilities(U(phi_quantized + epsilon_k), input_state)``
+
+        where ``epsilon_k`` is drawn independently from
+        ``Uniform(-phase_error, phase_error)`` for each sampled phase shifter.
+        If ``phase_imprecision`` is also active, ``phi_quantized`` is the
+        nearest-grid value produced by the converter before perturbation. This
+        method never averages amplitudes. For tensor superposition inputs, each
+        sampled unitary first produces coherent output amplitudes; those
+        amplitudes are converted to probabilities for that same sample, and
+        only then are probability tensors averaged.
 
         Parameters
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
         amplitude_encoding : bool
-            If True and input_state is a tensor in noisy mode, normalize and mix probs
-                over Fock basis states weighted by :math:`|c_i|^2`. Default is False.
+            Whether tensor input states should be interpreted as coherent
+            amplitude-encoded superpositions for each sampled unitary.
 
         Returns
         -------
         torch.Tensor | SectoredDistribution
-            Output probabilities if the simulation is noisy (a
-            :class:`~merlin.core.sectored_distribution.SectoredDistribution` when g2
-            noise is present) and amplitudes otherwise produced by the simulation graph.
+            Probability distribution averaged over ``n_phase_error_samples``.
+            When g2 source noise is active, each sample returns a
+            ``SectoredDistribution`` with one tensor per photon-number sector,
+            for example sectors with ``n_photons == 0`` and ``n_photons == 1``.
+            The same photon-number sectors must be present in every sample;
+            matching sector tensors are accumulated and divided by the sample
+            count. A missing or additional sector in any sample is a layout
+            mismatch and raises ``ValueError`` instead of silently dropping
+            probabilities.
+
+        Raises
+        ------
+        ValueError
+            If phase-error samples do not all return tensors or do not all
+            return matching ``SectoredDistribution`` layouts.
+        RuntimeError
+            If no phase-error samples were computed.
         """
-        # Generate unitary matrix from parameters
+        accumulated: torch.Tensor | SectoredDistribution | None = None
+
+        for _sample_index in range(self._n_phase_error_samples):
+            unitary = self.converter.to_tensor(*parameters, apply_phase_error=True)
+            self.unitary = unitary
+            probabilities = self._compute_probabilities_for_unitary(
+                unitary, amplitude_encoding=amplitude_encoding
+            )
+
+            if accumulated is None:
+                accumulated = probabilities
+                continue
+
+            if isinstance(accumulated, SectoredDistribution):
+                if not isinstance(probabilities, SectoredDistribution):
+                    raise ValueError(
+                        "Phase-error sample type mismatch while averaging probabilities."
+                    )
+                accumulated = self._add_sectored_distributions(
+                    accumulated, probabilities
+                )
+            else:
+                if isinstance(probabilities, SectoredDistribution):
+                    raise ValueError(
+                        "Phase-error sample type mismatch while averaging probabilities."
+                    )
+                accumulated = accumulated + probabilities
+
+        if accumulated is None:
+            raise RuntimeError("No phase-error samples were computed.")
+
+        if isinstance(accumulated, SectoredDistribution):
+            return self._divide_sectored_distribution(
+                accumulated, self._n_phase_error_samples
+            )
+        return accumulated / self._n_phase_error_samples
+
+    def compute(
+        self,
+        parameters: list[torch.Tensor],
+        amplitude_encoding: bool = False,
+    ) -> torch.Tensor | SectoredDistribution:
+        """Compute output amplitudes or probabilities for the configured input state.
+
+        Parameters
+        ----------
+        parameters : list[torch.Tensor]
+            Circuit parameters passed to the converter.
+        amplitude_encoding : bool
+            If True and ``input_state`` is a tensor, use tensor-superposition
+            handling. Source-noise simulations mix probabilities over Fock basis
+            states weighted by :math:`|c_i|^2`; phase-error simulations without
+            source noise compute coherent probabilities per sampled unitary.
+            Default is False.
+
+        Returns
+        -------
+        torch.Tensor | SectoredDistribution
+            Output probabilities if source noise or stochastic phase error is
+            active (a :class:`~merlin.core.sectored_distribution.SectoredDistribution`
+            when g2 noise is present) and amplitudes otherwise.
+        """
+        if self._has_phase_error():
+            return self._compute_phase_error_probabilities(
+                parameters, amplitude_encoding=amplitude_encoding
+            )
 
         unitary = self.converter.to_tensor(*parameters)
         self.unitary = unitary
 
-        if self.noisy_simulation:
-            if isinstance(self.input_state, torch.Tensor) and amplitude_encoding:
-                # Amplitude-encoded input: treat each row as a probability distribution
-                # over Fock basis states and produce a weighted mixture of noisy output
-                # probabilities.  The mixture weight for each basis state is |c_i|^2.
-                prepared_state = self._prepare_superposition_tensor()
-                weights = prepared_state.abs().pow(2)  # [input_batch, n_fock_states]
+        if self._has_source_noise():
+            return self._compute_source_probabilities_for_unitary(
+                unitary, amplitude_encoding=amplitude_encoding
+            )
 
-                active_mask = torch.any(weights >= 1e-13, dim=0)
-                active_indices = torch.nonzero(active_mask, as_tuple=True)[0].tolist()
-                # If there is g2 noise, the data needs to be treated per photon sector
-                if isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph):
-                    output_distribution: SectoredDistribution | None = None
-                    for idx in active_indices:
-                        input_fock_state = self.simulation_graph.mapped_keys[0][idx]
-                        probs = self.simulation_graph.compute_probs(
-                            unitary, input_fock_state
-                        )
-
-                        for sector in probs.sectors:
-                            if sector.tensor.ndim == 1:
-                                sector.tensor = sector.tensor.unsqueeze(0)
-                            selected_weights = weights[:, idx].to(sector.tensor.dtype)
-                            sector.tensor = torch.einsum(
-                                "i,bo->ibo", selected_weights, sector.tensor
-                            )
-                            if sector.tensor.shape[1] == 1:
-                                sector.tensor = sector.tensor.squeeze(1)
-
-                        if output_distribution is None:
-                            output_distribution = probs
-                        else:
-                            for sector in output_distribution.sectors:
-                                sector.tensor = (
-                                    sector.tensor
-                                    + probs.get_sector(sector.n_photons).tensor
-                                )
-
-                    return output_distribution
-                else:
-                    tensor_probs_per_state: list[torch.Tensor] = []
-                    for idx in active_indices:
-                        input_fock_state = self.simulation_graph.mapped_keys[idx]
-                        _, probs = self.simulation_graph.compute_probs(
-                            unitary, input_fock_state
-                        )
-                        if probs.ndim == 1:
-                            probs = probs.unsqueeze(0)
-                        tensor_probs_per_state.append(probs)
-
-                    # probs_stacked: [n_active, unitary_batch, n_output_states]
-                    probs_stacked = torch.stack(tensor_probs_per_state, dim=0)
-                    # selected_weights: [input_batch, n_active]
-                    selected_weights = weights[:, active_indices].to(
-                        probs_stacked.dtype
-                    )
-                    # mixed_probs: [input_batch, unitary_batch, n_output_states]
-                    mixed_probs = torch.einsum(
-                        "is,sbo->ibo", selected_weights, probs_stacked
-                    )
-
-                    if mixed_probs.shape[1] == 1:
-                        mixed_probs = mixed_probs.squeeze(
-                            1
-                        )  # [input_batch, n_output_states]
-
-                    return mixed_probs
-            else:
-                result = self.simulation_graph.compute_probs(unitary, self.input_state)
-                # NoisyG2SLOSComputeGraph returns SectoredDistribution directly
-                if isinstance(result, SectoredDistribution):
-                    return result
-                # NoisySLOSComputeGraph returns (keys, probs) tuple
-                keys, probs = result
-                return probs
-        else:
-            if isinstance(self.input_state, torch.Tensor):
-                input_state = [1] * self.n_photons + [0] * (self.m - self.n_photons)
-            else:
-                input_state = self.input_state
-            keys, amplitudes = self.simulation_graph.compute(unitary, input_state)
-            return amplitudes
+        input_state = self._fixed_input_state_for_compute()
+        _keys, amplitudes = self.simulation_graph.compute(unitary, input_state)
+        return amplitudes
 
     @overload
     def compute_superposition_state(
@@ -302,6 +867,10 @@ class ComputationProcess(AbstractComputationProcess):
     def compute_superposition_state(
         self, parameters: list[torch.Tensor], *, return_keys: bool = False
     ) -> torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
+        if self._has_phase_error():
+            raise RuntimeError(
+                "Active phase_error returns probabilities; compute_superposition_state cannot return amplitudes."
+            )
         if self.noisy_simulation:
             raise RuntimeError(
                 "Noisy simulations with source noise can only call the `compute` and `compute_with_keys` methods to compute probabilities"
@@ -430,102 +999,84 @@ class ComputationProcess(AbstractComputationProcess):
               they already occupy, so callers should ensure ``parameters`` and
               ``self.input_state`` live on the same device.
         """
+        if self._has_phase_error():
+            raise RuntimeError(
+                "Active phase_error returns probabilities; compute_ebs_simultaneously cannot return amplitudes."
+            )
         if self.noisy_simulation:
             raise RuntimeError(
                 "Noisy simulations with source noise can only call the `compute` and `compute_with_keys` methods to compute probabilities"
             )
 
-        # input state was validated by _prepare_superposition_tensor, ie: renormalized, typed, and converted from logical basis to fock basis (if shape did not match)
-        # we don't want anymore the logical basis but normalization and typing cannot hurt even if it is a small overhead
-        prepared_state = self._prepare_superposition_tensor()
-
         unitary = self.converter.to_tensor(*parameters)
-        # Allow classical parameters to be batched: in that case the converter already returns a stack of unitaries.
-        batched_parameters = unitary.dim() == 3
-        if not batched_parameters:
-            unitary = unitary.unsqueeze(0)
-        parameter_batch = unitary.shape[0]
-
-        # Find non-zero input states - for efficient processing of only not zero amplitude states
-        mask = (prepared_state.real**2 + prepared_state.imag**2 < 1e-13).all(dim=0)
-        masked_input_state = (~mask).int().tolist()
-        input_states = [
-            (k, self.simulation_graph.mapped_keys[k])
-            for k, mask in enumerate(masked_input_state)
-            if mask == 1
-        ]
-
-        # Initialize amplitudes tensor
-        amplitudes = torch.zeros(
-            (
-                parameter_batch,
-                prepared_state.shape[-1],
-                len(self.simulation_graph.mapped_keys),
-            ),
-            dtype=unitary.dtype,
-            device=prepared_state.device,
+        return self._compute_superposition_amplitudes_for_unitary(
+            unitary, simultaneous_processes=simultaneous_processes
         )
 
-        # Process input states in batches
-        for i in range(0, len(input_states), simultaneous_processes):
-            batch_end = min(i + simultaneous_processes, len(input_states))
-            batch_indices = []
-            batch_fock_states = []
-
-            for j in range(i, batch_end):
-                idx, fock_state = input_states[j]
-                batch_indices.append(idx)
-                batch_fock_states.append(fock_state)
-
-            # Compute batch amplitudes
-            _, batch_amplitudes = self.simulation_graph.compute_batch(
-                unitary, batch_fock_states
-            )
-            # Stack amplitudes for each input state in the batch
-            for k, idx in enumerate(batch_indices):
-                amplitudes[:, idx, :] = batch_amplitudes[:, :, k]
-
-        # Apply input state coefficients
-        input_state = prepared_state.to(amplitudes.dtype)
-
-        amplitudes = amplitudes / amplitudes.norm(p=2, dim=-1, keepdim=True).clamp_min(
-            1e-12
-        )
-        # The actual sum of amplitudes weighted by input coefficients (for each batch element) is done here
-        # Combine each prepared input coefficient with the output amplitudes of every propagated Fock component.
-        final_amplitudes = torch.einsum("se, beo -> bso", input_state, amplitudes)
-
-        if final_amplitudes.shape[0] == 1:
-            final_amplitudes = final_amplitudes.squeeze(0)
-        if final_amplitudes.ndim == 3 and final_amplitudes.shape[1] == 1:
-            final_amplitudes = final_amplitudes.squeeze(1)
-
-        return final_amplitudes
-
-    def compute_with_keys(self, parameters: list[torch.Tensor]):
-        """Compute output amplitudes and return them with basis keys.
+    def compute_with_keys(
+        self,
+        parameters: list[torch.Tensor],
+        *,
+        use_input_state_superposition: bool = False,
+    ) -> tuple[Any, torch.Tensor | SectoredDistribution]:
+        """Compute output values and return them with basis keys.
 
         Parameters
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
+        use_input_state_superposition : bool
+            If True and ``input_state`` is a tensor, use tensor-superposition
+            handling when phase error is active. If omitted, tensor
+            ``input_state`` follows the same default fixed-Fock-state behavior
+            as :meth:`compute`.
+            Default is False.
 
         Returns
         -------
-        tuple[Any, torch.Tensor]
-            Simulation-graph keys and corresponding probabilities if it is a noisy simulation and amplitude otherwise.
+        tuple[Any, torch.Tensor | SectoredDistribution]
+            Simulation-graph keys and corresponding probabilities if source
+            noise or phase error is active, and amplitudes otherwise.
         """
+        if self._has_phase_error():
+            probabilities = self._compute_phase_error_probabilities(
+                parameters,
+                amplitude_encoding=use_input_state_superposition,
+            )
+            if isinstance(probabilities, SectoredDistribution):
+                keys = [list(sector.keys) for sector in probabilities.sectors]
+                return keys, probabilities
+            return self.simulation_graph.mapped_keys, probabilities
+
         unitary = self.converter.to_tensor(*parameters)
 
-        if self.noisy_simulation:
-            keys, probs = self.simulation_graph.compute_probs(unitary, self.input_state)
+        if self._has_source_noise():
+            result = self.simulation_graph.compute_probs(unitary, self.input_state)
+            if isinstance(result, SectoredDistribution):
+                keys = [list(sector.keys) for sector in result.sectors]
+                return keys, result
+            keys, probs = result
             return keys, probs
-        else:
-            keys, amplitudes = self.simulation_graph.compute(unitary, self.input_state)
-            return keys, amplitudes
+
+        input_state = self._fixed_input_state_for_compute()
+        keys, amplitudes = self.simulation_graph.compute(unitary, input_state)
+        return keys, amplitudes
 
     def _expected_superposition_size(self) -> int:
-        """Expected number of Fock states given current computation space."""
+        """Return the expected superposition basis size.
+
+        Returns
+        -------
+        int
+            Number of input basis states expected for tensor superposition data
+            in the configured computation space.
+
+        Raises
+        ------
+        ValueError
+            If the photon count or mode count is incompatible with the selected
+            computation space.
+        """
         if self.n_photons < 0:
             raise ValueError("Number of photons must be non-negative.")
         if self.computation_space is ComputationSpace.DUAL_RAIL:
@@ -547,7 +1098,22 @@ class ComputationProcess(AbstractComputationProcess):
         return math.comb(self.m + self.n_photons - 1, self.n_photons)
 
     def _validate_superposition_state_shape(self, input_state: torch.Tensor) -> None:
-        """Ensure the provided superposition state matches the configured computation space."""
+        """Validate a tensor superposition input shape.
+
+        Parameters
+        ----------
+        input_state : torch.Tensor
+            Tensor whose final dimension should match the expected
+            superposition basis size.
+
+        Raises
+        ------
+        TypeError
+            If ``input_state`` is not a tensor.
+        ValueError
+            If ``input_state`` is not 1D or 2D, or if its final dimension does
+            not match the configured computation-space basis size.
+        """
         if not isinstance(input_state, torch.Tensor):
             raise TypeError("Input state should be a tensor")
 
@@ -572,7 +1138,10 @@ class ComputationProcess(AbstractComputationProcess):
                     f"expected 2**n_photons = 2**{self.n_photons} = {expected}"
                 )
             elif self.computation_space is ComputationSpace.UNBUNCHED:
-                explanation = f"expected C(m, n_photons) = C({self.m}, {self.n_photons}) = {expected}"
+                explanation = (
+                    f"expected C(m, n_photons) = C({self.m}, "
+                    f"{self.n_photons}) = {expected}"
+                )
             else:
                 explanation = (
                     f"expected C(m + n_photons - 1, n_photons) = "
@@ -584,7 +1153,19 @@ class ComputationProcess(AbstractComputationProcess):
             )
 
     def _should_defer_state_validation(self, tensor: torch.Tensor) -> bool:
-        """Detect amplitude tensors that will be validated after configuring dual-rail space."""
+        """Detect tensors that need delayed dual-rail validation.
+
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            Candidate superposition tensor.
+
+        Returns
+        -------
+        bool
+            True when an UNBUNCHED tensor has the dual-rail logical dimension
+            and should be validated after the computation space is configured.
+        """
         if tensor.dim() == 1:
             state_dim = tensor.shape[0]
         elif tensor.dim() == 2:
@@ -604,7 +1185,21 @@ class ComputationProcess(AbstractComputationProcess):
     def _coerce_superposition_tensor_shape(
         self, tensor: torch.Tensor
     ) -> torch.Tensor | None:
-        """Attempt to reconcile tensors encoded in a smaller logical basis."""
+        """Lift compatible reduced-basis tensors into the Fock basis.
+
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            Candidate tensor encoded either in the full Fock basis or a smaller
+            logical basis.
+
+        Returns
+        -------
+        torch.Tensor | None
+            Tensor expanded into the configured Fock basis when the reduced
+            basis can be mapped unambiguously. Returns None when no coercion
+            applies.
+        """
         if self.computation_space is not ComputationSpace.FOCK:
             return None
 
@@ -618,7 +1213,7 @@ class ComputationProcess(AbstractComputationProcess):
         else:
             return None
 
-        # Detect tensors encoded in the UNBUNCHED basis and lift them to the Fock basis.
+        # Detect tensors encoded in the UNBUNCHED basis and lift them to Fock.
         unbunched_size = math.comb(self.m, self.n_photons)
         if feature_dim != unbunched_size:
             return None
@@ -652,7 +1247,22 @@ class ComputationProcess(AbstractComputationProcess):
         return expanded
 
     def _prepare_superposition_tensor(self) -> torch.Tensor:
-        """Validate, normalise, and convert the stored superposition state to the correct dtype."""
+        """Validate, normalize, and store tensor superposition input.
+
+        Returns
+        -------
+        torch.Tensor
+            Normalized 2D complex tensor whose final dimension matches the
+            configured input basis.
+
+        Raises
+        ------
+        TypeError
+            If ``input_state`` is not a tensor or has an unsupported dtype.
+        ValueError
+            If ``input_state`` does not match the configured computation-space
+            basis size.
+        """
         if not isinstance(self.input_state, torch.Tensor):
             raise TypeError("Input state should be a tensor")
 
@@ -693,6 +1303,7 @@ class ComputationProcessFactory:
         input_parameters: list[str],
         computation_space: ComputationSpace | None = None,
         noise_groups: NoiseGroups | None = None,
+        n_phase_error_samples: int = 1,
         **kwargs,
     ) -> ComputationProcess:
         """Create a computation process.
@@ -709,8 +1320,11 @@ class ComputationProcessFactory:
             Prefixes of input-driven circuit parameters.
         computation_space : ComputationSpace | None
             Computation space used for basis enumeration.
-        noise_groups: NoiseGroups | None
+        noise_groups : NoiseGroups | None
             The noise groups applied to the circuit to be ran.
+        n_phase_error_samples : int
+            Number of Monte Carlo unitary samples used when active
+            ``phase_error`` is present. Default value is 1.
         **kwargs
             Additional keyword arguments forwarded to
             :class:`ComputationProcess`.
@@ -727,5 +1341,6 @@ class ComputationProcessFactory:
             input_parameters=input_parameters,
             computation_space=computation_space,
             noise_groups=noise_groups,
+            n_phase_error_samples=n_phase_error_samples,
             **kwargs,
         )

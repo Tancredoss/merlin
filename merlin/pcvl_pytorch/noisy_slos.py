@@ -52,6 +52,10 @@ class NoisyG2SLOSComputeGraph:
             raise RuntimeError(
                 "The NoisyG2SLOSComputeGraph should only be used if there is g2 noise in the circuit."
             )
+        if "g2" not in noise_groups.source:
+            raise RuntimeError(
+                "The NoisyG2SLOSComputeGraph requires source noise containing a g2 entry."
+            )
 
         self.noise_groups = noise_groups
         self.indistinguishability = noise_groups.source.get("indistinguishability", 1.0)
@@ -146,17 +150,27 @@ class NoisyG2SLOSComputeGraph:
 
         # Convert to tensor if not already
         if not isinstance(input_state, Tensor):
-            input_state_tensor = torch.tensor(list(input_state), dtype=torch.int32)
+            input_state_tensor = torch.tensor(
+                list(input_state),
+                dtype=torch.int32,
+                device=self.device,
+            )
         else:
-            input_state_tensor = input_state.int()
+            input_state_tensor = input_state.to(dtype=torch.int32)
+            if self.device is not None:
+                input_state_tensor = input_state_tensor.to(self.device)
 
-        positions = torch.arange(len(input_state_tensor), dtype=torch.long).to(
-            self.device
+        positions = torch.arange(
+            len(input_state_tensor),
+            dtype=torch.long,
+            device=input_state_tensor.device,
         )
-        photon_positions = torch.repeat_interleave(positions, input_state_tensor).to(
-            self.device
-        )
+        photon_positions = torch.repeat_interleave(positions, input_state_tensor)
 
+        # g2 sectors are indexed by how many extra photons were emitted. For
+        # sector k, enumerate every multiset of k source positions that can add
+        # one extra photon; repeated positions are possible when the input
+        # already has multiple photons in that mode.
         for i in range(1, num_photons + 1):
             output.append(list(combinations(photon_positions.tolist(), i)))
 
@@ -195,10 +209,10 @@ class NoisyG2SLOSComputeGraph:
             slos_graphs_list = cast(list[NoisySLOSComputeGraph], self._slos_graphs)
             probs_regular = slos_graphs_list[0].compute_probs(unitary, input_state)
 
-        # Getting the photon combinations
+        # Group possible extra emissions by sector. Entry k contains every
+        # source-mode combination that produces n_photons + k output photons.
         extra_photons_combinations = self._get_extra_photon_combinations(input_state)
 
-        # Calculating for each sector
         num_input_photons = sum(input_state)
         # Convert g2 = g^(2)(0) second-order coherence to per-source emission
         # probability p.  The two are related by g^(2)(0) = 2p/(1+p)^2, so:
@@ -212,7 +226,8 @@ class NoisyG2SLOSComputeGraph:
                 (1 - p_emit) ** (num_input_photons - num_photons_added)
             )
 
-            # Creating the n_photons + num_photons_added sector
+            # Each g2 emission count lives in a different photon-number sector,
+            # so probabilities cannot be accumulated in one flat Fock basis.
             sector = SectorResult(
                 torch.zeros(
                     Combinadics(
@@ -225,10 +240,13 @@ class NoisyG2SLOSComputeGraph:
                 n_photons=self.n_photons + num_photons_added,
             )
 
-            # For each combination in the sector
             if num_photons_added == 0:
                 sector.tensor = sector.tensor + weight_k * probs_regular
             else:
+                # Sum all ways to choose which sources emitted the extra
+                # photons. Distinguishable g2 photons are convolved as
+                # independent one-hot distributions; indistinguishable extra
+                # photons are simulated directly in the higher-photon SLOS graph.
                 for combination in extra_photons_combinations[num_photons_added]:
                     if self.g2_distinguishable:
                         distributions_to_convolve = [
@@ -667,12 +685,15 @@ class _InputStateNoisySLOSComputeGraph:
             for i in range(self.n_photons + 1)
         ]
 
-        # List of partitions of cells of states.
+        # Partition order i means i photons are treated as distinguishable
+        # "bad" bits. Each partition cell contains the remaining indistinguishable
+        # state plus one one-hot state per removed photon.
         self._partitions = [
             self._generate_obb_partition(input_state, num_bad_photons, device=device)
             for num_bad_photons in range(0, self.n_photons + 1)
         ]
-        # Extract all input states from self._partitions
+        # Precompute every unique cell state once; compute_probs can then run
+        # each noiseless SLOS subproblem once and reuse it across partitions.
         self._obb_input_states = self._generate_obb_states(
             input_state, self.n_photons, device=device
         )
@@ -812,51 +833,76 @@ class _InputStateNoisySLOSComputeGraph:
 
         # Convert to tensor if not already
         if not isinstance(input_state, Tensor):
-            input_state_tensor = torch.tensor(list(input_state), dtype=torch.int32)
+            input_state_tensor = torch.tensor(
+                list(input_state),
+                dtype=torch.int32,
+                device=device,
+            )
         else:
-            input_state_tensor = input_state.int()
+            input_state_tensor = input_state.to(dtype=torch.int32)
+            if device is not None:
+                input_state_tensor = input_state_tensor.to(device)
+
+        tensor_device = input_state_tensor.device
 
         if order == 0:
-            counts = torch.tensor([1], dtype=torch.int64, device=device)
-            return [input_state_tensor.unsqueeze(0).unsqueeze(0).to(device), counts]
+            counts = torch.tensor([1], dtype=torch.int64, device=tensor_device)
+            return [input_state_tensor.unsqueeze(0).unsqueeze(0), counts]
 
-        # Create a 1D tensor with position of each photon
-        positions = torch.arange(len(input_state_tensor), dtype=torch.long).to(device)
-        photon_positions = torch.repeat_interleave(positions, input_state_tensor).to(
-            device
+        # Expand an occupation vector like [2, 0, 1] into photon labels
+        # [0, 0, 2]. Combinations over this list enumerate photons, not modes,
+        # so two photons in the same mode remain distinct choices.
+        positions = torch.arange(
+            len(input_state_tensor),
+            dtype=torch.long,
+            device=tensor_device,
         )
+        photon_positions = torch.repeat_interleave(positions, input_state_tensor)
 
-        # All combinations of photons to remove
+        # Choose the photons assigned to the distinguishable OBB cells for this
+        # order. The remaining photons stay in the first, indistinguishable cell.
         remove_indices_list = list(combinations(photon_positions.tolist(), order))
-        remove_indices = torch.tensor(remove_indices_list, dtype=torch.long)
+        remove_indices = torch.tensor(
+            remove_indices_list,
+            dtype=torch.long,
+            device=tensor_device,
+        )
 
         n_comb = remove_indices.shape[0]
         input_state_len = input_state_tensor.size(0)
 
-        # Base matrix: original vector repeated for each combination
+        # Base matrix: original occupation vector repeated once per photon
+        # combination, then decremented at the removed photon positions.
         base = input_state_tensor.unsqueeze(0).repeat(n_comb, 1)
         for i, remove_index in enumerate(remove_indices):
             for j in remove_index:
                 base[i, j] = base[i, j] - 1  # remove chosen ones
 
-        # Should work, create the one hot vectors to convolve that were removed in the good state. So there is order one hot states per combination
-        missing = torch.zeros((n_comb, order, input_state_len), dtype=torch.int32).to(
-            device
+        # Each removed photon becomes a one-hot state. Later, compute_probs
+        # convolves the base distribution with these one-hot distributions to
+        # reconstruct the full output distribution for that OBB partition.
+        missing = torch.zeros(
+            (n_comb, order, input_state_len),
+            dtype=torch.int32,
+            device=tensor_device,
         )
-        rows = torch.arange(n_comb).unsqueeze(1)
-        cols = torch.arange(order).unsqueeze(0)
+        rows = torch.arange(n_comb, device=tensor_device).unsqueeze(1)
+        cols = torch.arange(order, device=tensor_device).unsqueeze(0)
         missing[rows, cols, remove_indices] = 1
 
         result = torch.cat([base.unsqueeze(1), missing], dim=1)
 
-        # Remove empty states vectors
+        # If every photon was removed from the base cell, drop that empty base
+        # state so the cell only contains physical one-hot inputs.
         if order == torch.sum(input_state_tensor).item():
             mask = result.any(dim=2)
             result = result[mask]
             result = result.unsqueeze(0)
 
+        # Several photon choices can produce the same cell when photons occupy
+        # the same mode. Keep one cell and store its multiplicity separately.
         result, counts = torch.unique(result, return_counts=True, dim=0)
-        return [result.to(device), counts.to(device)]
+        return [result, counts]
 
     def _generate_obb_states(
         self,
@@ -886,9 +932,13 @@ class _InputStateNoisySLOSComputeGraph:
             If ``order`` exceeds the total number of photons.
         """
         if not isinstance(input_state, Tensor):
-            input_state = torch.tensor(list(input_state), dtype=torch.int32)
+            input_state = torch.tensor(
+                list(input_state), dtype=torch.int32, device=device
+            )
         else:
-            input_state = input_state.int()
+            input_state = input_state.to(dtype=torch.int32)
+            if device is not None:
+                input_state = input_state.to(device)
 
         if order > torch.sum(input_state).item():
             raise ValueError("OBB order cannot exceed the number of photons")
@@ -960,8 +1010,8 @@ def convolve_distributions(
         return keys[0], probs[0]
 
     def _cartesian_sum(k1, k2):
-        k1 = torch.as_tensor(k1)
-        k2 = torch.as_tensor(k2)
+        k1 = torch.as_tensor(k1, device=device)
+        k2 = torch.as_tensor(k2, device=device)
         return (k1.unsqueeze(1) + k2.unsqueeze(0)).reshape(-1, k1.shape[1])
 
     new_keys = reduce(_cartesian_sum, keys)

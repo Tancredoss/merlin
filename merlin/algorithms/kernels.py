@@ -834,10 +834,10 @@ class FidelityKernel(MerlinModule):
                 "Input state is not present in the simulation basis produced by the circuit."
             ) from exc
 
-        self._photon_survival_probs, empty_noise = resolve_photon_loss_kernel(
+        self._photon_survival_probs, no_photon_loss_noise = resolve_photon_loss_kernel(
             self.experiment, m
         )
-        self.has_custom_noise_model = not empty_noise
+        self.has_custom_noise_model = not no_photon_loss_noise
 
         self._photon_loss_transform = PhotonLossTransform(
             raw_keys,
