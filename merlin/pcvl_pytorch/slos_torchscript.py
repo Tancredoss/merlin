@@ -31,6 +31,7 @@ configuration, which can then be reused for multiple unitary evaluations.
 
 import math
 import os
+import warnings
 from collections.abc import Callable
 
 import torch
@@ -381,6 +382,13 @@ class SLOSComputeGraph:
         self.m = m
         self.n_photons = n_photons
         self.output_map_func = output_map_func
+        if self.output_map_func is not None:
+            warnings.warn(
+                "torch.jit.script support for output_map_func mapping is deprecated "
+                "and is not supported reliably across PyTorch versions.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if computation_space is ComputationSpace.DUAL_RAIL:
             if m % 2 != 0:
                 raise ValueError("dual_rail compute space requires even m")

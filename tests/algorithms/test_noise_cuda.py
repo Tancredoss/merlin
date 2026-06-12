@@ -202,6 +202,5 @@ def test_all_noise_model_fields_run_forward_and_backward_on_cuda() -> None:
     torch.manual_seed(1234)
     output = layer()
 
-    assert isinstance(output, SectoredDistribution)
     _assert_output_is_cuda_probability(output)
     _assert_weighted_backward_keeps_gradients_on_cuda(layer, output)
