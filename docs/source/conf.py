@@ -86,8 +86,8 @@ extensions = [
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
-    "torch": ("https://pytorch.org/docs/stable", None),
-    "perceval": ("https://perceval.quandela.net/docs/v1.1/", None),
+    "torch": ("https://docs.pytorch.org/docs/2.10/", None),
+    "perceval": ("https://perceval.quandela.net/docs/v1.2/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": ("https://pandas.pydata.org/docs/", None),
 }
