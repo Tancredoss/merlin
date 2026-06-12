@@ -144,40 +144,30 @@ class TestQuantumLayer:
                 measurement_strategy=ML.MeasurementStrategy.probs(),
             )
 
-    def test_amplitude_encoding_rejects_input_size(self):
-        """Amplitude encoding forbids explicit input_size."""
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"input_size": 2, "n_photons": 1},
+            {"input_size": None},
+            {"n_photons": 1, "input_parameters": ["x"]},
+        ],
+    )
+    def test_amplitude_encoding_flag_is_removed(self, kwargs):
+        """amplitude_encoding=True should raise the 0.4 removal error."""
         circuit = pcvl.Circuit(2)
 
-        with pytest.raises(ValueError, match="amplitude_encoding"):
-            ML.QuantumLayer(
-                input_size=2,
-                circuit=circuit,
-                amplitude_encoding=True,
-                n_photons=1,
-            )
-
-    def test_amplitude_encoding_requires_n_photons(self):
-        """Amplitude encoding requires n_photons."""
-        circuit = pcvl.Circuit(2)
-
-        with pytest.raises(ValueError, match="n_photons"):
-            ML.QuantumLayer(
-                input_size=None,
-                circuit=circuit,
-                amplitude_encoding=True,
-            )
-
-    def test_amplitude_encoding_rejects_input_parameters(self):
-        """Amplitude encoding cannot be combined with classical input parameters."""
-        circuit = pcvl.Circuit(2)
-
-        with pytest.raises(ValueError, match="input parameters"):
+        with pytest.raises(ValueError) as exc_info:
             ML.QuantumLayer(
                 circuit=circuit,
                 amplitude_encoding=True,
-                n_photons=1,
-                input_parameters=["x"],
+                **kwargs,
             )
+
+        message = str(exc_info.value)
+        assert "0.4" in message
+        assert "forward(StateVector)" in message
+        assert "forward(complex_tensor)" in message
+        assert "StateVector.from_tensor()" in message
 
     def test_experiment_input_state_overrides_warns(self):
         """Experiment input_state should override user input_state with a warning."""
@@ -287,38 +277,24 @@ class TestQuantumLayer:
         assert output.shape == (10, 3)
         assert torch.all(output >= -1e6)  # More reasonable bounds for quantum outputs
 
-    def test_prepare_amplitude_input_updates_state_and_splits_inputs(self):
-        """Amplitude input helper should capture state and return remaining inputs."""
+    def test_complex_forward_restores_stored_input_state(self):
+        """Complex amplitude forward should not permanently replace input_state."""
         circuit = pcvl.Circuit(2)
         layer = ML.QuantumLayer(
             circuit=circuit,
             n_photons=1,
-            amplitude_encoding=True,
             measurement_strategy=ML.MeasurementStrategy.NONE,
             trainable_parameters=[],
             input_parameters=[],
         )
-        # TODO: will need to be updated to StateVector when implemented
-        original_state = torch.tensor([0.0])
-        layer.computation_process.input_state = original_state
+        original_state = layer.computation_process.input_state
 
-        amplitude = torch.rand(len(layer.output_keys))
-        remaining_input = torch.rand(2)
-        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input(
-            [
-                amplitude,
-                remaining_input,
-            ]
-        )
+        amplitude = torch.rand(len(layer.output_keys), dtype=torch.complex64)
+        amplitude = amplitude / amplitude.abs().pow(2).sum().sqrt()
+        output = layer(amplitude)
 
-        assert saved_state is original_state
-        assert remaining[0] is remaining_input
-        assert torch.allclose(amplitude_out, amplitude)
-        assert torch.allclose(layer.computation_process.input_state, original_state)
-
-        with layer._temporary_input_state(amplitude_out, saved_state):
-            assert torch.allclose(layer.computation_process.input_state, amplitude_out)
-        assert torch.allclose(layer.computation_process.input_state, original_state)
+        assert torch.all(torch.isfinite(output))
+        assert layer.computation_process.input_state == original_state
 
     def test_prepare_classical_parameters_detects_batch_mismatch(self):
         """Classical parameter helper should reject mismatched batch sizes."""
@@ -361,13 +337,9 @@ class TestQuantumLayer:
         assert len(params) >= 2
 
     def test_amplitude_encoding_rejects_classical_input_parameters(self):
-        """Amplitude encoding should not allow classical input parameters."""
-        # TODO: to remove when dual encoding will be implemented (>0.4.x)
+        """Removed amplitude_encoding flag should reject any legacy configuration."""
         circuit = pcvl.Circuit(2)
-        with pytest.raises(
-            ValueError,
-            match="Amplitude encoding cannot be combined with classical input parameters.",
-        ):
+        with pytest.raises(ValueError, match="forward\\(StateVector\\)"):
             ML.QuantumLayer(
                 circuit=circuit,
                 n_photons=1,
@@ -377,20 +349,21 @@ class TestQuantumLayer:
                 measurement_strategy=ML.MeasurementStrategy.NONE,
             )
 
-    def test_amplitude_encoding_requires_amplitude_input(self):
-        """Amplitude encoding should require an amplitude tensor at call time."""
+    def test_complex_tensor_forward_accepts_amplitude_input(self):
+        """Complex tensors should provide amplitude input at call time."""
         circuit = pcvl.Circuit(2)
         layer = ML.QuantumLayer(
             circuit=circuit,
             n_photons=1,
-            amplitude_encoding=True,
             measurement_strategy=ML.MeasurementStrategy.NONE,
             trainable_parameters=[],
             input_parameters=[],
         )
 
-        with pytest.raises(ValueError, match="expects an amplitude tensor input"):
-            layer()
+        amplitude = torch.tensor([1.0 + 0.0j, 0.0 + 0.0j], dtype=torch.complex64)
+        output = layer(amplitude)
+
+        assert torch.all(torch.isfinite(output))
 
     def test_multiple_classical_inputs_forward(self):
         """Classical encoding should accept one tensor per input prefix."""

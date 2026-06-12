@@ -40,18 +40,13 @@ from merlin.algorithms.layer_utils import (
     vet_experiment,
 )
 from merlin.core.computation_space import ComputationSpace
+from merlin.core.state_vector import StateVector
 from merlin.measurement.strategies import MeasurementStrategy
 
 
 def test_validate_encoding_mode_constraints():
-    with pytest.raises(ValueError, match="input_size"):
+    with pytest.raises(ValueError, match="forward\\(StateVector\\)"):
         validate_encoding_mode(True, 2, 1, None)
-
-    with pytest.raises(ValueError, match="n_photons"):
-        validate_encoding_mode(True, None, None, None)
-
-    with pytest.raises(ValueError, match="input parameters"):
-        validate_encoding_mode(True, None, 1, ["x"])
 
     config = validate_encoding_mode(False, 3, None, ["x"])
     assert config.input_size == 3
@@ -81,8 +76,21 @@ def test_prepare_input_state_statevector():
         None,
         torch.complex64,
     )
-    assert isinstance(state, torch.Tensor)
+    assert isinstance(state, StateVector)
     assert resolved == 1
+
+
+def test_prepare_input_state_rejects_tensor_input_state():
+    tensor = torch.tensor([1.0, 0.0], dtype=torch.complex64)
+
+    with pytest.raises(ValueError, match="StateVector.from_tensor"):
+        prepare_input_state(
+            tensor,
+            1,
+            ComputationSpace.UNBUNCHED,
+            None,
+            torch.complex64,
+        )
 
 
 def test_prepare_input_state_empty_statevector_rejected():

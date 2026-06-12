@@ -17,7 +17,6 @@ def make_identity_layer(
         n_photons=n_photons,
         device=torch.device("cpu"),
         dtype=torch.float32,
-        amplitude_encoding=True,
         measurement_strategy=MeasurementStrategy.probs(
             computation_space=ComputationSpace.default(no_bunching=no_bunching)
         ),
