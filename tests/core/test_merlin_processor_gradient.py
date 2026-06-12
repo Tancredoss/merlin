@@ -1,5 +1,5 @@
-import pytest
 import perceval as pcvl
+import pytest
 import torch
 import torch.nn as nn
 

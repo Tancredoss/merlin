@@ -343,7 +343,9 @@ class TestDeprecatedLegacyKernelPaths:
         warning_message = str(warning_record[0].message)
         assert "CircuitBuilder.add_angle_encoding" in warning_message
         assert "pre-encoding the data" in warning_message
-        assert "input_size equal to the encoded circuit-parameter count" in warning_message
+        assert (
+            "input_size equal to the encoded circuit-parameter count" in warning_message
+        )
 
         encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.3]))
         expected = torch.tensor([0.2, 0.3, 0.5], dtype=encoded.dtype)
@@ -372,7 +374,9 @@ class TestDeprecatedLegacyKernelPaths:
         warning_message = str(warning_record[0].message)
         assert "CircuitBuilder.add_angle_encoding" in warning_message
         assert "pre-encoding the data" in warning_message
-        assert "input_size equal to the encoded circuit-parameter count" in warning_message
+        assert (
+            "input_size equal to the encoded circuit-parameter count" in warning_message
+        )
 
         encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.3]))
         expected = torch.tensor([0.2, 0.3, 0.5], dtype=encoded.dtype)
@@ -408,7 +412,8 @@ class TestDeprecatedFeatureMapSimpleNModes:
     def test_simple_factory_raises_when_input_exceeds_modes(self):
         with pytest.warns(DeprecationWarning):
             with pytest.raises(
-                ValueError, match="You cannot encore more features than mode with Builder"
+                ValueError,
+                match="You cannot encore more features than mode with Builder",
             ):
                 FeatureMap.simple(input_size=5, n_modes=4)
 
@@ -636,7 +641,9 @@ class TestDeprecatedKernelCircuitBuilder:
 
     def test_deprecation_warning_on_init(self):
         """KernelCircuitBuilder emits DeprecationWarning on instantiation."""
-        with pytest.warns(DeprecationWarning, match="KernelCircuitBuilder is deprecated"):
+        with pytest.warns(
+            DeprecationWarning, match="KernelCircuitBuilder is deprecated"
+        ):
             KernelCircuitBuilder()
 
     def test_deprecation_warning_build_feature_map(self):
@@ -670,7 +677,9 @@ class TestDeprecatedConstructorConsistency:
             simple_feature_map = FeatureMap.simple(input_size=2, n_modes=3)
 
         legacy_builder = KernelCircuitBuilder()
-        builder_feature_map = legacy_builder.input_size(2).n_modes(3).build_feature_map()
+        builder_feature_map = (
+            legacy_builder.input_size(2).n_modes(3).build_feature_map()
+        )
 
         assert (
             manual_feature_map.input_size

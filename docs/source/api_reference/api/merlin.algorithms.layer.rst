@@ -170,8 +170,11 @@ following representations:
 When ``input_state`` is passed, the layer always injects that photonic state. In more elaborate pipelines you may want
 to cascade circuits and let the output amplitudes of the previous layer become the input state of the next. Merlin
 calls this *amplitude encoding*: the probability amplitudes themselves carry information and are passed to the next
-layer as a tensor. Enabling this behaviour is done with ``amplitude_encoding=True``; in that mode the forward input of
-``QuantumLayer`` is the complex photonic state.
+layer as a tensor. Amplitude input handling is activated by passing a
+:class:`~merlin.core.state_vector.StateVector` or a complex ``torch.Tensor`` to
+``forward()``. The removed ``amplitude_encoding=True`` constructor flag now
+raises an error; use :meth:`~merlin.core.state_vector.StateVector.from_tensor`
+when a constructor tensor must become a state object.
 
 The snippet below prepares a dual-rail Bell state as the initial condition and evaluates a batch of classical parameters:
 
@@ -202,7 +205,7 @@ The snippet below prepares a dual-rail Bell state as the initial condition and e
     amplitudes = layer(x)
     assert amplitudes.shape == (10, 2**2)
 
-For comparison, the ``amplitude_encoding`` variant supplies the photonic state during the forward pass:
+For comparison, a complex tensor supplies the photonic state during the forward pass:
 
 .. code-block:: python
 
@@ -216,7 +219,6 @@ For comparison, the ``amplitude_encoding`` variant supplies the photonic state d
     layer = QuantumLayer(
         circuit=circuit,
         n_photons=2,
-        amplitude_encoding=True,
         measurement_strategy=MeasurementStrategy.probs(computation_space=ComputationSpace.UNBUNCHED),
         dtype=torch.cdouble,
     )
