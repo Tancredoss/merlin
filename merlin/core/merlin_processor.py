@@ -859,8 +859,9 @@ class MerlinProcessor:
 
         if module.training:
             raise RuntimeError(
-                "Backend quantum execution requires `.eval()` mode. "
-                "Call `module.eval()` before forward."
+                "Backend quantum execution requires `.eval()` mode because no gradient"
+                "can flow through the QPU runs. Gradient computation methods in the MerlinProcessor"
+                " will come in v0.5. Call `module.eval()` before forward."
             )
 
         if nsample is not None and nsample > self.max_shots_per_call:

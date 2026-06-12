@@ -1071,9 +1071,7 @@ def test_estimate_required_shots_uses_remote_processor_passed_through_processor(
         proc = MerlinProcessor(processor=remote_processor)
 
     proc._create_fresh_rp = MagicMock(return_value=child_remote_processor)
-    input_tensor = torch.tensor(
-        [[0.25, 0.5], [0.75, 1.0]], dtype=torch.float64
-    )
+    input_tensor = torch.tensor([[0.25, 0.5], [0.75, 1.0]], dtype=torch.float64)
 
     estimates = proc.estimate_required_shots_per_input(
         RemoteEstimationLayer(),
@@ -2198,7 +2196,7 @@ def test_different_valid_configs():
     # Sequence input torch ints as tuple
     config = {
         "circuit": pcvl.Circuit(m=2, name="Circuit"),
-        "input_state": tuple([torch.tensor(1).item(), torch.tensor(0).item()]),
+        "input_state": (torch.tensor(1).item(), torch.tensor(0).item()),
         "input_param_order": ["px", "el", "s"],
     }
     v_config = ValidatedLayerConfig(config)
@@ -2249,7 +2247,7 @@ def test_missing_required_fiels_in_configs():
         KeyError,
         match=r"There must be a key 'circuit' in the configs dictionary that is associated with a perceval.ACircuit.",
     ):
-        v_config = ValidatedLayerConfig(config)
+        ValidatedLayerConfig(config)
 
     # Missing State
     config = {
@@ -2260,7 +2258,7 @@ def test_missing_required_fiels_in_configs():
         KeyError,
         match=r".*There must be a key 'input_state' in the configs dictionary.*",
     ):
-        v_config = ValidatedLayerConfig(config)
+        ValidatedLayerConfig(config)
 
     # Missing input param order
     config = {
@@ -2271,7 +2269,7 @@ def test_missing_required_fiels_in_configs():
         KeyError,
         match=r".*There must be a key 'input_param_order' in the configs dictionary that is associated with a Sequence\[str\] or None\..*",
     ):
-        v_config = ValidatedLayerConfig(config)
+        ValidatedLayerConfig(config)
 
 
 def test_wrong_types_config():
@@ -2285,7 +2283,7 @@ def test_wrong_types_config():
         ValueError,
         match=r"The 'circuit' key of the config dictionary must be a perceval.ACircuit",
     ):
-        v_config = ValidatedLayerConfig(config)
+        ValidatedLayerConfig(config)
 
     config = {
         "circuit": Circuit(n_modes=2, components=[pcvl.components.BS()]),
@@ -2296,7 +2294,7 @@ def test_wrong_types_config():
         ValueError,
         match=r"The 'circuit' key of the config dictionary must be a perceval.ACircuit",
     ):
-        v_config = ValidatedLayerConfig(config)
+        ValidatedLayerConfig(config)
 
     # input_state
     config = {
@@ -2308,7 +2306,7 @@ def test_wrong_types_config():
         ValueError,
         match=r"'input_state' must contain only integers when it is a sequence.",
     ):
-        v_config = ValidatedLayerConfig(config)
+        ValidatedLayerConfig(config)
 
     config = {
         "circuit": pcvl.Circuit(m=2),
@@ -2319,7 +2317,7 @@ def test_wrong_types_config():
         ValueError,
         match=r"'input_state' must be None, a sequence of integers, or an Perceval state object.",
     ):
-        v_config = ValidatedLayerConfig(config)
+        ValidatedLayerConfig(config)
 
     # input_param_order
     config = {
@@ -2331,7 +2329,7 @@ def test_wrong_types_config():
         ValueError,
         match=r"'input_param_order' must be a sequence of strings or None, got int.",
     ):
-        v_config = ValidatedLayerConfig(config)
+        ValidatedLayerConfig(config)
 
     config = {
         "circuit": pcvl.Circuit(m=2),
@@ -2342,7 +2340,7 @@ def test_wrong_types_config():
         ValueError,
         match=r"'input_param_order' must contain only strings.",
     ):
-        v_config = ValidatedLayerConfig(config)
+        ValidatedLayerConfig(config)
 
 
 def test_has_export_config():
