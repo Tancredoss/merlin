@@ -1,44 +1,71 @@
-=============================
+===========================
 Noisy simulations with SLOS
-=============================
+===========================
 
-Introduction
-=============
+Why use noisy simulations?
+==========================
 
-Current quantum architectures, as the ones Quandela offer on the cloud (Ascella and Belenos), are in the NISQ (noisy intermediate-scale quantum) regime, which makes the computation noisy. That means your current MerLin simulations, which are theoretically correct, will not give the same results as a run on current photonic devices. Because runs will be noisy on the QPU when your simulation was not, the actual unitary computed on the quantum device is not the one expected by your model that expects a perfect simulation.
+Current photonic processors are noisy. A model trained only with ideal
+simulation can therefore learn from output probabilities that are cleaner than
+the probabilities produced by the hardware.
 
-This can create a problem because models trained on a simulator will not perform well on hardware when the output is modified. The solution is to use tunable noisy simulations model/replicate that noise so your models are trained on a simulator closer to the actual hardware's performances.
+Merlin can add the main Quandela hardware noise sources to SLOS simulations
+through :class:`pcvl.NoiseModel`. This makes the training distribution
+closer to the distribution expected from the QPU.
 
-Since MerLin 0.4, realistic noise has been added to the SLOS background to allow more realistic training and close the gap between simulation and hardware.
+The user-facing rule is simple: noisy simulations return probabilities. They do
+not return ideal amplitudes, because the noise model changes probability
+distributions.
 
 
-Add Noise to the SLOS Simulation
-============================================
+Run a noisy QuantumLayer
+========================
 
-To add noise to your :class:`~merlin.algorithms.layer.QuantumLayer` simulation, use the :class:`pcvl.NoiseModel` class. It defines the value of each of the seven noise sources. You can either add this noise model to a :class:`pcvl.Experiment` that is then used when initializing the :class:`~merlin.algorithms.layer.QuantumLayer`, or you can pass this noise model directly to the :class:`~merlin.algorithms.layer.QuantumLayer`'s ``noise`` constructor parameter. Here are a couple of examples.
+Create a :class:`pcvl.NoiseModel` and attach it either to the
+:class:`pcvl.Experiment` or directly to
+:class:`~merlin.algorithms.layer.QuantumLayer`.
 
 .. code-block:: python
 
     import perceval as pcvl
     import torch
-    import merlin as ML
 
-    noise=pcvl.NoiseModel(
-            brightness=0.1,
-            indistinguishability=0.2,
-            g2=0.3,
-            g2_distinguishable=False,
-            transmittance=0.4,
-            phase_imprecision=0.5,
-            phase_error=0.6,
-        )
+    import merlin as ML
 
     circuit = pcvl.Circuit(3)
     circuit.add((0, 1), pcvl.BS())
     circuit.add(0, pcvl.PS(pcvl.P("px")))
     circuit.add((1, 2), pcvl.BS())
-    
-    # Option 1: define the noise model with an experiment
+
+    noise = pcvl.NoiseModel(
+        brightness=0.85,
+        transmittance=0.9,
+        indistinguishability=0.95,
+        g2=0.02,
+        g2_distinguishable=False,
+        phase_imprecision=0.01,
+        phase_error=0.02,
+    )
+
+    layer = ML.QuantumLayer(
+        input_size=1,
+        circuit=circuit,
+        input_parameters=["px"],
+        input_state=[1, 1, 1],
+        noise=noise,
+        n_phase_error_samples=10,
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+    )
+
+    x = torch.rand(3, 1)
+    probabilities = layer(x)
+
+The same noise model can be stored in the experiment instead:
+
+.. code-block:: python
+
     experiment = pcvl.Experiment(circuit, noise=noise)
 
     layer = ML.QuantumLayer(
@@ -46,308 +73,316 @@ To add noise to your :class:`~merlin.algorithms.layer.QuantumLayer` simulation, 
         experiment=experiment,
         input_parameters=["px"],
         input_state=[1, 1, 1],
-        computation_space=ML.ComputationSpace.FOCK  # Fock space used for noisy simulations
+        n_phase_error_samples=10,
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
     )
 
-    x = torch.rand(3, 1)
-    probs = layer(x)
-
-    # Option 2: define the noise model with the noise parameter
-    layer = ML.QuantumLayer(
-        input_size=1,
-        experiment=experiment,
-        input_parameters=["px"],
-        input_state=[1, 1, 1],
-        computation_space=ML.ComputationSpace.FOCK,  # Fock space used for noisy simulations
-        noise=noise
-    )
-
-    x = torch.rand(3, 1)
-    probs = layer(x)
+If both the experiment and the layer define a noise model, they must be the
+same.
 
 
+Supported noise sources
+=======================
 
-Noise Types on Quandela's Quantum Computers
-============================================
-
-There are seven different noise sources, split into three categories on Quandela's quantum computer. Here is a figure illustrating their impact on an interferometer.
+The active hardware noise sources are split into three groups.
 
 .. image:: ../_static/img/noise_types.png
    :alt: Noise types summary on the interferometer
    :align: center
 
+.. list-table::
+   :header-rows: 1
+
+   * - Noise source
+     - Parameter
+     - Default
+     - Practical effect
+   * - Brightness
+     - ``brightness``
+     - ``1.0``
+     - The source sometimes emits no photon.
+   * - Transmittance
+     - ``transmittance``
+     - ``1.0``
+     - A photon can be lost while crossing the processor.
+   * - Phase imprecision
+     - ``phase_imprecision``
+     - ``0.0``
+     - Phase shifter values are rounded to a finite resolution.
+   * - Phase error
+     - ``phase_error``
+     - ``0.0``
+     - Phase shifter values receive a random perturbation.
+   * - Indistinguishability
+     - ``indistinguishability``
+     - ``1.0``
+     - Photons can become partially distinguishable and interfere less.
+   * - Multi-photon emission
+     - ``g2``
+     - ``0.0``
+     - A source can emit an extra photon.
+   * - Multi-photon distinguishability
+     - ``g2_distinguishable``
+     - Perceval default
+     - Extra photons from ``g2`` can be treated as distinguishable.
 
 
-We explain each one below and its impact on quantum computations.
+Post-measurement noise
+======================
 
------------------------
-Post-Measurement Noise
------------------------
+Brightness and transmittance both model missing photons. Their product is the
+probability that one expected photon is emitted and survives the processor.
 
-These noises only affect the probabilities of measurement at the end of the interferometer. They are in green in the figure.
+Use lower values when you want the output distribution to include states with
+fewer photons than the ideal input state.
 
-1. Brightness and 2. Transmittance
------------------------------------
+.. code-block:: python
 
-Brightness noise models the probability that the photon source emits when triggered. Its value is bounded between ``0.0`` and ``1.0`` and directly represents the probability that the photon source emits a photon. The default value is ``1.0`` because that is the perfect case where the source always emits photons. Brightness can be defined in the ``NoiseModel`` with the ``brightness`` parameter.
+    noise = pcvl.NoiseModel(
+        brightness=0.8,
+        transmittance=0.9,
+    )
 
-Transmittance is the probability that the photon is transmitted through the whole interferometer without being lost. Because it is a probability, it is also bounded between ``0.0`` and ``1.0``. The default value is ``1.0`` because that is the perfect case where no photon is lost. Transmittance can be defined in the ``NoiseModel`` with the ``transmittance`` parameter.
-
-The noise affects the output probabilities by introducing a photon survival probability. In other words, the probability that a single photon is emitted and transmitted is the product of brightness and transmittance.
-
-The output size of a simulation with this type of noise will be larger than the Fock space of m modes and n photons, since the output states may be missing photons.
-
-
------------------------
-Circuit Noise
------------------------
-
-These noises affect the precision of the operations in the quantum layer. They are in blue in the figure.
-
-3. Phase Imprecision
------------------------------------
-
-This noise type reflects the phase shifter precision limit in radians. By default, this parameter, ``phase_imprecision`` in the ``NoiseModel``, is set to ``0`` for infinite precision. **TODO: add the concrete implementation transformation for angles too precise with an example**
-
-4. Phase Error
------------------------------------
-
-This noise type reflects the maximum random noise applied to the phase shifters of the interferometer in radians. By default, this parameter, ``phase_error`` in the ``NoiseModel``, is set to ``0`` for the noiseless case. **TODO: add the concrete implementation transformation for angles too precise with an example**
+For an input state with ``n`` photons, the output basis can contain sectors from
+``0`` to ``n`` photons.
 
 
------------------------
-Source Noise
------------------------
+Circuit noise
+=============
 
-These noises describe the imperfections of the photon emitter (source). They are in red in the figure.
+Circuit noise changes the phases used by the interferometer.
 
-5. Indistinguishability
------------------------------------
+``phase_imprecision`` models finite phase-shifter resolution. If
+``phase_imprecision=0.1``, the phase used in the forward pass is the nearest
+multiple of ``0.1`` radians.
 
-This noise describes the probability that the photon emitters generate photons that are indistinguishable from one another. In the perfect case, all photons are indistinguishable, which enables entanglement effects. Indeed, entanglement is one of the two main quantum phenomena that underlie quantum computing. To see the impact of indistinguishability on entanglement, a simple beam splitter with a 50:50 reflection/transmittance ratio is necessary:
+.. code-block:: python
+
+    noise = pcvl.NoiseModel(phase_imprecision=0.1)
+
+``phase_error`` models random phase fluctuations. For each phase-error sample,
+Merlin perturbs the phase shifters, computes the probability distribution, and
+then averages the sampled probability distributions.
+
+.. code-block:: python
+
+    noise = pcvl.NoiseModel(phase_error=0.02)
+
+    layer = ML.QuantumLayer(
+        input_size=1,
+        circuit=circuit,
+        input_parameters=["px"],
+        input_state=[1, 0, 1],
+        noise=noise,
+        n_phase_error_samples=20,
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
+    )
+
+Set ``torch.manual_seed`` before calling the layer if you need reproducible
+phase-error samples.
+
+
+Source noise
+============
+
+Source noise changes the photon state before it enters the interferometer.
+
+Indistinguishability
+--------------------
+
+``indistinguishability`` is the probability that emitted photons are identical
+enough to interfere. The perfect value is ``1.0``. Smaller values reduce quantum
+interference and move the result toward a classical distribution.
+
+A simple Hong-Ou-Mandel experiment shows the effect. Two indistinguishable
+photons entering a 50:50 beam splitter bunch together: both photons leave in the
+same mode.
 
 .. image:: ../_static/img/simple_bs.png
    :alt: Simple beam-splitter
    :width: 300px
    :align: center
 
-We then use the :math:`\ket{1,1}` input state (one photon per mode) in the Fock basis. If the two photons are indistinguishable, by the Hong-Ou-Mandel (HOM) effect, the output state should be :math:`\frac{1}{\sqrt{2}}\bigg(\ket{2,0} + \ket{0,2} \bigg)`. From a probability standpoint, that means the two equiprobable outputs correspond to both photons being measured in the first mode or both photons being measured in the second mode. We can observe this phenomenon with the following code.
-
 .. code-block:: python
 
     import perceval as pcvl
-    import merlin as ml
 
-    #Creating the BS circuit
+    import merlin as ML
+
     circuit = pcvl.Circuit(2)
-    circuit.add([0, 1], pcvl.BS.H())
+    circuit.add((0, 1), pcvl.BS.H())
 
-    #Running the circuit
-    layer = ml.QuantumLayer(
+    layer = ML.QuantumLayer(
         input_size=0,
         circuit=circuit,
         input_state=[1, 1],
-        measurement_strategy=ml.MeasurementStrategy.probs(
-            computation_space=ml.ComputationSpace.FOCK
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
         ),
     )
-    output = layer()
 
-    #Printing the probabilities
-    for key, prob in zip(layer.output_keys, output.flatten()):
-        print(f"Output probability of state {key} is {prob}")
+    probabilities = layer()
+
+    for state, probability in zip(layer.output_keys, probabilities.flatten()):
+        print(f"{state}: {probability}")
 
 Output:
-    - Output probability of state (2, 0) is 0.49999991059303284
-    - Output probability of state (1, 1) is 0.0
-    - Output probability of state (0, 2) is 0.49999991059303284
 
-This is caused by interference because, classically, if each photon has a 50% chance to be reflected or transmitted, the output probabilities would be:
-- There is a 25% chance that both photons are measured in the first mode.
-- There is a 25% chance that both photons are measured in the second mode.
-- There is a 50% chance that the photons are measured in different modes.
+.. code-block:: text
 
-The entanglement phenomenon between two indistinguishable photons (they effectively interact through the quantum state) causes the discrepancy.
+    (2, 0): 0.49999991059303284
+    (1, 1): 0.0
+    (0, 2): 0.49999991059303284
 
-With completely distinguishable photons, we recover the expected classical distribution because distinguishable photons do not interfere. It can be observed in the following code:
+With fully distinguishable photons, the photons no longer bunch perfectly:
 
 .. code-block:: python
 
-    import perceval as pcvl
-    import merlin as ml
-
-    #Creating the BS circuit
-    circuit = pcvl.Circuit(2)
-    circuit.add([0, 1], pcvl.BS.H())
-
-    #Running the circuit
-    layer = ml.QuantumLayer(
+    layer = ML.QuantumLayer(
         input_size=0,
         circuit=circuit,
         input_state=[1, 1],
-        measurement_strategy=ml.MeasurementStrategy.probs(
-            computation_space=ml.ComputationSpace.FOCK
+        noise=pcvl.NoiseModel(indistinguishability=0.0),
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
         ),
-        noise=pcvl.NoiseModel(indistinguishability=0.0), #Completely distinguishable photons
     )
-    output = layer()
 
-    #Printing the probabilities
-    for key, prob in zip(layer.output_keys, output.flatten()):
-        print(f"Output probability of state {key} is {prob}")
+    probabilities = layer()
 
 Output:
-    - Output probability of state (2, 0) is 0.25
-    - Output probability of state (1, 1) is 0.5
-    - Output probability of state (0, 2) is 0.25
 
-The default value of the ``indistinguishability`` parameter of the ``NoiseModel`` is 1.0, because in the perfect case all photons are indistinguishable.
+.. code-block:: text
 
-7. g2
------------------------------------
+    (2, 0): 0.25
+    (1, 1): 0.5
+    (0, 2): 0.25
 
-The g2 value is correlated to the probability that a source emits two photons instead of one. Mathematically, it is defined by :math:`g(2)=\frac{\langle n(n-1)\rangle}{\langle n \rangle^2}`. Here, since we only analyze the probability that a second photon is emitted and not higher-order emissions, we can define p as the probability that two photons are emitted: :math:`p=\frac{1-g(2)-\sqrt{1-2g(2)}}{2g(2)}`. So a ``g(2)`` of ``0.5`` corresponds to the case where all generated photons are duplicated.
 
-If the input state includes more than one photon, each photon may be duplicated. For example, in the :math:`\ket{2,0,0}` input state, the :math:`\ket{2,0,0}`, :math:`\ket{3,0,0}`, and :math:`\ket{4,0,0}` states are simulated.
+Multi-photon emission
+---------------------
 
-This noise can change the output type considerably when running the ``forward`` method of a :class:`~merlin.algorithms.layer.QuantumLayer`. Indeed, if an extra photon is generated, the interferometer simulation is performed in a completely different Fock space. To illustrate this, we use the same simple circuit used to describe indistinguishability noise and the same :math:`\ket{1,1}` input state.
+``g2`` controls multi-photon emission from the source. When ``g2`` is active,
+one expected source photon can be duplicated. This means the simulation must
+include larger photon-number sectors.
+
+For example, an input state ``[1, 1]`` can produce output sectors with ``2``,
+``3``, or ``4`` photons.
 
 .. code-block:: python
 
-    import perceval as pcvl
-    import merlin as ml
+    noise = pcvl.NoiseModel(
+        g2=0.25,
+        g2_distinguishable=False,
+    )
 
-    #Creating the BS circuit
-    circuit = pcvl.Circuit(2)
-    circuit.add([0, 1], pcvl.BS.H())
-
-    #Running the circuit
-    layer = ml.QuantumLayer(
+    layer = ML.QuantumLayer(
         input_size=0,
         circuit=circuit,
         input_state=[1, 1],
-        measurement_strategy=ml.MeasurementStrategy.probs(
-            computation_space=ml.ComputationSpace.FOCK
+        noise=noise,
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
         ),
-        noise=pcvl.NoiseModel(g2=0.25),
     )
-    output = layer()
 
-    for sector in output.sectors:
-        print(f"{sector.n_photons}-photon sector had probabilities of {sector.tensor}")
+    probabilities = layer()
 
+    for sector in probabilities.sectors:
+        print(f"{sector.n_photons}-photon sector: {sector.tensor}")
 
 Output:
-    - 2-photon sector had probabilities of tensor([[0.3431, 0.0000, 0.3431]])
-    - 3-photon sector had probabilities of tensor([[0.1066, 0.0355, 0.0355, 0.1066]])
-    - 4-photon sector had probabilities of tensor([[0.0110, 0.0000, 0.0074, 0.0000, 0.0110]])
 
-We observe that the output is not a :class:`torch.Tensor` even though it contains probabilities. Indeed, because the space analyzed by a quantum interferometer depends on the number of input photons (the Fock space dimension for n photons and m modes is defined by :math:`\binom{m+n-1}{n}`), the output of the :class:`~merlin.algorithms.layer.QuantumLayer`'s forward method cannot be stored in a single tensor. The output is a :class:`~merlin.core.sectored_distribution.SectoredDistribution` that contains :class:`~merlin.core.sectored_distribution.SectorResult` objects, each describing a sector's probability distribution. Thus, g2 noise simulations explore a larger space and are handled differently in the output of the :class:`~merlin.algorithms.layer.QuantumLayer`'s forward method. Photon loss and detectors are applied to each sector independently.
+.. code-block:: text
 
-Noisy simulations with ``g2>0`` cannot use a grouping strategy. Indeed, since this noise creates input states with more photons than expected, multiple photon sectors are explored. The Fock spaces explored range from n_photons to 2*n_photons in m modes, each with a different dimension. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult` objects of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector.
+    2-photon sector: tensor([[0.3431, 0.0000, 0.3431]])
+    3-photon sector: tensor([[0.1066, 0.0355, 0.0355, 0.1066]])
+    4-photon sector: tensor([[0.0110, 0.0000, 0.0074, 0.0000, 0.0110]])
 
-The default value of the ``g2`` parameter of the ``NoiseModel`` is 0.0. This is the case where no extra photons are ever generated.
+When ``g2 > 0``, the layer returns a
+:class:`~merlin.core.sectored_distribution.SectoredDistribution` because each
+photon-number sector has a different Fock-space size.
 
-
-6. g2 distinguishability
------------------------------------
-
-This noise is a boolean that indicates whether the photons generated by g2 emissions (multi-photon emissions) are distinguishable. By default in Perceval, the ``g2_distinguishable`` parameter is ``True`` in the ``NoiseModel``. In MerLin's QuantumLayer, the parameter is considered ``False`` if it can be ignored (indistinguishability=1.0 or g2=0.0: the default values of these noise sources). So even if this parameter is set to True in Perceval's :class:`pcvl.NoiseModel`, if there is no simulation with g2 emissions and indistinguishable photons, the ``g2_distinguishable`` parameter will be set to ``False`` in the :class:`~merlin.algorithms.layer.QuantumLayer`. If ``indistinguishability=1.0`` and ``g2>0.0``, a warning indicates that ``g2_distinguishable`` is set to ``False``; otherwise, because the parameter does not affect the simulation, the change is made silently. Indeed, if the source always creates indistinguishable photons, the extra emitted photons will also be indistinguishable.
-
-
-Noisy Simulations Guidelines
-=============================
-
-For noisy simulations, there are a couple of rules that need to be followed:
-
-1. All noisy simulations must be run with the probabilities measurement strategy to reflect what is the actual output on the quantum device.
-2. Noisy simulations cannot use ``return_object=True``.
-3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning.
+``g2_distinguishable`` only matters when ``g2`` is active. It controls whether
+the extra photons created by multi-photon emission are simulated as
+distinguishable from the intended photons. If ``indistinguishability=1.0``,
+Merlin treats the duplicated photons as indistinguishable.
 
 
-Noise Detectors to Restrict the Fock Space
-===========================================
+Rules and limitations
+=====================
 
-As mentioned in the previous section, noisy simulations only support the Fock computation space as g2 errors may create bunched input states in this computation space. However, current detectors on the hardware are not not photon resolving. That means that the output space explored by the quantum computer is smaller than the full complete Fock basis. 
+Noisy simulations currently have these constraints:
 
-In order to simulate the quantum process as closely as possible to the quantum hardware, we can impose these limitations on the photon detectors using :class:`pcvl.Detector` objects (threshold ones for this use case) in a :class:`pcvl.Experiment`. Here is a quick example on how to use them.
+1. Use :meth:`~merlin.measurement.strategies.MeasurementStrategy.probs`.
+2. Use the SLOS backend.
+3. Keep ``return_object=False``.
+4. Do not use partial measurement with active noise.
+5. Use :class:`~merlin.core.computation_space.ComputationSpace.FOCK` for source
+   noise, because source noise can add photons, remove photons, and create
+   bunched states.
+6. Do not use a grouping strategy with ``g2 > 0``. Apply grouping manually to
+   each sector of the returned
+   :class:`~merlin.core.sectored_distribution.SectoredDistribution`.
+
+
+Use detectors to match hardware outputs
+=======================================
+
+Current Quandela hardware uses threshold detectors. A threshold detector reports
+whether at least one photon was detected in a mode; it does not report the exact
+number of photons in that mode.
+
+Use :class:`pcvl.Detector` objects in the experiment when you want the
+simulated output space to match this detector behavior.
 
 .. code-block:: python
 
     import perceval as pcvl
-    import merlin as ml
+
+    import merlin as ML
 
     circuit = pcvl.Circuit(2)
-    circuit.add([0, 1], pcvl.BS.H())
+    circuit.add((0, 1), pcvl.BS.H())
 
-    ## Defining the layer without detectors
-    layer = ml.QuantumLayer(
-        input_size=0,
-        circuit=circuit,
-        input_state=[1, 1],
-        measurement_strategy=ml.MeasurementStrategy.probs(
-            computation_space=ml.ComputationSpace.FOCK
-        ),
-        noise=pcvl.NoiseModel(g2=0.25, brightness=0.5),
-    )
-    output = layer()
-
-
-    print(f"The layer without detectors has output size {layer.output_size}")
-    for key, prob in zip(layer.output_keys, output.flatten()):
-        print(f"Output probability of state {key} is {prob}")
-    print()
-
-
-    ## Defining the layer with detectors
-    # Define a perceval experiment
-    experiment = pcvl.Experiment(
-        m_circuit=circuit,
-    )
-    # Define one detector per mode, here we use the threshold detector which can detect if there is photons or not
+    experiment = pcvl.Experiment(m_circuit=circuit)
     experiment.detectors[0] = pcvl.Detector.threshold()
     experiment.detectors[1] = pcvl.Detector.threshold()
 
-    layer = ml.QuantumLayer(
+    layer = ML.QuantumLayer(
         input_size=0,
         experiment=experiment,
         input_state=[1, 1],
-        measurement_strategy=ml.MeasurementStrategy.probs(
-            computation_space=ml.ComputationSpace.FOCK
-        ),
         noise=pcvl.NoiseModel(g2=0.25, brightness=0.5),
+        measurement_strategy=ML.MeasurementStrategy.probs(
+            computation_space=ML.ComputationSpace.FOCK
+        ),
     )
-    output = layer()
-    print(f"The layer with detectors has output size {layer.output_size}")
 
+    probabilities = layer()
 
-    for key, prob in zip(layer.output_keys, output.flatten()):
-        print(f"Output probability of state {key} is {prob}")
-
+    print(layer.output_size)
+    for state, probability in zip(layer.output_keys, probabilities.flatten()):
+        print(f"{state}: {probability}")
 
 Output:
 
-    The layer without detectors has output size 15
+.. code-block:: text
 
-    - Output probability of state (2, 0) is 0.1348033845424652
-    - Output probability of state (1, 0) is 0.2285533845424652
-    - Output probability of state (0, 0) is 0.2089466005563736
-    - Output probability of state (1, 1) is 0.019606785848736763
-    - Output probability of state (0, 1) is 0.2285533845424652
-    - Output probability of state (0, 2) is 0.1348033845424652
-    - Output probability of state (3, 0) is 0.016084961593151093
-    - Output probability of state (2, 1) is 0.0053616538643836975
-    - Output probability of state (1, 2) is 0.0053616538643836975
-    - Output probability of state (0, 3) is 0.016084961593151093
-    - Output probability of state (4, 0) is 0.0006899359868839383
-    - Output probability of state (3, 1) is 0.0
-    - Output probability of state (2, 2) is 0.00045995728578418493
-    - Output probability of state (1, 3) is 0.0
-    - Output probability of state (0, 4) is 0.0006899359868839383
+    4
+    (1, 0): 0.38013163208961487
+    (0, 0): 0.2089466005563736
+    (1, 1): 0.030790047720074654
+    (0, 1): 0.38013163208961487
 
-    The layer with detectors has output size 4
 
-    - Output probability of state (1, 0) is 0.38013163208961487
-    - Output probability of state (0, 0) is 0.2089466005563736
-    - Output probability of state (1, 1) is 0.030790047720074654
-    - Output probability of state (0, 1) is 0.38013163208961487
+Further details
+===============
+
+This page describes the noise sources from a user point of view. For formulas,
+Monte Carlo details, source-noise mixtures, and memory considerations, see
+:doc:`/quantum_expert_area/noisy_simulations`.

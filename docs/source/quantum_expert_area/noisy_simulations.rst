@@ -4,18 +4,28 @@
 Noisy Simulations
 ==============================================
 
-To run your first noisy simulation, consult the :doc:`/user_guide/noisy_simulations` page to understand the different noise types and run your first noisy :class:`~merlin.algorithms.layer.QuantumLayer`.
+This page describes how Merlin implements noisy SLOS simulations. For a
+practical introduction to the available noise parameters and a first
+:class:`~merlin.algorithms.layer.QuantumLayer` example, see
+:doc:`/user_guide/noisy_simulations`.
 
 ----------------------------------------------
-Noisy Simulation implementation
+Noisy Simulation Implementation
 ----------------------------------------------
 
-In this section, we discuss the general implementation details of the different noise calculations inside SLOS.
+SLOS normally propagates amplitudes. Active source noise and stochastic phase
+error are represented as probability mixtures, so Merlin computes and combines
+probability distributions for those cases. The implementation details below
+describe where each noise family enters the computation.
 
 Brightness and Transmittance
 ----------------------------------------------
 
-These two noises are implemented in the same workflow. As mentioned on the :doc:`/user_guide/noisy_simulations` page, the photon survival probability is defined by the product of these two noises. This survival probability is then used to create a transition matrix for the output probabilities of the interferometer. Indeed, the whole pipeline simulation is performed without considering these noises and generates a tensor of dimension (batch size, n and m Fock space), where n is the number of photons and m is the number of modes. We then apply brightness and transmittance noise to these results. First, we need to compute the transition matrix like so:
+Brightness and transmittance are implemented in the same workflow. Merlin first
+computes the ideal probability tensor for the fixed ``n``-photon, ``m``-mode
+Fock space, then applies photon survival as a transition matrix over the output
+probabilities. The survival probability for each photon is the product of
+brightness and transmittance.
 
 **Algorithm**
 
@@ -263,6 +273,17 @@ g2 and g2 distinguishable
 
 These noises build on the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisySLOSComputeGraph` class to create the :class:`~merlin.pcvl_pytorch.noisy_slos.NoisyG2SLOSComputeGraph` object. Indeed, the noisy simulation must be performed for multiple input states with photon duplication. Here are the main implementation steps.
 
+The ``g2`` value is converted to the probability :math:`p` that one source
+emits an extra photon:
+
+.. math::
+
+   p =
+   \frac{1-g^{(2)}-\sqrt{1-2g^{(2)}}}{2g^{(2)}}
+
+Only the no-extra-photon and one-extra-photon cases are modeled for each input
+photon. Higher-order emissions from the same source are not included.
+
 **Algorithm**
 
 1. Create a :class:`~merlin.pcvl_pytorch.noisy_slos.NoisySLOSComputeGraph`
@@ -336,11 +357,8 @@ Here is an example of the output graph of this run.
    :width: 600px
    :alt: Memory need for the QuantumLayer with distinguishable photons per output size
 
-
-Also, as a reminder, here are the noisy simulation guidelines.
-
-1. All noisy simulations must be run with the probabilities measurement strategy. Indeed, we can only change the probabilities as computing the actual amplitude after the noise breaks the current implementation of SLOS simulations: density matrix representation would be needed instead of just vector states.
-
-2. Noisy simulations cannot use ``return_object=True``. It will be implemented in a future version.
-
-3. Noisy simulations with source noise must be run in the Fock computation space. If a different space is chosen, it will be changed automatically with a warning. Indeed, since the noises can remove or add photons, remaining in a constrained space may remove some of the effects of the noise.
+The public API constraints are listed in :doc:`/user_guide/noisy_simulations`.
+The implementation reason is that Merlin does not currently use a density
+matrix representation for noisy SLOS. Noise paths that produce classical
+mixtures therefore return probabilities and cannot expose a single coherent
+output amplitude vector.
