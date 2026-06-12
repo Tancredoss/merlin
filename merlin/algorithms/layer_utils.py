@@ -57,7 +57,21 @@ from ..measurement.strategies import (
     MeasurementStrategyLike,
     _resolve_measurement_kind,
 )
-from ..pcvl_pytorch.utils import pcvl_to_tensor
+
+
+_CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE = (
+    "amplitude_encoding=True was removed in 0.4. Pass amplitude data to "
+    "forward(StateVector) or forward(complex_tensor) instead. Convert "
+    "constructor tensors with StateVector.from_tensor() when a StateVector "
+    "object is needed."
+)
+
+_CONSTRUCTOR_TENSOR_INPUT_STATE_REMOVAL_MESSAGE = (
+    "torch.Tensor is no longer accepted as QuantumLayer input_state. Pass "
+    "amplitude data to forward(StateVector) or forward(complex_tensor) instead. "
+    "Convert constructor tensors with StateVector.from_tensor() when a "
+    "StateVector object is needed."
+)
 
 
 @dataclass(frozen=True)
@@ -184,7 +198,7 @@ class InitializationContext:
         Attached noise model, if any.
     has_custom_noise : bool
         Whether the experiment defines custom noise.
-    input_state : merlin.core.state_vector.StateVector | pcvl.BasicState | torch.Tensor | None
+    input_state : merlin.core.state_vector.StateVector | pcvl.BasicState | None
         Normalized input state.
     n_photons : int | None
         Resolved photon count.
@@ -219,7 +233,7 @@ class InitializationContext:
     experiment: pcvl.Experiment
     noise_model: Any | None
     has_custom_noise: bool
-    input_state: StateVector | pcvl.BasicState | torch.Tensor | None
+    input_state: StateVector | pcvl.BasicState | None
     n_photons: int | None
     trainable_parameters: list[str]
     input_parameters: list[str]
@@ -244,7 +258,7 @@ def validate_encoding_mode(
     Parameters
     ----------
     amplitude_encoding : bool
-        Whether amplitude encoding is requested.
+        Removed compatibility flag. If True, a clear migration error is raised.
     input_size : int | None
         User-provided classical input size.
     n_photons : int | None
@@ -260,24 +274,12 @@ def validate_encoding_mode(
     Raises
     ------
     ValueError
-        If amplitude encoding is requested with incompatible classical-input
-        settings.
+        If amplitude encoding is requested.
     """
     resolved_input_params = list(input_parameters) if input_parameters else []
 
     if amplitude_encoding:
-        if input_size is not None:
-            raise ValueError(
-                "When amplitude_encoding is enabled, do not specify input_size; it "
-                "is inferred from the computation space."
-            )
-        if n_photons is None:
-            raise ValueError("n_photons must be provided when amplitude_encoding=True.")
-        if resolved_input_params:
-            raise ValueError(
-                "Amplitude encoding cannot be combined with classical input parameters."
-            )
-        resolved_input_size = None
+        raise ValueError(_CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE)
     else:
         resolved_input_size = int(input_size) if input_size is not None else None
 
@@ -306,14 +308,15 @@ def prepare_input_state(
     experiment: pcvl.Experiment | None = None,
     circuit_m: int | None = None,
     amplitude_encoding: bool = False,
-) -> tuple[StateVector | pcvl.BasicState | torch.Tensor | None, int | None]:
+) -> tuple[StateVector | pcvl.BasicState | None, int | None]:
     """Normalize input_state to canonical form.
 
     Parameters
     ----------
     input_state : :class:`~merlin.core.state_vector.StateVector` | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
         The input state in various formats. :class:`~merlin.core.state_vector.StateVector` is the canonical type.
-        Legacy formats are auto-converted with deprecation warnings where appropriate.
+        Legacy tensor constructor inputs are rejected. Pass amplitude tensors to
+        ``forward()`` or wrap them with ``StateVector.from_tensor()``.
     n_photons : int | None
         Number of photons (used for default state generation).
     computation_space : ComputationSpace
@@ -327,25 +330,28 @@ def prepare_input_state(
     circuit_m : int | None
         Number of modes in the circuit (for default state generation).
     amplitude_encoding : bool
-        Whether amplitude encoding is enabled.
+        Removed compatibility flag. If True, a clear migration error is raised.
 
     Returns
     -------
-    tuple[merlin.core.state_vector.StateVector | pcvl.BasicState | torch.Tensor | None, int | None]
+    tuple[merlin.core.state_vector.StateVector | pcvl.BasicState | None, int | None]
         The normalized input state and resolved photon count.
 
     Raises
     ------
     ValueError
-        If neither input_state nor n_photons is provided, or if StateVector is empty.
+        If amplitude encoding is requested, if ``torch.Tensor`` is passed as
+        ``input_state``, if neither input_state nor n_photons is provided, or if
+        StateVector is empty.
 
     Warns
     -----
-    DeprecationWarning
-        When ``torch.Tensor`` is passed as input_state (deprecated in favor of StateVector).
     UserWarning
         When both experiment.input_state and input_state are provided.
     """
+    if amplitude_encoding:
+        raise ValueError(_CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE)
+
     # Experiment input_state takes precedence
     if experiment is not None and experiment.input_state is not None:
         if input_state is not None and experiment.input_state != input_state:
@@ -361,16 +367,9 @@ def prepare_input_state(
     if isinstance(input_state, StateVector):
         return input_state, input_state.n_photons
 
-    # === Handle torch.Tensor (DEPRECATED) ===
+    # === Reject removed tensor constructor state ===
     if isinstance(input_state, torch.Tensor):
-        warnings.warn(
-            "Passing torch.Tensor as input_state is deprecated and will be removed in 0.4. "
-            "Use StateVector.from_tensor() instead.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        # Pass through as tensor for backward compatibility
-        return input_state, n_photons
+        raise ValueError(_CONSTRUCTOR_TENSOR_INPUT_STATE_REMOVAL_MESSAGE)
 
     # === Handle tuple/list (convert to BasicState) ===
     if isinstance(input_state, tuple):
@@ -391,15 +390,11 @@ def prepare_input_state(
             raise ValueError(
                 "Inconsistent number of photons between input_state and n_photons."
             )
-        return (
-            pcvl_to_tensor(
-                input_state,
-                computation_space,
-                device=device,
-                dtype=complex_dtype,
-            ),
-            sv_n_photons,
-        )
+        return StateVector.from_perceval(
+            input_state,
+            device=device,
+            dtype=complex_dtype,
+        ), sv_n_photons
 
     # === Validation: need either input_state or n_photons ===
     if input_state is None and n_photons is None:
@@ -409,12 +404,6 @@ def prepare_input_state(
     if input_state is None and n_photons is not None:
         if computation_space is ComputationSpace.DUAL_RAIL:
             return pcvl.BasicState(tuple([1, 0] * n_photons)), n_photons
-        elif amplitude_encoding:
-            if circuit_m is None:
-                raise ValueError(
-                    "circuit_m must be provided to generate default state for amplitude encoding."
-                )
-            input_state = [1] * n_photons + [0] * (circuit_m - n_photons)
         else:
             if circuit_m is None:
                 raise ValueError(
@@ -427,7 +416,7 @@ def prepare_input_state(
         return pcvl.BasicState(tuple(cast(list[int], input_state))), n_photons
 
     return (
-        cast(StateVector | pcvl.BasicState | torch.Tensor | None, input_state),
+        cast(StateVector | pcvl.BasicState | None, input_state),
         n_photons,
     )
 
