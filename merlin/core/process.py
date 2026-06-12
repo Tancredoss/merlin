@@ -24,9 +24,9 @@
 Quantum computation processes and factories.
 """
 
-from dataclasses import dataclass
-from typing import Literal, overload, Any
 import math
+from dataclasses import dataclass
+from typing import Any, Literal, overload
 
 import perceval as pcvl
 import torch
@@ -285,6 +285,8 @@ class ComputationProcess(AbstractComputationProcess):
             memristive_metadata=self.memristive_metadata,
             dtype=self.dtype,
             device=self.device,
+            phase_imprecision=self._phase_imprecision,
+            phase_error=self._phase_error,
         )
 
         # Build simulation graph with correct parameters
@@ -376,21 +378,15 @@ class ComputationProcess(AbstractComputationProcess):
             # Amplitude-encoded input: treat each row as a probability distribution
             # over Fock basis states and produce a weighted mixture of noisy output
             # probabilities. The mixture weight for each basis state is |c_i|^2.
-            prepared_state = self._prepare_superposition_tensor()
-            weights = prepared_state.abs().pow(2)
+            prepared_state = self._prepare_superposition_support()
+            weights = prepared_state.coefficients.abs().pow(2)
 
-    def compute(
-        self,
-        parameters: list[torch.Tensor],
-        memristive_current_state: list[torch.Tensor] | None = None,
-    ) -> torch.Tensor:
-        """Compute output amplitudes for the configured input state.
-            active_mask = torch.any(weights >= 1e-13, dim=0)
-            active_indices = torch.nonzero(active_mask, as_tuple=True)[0].tolist()
+            active_indices = prepared_state.basis_indices
+            input_basis_states = self._input_basis_states()
             if isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph):
                 output_distribution: SectoredDistribution | None = None
-                for idx in active_indices:
-                    input_fock_state = self.simulation_graph.mapped_keys[0][idx]
+                for weight_index, idx in enumerate(active_indices):
+                    input_fock_state = input_basis_states[idx]
                     probs = self.simulation_graph.compute_probs(
                         unitary, input_fock_state
                     )
@@ -398,7 +394,9 @@ class ComputationProcess(AbstractComputationProcess):
                     for sector in probs.sectors:
                         if sector.tensor.ndim == 1:
                             sector.tensor = sector.tensor.unsqueeze(0)
-                        selected_weights = weights[:, idx].to(sector.tensor.dtype)
+                        selected_weights = weights[:, weight_index].to(
+                            sector.tensor.dtype
+                        )
                         sector.tensor = torch.einsum(
                             "i,bo->ibo", selected_weights, sector.tensor
                         )
@@ -421,7 +419,7 @@ class ComputationProcess(AbstractComputationProcess):
 
             tensor_probs_per_state: list[torch.Tensor] = []
             for idx in active_indices:
-                input_fock_state = self.simulation_graph.mapped_keys[idx]
+                input_fock_state = input_basis_states[idx]
                 _, probs = self.simulation_graph.compute_probs(
                     unitary, input_fock_state
                 )
@@ -433,7 +431,7 @@ class ComputationProcess(AbstractComputationProcess):
                 raise RuntimeError("No active input states were found.")
 
             probs_stacked = torch.stack(tensor_probs_per_state, dim=0)
-            selected_weights = weights[:, active_indices].to(probs_stacked.dtype)
+            selected_weights = weights.to(probs_stacked.dtype)
             mixed_probs = torch.einsum("is,sbo->ibo", selected_weights, probs_stacked)
 
             if mixed_probs.shape[1] == 1:
@@ -485,52 +483,12 @@ class ComputationProcess(AbstractComputationProcess):
             If the tensor ``input_state`` does not match the configured
             computation-space basis size.
         """
-        prepared_state = self._prepare_superposition_tensor()
-
-        batched_parameters = unitary.dim() == 3
-        if not batched_parameters:
-            unitary = unitary.unsqueeze(0)
-        parameter_batch = unitary.shape[0]
-
-        mask = (prepared_state.real**2 + prepared_state.imag**2 < 1e-13).all(dim=0)
-        masked_input_state = (~mask).int().tolist()
-        input_states = [
-            (k, self.simulation_graph.mapped_keys[k])
-            for k, mask in enumerate(masked_input_state)
-            if mask == 1
-        ]
-
-        amplitudes = torch.zeros(
-            (
-                parameter_batch,
-                prepared_state.shape[-1],
-                len(self.simulation_graph.mapped_keys),
-            ),
-            dtype=unitary.dtype,
-            device=prepared_state.device,
+        prepared_state = self._prepare_superposition_support()
+        _keys_out, final_amplitudes = self._compute_chunked_superposition(
+            prepared_state,
+            unitary if unitary.dim() == 3 else unitary.unsqueeze(0),
+            simultaneous_processes=simultaneous_processes,
         )
-
-        for i in range(0, len(input_states), simultaneous_processes):
-            batch_end = min(i + simultaneous_processes, len(input_states))
-            batch_indices = []
-            batch_fock_states = []
-
-            for j in range(i, batch_end):
-                idx, fock_state = input_states[j]
-                batch_indices.append(idx)
-                batch_fock_states.append(fock_state)
-
-            _, batch_amplitudes = self.simulation_graph.compute_batch(
-                unitary, batch_fock_states
-            )
-            for k, idx in enumerate(batch_indices):
-                amplitudes[:, idx, :] = batch_amplitudes[:, :, k]
-
-        input_state = prepared_state.to(amplitudes.dtype)
-        amplitudes = amplitudes / amplitudes.norm(p=2, dim=-1, keepdim=True).clamp_min(
-            1e-12
-        )
-        final_amplitudes = torch.einsum("se, beo -> bso", input_state, amplitudes)
 
         if final_amplitudes.shape[0] == 1:
             final_amplitudes = final_amplitudes.squeeze(0)
@@ -782,6 +740,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         amplitude_encoding: bool,
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor | SectoredDistribution:
         """Average probabilities over stochastic phase-error unitary samples.
 
@@ -802,12 +761,12 @@ class ComputationProcess(AbstractComputationProcess):
         ----------
         parameters : list[torch.Tensor]
             Circuit parameters passed to the converter.
-        memristive_current_state : list[torch.Tensor] | None
-            The memristive phase shifters current states. Defaults to None
-            and will be treated as an empty list.
         amplitude_encoding : bool
             Whether tensor input states should be interpreted as coherent
             amplitude-encoded superpositions for each sampled unitary.
+        memristive_current_state : list[torch.Tensor] | None
+            The memristive phase shifters current states. Defaults to None
+            and will be treated as an empty list.
 
         Returns
         -------
@@ -833,7 +792,13 @@ class ComputationProcess(AbstractComputationProcess):
         accumulated: torch.Tensor | SectoredDistribution | None = None
 
         for _sample_index in range(self._n_phase_error_samples):
-            unitary = self.converter.to_tensor(*parameters, apply_phase_error=True)
+            unitary = self.converter.to_tensor(
+                *parameters,
+                apply_phase_error=True,
+                memristive_current_state=(
+                    [] if memristive_current_state is None else memristive_current_state
+                ),
+            )
             self.unitary = unitary
             probabilities = self._compute_probabilities_for_unitary(
                 unitary, amplitude_encoding=amplitude_encoding
@@ -871,6 +836,7 @@ class ComputationProcess(AbstractComputationProcess):
         self,
         parameters: list[torch.Tensor],
         amplitude_encoding: bool = False,
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor | SectoredDistribution:
         """Compute output amplitudes or probabilities for the configured input state.
 
@@ -884,6 +850,9 @@ class ComputationProcess(AbstractComputationProcess):
             states weighted by :math:`|c_i|^2`; phase-error simulations without
             source noise compute coherent probabilities per sampled unitary.
             Default is False.
+        memristive_current_state : list[torch.Tensor] | None
+            The memristive phase shifters current states. Defaults to None
+            and will be treated as an empty list.
 
         Returns
         -------
@@ -894,7 +863,9 @@ class ComputationProcess(AbstractComputationProcess):
         """
         if self._has_phase_error():
             return self._compute_phase_error_probabilities(
-                parameters, amplitude_encoding=amplitude_encoding
+                parameters,
+                amplitude_encoding=amplitude_encoding,
+                memristive_current_state=memristive_current_state,
             )
 
         unitary = self.converter.to_tensor(
@@ -904,11 +875,6 @@ class ComputationProcess(AbstractComputationProcess):
             ),
         )
         self.unitary = unitary
-        # Compute output distribution using the input state
-        if isinstance(self.input_state, torch.Tensor):
-            input_state = [1] * self.n_photons + [0] * (self.m - self.n_photons)
-        else:
-            input_state = self.input_state
 
         if self._has_source_noise():
             return self._compute_source_probabilities_for_unitary(
@@ -947,6 +913,33 @@ class ComputationProcess(AbstractComputationProcess):
         return_keys: bool = False,
         memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]:
+        """Compute amplitudes for a tensor superposition input state.
+
+        Parameters
+        ----------
+        parameters : list[torch.Tensor]
+            Circuit parameters passed to the converter.
+        simultaneous_processes : int | None
+            Maximum number of active input components propagated in one
+            chunk. If omitted, an internal default chunk size is used.
+        return_keys : bool
+            Whether to return the output basis keys with the amplitudes.
+            Default value is False.
+        memristive_current_state : list[torch.Tensor] | None
+            The memristive phase shifters current states. Defaults to None
+            and will be treated as an empty list.
+
+        Returns
+        -------
+        torch.Tensor | tuple[list[tuple[int, ...]], torch.Tensor]
+            Output amplitudes, optionally paired with their basis keys.
+
+        Raises
+        ------
+        RuntimeError
+            If phase error or source noise is active, because those paths return
+            probabilities rather than amplitudes.
+        """
         if self._has_phase_error():
             raise RuntimeError(
                 "Active phase_error returns probabilities; compute_superposition_state cannot return amplitudes."
@@ -955,54 +948,6 @@ class ComputationProcess(AbstractComputationProcess):
             raise RuntimeError(
                 "Noisy simulations with source noise can only call the `compute` and `compute_with_keys` methods to compute probabilities"
             )
-        prepared_state = self._prepare_superposition_tensor()
-        unitary = self.converter.to_tensor(*parameters)
-        changed_unitary = True
-
-        def is_swap_permutation(t1, t2):
-            if t1 == t2:
-                return False
-            diff = [
-                (i, i) for i, (x, y) in enumerate(zip(t1, t2, strict=False)) if x != y
-            ]
-            if len(diff) != 2:
-                return False
-            i, j = diff[0][0], diff[1][0]
-
-            return t1[i] == t2[j] and t1[j] == t2[i]
-
-        def reorder_swap_chain(lst):
-            remaining = lst[:]
-            chain = [remaining.pop(0)]
-            while remaining:
-                for i, candidate in enumerate(remaining):
-                    if is_swap_permutation(chain[-1][1], candidate[1]):
-                        chain.append(remaining.pop(i))
-                        break
-                else:
-                    chain.append(remaining.pop(0))
-
-            return chain
-
-        mask = (prepared_state.real**2 + prepared_state.imag**2 < 1e-13).all(dim=0)
-
-        masked_input_state = (~mask).int().tolist()
-
-        input_states = [
-            (k, self.simulation_graph.mapped_keys[k])
-            for k, mask in enumerate(masked_input_state)
-            if mask == 1
-        ]
-
-        state_list = reorder_swap_chain(input_states)
-
-        prev_state_index, prev_state = state_list.pop(0)
-
-        keys, amplitude = self.simulation_graph.compute(unitary, prev_state)
-        amplitudes = torch.zeros(
-            (prepared_state.shape[-1], len(self.simulation_graph.mapped_keys)),
-            dtype=amplitude.dtype,
-            device=prepared_state.device,
         prepared_state = self._prepare_superposition_support()
         unitary = self.converter.to_tensor(
             *parameters,
@@ -1030,7 +975,7 @@ class ComputationProcess(AbstractComputationProcess):
         simultaneous_processes: int = 1,
         memristive_current_state: list[torch.Tensor] | None = None,
     ) -> torch.Tensor:
-        Evaluate a single circuit parametrisation against all superposed input
+        """Evaluate a single circuit parametrisation against all superposed input
         states by chunking them in groups and delegating the heavy work to the
         TorchScript-enabled batch kernel.
 
@@ -1069,8 +1014,8 @@ class ComputationProcess(AbstractComputationProcess):
         Notes
         -----
             - ``self.input_state`` is normalized in place to avoid an extra
-              allocation.They are forwarded to ``self.converter`` to build the unitary matrix used during the
-              simulation.
+              allocation. Parameters are forwarded to ``self.converter`` to
+              build the unitary matrix used during the simulation.
             - Zero-amplitude components are skipped to minimise the number of
               calls to ``compute_batch``.
             - The method is agnostic to the device: tensors remain on the device
@@ -1086,12 +1031,7 @@ class ComputationProcess(AbstractComputationProcess):
                 "Noisy simulations with source noise can only call the `compute` and `compute_with_keys` methods to compute probabilities"
             )
 
-        unitary = self.converter.to_tensor(*parameters)
-        return self._compute_superposition_amplitudes_for_unitary(
-            unitary, simultaneous_processes=simultaneous_processes
-
         prepared_state = self._prepare_superposition_support()
-
         unitary = self.converter.to_tensor(
             *parameters,
             memristive_current_state=(
@@ -1110,7 +1050,6 @@ class ComputationProcess(AbstractComputationProcess):
             final_amplitudes = final_amplitudes.squeeze(1)
 
         return final_amplitudes
-
 
     def compute_with_keys(
         self,
@@ -1196,8 +1135,18 @@ class ComputationProcess(AbstractComputationProcess):
             return math.comb(self.m, self.n_photons)
         return math.comb(self.m + self.n_photons - 1, self.n_photons)
 
+    def _full_fock_superposition_size(self) -> int:
+        """Return the full Fock input basis size used by the SLOS engine.
+
+        Returns
+        -------
+        int
+            Number of full Fock input basis states for ``m`` modes and
+            ``n_photons`` photons.
+        """
+        return math.comb(self.m + self.n_photons - 1, self.n_photons)
+
     def _validate_superposition_state_shape(self, input_state: torch.Tensor) -> None:
-        """Ensure the provided superposition state matches the full Fock basis."""
         """Validate a tensor superposition input shape.
 
         Parameters
@@ -1226,31 +1175,33 @@ class ComputationProcess(AbstractComputationProcess):
                 f"Superposed input state must be 1D or 2D tensor, got shape {tuple(input_state.shape)}"
             )
 
-        expected = Combinadics("fock", self.n_photons, self.m).compute_space_size()
-        if state_dim != expected:
-            if (
-                self.computation_space is ComputationSpace.DUAL_RAIL
-                and state_dim == len(self.simulation_graph.mapped_keys)
-            ):
-                return
+        logical_expected = self._expected_superposition_size()
+        full_fock_expected = self._full_fock_superposition_size()
+        if state_dim not in {logical_expected, full_fock_expected}:
             if self.computation_space is ComputationSpace.DUAL_RAIL:
                 explanation = (
-                    f"expected 2**n_photons = 2**{self.n_photons} = {expected}"
+                    f"expected 2**n_photons = 2**{self.n_photons} = {logical_expected}"
                 )
             elif self.computation_space is ComputationSpace.UNBUNCHED:
                 explanation = (
                     f"expected C(m, n_photons) = C({self.m}, "
-                    f"{self.n_photons}) = {expected}"
+                    f"{self.n_photons}) = {logical_expected}"
                 )
             else:
                 explanation = (
                     f"expected C(m + n_photons - 1, n_photons) = "
-                    f"C({self.m + self.n_photons - 1}, {self.n_photons}) = {expected}"
+                    f"C({self.m + self.n_photons - 1}, {self.n_photons}) = "
+                    f"{logical_expected}"
+                )
+            if full_fock_expected != logical_expected:
+                explanation = (
+                    f"{explanation}, or full Fock size "
+                    f"C({self.m + self.n_photons - 1}, {self.n_photons}) = "
+                    f"{full_fock_expected}"
                 )
             raise ValueError(
-                "Input state dimension mismatch for Fock basis: "
-                f"got {state_dim}, expected C(m + n_photons - 1, n_photons) = "
-                f"C({self.m + self.n_photons - 1}, {self.n_photons}) = {expected}."
+                "Input state dimension mismatch for computation_space "
+                f"'{self.computation_space}': got {state_dim}, {explanation}."
             )
 
     def _should_defer_state_validation(self, tensor: torch.Tensor) -> bool:
@@ -1286,13 +1237,13 @@ class ComputationProcess(AbstractComputationProcess):
     def _coerce_superposition_tensor_shape(
         self, tensor: torch.Tensor
     ) -> torch.Tensor | None:
-        """Lift compatible reduced-basis tensors into the Fock basis.
+        """Lift compatible compact-basis tensors into the full Fock basis.
 
         Parameters
         ----------
         tensor : torch.Tensor
-            Candidate tensor encoded either in the full Fock basis or a smaller
-            logical basis.
+            Candidate tensor encoded either in the full Fock basis or in a
+            compact logical basis compatible with ``computation_space``.
 
         Returns
         -------
@@ -1301,9 +1252,6 @@ class ComputationProcess(AbstractComputationProcess):
             basis can be mapped unambiguously. Returns None when no coercion
             applies.
         """
-        if self.computation_space is not ComputationSpace.FOCK:
-            return None
-
         if self.n_photons is None or self.m is None:
             return None
 
@@ -1314,37 +1262,86 @@ class ComputationProcess(AbstractComputationProcess):
         else:
             return None
 
-        # Detect tensors encoded in the UNBUNCHED basis and lift them to Fock.
-        unbunched_size = math.comb(self.m, self.n_photons)
-        if feature_dim != unbunched_size:
+        full_fock_size = self._full_fock_superposition_size()
+        if feature_dim == full_fock_size:
             return None
 
-        mapped_keys = [
-            tuple(key)
-            for key in self.simulation_graph.mapped_keys  # type: ignore[attr-defined]
-        ]
-        key_to_index = {state: idx for idx, state in enumerate(mapped_keys)}
+        if self.computation_space is ComputationSpace.DUAL_RAIL:
+            compact_schemes = ["dual_rail"]
+        elif self.computation_space is ComputationSpace.UNBUNCHED:
+            compact_schemes = ["unbunched"]
+        else:
+            compact_schemes = ["unbunched"]
 
-        try:
-            combinator = Combinadics("unbunched", self.n_photons, self.m)
-        except ValueError:
-            return None
+        fock_combinator = Combinadics("fock", self.n_photons, self.m)
+        for scheme in compact_schemes:
+            try:
+                compact_combinator = Combinadics(scheme, self.n_photons, self.m)
+            except ValueError:
+                continue
+            if feature_dim != compact_combinator.compute_space_size():
+                continue
+            fock_indices = [
+                fock_combinator.fock_to_index(state)
+                for state in compact_combinator.iter_states()
+            ]
+            return self._expand_compact_superposition_tensor(
+                tensor, fock_indices, full_fock_size
+            )
 
-        indices: list[int] = []
-        for state in combinator.iter_states():
-            index = key_to_index.get(state)
-            if index is None:
-                return None
-            indices.append(index)
+        return None
 
-        target_dim = len(mapped_keys)
+    @staticmethod
+    def _expand_compact_superposition_tensor(
+        tensor: torch.Tensor,
+        fock_indices: list[int],
+        target_dim: int,
+    ) -> torch.Tensor:
+        """Expand compact-basis amplitudes into full Fock-basis amplitudes.
+
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            One-dimensional or batched compact amplitude tensor.
+        fock_indices : list[int]
+            Full Fock-basis indices matching the compact tensor ordering.
+        target_dim : int
+            Full Fock-basis dimension.
+
+        Returns
+        -------
+        torch.Tensor
+            Tensor with the same leading shape and ``target_dim`` as its final
+            dimension.
+        """
+        index_tensor = torch.tensor(
+            fock_indices,
+            dtype=torch.long,
+            device=tensor.device,
+        )
+
+        if tensor.is_sparse:
+            coalesced = tensor.coalesce()
+            indices = coalesced.indices().clone()
+            indices[-1] = index_tensor[indices[-1]]
+            shape = (
+                (target_dim,) if tensor.dim() == 1 else (tensor.shape[0], target_dim)
+            )
+            return torch.sparse_coo_tensor(
+                indices,
+                coalesced.values(),
+                shape,
+                dtype=coalesced.dtype,
+                device=coalesced.device,
+            ).coalesce()
+
         if tensor.dim() == 1:
             expanded = tensor.new_zeros(target_dim)
-            expanded[indices] = tensor
-        else:
-            expanded = tensor.new_zeros(tensor.shape[0], target_dim)
-            expanded[:, indices] = tensor
+            expanded[index_tensor] = tensor
+            return expanded
 
+        expanded = tensor.new_zeros(tensor.shape[0], target_dim)
+        expanded[:, index_tensor] = tensor
         return expanded
 
     def _prepare_superposition_tensor(self) -> torch.Tensor:
@@ -1368,6 +1365,10 @@ class ComputationProcess(AbstractComputationProcess):
             raise TypeError("Input state should be a tensor")
 
         tensor = self.input_state
+
+        coerced = self._coerce_superposition_tensor_shape(tensor)
+        if coerced is not None:
+            tensor = coerced
 
         self._validate_superposition_state_shape(tensor)
 

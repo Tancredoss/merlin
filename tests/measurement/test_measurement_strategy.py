@@ -576,6 +576,7 @@ def test_probabilities_strategy_applies_transforms_and_sampling():
         assert torch.allclose(dist, torch.tensor([3.0]))
         assert shots == 5
         return dist * 0 + shots
+
     # Create a mock sampler with the expected interface
     class MockSampler:
         def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
@@ -836,10 +837,16 @@ class _DummyComputationProcess:
         self.last_simultaneous_processes = simultaneous_processes
         return torch.tensor([1.0])
 
-    def compute(self, params, memristive_current_state=None):
+    def compute(
+        self,
+        params,
+        amplitude_encoding=False,
+        memristive_current_state=None,
+    ):
         if memristive_current_state is None:
             memristive_current_state = []
         self.called = "compute"
+        self.last_amplitude_encoding = amplitude_encoding
         return torch.tensor([2.0])
 
 

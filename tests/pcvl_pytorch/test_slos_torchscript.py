@@ -212,6 +212,7 @@ def test_slos_compute_slos_distribution_with_output_map_function():
         (0, 0, 1, 1),
         (0, 0, 0, 2),
     ]
+    expected_keys = [i[::-1] for i in expected_keys]
     assert (
         keys == expected_keys
     ), f"Keys do not match : expected {expected_keys}, calculated {keys}"

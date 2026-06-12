@@ -32,15 +32,16 @@ from torch import Tensor
 
 from ..builder.circuit_builder import ANGLE_ENCODING_MODE_ERROR, CircuitBuilder
 from ..core.computation_space import ComputationSpace
+from ..core.sectored_distribution import (
+    SectoredDistribution,
+    clean_sectored_distribution,
+)
 from ..core.state import StatePattern, generate_state
 from ..core.state_vector import StateVector
 from ..measurement.autodiff import AutoDiffProcess
-from ..measurement.detectors import DetectorTransform, resolve_detectors
-from ..measurement.photon_loss import PhotonLossTransform, resolve_photon_loss
+from ..measurement.detectors import resolve_detectors
+from ..measurement.strategies import MeasurementStrategy
 from ..pcvl_pytorch.locirc_to_tensor import CircuitConverter
-from ..pcvl_pytorch.slos_torchscript import (
-    build_slos_distribution_computegraph as build_slos_graph,
-)
 from ..utils.deprecations import sanitize_parameters
 from ..utils.dtypes import to_torch_dtype
 from .layer import QuantumLayer
@@ -1084,7 +1085,7 @@ class _CCInvQuantumLayer(QuantumLayer):
         # TODO: In release 0.5.x, remove FeatureMap.encoder compatibility.
         self._encoder = encoder
 
-        raw_keys = self._raw_output_keys
+        raw_keys = cast(list[tuple[int, ...]], self._raw_output_keys)
         try:
             self._input_state_index: int = raw_keys.index(tuple(input_state))
         except ValueError as exc:
@@ -1231,9 +1232,11 @@ class _CCInvQuantumLayer(QuantumLayer):
             any trailing batch dimension squeezed away if the input was 1-D.
         """
         result = self._apply_photon_loss_transform(distribution)
-        if result.ndim > 1 and distribution.ndim == 1:
-            result = result.squeeze(0)
         result = self._apply_detector_transform(result)
+        if isinstance(result, SectoredDistribution):
+            result = cast(Tensor, clean_sectored_distribution(result).to_tensor())
+        if not isinstance(result, Tensor):
+            raise TypeError("Detection pipeline must return a tensor distribution.")
         if result.ndim > 1 and distribution.ndim == 1:
             result = result.squeeze(0)
         return result
@@ -1728,36 +1731,6 @@ class FidelityKernel(MerlinModule):
                 "computation_space must be FOCK if Experiment contains at least one Detector."
             )
 
-        # Resolve noise model presence from the experiment before building the backend.
-        _, empty_noise_model = resolve_photon_loss(self.experiment, m)
-        self.has_custom_noise_model = not empty_noise_model
-        self._slos_graph = build_slos_graph(
-            m=m,
-            n_photons=n,
-            computation_space=self.computation_space,
-            keep_keys=True,
-            device=device,
-            dtype=self.dtype,
-        )
-        # Resolve raw simulation keys and photon loss transform
-        if hasattr(self._slos_graph, "final_keys"):
-            basis_keys = self._slos_graph.final_keys
-        else:
-            basis_keys = self._slos_graph.mapped_keys
-        raw_keys = [tuple(int(v) for v in key) for key in basis_keys]
-        self._raw_output_keys = raw_keys
-        try:
-            self._input_state_index = raw_keys.index(tuple(input_state))
-        except ValueError as exc:  # pragma: no cover - defensive guard
-            raise ValueError(
-                "Input state is not present in the simulation basis produced by the circuit."
-            ) from exc
-
-        self._photon_survival_probs, no_photon_loss_noise = resolve_photon_loss_kernel(
-            self.experiment, m
-        )
-        self.has_custom_noise_model = not no_photon_loss_noise
-
         self._quantum_layer = _CCInvQuantumLayer(
             experiment=self.experiment,
             input_state=input_state,
@@ -1775,6 +1748,7 @@ class FidelityKernel(MerlinModule):
             ),
             encoder=self.feature_map._encoder,
         )
+        self.has_custom_noise_model = self._quantum_layer.has_custom_noise_model
 
         self.is_trainable = feature_map.is_trainable
 
@@ -1862,83 +1836,6 @@ class FidelityKernel(MerlinModule):
             x2 = x2.reshape(-1, self.input_size) if x2 is not None else None
         else:
             raise TypeError("x2 is not None nor torch.Tensor")
-            raise (TypeError("x2 is not None nor torch.Tensor"))
-
-        # Check if we are constructing training matrix
-        equal_inputs = self._check_equal_inputs(x1, x2)
-        U_forward = torch.stack([
-            self.feature_map.compute_unitary(x).to(x1.device) for x in x1
-        ])
-
-        len_x1 = len(x1)
-        if x2 is not None:
-            x2_tensor = (
-                x2
-                if isinstance(x2, torch.Tensor)
-                else torch.as_tensor(x2, dtype=self.dtype, device=self.device)
-            )
-            U_adjoint = torch.stack([
-                self.feature_map.compute_unitary(x).transpose(0, 1).conj().to(x1.device)
-                for x in x2_tensor
-            ])
-            if isinstance(x2, torch.Tensor):
-                U_adjoint = torch.stack([
-                    self.feature_map
-                    .compute_unitary(x)
-                    .transpose(0, 1)
-                    .conj()
-                    .to(x1.device)
-                    for x in x2
-                ])
-            else:
-                raise (TypeError("x2 is not None nor torch.Tensor"))
-
-            # Calculate circuit unitary for every pair of datapoints
-            all_circuits = U_forward.unsqueeze(1) @ U_adjoint.unsqueeze(0)
-            all_circuits = all_circuits.view(-1, *all_circuits.shape[2:])
-        else:
-            U_adjoint = U_forward.conj().transpose(1, 2)
-
-            # Take circuit unitaries for upper diagonal of kernel matrix only
-            upper_idx = torch.triu_indices(
-                len_x1,
-                len_x1,
-                offset=1,
-                device=x1.device,
-            )
-            all_circuits = U_forward[upper_idx[0]] @ U_adjoint[upper_idx[1]]
-
-        # Distribution for every evaluated circuit
-        result = self._slos_graph.compute_probs(all_circuits, self.input_state)
-
-        # Handle both tuple return (SLOSComputeGraph) and SectoredDistribution return (NoisyG2SLOSComputeGraph)
-        from ..core.sectored_distribution import SectoredDistribution
-
-        if isinstance(result, SectoredDistribution):
-            raise NotImplementedError(
-                "Kernels do not currently support g2 noise models"
-            )
-
-        _, probabilities = result
-
-        if probabilities.ndim == 1:
-            probabilities = probabilities.unsqueeze(0)
-        probabilities = probabilities.to(dtype=self.dtype)
-        loss_probs = self._apply_photon_loss_transform(probabilities)
-        detection_probs = self._detector_transform(loss_probs)
-
-        if self.shots > 0:
-            detection_probs = self._autodiff_process.sampling_noise.pcvl_sampler(
-                detection_probs, self.shots, self.sampling_method
-            )
-
-        if self._input_detection_index is not None:
-            transition_probs = detection_probs[:, self._input_detection_index]
-        else:
-            weights = self._input_detection_weights.to(
-                dtype=detection_probs.dtype, device=detection_probs.device
-            )
-            transition_probs = detection_probs @ weights
 
         self._quantum_layer.force_psd = self.force_psd
         if x2 is None:
@@ -1954,25 +1851,6 @@ class FidelityKernel(MerlinModule):
             shots=self.shots,
             sampling_method=self.sampling_method,
         )
-        U = self.feature_map.compute_unitary(x1_t)
-        U_adjoint = self.feature_map.compute_unitary(x2_t)
-        U_adjoint = U_adjoint.conj().T
-
-        kernel_unitary = U @ U_adjoint
-        result = self._slos_graph.compute_probs(kernel_unitary, self.input_state)
-
-        # Handle both tuple return (SLOSComputeGraph) and SectoredDistribution return (NoisyG2SLOSComputeGraph)
-        from ..core.sectored_distribution import SectoredDistribution
-
-        if isinstance(result, SectoredDistribution):
-            raise NotImplementedError(
-                "Kernels do not currently support g2 noise models"
-            )
-
-        _, probabilities = result
-        if probabilities.ndim == 1:
-            probabilities = probabilities.unsqueeze(0)
-        probabilities = probabilities.to(dtype=self.dtype, device=self.device)
 
     # TODO: In release 0.5.x, remove FidelityKernel.simple.
     @classmethod

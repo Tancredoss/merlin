@@ -976,8 +976,8 @@ class TestFidelityKernelFactoryMethods:
             assert params[1].numel() == i * (i + 1)
             assert len(params) == 2
             assert kernel.feature_map.is_trainable
-            assert "LI_simple" in named_params
-            assert "RI_simple" in named_params
+            assert "_quantum_layer.LI_simple" in named_params
+            assert "_quantum_layer.RI_simple" in named_params
 
 
 class TestKernelCircuitBuilder:

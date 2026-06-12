@@ -831,14 +831,13 @@ def test_indistiguishable_layer_against_perceval_unitary():
         measurement_strategy=ml.MeasurementStrategy.probs(
             computation_space=ml.ComputationSpace.FOCK
         ),
-        amplitude_encoding=True,
         dtype=torch.float64,
     )
 
     # Test input states: enumerate Fock states for 2 photons in 2 modes.
     test_states_perceval = [[2, 0], [1, 1], [0, 2]]
     test_states_merlin = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-    batched_input = torch.tensor(test_states_merlin, dtype=torch.float32)
+    batched_input = torch.tensor(test_states_merlin, dtype=torch.complex128)
 
     # Single batched call for all three input states.
     layer_output = layer(batched_input)
@@ -1088,21 +1087,14 @@ def test_computation_space_changed():
         assert layer.computation_space == ml.ComputationSpace.FOCK
         assert layer.output_size == 15
         assert layer().size(0) == 15
-    with pytest.raises(
-        UserWarning,
-        match="Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
-    ):
-        layer = ml.QuantumLayer(
+    with pytest.raises(ValueError, match="amplitude_encoding=True was removed"):
+        ml.QuantumLayer(
             builder=builder,
             noise=noise,
             n_photons=2,
             computation_space=ml.ComputationSpace.UNBUNCHED,
             amplitude_encoding=True,
         )
-        assert layer.computation_space == ml.ComputationSpace.FOCK
-        assert layer.output_size == 15
-        assert layer.input_size == 15
-        assert layer(torch.ones(15)).size(0) == 15
 
 
 # Regression tests for g2 implementation (PML-286)

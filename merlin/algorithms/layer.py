@@ -44,7 +44,7 @@ from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
 from ..core.sectored_distribution import SectoredDistribution, SectorResult
 from ..core.state import StatePattern, _generate_default_input_state, generate_state
-from ..core.state_vector import StateVector
+from ..core.state_vector import StateVector, embed_tensor_in_fock_basis
 from ..measurement import OutputMapper
 from ..measurement.autodiff import AutoDiffProcess
 from ..measurement.detectors import DetectorTransform
@@ -424,7 +424,7 @@ class QuantumLayer(MerlinModule):
             # Default behavior: place [1,0,1,0,...] in dual-rail, else distribute photons across modes
             if self.computation_space is ComputationSpace.DUAL_RAIL:
                 self.input_state = pcvl.BasicState(tuple([1, 0] * n_photons))
-            else:
+            elif not self.amplitude_encoding:
                 self.input_state = generate_state(
                     circuit.m, n_photons, StatePattern.SPACED
                 )
@@ -798,9 +798,31 @@ class QuantumLayer(MerlinModule):
                     expected_dim = len(self.output_keys)
 
         feature_dim = amplitude.shape[-1]
-        if feature_dim != expected_dim:
+        accepted_dims = {expected_dim}
+        compact_unbunched_dim: int | None = None
+        if (
+            self.computation_space is ComputationSpace.FOCK
+            and self.n_photons <= self.circuit.m
+        ):
+            compact_unbunched_dim = Combinadics(
+                scheme=ComputationSpace.UNBUNCHED.value,
+                n=self.n_photons,
+                m=self.circuit.m,
+            ).compute_space_size()
+            accepted_dims.add(compact_unbunched_dim)
+
+        if feature_dim not in accepted_dims:
+            expected_message = f"{expected_dim} components"
+            if (
+                compact_unbunched_dim is not None
+                and compact_unbunched_dim != expected_dim
+            ):
+                expected_message = (
+                    f"{expected_message} or compact unbunched size "
+                    f"{compact_unbunched_dim}"
+                )
             raise ValueError(
-                f"Amplitude input expects {expected_dim} components, received {feature_dim}."
+                f"Amplitude input expects {expected_message}, received {feature_dim}."
             )
             # TODO: suggest/implement zero-padding or sparsity tensor format
 
@@ -1207,6 +1229,10 @@ class QuantumLayer(MerlinModule):
             _resolve_measurement_kind(self.measurement_strategy)
             == MeasurementKind.PARTIAL
         ):
+            if not isinstance(results, PartialMeasurement):
+                raise TypeError(
+                    "Partial measurement strategy must return a PartialMeasurement."
+                )
             output = results
 
         elif (
@@ -1311,28 +1337,6 @@ class QuantumLayer(MerlinModule):
         simultaneous_processes: int | None,
     ) -> torch.Tensor | SectoredDistribution:
         """Select the computation path based on the encoding mode and input state."""
-
-        if isinstance(inferred_state, torch.Tensor):
-            if parameter_batch_dim:
-                chunk = simultaneous_processes or inferred_state.shape[-1]
-                return self.computation_process.compute_ebs_simultaneously(
-                    params,
-                    simultaneous_processes=chunk,
-                    memristive_current_state=self.memristive_state,
-                )
-            return cast(
-                torch.Tensor,
-                self.computation_process.compute_superposition_state(
-                    params,
-                    simultaneous_processes=simultaneous_processes,
-                    memristive_current_state=self.memristive_state,
-                ),
-            )
-        return self.computation_process.compute(
-            params,
-            memristive_current_state=self.memristive_state,
-        )
-        # Checking if there is source noise
         probability_output_noise = has_source_noise(
             self._noise_groups
         ) or has_phase_error(self._noise_groups)
@@ -1349,21 +1353,34 @@ class QuantumLayer(MerlinModule):
                     else (1 if inferred_state.dim() == 1 else inferred_state.shape[0])
                 )
                 return self.computation_process.compute_ebs_simultaneously(
-                    params, simultaneous_processes=batch_size
+                    params,
+                    simultaneous_processes=batch_size,
+                    memristive_current_state=self.memristive_state,
                 )
             if isinstance(inferred_state, torch.Tensor):
                 if parameter_batch_dim:
                     chunk = simultaneous_processes or inferred_state.shape[-1]
                     return self.computation_process.compute_ebs_simultaneously(
-                        params, simultaneous_processes=chunk
+                        params,
+                        simultaneous_processes=chunk,
+                        memristive_current_state=self.memristive_state,
                     )
-                return self.computation_process.compute_superposition_state(params)
-        # If there is source noise, we just compute the probabilities
+                return cast(
+                    torch.Tensor,
+                    self.computation_process.compute_superposition_state(
+                        params,
+                        simultaneous_processes=simultaneous_processes,
+                        memristive_current_state=self.memristive_state,
+                    ),
+                )
+
         should_use_amplitude_encoding = self.amplitude_encoding or isinstance(
             inferred_state, torch.Tensor
         )
         return self.computation_process.compute(
-            params, amplitude_encoding=should_use_amplitude_encoding
+            params,
+            amplitude_encoding=should_use_amplitude_encoding,
+            memristive_current_state=self.memristive_state,
         )
 
     def _renormalize_distribution_and_amplitudes(
@@ -1473,37 +1490,33 @@ class QuantumLayer(MerlinModule):
             self.device,
         )
 
-            # Photon loss Module
-            if self._photon_loss_transform is not None:
-                if isinstance(self._photon_loss_transform, Sequence):
-                    for i in range(len(self._photon_loss_transform)):
-                        self._photon_loss_transform[i] = self._photon_loss_transform[
-                            i
-                        ].to(device)
-                else:
-                    self._photon_loss_transform = self._photon_loss_transform.to(device)
-            # Detector Module
-            if self._detector_transform is not None:
-                if isinstance(self._detector_transform, Sequence):
-                    for i in range(len(self._detector_transform)):
-                        self._detector_transform[i] = self._detector_transform[i].to(
-                            device
-                        )
-                else:
-                    self._detector_transform = self._detector_transform.to(device)
         # Photon loss Module
         if self._photon_loss_transform is not None:
-            self._photon_loss_transform = self._photon_loss_transform.to(
-                device=self.device,
-                dtype=self.dtype,
-            )
+            if isinstance(self._photon_loss_transform, Sequence):
+                for i in range(len(self._photon_loss_transform)):
+                    self._photon_loss_transform[i] = self._photon_loss_transform[i].to(
+                        device=self.device,
+                        dtype=self.dtype,
+                    )
+            else:
+                self._photon_loss_transform = self._photon_loss_transform.to(
+                    device=self.device,
+                    dtype=self.dtype,
+                )
 
         # Detector Module
         if self._detector_transform is not None:
-            self._detector_transform = self._detector_transform.to(
-                device=self.device,
-                dtype=self.dtype,
-            )
+            if isinstance(self._detector_transform, Sequence):
+                for i in range(len(self._detector_transform)):
+                    self._detector_transform[i] = self._detector_transform[i].to(
+                        device=self.device,
+                        dtype=self.dtype,
+                    )
+            else:
+                self._detector_transform = self._detector_transform.to(
+                    device=self.device,
+                    dtype=self.dtype,
+                )
 
         target_kwargs: dict[str, Any] = {"dtype": self.dtype}
         if self.device is not None:
