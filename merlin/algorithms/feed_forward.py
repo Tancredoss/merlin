@@ -1395,16 +1395,14 @@ class FeedForwardBlock(MerlinModule):
                     != MeasurementKind["PROBABILITIES"]
                 ):
                     continue
-                entries.append(
-                    (
-                        key,
-                        probability_total,
-                        amplitude_total,
-                        weight_total,
-                        basis_keys,
-                        remaining_n,
-                    )
-                )
+                entries.append((
+                    key,
+                    probability_total,
+                    amplitude_total,
+                    weight_total,
+                    basis_keys,
+                    remaining_n,
+                ))
 
         if not entries:
             self._output_keys = []
@@ -1672,19 +1670,19 @@ class FeedForwardBlock(MerlinModule):
                     if src_idx is not None:
                         reordered[..., tgt_idx] = src[..., src_idx]
                 normalized_amplitudes = reordered
-            mixed_states.append(
-                (
-                    key,
-                    branch_probability,
-                    remaining_n,
-                    normalized_amplitudes,
-                )
-            )
+            mixed_states.append((
+                key,
+                branch_probability,
+                remaining_n,
+                normalized_amplitudes,
+            ))
         self._output_keys = [entry[0] for entry in mixed_states]
         self._output_state_sizes = None
         return mixed_states
 
-    def _aggregate_branch_list(self, branch_list: list[BranchState]) -> tuple[
+    def _aggregate_branch_list(
+        self, branch_list: list[BranchState]
+    ) -> tuple[
         torch.Tensor | None,
         torch.Tensor | None,
         torch.Tensor | None,
