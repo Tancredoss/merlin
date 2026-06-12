@@ -242,7 +242,29 @@ DEPRECATION_REGISTRY: dict[
         None,
         _reject_no_bunching_init,
     ),
-    # KernelCircuitBuilder.build_fidelity_kernel deprecations
+    # KernelCircuitBuilder deprecations
+    # TODO: In release 0.5.x, remove these entries along with KernelCircuitBuilder.
+    "KernelCircuitBuilder.__init__": (
+        "KernelCircuitBuilder is deprecated and will be removed in release 0.5. "
+        "Use CircuitBuilder with FeatureMap(builder=...) and "
+        "FidelityKernel(feature_map=...) directly.",
+        False,
+        None,
+    ),
+    "KernelCircuitBuilder.build_feature_map": (
+        "KernelCircuitBuilder.build_feature_map() is deprecated and will be removed "
+        "in release 0.5. Use CircuitBuilder with FeatureMap(builder=...) directly.",
+        False,
+        None,
+    ),
+    "KernelCircuitBuilder.build_fidelity_kernel": (
+        "KernelCircuitBuilder.build_fidelity_kernel() is deprecated and will be "
+        "removed in release 0.5. Use CircuitBuilder with FeatureMap(builder=...) "
+        "and FidelityKernel(feature_map=...) directly.",
+        False,
+        None,
+    ),
+    # KernelCircuitBuilder.build_fidelity_kernel parameter-level deprecations
     "KernelCircuitBuilder.build_fidelity_kernel.no_bunching": (
         None,
         None,
