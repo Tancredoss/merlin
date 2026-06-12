@@ -932,7 +932,7 @@ def normalize_output_key(
 
 def extract_photon_count(input_state) -> int | None:
     """Extract photon number (for stateVector and basicState only)
-    
+
     Parameters
     ----------
     input_state : :class:`~merlin.core.state_vector.StateVector` | pcvl.StateVector | pcvl.BasicState
