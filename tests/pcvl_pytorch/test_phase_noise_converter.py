@@ -29,6 +29,7 @@ import inspect
 import perceval as pcvl
 import pytest
 import torch
+import torch.nn.functional as F
 
 import merlin.pcvl_pytorch.locirc_to_tensor as locirc_to_tensor
 from merlin.pcvl_pytorch.locirc_to_tensor import CircuitConverter
@@ -345,12 +346,19 @@ def test_phase_error_perturbations_do_not_require_gradients():
     2. Gradients with respect to the commanded phase are computed correctly
     3. The gradient does not reflect perturbations (is deterministic wrt phase)
     """
-    circuit = _single_phase_circuit()
+    circuit = pcvl.Circuit(2)
+    circuit.add((0, 1), pcvl.BS.H())
+    circuit.add(0, pcvl.PS(pcvl.P("phi")))
+    circuit.add((0, 1), pcvl.BS.H())
     converter = CircuitConverter(
         circuit,
         ["phi"],
         dtype=torch.float64,
         phase_error=0.1,
+    )
+    target_probabilities = torch.tensor(
+        [[0.1, 0.9], [0.9, 0.1]],
+        dtype=torch.float64,
     )
 
     # Create a trainable phase parameter
@@ -360,8 +368,8 @@ def test_phase_error_perturbations_do_not_require_gradients():
     torch.manual_seed(42)
     unitary1 = converter.to_tensor(phase, apply_phase_error=True)
 
-    # Compute loss and backward pass (safe because 1x1 PS)
-    loss1 = unitary1.real.sum()
+    probabilities1 = unitary1.abs().square()
+    loss1 = F.mse_loss(probabilities1, target_probabilities)
     loss1.backward()
     grad1 = phase.grad.clone()
 
@@ -370,7 +378,8 @@ def test_phase_error_perturbations_do_not_require_gradients():
     torch.manual_seed(42)
     unitary2 = converter.to_tensor(phase, apply_phase_error=True)
 
-    loss2 = unitary2.real.sum()
+    probabilities2 = unitary2.abs().square()
+    loss2 = F.mse_loss(probabilities2, target_probabilities)
     loss2.backward()
     grad2 = phase.grad
 

@@ -132,6 +132,12 @@ def _manual_coherent_phase_error_average(
     return accumulated / process._n_phase_error_samples
 
 
+def _sector_key_groups(
+    distribution: SectoredDistribution,
+) -> list[list[tuple[int, ...]]]:
+    return [list(sector.keys) for sector in distribution.sectors]
+
+
 def _manual_incoherent_phase_error_average(
     process: ComputationProcess,
     parameters: list[torch.Tensor],
@@ -472,6 +478,42 @@ def test_phase_error_with_g2_averages_sectored_distributions():
     for sector in output.sectors:
         expected_sector = expected.get_sector(sector.n_photons)
         assert torch.allclose(sector.tensor, expected_sector.tensor)
+
+
+def test_compute_with_keys_returns_source_g2_sector_keys():
+    process = _process(
+        NoiseGroups(
+            source={"g2": 0.05},
+            circuit=None,
+            post_measurement=None,
+        )
+    )
+
+    keys, output = process.compute_with_keys(_phase_parameter())
+    unkeyed_output = process.compute(_phase_parameter())
+
+    assert isinstance(output, SectoredDistribution)
+    assert isinstance(unkeyed_output, SectoredDistribution)
+    assert keys == _sector_key_groups(output)
+    assert keys == process.simulation_graph.mapped_keys
+
+
+def test_compute_with_keys_returns_phase_error_g2_sector_keys():
+    process = _process(
+        NoiseGroups(
+            source={"g2": 0.05},
+            circuit={"phase_error": 0.2},
+            post_measurement=None,
+        ),
+        n_phase_error_samples=3,
+    )
+
+    torch.manual_seed(123)
+    keys, output = process.compute_with_keys(_phase_parameter())
+
+    assert isinstance(output, SectoredDistribution)
+    assert keys == _sector_key_groups(output)
+    assert keys == process.simulation_graph.mapped_keys
 
 
 def test_n_phase_error_samples_must_be_integer():

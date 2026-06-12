@@ -133,6 +133,26 @@ This is different from averaging amplitudes or unitaries first:
 
 Merlin does not use this second expression for ``phase_error``.
 
+For example, consider two sampled output states:
+
+.. math::
+
+   \psi_+
+   =
+   \frac{1}{\sqrt{2}}\left(|10\rangle + |01\rangle\right),
+   \qquad
+   \psi_-
+   =
+   \frac{1}{\sqrt{2}}\left(|10\rangle - |01\rangle\right)
+
+Each sampled state has probability :math:`1/2` on :math:`|10\rangle` and
+probability :math:`1/2` on :math:`|01\rangle`, so averaging probabilities keeps
+the 50/50 distribution. Averaging amplitudes first cancels the
+:math:`|01\rangle` component. If that averaged amplitude vector is then
+renormalized, it becomes :math:`|10\rangle`, giving probability 1 on
+:math:`|10\rangle` and probability 0 on :math:`|01\rangle`. This is not the
+Monte Carlo probability mixture used by Merlin.
+
 An incoherent error is represented as a classical mixture of alternatives. The
 relative phases between alternatives are not used for interference; Merlin
 combines probabilities, not amplitudes. Source noise is handled this way. For a

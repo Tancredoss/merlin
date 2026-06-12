@@ -1044,7 +1044,8 @@ class ComputationProcess(AbstractComputationProcess):
                 amplitude_encoding=use_input_state_superposition,
             )
             if isinstance(probabilities, SectoredDistribution):
-                return None, probabilities
+                keys = [list(sector.keys) for sector in probabilities.sectors]
+                return keys, probabilities
             return self.simulation_graph.mapped_keys, probabilities
 
         unitary = self.converter.to_tensor(*parameters)
@@ -1052,7 +1053,8 @@ class ComputationProcess(AbstractComputationProcess):
         if self._has_source_noise():
             result = self.simulation_graph.compute_probs(unitary, self.input_state)
             if isinstance(result, SectoredDistribution):
-                return None, result
+                keys = [list(sector.keys) for sector in result.sectors]
+                return keys, result
             keys, probs = result
             return keys, probs
 
