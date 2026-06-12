@@ -1104,7 +1104,9 @@ def validate_noisy_measurement_strategy(
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )
-    if output == "mode_expectations" and noise is not None:
+    if (
+        output == "mode_expectations" or output == "mode_expectations"
+    ) and noise is not None:
         raise ValueError(
             "When doing a noisy simulation, the probabilities measurement strategy must be used."
         )
@@ -1190,3 +1192,13 @@ def normalize_noise(
         output_nm.g2_distinguishable = False
 
     return output_nm
+
+
+def _normalize_sector_keys(
+    keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]],
+) -> tuple[tuple[int, ...], ...]:
+    if keys and isinstance(keys[0], list):
+        nested_keys = cast(list[list[tuple[int, ...]]], keys)
+        return tuple(tuple(k) for key_list in nested_keys for k in key_list)
+    flat_keys = cast(list[tuple[int, ...]], keys)
+    return tuple(tuple(k) for k in flat_keys)

@@ -203,7 +203,7 @@ Output:
 
 The default value of the ``indistinguishability`` parameter of the ``NoiseModel`` is 1.0, because in the perfect case all photons are indistinguishable.
 
-7. g2
+6. g2
 -----------------------------------
 
 The g2 value is correlated to the probability that a source emits two photons instead of one. Mathematically, it is defined by :math:`g(2)=\frac{\langle n(n-1)\rangle}{\langle n \rangle^2}`. Here, since we only analyze the probability that a second photon is emitted and not higher-order emissions, we can define p as the probability that two photons are emitted: :math:`p=\frac{1-g(2)-\sqrt{1-2g(2)}}{2g(2)}`. So a ``g(2)`` of ``0.5`` corresponds to the case where all generated photons are duplicated.
@@ -233,18 +233,29 @@ This noise can change the output type considerably when running the ``forward`` 
     )
     output = layer()
 
-    for sector in output.sectors:
-        print(f"{sector.n_photons}-photon sector had probabilities of {sector.tensor}")
+    #Printing the probabilities
+    for key, prob in zip(layer.output_keys, output.flatten()):
+        print(f"Output probability of state {key} is {prob}")
 
 
 Output:
-    - 2-photon sector had probabilities of tensor([[0.3431, 0.0000, 0.3431]])
-    - 3-photon sector had probabilities of tensor([[0.1066, 0.0355, 0.0355, 0.1066]])
-    - 4-photon sector had probabilities of tensor([[0.0110, 0.0000, 0.0074, 0.0000, 0.0110]])
+    - Output probability of state (2, 0) is 0.1348033845424652
+    - Output probability of state (1, 0) is 0.019606785848736763
+    - Output probability of state (0, 0) is 0.1348033845424652
+    - Output probability of state (1, 1) is 0.016084961593151093
+    - Output probability of state (0, 1) is 0.0053616538643836975
+    - Output probability of state (0, 2) is 0.0053616538643836975
+    - Output probability of state (3, 0) is 0.016084961593151093
+    - Output probability of state (2, 1) is 0.0006899359868839383
+    - Output probability of state (1, 2) is 0.0
+    - Output probability of state (0, 3) is 0.00045995728578418493
+    - Output probability of state (4, 0) is 0.0
+    - Output probability of state (3, 1) is 0.0006899359868839383
+    - Output probability of state (2, 2) is 0.2285533845424652
+    - Output probability of state (1, 3) is 0.2285533845424652
+    - Output probability of state (0, 4) is 0.2089466005563736
 
-We observe that the output is not a :class:`torch.Tensor` even though it contains probabilities. Indeed, because the space analyzed by a quantum interferometer depends on the number of input photons (the Fock space dimension for n photons and m modes is defined by :math:`\binom{m+n-1}{n}`), the output of the :class:`~merlin.algorithms.layer.QuantumLayer`'s forward method cannot be stored in a single tensor. The output is a :class:`~merlin.core.sectored_distribution.SectoredDistribution` that contains :class:`~merlin.core.sectored_distribution.SectorResult` objects, each describing a sector's probability distribution. Thus, g2 noise simulations explore a larger space and are handled differently in the output of the :class:`~merlin.algorithms.layer.QuantumLayer`'s forward method. Photon loss and detectors are applied to each sector independently.
-
-Noisy simulations with ``g2>0`` cannot use a grouping strategy. Indeed, since this noise creates input states with more photons than expected, multiple photon sectors are explored. The Fock spaces explored range from n_photons to 2*n_photons in m modes, each with a different dimension. To still apply a grouping strategy, you can iterate over the :class:`~merlin.core.sectored_distribution.SectorResult` objects of the :class:`~merlin.core.sectored_distribution.SectoredDistribution` and apply one grouping per sector.
+We observe that the output is a large :class:`torch.Tensor`. Indeed, because the space analyzed by a quantum interferometer depends on the number of input photons (the Fock space dimension for n photons and m modes is defined by :math:`\binom{m+n-1}{n}`).  Thus, g2 noise simulations explore a larger space and are handled differently in the output of the :class:`~merlin.algorithms.layer.QuantumLayer`'s forward method. Photon loss and detectors are applied to each sector independently.
 
 The default value of the ``g2`` parameter of the ``NoiseModel`` is 0.0. This is the case where no extra photons are ever generated.
 
