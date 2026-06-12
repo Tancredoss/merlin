@@ -62,8 +62,8 @@ from ..utils.deprecations import (
 from ..utils.grouping import ModGrouping
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
-    InitializationContext,
     _CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE,
+    InitializationContext,
     apply_angle_encoding,
     compute_new_memristive_ps_angles,
     feature_count_for_prefix,

@@ -58,7 +58,6 @@ from ..measurement.strategies import (
     _resolve_measurement_kind,
 )
 
-
 _CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE = (
     "amplitude_encoding=True was removed in 0.4. Pass amplitude data to "
     "forward(StateVector) or forward(complex_tensor) instead. Convert "

@@ -279,9 +279,7 @@ def test_complex_amplitude_batches_use_superposition_path(make_layer):
     process.compute_superposition_state = MethodType(tracked_super, process)
 
     num_states = len(process.simulation_graph.mapped_keys)
-    batched_state = torch.rand(3, num_states, dtype=torch.float64).to(
-        torch.complex128
-    )
+    batched_state = torch.rand(3, num_states, dtype=torch.float64).to(torch.complex128)
 
     layer(batched_state)
 
