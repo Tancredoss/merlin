@@ -16,14 +16,6 @@ from merlin.algorithms.layer_utils import (
     normalize_noise,
 )
 from merlin.core import StateVector
-from merlin.core.sectored_distribution import SectoredDistribution
-
-
-G2_TENSOR_OUTPUT_PENDING_REASON = (
-    "Pending g2 tensor-output PR. These tests currently assert the legacy "
-    "SectoredDistribution return shape and must be rewritten once g2 returns "
-    "tensors."
-)
 
 
 @pytest.fixture
@@ -394,13 +386,7 @@ def test_phase_error_with_indistinguishability_constructs_and_forwards():
     _assert_normalized_distribution(output, 2)
 
 
-@pytest.mark.skip(reason=G2_TENSOR_OUTPUT_PENDING_REASON)
-def test_phase_error_with_g2_returns_sectored_distribution():
-    # TODO: When the g2 tensor-output PR is merged, rename this test to
-    # test_phase_error_with_g2_returns_tensor and assert:
-    # - isinstance(output, torch.Tensor)
-    # - torch.all(output >= 0.0)
-    # - torch.allclose(output.sum(dim=-1), output.new_ones(output.shape[:-1]))
+def test_phase_error_with_g2_returns_tensor():
     layer = ml.QuantumLayer(
         input_size=0,
         circuit=_phase_circuit(),
@@ -422,19 +408,13 @@ def test_phase_error_with_g2_returns_sectored_distribution():
     torch.manual_seed(123)
     output = layer()
 
-    assert isinstance(output, SectoredDistribution)
-    assert output.sectors
-    assert all(torch.all(sector.tensor >= 0.0) for sector in output.sectors)
+    assert isinstance(output, torch.Tensor)
+    assert output.shape[-1] == len(layer.output_keys)
+    assert torch.all(output >= 0.0)
+    _assert_normalized_distribution(output, len(layer.output_keys))
 
 
-@pytest.mark.skip(reason=G2_TENSOR_OUTPUT_PENDING_REASON)
 def test_phase_error_with_g2_and_statevector_input_is_reproducible():
-    # TODO: When the g2 tensor-output PR is merged, replace sector iteration with:
-    # assert isinstance(first_output, torch.Tensor)
-    # assert isinstance(second_output, torch.Tensor)
-    # assert torch.allclose(first_output, second_output)
-    # expected_norm = first_output.new_ones(first_output.shape[:-1])
-    # assert torch.allclose(first_output.sum(dim=-1), expected_norm)
     layer = ml.QuantumLayer(
         input_size=0,
         circuit=_phase_circuit(),
@@ -463,17 +443,11 @@ def test_phase_error_with_g2_and_statevector_input_is_reproducible():
     torch.manual_seed(123)
     second_output = layer(input_state)
 
-    assert isinstance(first_output, SectoredDistribution)
-    assert isinstance(second_output, SectoredDistribution)
-    assert {sector.n_photons for sector in first_output.sectors} == {1, 2}
-    total_probability = first_output.sectors[0].tensor.new_tensor(0.0)
-
-    for first_sector in first_output.sectors:
-        second_sector = second_output.get_sector(first_sector.n_photons)
-        assert torch.allclose(first_sector.tensor, second_sector.tensor)
-        total_probability = total_probability + first_sector.tensor.sum()
-
-    assert torch.allclose(total_probability, total_probability.new_tensor(1.0))
+    assert isinstance(first_output, torch.Tensor)
+    assert isinstance(second_output, torch.Tensor)
+    assert torch.allclose(first_output, second_output)
+    assert torch.all(first_output >= 0.0)
+    _assert_normalized_distribution(first_output, len(layer.output_keys))
 
 
 def test_phase_error_with_brightness_applies_photon_loss_after_average():
@@ -528,7 +502,8 @@ def test_phase_noise_via_experiment_constructs_and_forwards():
     torch.manual_seed(123)
     output = layer()
 
-    _assert_normalized_distribution(output, 2)
+    assert torch.all(output >= 0.0)
+    _assert_normalized_distribution(output, len(layer.output_keys))
 
 
 def test_normalise_noise():
@@ -1225,15 +1200,8 @@ def test_brightness_still_uses_post_measurement_approximation():
     assert output is not None
 
 
-@pytest.mark.skip(reason=G2_TENSOR_OUTPUT_PENDING_REASON)
-def test_g2_layer_forward_returns_sectored_distribution():
-    """Regression: layer(x) returns SectoredDistribution when g2 > 0."""
-
-    # TODO: When the g2 tensor-output PR is merged, rename this test to
-    # test_g2_layer_forward_returns_tensor and assert:
-    # - isinstance(output, torch.Tensor)
-    # - output.shape[0] == x.shape[0]
-    # - torch.all(output >= 0.0)
+def test_g2_layer_forward_returns_tensor():
+    """Regression: layer(x) returns a tensor when g2 > 0."""
     circ = ml.CircuitBuilder(n_modes=3)
     circ.add_entangling_layer()
     circ.add_angle_encoding(modes=[0, 1])
@@ -1252,22 +1220,15 @@ def test_g2_layer_forward_returns_sectored_distribution():
     x = torch.randn(1, 2)
     output = layer(x)
 
-    # Output should be SectoredDistribution when g2 > 0
-    from merlin.core import SectoredDistribution
+    assert isinstance(output, torch.Tensor)
+    assert output.shape[0] == x.shape[0]
+    assert output.shape[-1] == len(layer.output_keys)
+    assert torch.all(output >= 0.0)
+    _assert_normalized_distribution(output, len(layer.output_keys))
 
-    assert isinstance(output, SectoredDistribution)
-    assert len(output.sectors) > 0
 
-
-@pytest.mark.skip(reason=G2_TENSOR_OUTPUT_PENDING_REASON)
 def test_g2_gradient_regression():
     """Regression: loss.backward() completes and layer.thetas.grad is not None for g2 > 0."""
-
-    # TODO: When the g2 tensor-output PR is merged, compute the loss directly
-    # from the output tensor:
-    # state = torch.zeros_like(output)
-    # state[..., 0] = 1
-    # loss = ((output - state) ** 2).mean()
     circ = ml.CircuitBuilder(n_modes=3)
     circ.add_entangling_layer(trainable=True)
     circ.add_angle_encoding(modes=[0, 1])
@@ -1286,7 +1247,7 @@ def test_g2_gradient_regression():
     x = torch.randn(1, 2, requires_grad=True)
     output = layer(x)
     state = torch.zeros_like(output)
-    state[0] = 1
+    state[..., 0] = 1
     loss = ((output - state) ** 2).mean()
     loss.backward()
 
