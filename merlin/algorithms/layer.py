@@ -43,7 +43,7 @@ from ..core.partial_measurement import PartialMeasurement
 from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
 from ..core.sectored_distribution import SectoredDistribution, SectorResult
-from ..core.state import StatePattern, generate_state
+from ..core.state import StatePattern, _generate_default_input_state, generate_state
 from ..core.state_vector import StateVector
 from ..measurement import OutputMapper
 from ..measurement.autodiff import AutoDiffProcess
