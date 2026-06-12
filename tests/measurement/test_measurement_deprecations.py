@@ -116,7 +116,6 @@ class TestMeasurementStrategyDeprecations:
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
-                computation_space=ComputationSpace.FOCK,
                 measurement_strategy="PROBABILITIES",
             )
 
@@ -130,7 +129,6 @@ class TestMeasurementStrategyDeprecations:
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
-                computation_space=ComputationSpace.FOCK,
                 measurement_strategy="AMPLITUDES",
             )
 
@@ -144,7 +142,6 @@ class TestMeasurementStrategyDeprecations:
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
-                computation_space=ComputationSpace.FOCK,
                 measurement_strategy="MODE_EXPECTATIONS",
             )
 
@@ -152,7 +149,7 @@ class TestMeasurementStrategyDeprecations:
         circuit = pcvl.Circuit(2)
         with pytest.raises(
             AttributeError,
-            match="Passing 'computation_space' without an explicit measurement_strategy is no longer supported as of v0.4.",
+            match="Cannot specify 'computation_space' in QuantumLayer's constructor. Move",
         ):
             layer = QuantumLayer(
                 input_size=0,

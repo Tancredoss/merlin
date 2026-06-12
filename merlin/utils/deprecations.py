@@ -78,6 +78,20 @@ def _remove_QuantumLayer_simple_n_params(
     return kwargs
 
 
+def _remove_QuantumLayer_computation_space(
+    method_qualname: str, kwargs: dict[str, Any]
+) -> None:
+    """
+    Remove the computation space arg from quantumlayer init
+    """
+    raise AttributeError(
+        "Cannot specify 'computation_space' in QuantumLayer's constructor. "
+        "Move 'computation_space' into the factory method instead. It is no longer supported as of v0.4. "
+        "For example: MeasurementStrategy.probs(computation_space=ComputationSpace.FOCK) "
+        "instead of QuantumLayer(..., computation_space=..., measurement_strategy=...)."
+    )
+
+
 def _remove_FeatureMap_simple_n_photons(
     method_qualname: str, kwargs: dict[str, Any]
 ) -> dict[str, Any]:
@@ -141,6 +155,11 @@ DEPRECATION_REGISTRY: dict[
         None,
         None,
         _reject_no_bunching_init,
+    ),
+    "QuantumLayer.__init__.computation_space": (
+        None,
+        None,
+        _remove_QuantumLayer_computation_space,
     ),
     # QuantumLayer.simple deprecations
     "QuantumLayer.simple.no_bunching": (
@@ -306,7 +325,6 @@ def _collect_deprecations_and_converters(
 
 def normalize_measurement_strategy(
     measurement_strategy: MeasurementStrategyLike | str | None,
-    computation_space: ComputationSpace | str | None,
 ) -> tuple[MeasurementStrategyLike, ComputationSpace]:
     """
     Normalize measurement strategy and computation space with deprecation errors.
@@ -357,19 +375,11 @@ def normalize_measurement_strategy(
     )
 
     # Track whether computation_space was explicitly provided by user
-    computation_space_provided = computation_space is not None
 
     if measurement_strategy is None:
-        if computation_space is None:
-            computation_space = ComputationSpace.UNBUNCHED
-            measurement_strategy = MeasurementStrategy.probs(computation_space)
-            return measurement_strategy, computation_space
-        else:
-            computation_space = ComputationSpace.coerce(computation_space)
-            raise AttributeError(
-                "Passing 'computation_space' without an explicit measurement_strategy is no longer supported as of v0.4. "
-                "Use MeasurementStrategy.probs(computation_space=...) instead. "
-            )
+        computation_space = ComputationSpace.UNBUNCHED
+        measurement_strategy = MeasurementStrategy.probs(computation_space)
+        return measurement_strategy, computation_space
 
     if isinstance(measurement_strategy, str):
         raise TypeError(
@@ -384,15 +394,6 @@ def normalize_measurement_strategy(
             raise ValueError(
                 "MeasurementStrategy must define computation_space. "
                 "Use MeasurementStrategy.probs(computation_space) instead."
-            )
-
-        # CONFLICT CHECK: Constructor computation_space + new factory method
-        if computation_space_provided:
-            raise AttributeError(
-                "Cannot specify 'computation_space' in QuantumLayer's constructor. "
-                "Move 'computation_space' into the factory method instead. It is no longer supported as of v0.4. "
-                "For example: MeasurementStrategy.probs(computation_space=ComputationSpace.FOCK) "
-                "instead of QuantumLayer(..., computation_space=..., measurement_strategy=...)."
             )
 
         return measurement_strategy, strategy_space
