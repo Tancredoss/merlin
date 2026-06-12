@@ -372,13 +372,6 @@ def prepare_input_state(
         # Pass through as tensor for backward compatibility
         return input_state, n_photons
 
-    # === Handle tuple/list (convert to BasicState) ===
-    if isinstance(input_state, (list, tuple)):
-        input_list = list(input_state)
-
-        # On force la conversion en int pour ne pas faire crasher Perceval
-        return pcvl.BasicState(tuple(int(x) for x in input_list)), n_photons
-
     # === Handle pcvl.BasicState ===
     if isinstance(input_state, pcvl.BasicState):
         if not isinstance(input_state, xqlbr.FockState):
@@ -426,8 +419,13 @@ def prepare_input_state(
             return generate_state(circuit_m, n_photons, StatePattern.SPACED), n_photons
 
     # === Handle list[int] (legacy) ===
-    if isinstance(input_state, list):
-        return pcvl.BasicState(tuple(cast(list[int], input_state))), n_photons
+    if isinstance(input_state, (list, tuple)):
+        if any(x != int(x) or int(x) < 0 for x in input_state):
+            raise ValueError(
+                "List/tuple input_state must contain non-negative integer "
+                "occupations; use a StateVector for superposed inputs."
+            )
+        return pcvl.BasicState(tuple(int(x) for x in input_state)), n_photons
 
     return (
         cast(StateVector | pcvl.BasicState | torch.Tensor | None, input_state),
