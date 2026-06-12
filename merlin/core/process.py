@@ -1056,6 +1056,7 @@ class ComputationProcess(AbstractComputationProcess):
         parameters: list[torch.Tensor],
         *,
         use_input_state_superposition: bool = False,
+        memristive_current_state: list[torch.Tensor] | None = None,
     ) -> tuple[Any, torch.Tensor | SectoredDistribution]:
         """Compute output values and return them with basis keys.
 
@@ -1069,6 +1070,9 @@ class ComputationProcess(AbstractComputationProcess):
             ``input_state`` follows the same default fixed-Fock-state behavior
             as :meth:`compute`.
             Default is False.
+        memristive_current_state : list[torch.Tensor] | None
+            The memristive phase shifters current states. Defaults to None
+            and will be treated as an empty list.
 
         Returns
         -------
@@ -1080,13 +1084,19 @@ class ComputationProcess(AbstractComputationProcess):
             probabilities = self._compute_phase_error_probabilities(
                 parameters,
                 amplitude_encoding=use_input_state_superposition,
+                memristive_current_state=memristive_current_state,
             )
             if isinstance(probabilities, SectoredDistribution):
                 keys = [list(sector.keys) for sector in probabilities.sectors]
                 return keys, probabilities
             return self.simulation_graph.mapped_keys, probabilities
 
-        unitary = self.converter.to_tensor(*parameters)
+        unitary = self.converter.to_tensor(
+            *parameters,
+            memristive_current_state=(
+                [] if memristive_current_state is None else memristive_current_state
+            ),
+        )
 
         if self._has_source_noise():
             result = self.simulation_graph.compute_probs(unitary, self.input_state)

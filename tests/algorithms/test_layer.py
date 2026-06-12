@@ -2075,6 +2075,28 @@ def test_update_rule_return_shape_is_validated_close_to_user_callback():
         layer(torch.zeros(2, 2))
 
 
+def test_compute_with_keys_accepts_memristive_current_state():
+    """Keyed computation must build the unitary with the live memristive state."""
+    layer = _layer(_builder_with_memristor())
+    params = layer.prepare_parameters([])
+
+    keys, keyed_output = layer.computation_process.compute_with_keys(
+        params,
+        memristive_current_state=layer.memristive_state,
+    )
+    expected_output = layer.computation_process.compute(
+        params,
+        memristive_current_state=layer.memristive_state,
+    )
+
+    assert len(keys) == keyed_output.shape[-1]
+    assert torch.allclose(keyed_output, expected_output)
+    assert torch.allclose(
+        layer.computation_process.converter.memristive_current_state[0],
+        layer.memristive_state[0],
+    )
+
+
 def test_invalid_memristor_update_rule():
     def valid_update(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
         return state + 0.1
