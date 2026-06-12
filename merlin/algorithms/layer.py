@@ -207,6 +207,9 @@ class QuantumLayer(MerlinModule):
             annotated ``BasicState`` is passed (annotations are not supported).
         TypeError
             If an unknown measurement strategy is selected during setup.
+        AttributeError
+            When the computation space argument is used in the constructor. Please define it in
+            a measurement strategy.
 
         Warns
         -----
@@ -218,8 +221,6 @@ class QuantumLayer(MerlinModule):
             passing ``StateVector`` to ``forward()``).
             When ``torch.Tensor`` is passed as ``input_state`` (deprecated in favor
             of ``StateVector``).
-            When the computation space argument is used in the constructor. Please define it in
-            a measurement strategy.
 
         """
         super().__init__()

@@ -351,16 +351,11 @@ def normalize_measurement_strategy(
     """
     Normalize measurement strategy and computation space with deprecation errors.
 
-    Enforces the v0.3 requirement that ``computation_space`` must live inside
-    ``MeasurementStrategy`` when using the new factory methods.
-
     Parameters
     ----------
     measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike` | str | None
         Measurement strategy provided by the caller. Supports the modern
         strategy object, legacy enum aliases, legacy strings, or ``None``.
-    computation_space : ComputationSpace | str | None
-        Computation space provided alongside the strategy.
 
     Returns
     -------
@@ -371,8 +366,6 @@ def normalize_measurement_strategy(
     ------
     TypeError
         If the provided strategy is a string: which is an invalid measurement strategy.
-    AttributeError
-        - If ComputationSpace is defined in the quantum layer's constructor and not in a MeasurementStrategy factory method.
     ValueError
         If a modern ``MeasurementStrategy`` does not define a computation
         space.
@@ -383,12 +376,8 @@ def normalize_measurement_strategy(
 
     1. If MeasurementStrategy instance (new API) + constructor computation_space provided
        → ERROR: user must move computation_space into the factory method
-    2. If measurement_strategy is None or MeasurementStrategy.NONE and computation_space provided
-       → ERROR: user must define a measurement strategy with the computation space inside
-    3. If measurement strategy factory is not None + constructor computation_space
-       → ERROR: user must define the computation space inside the measurement strategy
-    4. If MeasurementStrategy instance only → use its computation_space
-    5. If MeasurementStrategy.NONE -> use amplitudes with the default computation space
+    2. If MeasurementStrategy instance only → use its computation_space
+    3. If MeasurementStrategy.NONE -> use amplitudes with the default computation space
 
     """
     from ..measurement.strategies import (
