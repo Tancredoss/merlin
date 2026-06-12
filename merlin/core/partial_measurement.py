@@ -167,9 +167,9 @@ class PartialMeasurement:
         assert grouped_probas.shape == (self.probability_tensor_shape), (
             "Inconsistent grouped probability tensor shape after grouping"
         )
-        assert probas.shape is not None
+        batch_size = int(probas.size(0))
         assert self.probability_tensor_shape == (
-            probas.shape[0],
+            batch_size,
             output_size,
         ), "Inconsistent grouped probability tensor shape after grouping"
         return grouped_probas
@@ -234,6 +234,30 @@ class PartialMeasurement:
         if not isinstance(output_size, int):
             raise TypeError("Grouping 'output_size' must be an int.")
         return output_size
+
+    def detach(self) -> "PartialMeasurement":
+        """Return a detached ``PartialMeasurement`` with detached branches.
+
+        Returns
+        -------
+        PartialMeasurement
+            Detached partial measurement with probability and amplitude tensors
+            detached from the autograd graph.
+        """
+        detached_branches = tuple(
+            PartialMeasurementBranch(
+                outcome=branch.outcome,
+                probability=branch.probability.detach(),
+                amplitudes=branch.amplitudes.detach(),
+            )
+            for branch in self.branches
+        )
+        return PartialMeasurement(
+            detached_branches,
+            self.measured_modes,
+            self.unmeasured_modes,
+            grouping=self.grouping,
+        )
 
     @staticmethod
     def from_detector_transform_output(

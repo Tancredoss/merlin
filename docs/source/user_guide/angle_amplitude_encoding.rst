@@ -206,24 +206,59 @@ from the **type** of the first argument to ``forward()``:
      - | :class:`~merlin.core.state_vector.StateVector`
        | **(preferred)**
      - | Automatically activates amplitude encoding. The layer extracts the
-       | dense complex tensor, validates its dimension against the layer basis,
-       | and propagates it through the circuit.
+       | active basis support, validates its dimension against the layer basis,
+       | and propagates only active components through the circuit.
    * - 2
      - Complex ``torch.Tensor``
      - | A single complex-dtype tensor is treated identically to a :class:`~merlin.core.state_vector.StateVector`'s
-       | underlying tensor. Useful when you manage tensors directly without 
-       | wrapping them.
+       | underlying tensor. It uses the same active-support execution path and
+       | is useful when you manage tensors directly without wrapping them.
    * - 3
-     - | Real ``torch.Tensor``
-       | + ``amplitude_encoding=True``
-     - | **Legacy path — deprecated (will be removed in 0.4).**
-       | The constructor flag forces amplitude interpretation on a real-valued
-       | tensor. Migrate to path 1 or 2.
+     - Real ``torch.Tensor``
+     - | Treated as classical angle-encoding input. Convert amplitude tensors
+       | with :meth:`~merlin.core.state_vector.StateVector.from_tensor` or use a
+       | complex tensor when amplitudes are intended.
 
 .. warning::
-   *Deprecated since version 0.3:* The ``amplitude_encoding=True`` constructor parameter is deprecated and will
-   be removed in **0.4**. Pass a :class:`~merlin.core.state_vector.StateVector`
-   or a complex ``torch.Tensor`` to ``forward()`` instead.
+   The ``amplitude_encoding=True`` constructor parameter was removed in
+   **0.4**. Pass a :class:`~merlin.core.state_vector.StateVector` or a complex
+   ``torch.Tensor`` to ``forward()`` instead.
+
+Chunked execution tradeoff
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Amplitude inputs are accepted as ordinary dense tensors, because this is the
+most convenient representation for users and for upstream PyTorch code. During
+execution, :class:`~merlin.algorithms.layer.QuantumLayer` normalizes the input
+and converts dense tensors, dense :class:`~merlin.core.state_vector.StateVector`
+objects, sparse tensors, and sparse ``StateVector`` objects into the same
+internal active-support representation:
+
+.. code-block:: text
+
+   active basis indices + compact coefficient tensor [batch_size, nnz]
+
+Only those active Fock components are propagated through the simulator. Merlin
+processes them in chunks, calls the batched simulator routine for each chunk,
+weights the returned amplitudes by the corresponding input coefficients, and
+accumulates directly into the final dense output tensor.
+
+The benefit is peak temporary memory: it scales with approximately
+``chunk_size * num_output_states`` instead of
+``num_input_basis_states * num_output_states``. This matters when the Fock basis
+is large but the input state has only a small active support.
+
+The tradeoff is throughput. A smaller chunk size reduces peak memory but
+requires more simulator calls; a larger chunk size can be faster when memory is
+available. Control this with the ``simultaneous_processes`` argument:
+
+.. code-block:: python
+
+   output = layer(state_vector, simultaneous_processes=32)
+
+If omitted, Merlin uses a conservative default. Changing the chunk size should
+not change the numerical result; it only changes how much active support is
+processed in each simulator call.
 
 Setup
 ^^^^^
@@ -300,6 +335,39 @@ internally — and validates that the last dimension matches the Fock basis size
    The layer lazily normalizes amplitudes before computation, but explicitly
    normalizing upstream (e.g. via ``nn.functional.normalize``) can improve
    numerical stability during training.
+
+Structured input encodings can infer their own dimensions. For example,
+dual-rail infers ``n_photons`` from the logical tensor width and sets
+``n_modes = 2 * n_photons``. QLOQ and other partitioned encodings infer
+``n_modes`` and ``n_photons`` from their ``modes_per_photon`` contract. The
+resolved values are available on the returned object:
+
+.. code-block:: python
+
+    import torch
+    from merlin.core import EncodingSpace
+    from merlin.core.state_vector import StateVector
+
+    dual_rail = StateVector.from_tensor(
+        torch.zeros(4),
+        encoding=EncodingSpace.DUAL_RAIL,
+    )
+    assert dual_rail.n_modes == 4
+    assert dual_rail.n_photons == 2
+
+    qloq = EncodingSpace.qloq(qubit_groups=[2, 1])
+    qloq_state = StateVector.from_tensor(torch.zeros(8), encoding=qloq)
+    assert qloq_state.n_modes == 6
+    assert qloq_state.n_photons == 2
+
+If a circuit needs auxiliary vacuum modes, append them after constructing the
+encoded state:
+
+.. code-block:: python
+
+    padded = dual_rail @ [0]
+    assert padded.n_modes == 5
+    assert padded.n_photons == 2
 
 
 Using a complex tensor directly
@@ -507,9 +575,9 @@ Troubleshooting
   ``torch.Tensor`` in the same ``forward()`` call. Use either angle encoding
   (real tensors) or amplitude encoding (``StateVector`` / complex tensor), not
   both.
-- **DeprecationWarning for** ``amplitude_encoding=True``: Migrate to passing a
-  :class:`~merlin.core.state_vector.StateVector` or complex tensor to
-  ``forward()`` instead of using the constructor flag.
+- **Removed constructor flag**: ``amplitude_encoding=True`` now raises an
+  error. Pass a :class:`~merlin.core.state_vector.StateVector` or complex
+  tensor to ``forward()`` instead of using the constructor flag.
 - **Batched amplitude encoding**: Pass a 2-D tensor to
   :meth:`~merlin.core.state_vector.StateVector.from_tensor` and call ``forward()`` with the resulting
   :class:`~merlin.core.state_vector.StateVector`. The layer normalizes each sample independently and

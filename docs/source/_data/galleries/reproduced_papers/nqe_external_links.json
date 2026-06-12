@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Neural Quantum Embedding",
+    "summary": "Training the quantum embedding with a classical model to optimize its performance.",
+    "image": "_static/reproduced_papers/nqe/phase_1_paper.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/nn_embedding",
+    "tags": ["External Link", "NQE", "Repository"]
+  }
+]

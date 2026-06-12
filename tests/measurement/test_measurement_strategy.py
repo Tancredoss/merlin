@@ -572,6 +572,10 @@ def test_probabilities_strategy_applies_transforms_and_sampling():
     def apply_detectors(dist: torch.Tensor) -> torch.Tensor:
         return dist + 1.0
 
+    def sample_fn(dist: torch.Tensor, shots: int) -> torch.Tensor:
+        assert torch.allclose(dist, torch.tensor([3.0]))
+        assert shots == 5
+        return dist * 0 + shots
     # Create a mock sampler with the expected interface
     class MockSampler:
         def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
@@ -812,37 +816,46 @@ class _DummyComputationProcess:
         self.input_state = None
         self.called = None
         self.last_simultaneous_processes = None
+        self.memristive_current_state = []
 
-    def compute_ebs_simultaneously(self, params, simultaneous_processes):
+    def compute_ebs_simultaneously(
+        self, params, simultaneous_processes, memristive_current_state=None
+    ):
+        if memristive_current_state is None:
+            memristive_current_state = []
         self.called = "ebs"
         self.last_simultaneous_processes = simultaneous_processes
         return torch.tensor([float(simultaneous_processes)])
 
-    def compute_superposition_state(self, params):
+    def compute_superposition_state(
+        self, params, simultaneous_processes=None, memristive_current_state=None
+    ):
+        if memristive_current_state is None:
+            memristive_current_state = []
         self.called = "superposition"
+        self.last_simultaneous_processes = simultaneous_processes
         return torch.tensor([1.0])
 
-    def compute(self, params, amplitude_encoding):
+    def compute(self, params, memristive_current_state=None):
+        if memristive_current_state is None:
+            memristive_current_state = []
         self.called = "compute"
         return torch.tensor([2.0])
 
 
-def _build_test_layer(amplitude_encoding: bool = False) -> ML.QuantumLayer:
+def _build_test_layer(with_angle_encoding: bool = True) -> ML.QuantumLayer:
     builder = ML.CircuitBuilder(n_modes=2)
     builder.add_entangling_layer(trainable=True, name="U1")
     kwargs: dict[str, Any] = {"builder": builder}
-    if amplitude_encoding:
-        kwargs["amplitude_encoding"] = True
-        kwargs["n_photons"] = 1
-    else:
+    if with_angle_encoding:
         builder.add_angle_encoding(modes=[0, 1], name="input")
         kwargs["input_size"] = 2
-        kwargs["n_photons"] = 1
+    kwargs["n_photons"] = 1
     return ML.QuantumLayer(**kwargs)
 
 
-def test_compute_amplitudes_helper_prefers_amplitude_ebs_path():
-    layer = _build_test_layer(amplitude_encoding=True)
+def test_compute_amplitudes_helper_uses_superposition_for_amplitude_state():
+    layer = _build_test_layer(with_angle_encoding=False)
     stub = _DummyComputationProcess()
     layer.computation_process = stub
 
@@ -854,13 +867,13 @@ def test_compute_amplitudes_helper_prefers_amplitude_ebs_path():
         simultaneous_processes=None,
     )
 
-    assert stub.called == "ebs"
-    assert stub.last_simultaneous_processes == 1
+    assert stub.called == "superposition"
+    assert stub.last_simultaneous_processes is None
     assert torch.allclose(result, torch.tensor([1.0]))
 
 
-def test_compute_amplitudes_helper_uses_across_batch_when_requested():
-    layer = _build_test_layer(amplitude_encoding=True)
+def test_compute_amplitudes_helper_forwards_superposition_chunk_size():
+    layer = _build_test_layer(with_angle_encoding=False)
     stub = _DummyComputationProcess()
     layer.computation_process = stub
 
@@ -872,22 +885,23 @@ def test_compute_amplitudes_helper_uses_across_batch_when_requested():
         simultaneous_processes=4,
     )
 
-    assert stub.called == "ebs"
+    assert stub.called == "superposition"
     assert stub.last_simultaneous_processes == 4
-    assert torch.allclose(result, torch.tensor([4.0]))
+    assert torch.allclose(result, torch.tensor([1.0]))
 
 
-def test_compute_amplitudes_helper_handles_missing_state_in_amplitude_mode():
-    layer = _build_test_layer(amplitude_encoding=True)
+def test_compute_amplitudes_helper_delegates_when_amplitude_state_missing():
+    layer = _build_test_layer(with_angle_encoding=False)
     layer.computation_process = _DummyComputationProcess()
 
-    with pytest.raises(TypeError):
-        layer._compute_amplitudes(
-            params=[torch.tensor([0.0])],
-            inferred_state=None,
-            parameter_batch_dim=0,
-            simultaneous_processes=None,
-        )
+    result = layer._compute_amplitudes(
+        params=[torch.tensor([0.0])],
+        inferred_state=None,
+        parameter_batch_dim=0,
+        simultaneous_processes=None,
+    )
+
+    assert torch.allclose(result, torch.tensor([2.0]))
 
 
 def test_compute_amplitudes_helper_batches_classical_inputs():

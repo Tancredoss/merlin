@@ -39,7 +39,7 @@ from ..builder.circuit_builder import (
     CircuitBuilder,
 )
 from ..core.computation_space import ComputationSpace
-from ..core.partial_measurement import PartialMeasurement
+from ..core.partial_measurement import PartialMeasurement, PartialMeasurementBranch
 from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
 from ..core.sectored_distribution import SectoredDistribution, SectorResult
@@ -65,9 +65,12 @@ from ..utils.deprecations import (
 from ..utils.grouping import ModGrouping
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
+    _CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE,
     InitializationContext,
+    _build_simple_circuit,
     _normalize_sector_keys,
     apply_angle_encoding,
+    compute_new_memristive_ps_angles,
     feature_count_for_prefix,
     has_phase_error,
     has_source_noise,
@@ -92,6 +95,12 @@ class QuantumLayer(MerlinModule):
     pre-compiled :class:`pcvl.Circuit`, or an
     :class:`pcvl.Experiment`.
     """
+
+    #: Current state of each memristive phase-shifter.
+    memristive_state: list[torch.Tensor]
+
+    #: Full history of memristive phase-shifter states since the last :meth:`reset`, indexed by the memristive phase-shifters.
+    memristive_history: list[list[torch.Tensor]]
 
     @sanitize_parameters
     def __init__(
@@ -138,10 +147,9 @@ class QuantumLayer(MerlinModule):
         Parameters
         ----------
         input_size : int | None
-            Size of the classical input vector when angle encoding is used
-            (``amplitude_encoding=False``). If omitted, it is inferred from the
-            circuit metadata (input parameter prefixes and/or encoding specs).
-            Must be omitted when ``amplitude_encoding=True``.
+            Size of the classical input vector when angle encoding is used. If
+            omitted, it is inferred from the circuit metadata (input parameter
+            prefixes and/or encoding specs).
         builder : CircuitBuilder | None
             High-level circuit builder that defines trainable structure, input
             encoders and their prefixes. Mutually exclusive with ``circuit`` and
@@ -152,13 +160,14 @@ class QuantumLayer(MerlinModule):
         experiment : pcvl.Experiment | None
             A Perceval experiment. Must be unitary and without post-selection or
             heralding. Mutually exclusive with ``builder`` and ``circuit``.
-        input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
+        input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | None
             Logical input state of the circuit. Accepted forms:
             - ``StateVector`` (preferred, canonical type),
             - ``pcvl.StateVector`` (converted via ``StateVector.from_perceval()``),
             - ``pcvl.BasicState`` (converted via ``StateVector.from_basic_state()``),
-            - list/tuple of occupations (converted via ``StateVector.from_basic_state()``),
-            - ``torch.Tensor`` (DEPRECATED - will be removed in 0.4).
+            - list/tuple of occupations (converted via ``StateVector.from_basic_state()``).
+            Pass amplitude tensors to ``forward()``. Use
+            ``StateVector.from_tensor()`` when a constructor state object is needed.
             If QuantumLayer is built from an experiment, the experiment's input state is used.
             If omitted, ``n_photons`` must be provided to derive a default state.
         n_photons : int | None
@@ -173,12 +182,9 @@ class QuantumLayer(MerlinModule):
             Perceval parameter prefixes used for classical (angle) encoding. For
             amplitude encoding, this must be empty/None.
         amplitude_encoding : bool, default: False
-            DEPRECATED - will be removed in 0.4. Pass a ``StateVector`` to
-            ``forward()`` for amplitude encoding instead.
-            When True, the forward call expects an amplitude vector (or batch) on
-            the first positional argument and propagates it through the quantum
-            layer; ``input_size`` must not be set in this mode and
-            ``n_photons`` must be provided.
+            Removed compatibility flag. Passing ``True`` raises an error. Pass a
+            ``StateVector`` or complex tensor to ``forward()`` for amplitude
+            input handling instead.
         computation_space : ComputationSpace | str | None
             Logical computation subspace to use: one of ``{"fock", "unbunched",
             "dual_rail"}``. If omitted, defaults to ``UNBUNCHED``. This argument
@@ -219,13 +225,11 @@ class QuantumLayer(MerlinModule):
         ValueError
             If an unexpected keyword argument is provided; if both or none of
             ``builder``, ``circuit``, ``experiment`` are provided; if
-            ``amplitude_encoding=True`` and ``input_size`` is set; if
-            ``amplitude_encoding=True`` and ``n_photons`` is not provided; if
-            classical ``input_parameters`` are combined with
-            ``amplitude_encoding=True``; if an ``experiment`` is not unitary or
-            uses post-selection/heralding; if neither ``input_state`` nor
-            ``n_photons`` is provided when required; or if an annotated
-            ``BasicState`` is passed (annotations are not supported).
+            ``amplitude_encoding=True`` is passed; if an ``experiment`` is not
+            unitary or uses post-selection/heralding; if neither
+            ``input_state`` nor ``n_photons`` is provided when required; if
+            ``torch.Tensor`` is passed as constructor ``input_state``; or if an
+            annotated ``BasicState`` is passed (annotations are not supported).
         TypeError
             If an unknown measurement strategy is selected during setup.
 
@@ -234,23 +238,11 @@ class QuantumLayer(MerlinModule):
         UserWarning
             When ``experiment.min_photons_filter`` or ``experiment.detectors`` are
             present (currently ignored).
-        DeprecationWarning
-            When ``amplitude_encoding=True`` is passed (deprecated in favor of
-            passing ``StateVector`` to ``forward()``).
-            When ``torch.Tensor`` is passed as ``input_state`` (deprecated in favor
-            of ``StateVector``).
-
         """
         super().__init__()
 
-        # === DEPRECATION WARNING: amplitude_encoding ===
         if amplitude_encoding:
-            warnings.warn(
-                "amplitude_encoding=True is deprecated and will be removed in 0.4. "
-                "Pass a StateVector to forward() for amplitude encoding instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+            raise ValueError(_CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE)
 
         # Phase 1: device + dtype normalization
         device, dtype, complex_dtype = MerlinModule.setup_device_and_dtype(
@@ -346,9 +338,29 @@ class QuantumLayer(MerlinModule):
             n_phase_error_samples=n_phase_error_samples,
         )
 
-        # Phase 11: assign context to self + warnings
+        # Phase 11: Extract memristive metadata
+        self._memristive_metadata = (
+            circuit_source.builder.memristive_specs
+            if circuit_source.source_type == "builder"
+            else []
+        )
+        self.memristive_history = [
+            [torch.tensor([i["initial_state"]], device=device, dtype=dtype)]
+            for i in self._memristive_metadata
+        ]
+        self.memristive_state = [
+            torch.tensor([i["initial_state"]], device=device, dtype=dtype)
+            for i in self._memristive_metadata
+        ]
+        for i in range(len(self.memristive_state)):
+            if self._memristive_metadata[i]["detach_at_each_forward"]:
+                self.memristive_history[i][0] = self.memristive_history[i][0].detach()
+                self.memristive_state[i] = self.memristive_state[i].detach()
+        self._memristive_smaller_last_batch = False
+
+        # Phase 12: assign context to self + warnings
         self._finalize_from_context(context)
-        # Phase 12: downstream setup
+        # Phase 13: downstream setup
         # Defaults/validation handled in this method:
         # - Generate default input_state from n_photons when missing.
         # - Infer/validate input_size against encoder metadata.
@@ -412,7 +424,7 @@ class QuantumLayer(MerlinModule):
             # Default behavior: place [1,0,1,0,...] in dual-rail, else distribute photons across modes
             if self.computation_space is ComputationSpace.DUAL_RAIL:
                 self.input_state = pcvl.BasicState(tuple([1, 0] * n_photons))
-            elif not self.amplitude_encoding:
+            else:
                 self.input_state = generate_state(
                     circuit.m, n_photons, StatePattern.SPACED
                 )
@@ -437,11 +449,6 @@ class QuantumLayer(MerlinModule):
             # Pass a placeholder list to ComputationProcess to avoid tensor dimension validation
             process_input_state = list(self.input_state.basis[0])
             statevector_input = self.input_state
-        elif isinstance(self.input_state, torch.Tensor):
-            resolved_n_photons = (
-                n_photons  # n_photons must be provided for tensor input
-            )
-            process_input_state = self.input_state
         elif isinstance(self.input_state, pcvl.BasicState):
             resolved_n_photons = (
                 n_photons if n_photons is not None else sum(self.input_state)
@@ -465,16 +472,14 @@ class QuantumLayer(MerlinModule):
             computation_space=self.computation_space,
             noise_groups=self._noise_groups,
             n_phase_error_samples=context.n_phase_error_samples,
+            memristive_metadata=self._memristive_metadata,
         )
 
         # If input_state was a StateVector, set the actual tensor now (after init to bypass validation)
         if statevector_input is not None:
-            sv_tensor = statevector_input.to_dense()
-            if sv_tensor.device != self.device:
-                sv_tensor = sv_tensor.to(self.device)
-            if sv_tensor.dtype != self.complex_dtype:
-                sv_tensor = sv_tensor.to(self.complex_dtype)
-            self.computation_process.input_state = sv_tensor
+            self.computation_process.input_state = self._embed_amplitude_tensor(
+                self._statevector_tensor(statevector_input)
+            )
 
         # Setup PhotonLossTransform & DetectorTransform
         self.n_photons = self.computation_process.n_photons
@@ -535,34 +540,28 @@ class QuantumLayer(MerlinModule):
             if not specs_provided:
                 expected_features = None
 
-        if not self.amplitude_encoding:
-            inferred_size = (
-                expected_features
-                if expected_features is not None
-                else total_input_params
-            )
+        inferred_size = (
+            expected_features if expected_features is not None else total_input_params
+        )
 
-            if self.input_size is None:
-                # When the caller omits input_size, take the size the circuit exposes via its metadata.
-                self.input_size = inferred_size
-            elif inferred_size != self.input_size:
-                if expected_features is not None:
-                    raise ValueError(
-                        f"Input size ({self.input_size}) must equal the number of encoded input features "
-                        f"generated by the circuit ({expected_features})."
-                    )
-                else:
-                    raise ValueError(
-                        f"Input size ({self.input_size}) must equal the number of input parameters "
-                        f"generated by the circuit ({total_input_params})."
-                    )
+        if self.input_size is None:
+            # When the caller omits input_size, take the size the circuit exposes via its metadata.
+            self.input_size = inferred_size
+        elif inferred_size != self.input_size:
+            if expected_features is not None:
+                raise ValueError(
+                    f"Input size ({self.input_size}) must equal the number of encoded input features "
+                    f"generated by the circuit ({expected_features})."
+                )
+            else:
+                raise ValueError(
+                    f"Input size ({self.input_size}) must equal the number of input parameters "
+                    f"generated by the circuit ({total_input_params})."
+                )
 
         # Setup parameters and measurement strategy
         self._setup_parameters_from_custom(trainable_parameters)
         self._setup_measurement_strategy_from_custom(measurement_strategy)
-
-        if self.amplitude_encoding:
-            self._init_amplitude_metadata()
 
     def _setup_parameters_from_custom(self, trainable_parameters: list[str] | None):
         """Setup parameters from custom circuit configuration."""
@@ -681,16 +680,6 @@ class QuantumLayer(MerlinModule):
                 flat_measurement_keys,
                 dtype=self.dtype,
             )
-
-    def _init_amplitude_metadata(self) -> None:
-        logical_keys = getattr(
-            self.computation_process,
-            "logical_keys",
-            list(self.computation_process.simulation_graph.mapped_keys),
-        )
-        # TODO: here, the input_size corresponds to the size of the computation space
-        # In future, we might want to decouple those two concepts
-        self.input_size = len(logical_keys)
 
     def _create_dummy_parameters(self) -> list[torch.Tensor]:
         """Create dummy parameters for initialization."""
@@ -835,6 +824,27 @@ class QuantumLayer(MerlinModule):
 
         return amplitude
 
+    def _embed_amplitude_tensor(self, amplitude: torch.Tensor) -> torch.Tensor:
+        try:
+            return embed_tensor_in_fock_basis(
+                amplitude,
+                n_modes=self.circuit.m,
+                n_photons=self.n_photons,
+                computation_space=self.computation_space,
+            )
+        except ValueError as exc:
+            if (
+                isinstance(self.measurement_strategy, MeasurementStrategy)
+                and self.measurement_strategy.type is MeasurementKind.PARTIAL
+            ):
+                expected_dim = len(self._raw_output_keys)
+            else:
+                expected_dim = len(self.output_keys)
+            feature_dim = amplitude.shape[-1]
+            raise ValueError(
+                f"Amplitude input expects {expected_dim} components, received {feature_dim}."
+            ) from exc
+
     def set_input_state(self, input_state):
         """Set the layer input state for subsequent evaluations.
 
@@ -858,8 +868,34 @@ class QuantumLayer(MerlinModule):
             self.computation_process.input_state = list(basic)
             return
 
+        if isinstance(input_state, StateVector):
+            tensor_state = self._statevector_tensor(input_state)
+            embedded = self._embed_amplitude_tensor(tensor_state)
+            self.input_state = input_state
+            self.computation_process.input_state = embedded
+            return
+
+        if isinstance(input_state, torch.Tensor):
+            validated = self._validate_amplitude_input(input_state)
+            embedded = self._embed_amplitude_tensor(validated)
+            self.input_state = input_state
+            self.computation_process.input_state = embedded
+            return
+
         self.input_state = input_state
         self.computation_process.input_state = input_state
+
+    def _statevector_tensor(self, statevector: StateVector) -> torch.Tensor:
+        """Return the wrapped amplitude tensor without changing sparse layout."""
+        tensor = statevector.tensor
+        if self.device is not None and tensor.device != self.device:
+            tensor = tensor.to(self.device)
+        if tensor.dtype != self.complex_dtype:
+            if tensor.is_complex():
+                tensor = tensor.to(self.complex_dtype)
+            else:
+                tensor = tensor.to(self.dtype)
+        return tensor
 
     def prepare_parameters(
         self, input_parameters: list[torch.Tensor]
@@ -910,6 +946,16 @@ class QuantumLayer(MerlinModule):
         - ``torch.Tensor`` (complex): amplitude encoding
         - :class:`~merlin.core.state_vector.StateVector`: amplitude encoding (preferred for quantum state injection)
 
+        **Memristive State Updates**
+
+        For layers with memristive elements, the state is updated after each forward pass according to the
+        registered update rule. Gradient flow through the memristive recurrence is controlled by the
+        ``detach_at_each_forward`` flag:
+
+        - ``detach_at_each_forward=True`` (default): New states are detached, blocking gradients through
+          the state recurrence. Earlier inputs receive zero gradients from memristive state chains.
+          the entire accumulated state history.
+
         Parameters
         ----------
         input_parameters : torch.Tensor | merlin.core.state_vector.StateVector
@@ -936,6 +982,8 @@ class QuantumLayer(MerlinModule):
             unsupported input type is provided.
         ValueError
             If multiple ``StateVector`` inputs are provided.
+        RuntimeError
+            If batch size is inconsistent with memristive state (call ``reset(batch_size=N)`` to fix).
         """
         # Phase 1: Input classification and validation
         tensor_inputs: list[torch.Tensor] = []
@@ -970,15 +1018,10 @@ class QuantumLayer(MerlinModule):
                     "Use either tensor inputs (angle encoding) or StateVector (amplitude encoding)."
                 )
             sv = input_parameters[0]
-            # Convert to dense for computation pipeline (sparse not supported downstream).
-            # StateVector's sparse representation is still valuable for memory-efficient
-            # construction and manipulation; we only densify at computation time.
-            amplitude_tensor = sv.to_dense()
-            if amplitude_tensor.device != self.device:
-                amplitude_tensor = amplitude_tensor.to(self.device)
-            if amplitude_tensor.dtype != self.complex_dtype:
-                amplitude_tensor = amplitude_tensor.to(self.complex_dtype)
-            amplitude_input = self._validate_amplitude_input(amplitude_tensor)
+            amplitude_tensor = self._statevector_tensor(sv)
+            amplitude_input = self._embed_amplitude_tensor(
+                self._validate_amplitude_input(amplitude_tensor)
+            )
             original_input_state = getattr(
                 self.computation_process, "input_state", None
             )
@@ -991,30 +1034,13 @@ class QuantumLayer(MerlinModule):
             and isinstance(input_parameters[0], torch.Tensor)
             and input_parameters[0].is_complex()
         ):
-            amplitude_input = self._validate_amplitude_input(input_parameters[0])
+            amplitude_input = self._embed_amplitude_tensor(
+                self._validate_amplitude_input(input_parameters[0])
+            )
             original_input_state = getattr(
                 self.computation_process, "input_state", None
             )
             # tensor_inputs stays empty
-
-        # Legacy amplitude_encoding=True flag
-        elif self.amplitude_encoding:
-            tensor_inputs = [x for x in input_parameters if isinstance(x, torch.Tensor)]
-            if not tensor_inputs:
-                raise ValueError(
-                    "QuantumLayer configured with amplitude_encoding=True expects an amplitude tensor input."
-                )
-            # Warn if using real tensor with amplitude_encoding (internal conversion is deprecated)
-            if tensor_inputs and not tensor_inputs[0].is_complex():
-                warnings.warn(
-                    "Passing real-valued tensor with amplitude_encoding=True is deprecated and will be "
-                    "removed in 0.4. Pass a StateVector or complex tensor to forward() instead.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-            amplitude_input, tensor_inputs, original_input_state = (
-                self._prepare_amplitude_input(tensor_inputs)
-            )
 
         # Float tensor(s) → angle encoding
         else:
@@ -1028,6 +1054,39 @@ class QuantumLayer(MerlinModule):
 
         # Phase 2: Parameter assembly for circuit execution
         params, parameter_batch_dim = self._prepare_classical_parameters(tensor_inputs)
+
+        if len(self.memristive_state) > 0:
+            if self._memristive_smaller_last_batch:
+                raise RuntimeError(
+                    "Already ran a smaller batch size: call reset(batch_size=N) before using the layer again"
+                )
+
+            batch_dim = max(parameter_batch_dim, 1)
+
+            state_dimensions = set()
+            for state in self.memristive_state:
+                state_dimensions.add(state.size(0))
+            if len(state_dimensions) > 1:
+                raise RuntimeError(
+                    "batch size mismatch: Not all memristive states have the same size. Call reset(batch_size=N) before starting a new batch to set them to the same dimension"
+                )
+
+            if not self.memristive_state[0].size(0) == batch_dim:
+                if (not self._memristive_smaller_last_batch) and (
+                    batch_dim < self.memristive_state[0].size(0)
+                ):
+                    self._memristive_smaller_last_batch = True
+                    self.memristive_state = [
+                        x[:batch_dim] for x in self.memristive_state
+                    ]
+                    for memristor in range(len(self.memristive_state)):
+                        self.memristive_state[memristor] = self.memristive_state[
+                            memristor
+                        ][:batch_dim]
+                else:
+                    raise RuntimeError(
+                        "batch size mismatch: call reset(batch_size=N) before starting a new batch"
+                    )
 
         # Phase 3: Compute amplitudes
         with self._temporary_input_state(amplitude_input, original_input_state):
@@ -1141,13 +1200,16 @@ class QuantumLayer(MerlinModule):
                     ]
                     results = results[..., reorder_indices]
 
+        output: (
+            torch.Tensor | PartialMeasurement | ProbabilityDistribution | StateVector
+        )
         if (
             _resolve_measurement_kind(self.measurement_strategy)
             == MeasurementKind.PARTIAL
         ):
-            return cast(PartialMeasurement, results)
+            output = results
 
-        if (
+        elif (
             self.return_object is True
             and _resolve_measurement_kind(self.measurement_strategy)
             != MeasurementKind.MODE_EXPECTATIONS
@@ -1156,19 +1218,89 @@ class QuantumLayer(MerlinModule):
                 _resolve_measurement_kind(self.measurement_strategy)
                 == MeasurementKind.PROBABILITIES
             ):
-                return ProbabilityDistribution(
+                output = ProbabilityDistribution(
                     self.measurement_mapping(results),
                     n_modes=len(self.input_state),
                     n_photons=self.n_photons,
                     computation_space=self.computation_space,
                 )
-            return StateVector(
-                self.measurement_mapping(results),
-                n_modes=len(self.input_state),
-                n_photons=self.n_photons,
+            else:
+                output = StateVector(
+                    self.measurement_mapping(results),
+                    n_modes=len(self.input_state),
+                    n_photons=self.n_photons,
+                )
+        else:
+            output = self.measurement_mapping(results)
+
+        # ================================================================
+        # Phase 7: memristive update
+        # ================================================================
+        # This runs AFTER measurement for ALL output types to ensure
+        # memristive states are updated regardless of measurement strategy.
+        if len(self.memristive_state) > 0:
+            # Safe output copy (handle all output types)
+            output_for_memristive: (
+                torch.Tensor
+                | PartialMeasurement
+                | StateVector
+                | ProbabilityDistribution
+            )
+            if not isinstance(output, PartialMeasurement):
+                output_for_memristive = output.clone()
+            else:
+                branches = [
+                    PartialMeasurementBranch(
+                        outcome=b.outcome,
+                        probability=b.probability.clone(),
+                        amplitudes=b.amplitudes.clone(),
+                    )
+                    for b in output.branches
+                ]
+                output_for_memristive = PartialMeasurement(
+                    branches=tuple(branches),
+                    measured_modes=output.measured_modes,
+                    unmeasured_modes=output.unmeasured_modes,
+                    grouping=output.grouping,
+                )
+
+            # Compute new states
+            new_states = compute_new_memristive_ps_angles(
+                memristive_metadata=self._memristive_metadata,
+                memristive_state=self.memristive_state,
+                output=output_for_memristive,
             )
 
-        return self.measurement_mapping(results)
+            # Get batch dimension from output for shape validation
+            output_batch_dim = (
+                output.shape[0]
+                if isinstance(output, torch.Tensor)
+                else output.tensor.shape[0]
+            )
+
+            # ============================================================
+            # UPDATE STATE STRUCTURES
+            # ============================================================
+            for i, new_state in enumerate(new_states):
+                # Validate shape
+                expected_shape = torch.Size([output_batch_dim])
+                if new_state.shape != expected_shape:
+                    raise ValueError(
+                        f"Update rule for memristor {i} returned shape {new_state.shape}, "
+                        f"expected {expected_shape}. The update rule must return a tensor "
+                        f"of shape [batch_size].\n\nMemristor metadata: {self._memristive_metadata[i]}"
+                    )
+                self.memristive_history[i].append(new_state)
+                self.memristive_state[i] = new_state
+
+                # If it needs to be detached
+                if self._memristive_metadata[i]["detach_at_each_forward"]:
+                    self.memristive_history[i][-1] = self.memristive_history[i][
+                        -1
+                    ].detach()
+                    self.memristive_state[i] = new_state.detach()
+
+        return output
 
     def _compute_amplitudes(
         self,
@@ -1179,6 +1311,27 @@ class QuantumLayer(MerlinModule):
         simultaneous_processes: int | None,
     ) -> torch.Tensor | SectoredDistribution:
         """Select the computation path based on the encoding mode and input state."""
+
+        if isinstance(inferred_state, torch.Tensor):
+            if parameter_batch_dim:
+                chunk = simultaneous_processes or inferred_state.shape[-1]
+                return self.computation_process.compute_ebs_simultaneously(
+                    params,
+                    simultaneous_processes=chunk,
+                    memristive_current_state=self.memristive_state,
+                )
+            return cast(
+                torch.Tensor,
+                self.computation_process.compute_superposition_state(
+                    params,
+                    simultaneous_processes=simultaneous_processes,
+                    memristive_current_state=self.memristive_state,
+                ),
+            )
+        return self.computation_process.compute(
+            params,
+            memristive_current_state=self.memristive_state,
+        )
         # Checking if there is source noise
         probability_output_noise = has_source_noise(
             self._noise_groups
@@ -1221,18 +1374,6 @@ class QuantumLayer(MerlinModule):
             amplitudes, self.computation_space
         )
 
-    def _prepare_amplitude_input(
-        self, inputs: list[torch.Tensor]
-    ) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor | None]:
-        """Validate amplitude-encoded input and return remaining inputs."""
-        if not inputs:
-            raise ValueError(
-                "QuantumLayer configured with amplitude_encoding=True expects an amplitude tensor input."
-            )
-        amplitude_input = self._validate_amplitude_input(inputs[0])
-        original_input_state = getattr(self.computation_process, "input_state", None)
-        return amplitude_input, inputs[1:], original_input_state
-
     @contextmanager
     def _temporary_input_state(
         self,
@@ -1242,12 +1383,14 @@ class QuantumLayer(MerlinModule):
         if amplitude_input is None:
             yield
             return
-        self.set_input_state(amplitude_input)
+        self.input_state = amplitude_input
+        self.computation_process.input_state = amplitude_input
         try:
             yield
         finally:
             if original_input_state is not None:
-                self.set_input_state(original_input_state)
+                self.input_state = original_input_state
+                self.computation_process.input_state = original_input_state
 
     def _prepare_classical_parameters(
         self, inputs: list[torch.Tensor]
@@ -1290,18 +1433,45 @@ class QuantumLayer(MerlinModule):
             The updated layer instance.
         """
         super().to(*args, **kwargs)
-        # Manually move any additional tensors
-        device = kwargs.get("device", None)
-        if device is None and len(args) > 0:
-            device = args[0]
+        # Manually move tensors that are not registered as parameters/buffers.
+        device = kwargs.get("device")
+        dtype = kwargs.get("dtype")
+
+        # Support all torch.nn.Module.to signatures.
+        if len(args) > 0:
+            first_arg = args[0]
+            if isinstance(first_arg, torch.dtype):
+                dtype = first_arg if dtype is None else dtype
+            elif isinstance(first_arg, (torch.device, str)):
+                device = first_arg if device is None else device
+            elif isinstance(first_arg, torch.Tensor):
+                if device is None:
+                    device = first_arg.device
+                if dtype is None and first_arg.dtype in (torch.float32, torch.float64):
+                    dtype = first_arg.dtype
+
+        if len(args) > 1 and isinstance(args[1], torch.dtype) and dtype is None:
+            dtype = args[1]
+
+        if dtype is not None:
+            _, self.dtype, self.complex_dtype = MerlinModule.setup_device_and_dtype(
+                None,
+                dtype,
+            )
+
         if device is not None:
-            self.device = device
+            self.device = torch.device(device)
             self.computation_process.simulation_graph = (
-                self.computation_process.simulation_graph.to(device)
+                self.computation_process.simulation_graph.to(self.device)
             )
-            self.computation_process.converter = self.computation_process.converter.to(
-                self.dtype, device
-            )
+
+        if device is None and dtype is None:
+            return self
+
+        self.computation_process.converter = self.computation_process.converter.to(
+            self.dtype,
+            self.device,
+        )
 
             # Photon loss Module
             if self._photon_loss_transform is not None:
@@ -1321,6 +1491,35 @@ class QuantumLayer(MerlinModule):
                         )
                 else:
                     self._detector_transform = self._detector_transform.to(device)
+        # Photon loss Module
+        if self._photon_loss_transform is not None:
+            self._photon_loss_transform = self._photon_loss_transform.to(
+                device=self.device,
+                dtype=self.dtype,
+            )
+
+        # Detector Module
+        if self._detector_transform is not None:
+            self._detector_transform = self._detector_transform.to(
+                device=self.device,
+                dtype=self.dtype,
+            )
+
+        target_kwargs: dict[str, Any] = {"dtype": self.dtype}
+        if self.device is not None:
+            target_kwargs["device"] = self.device
+
+        # memristor state and history
+        for state in range(len(self.memristive_history)):
+            for t in range(len(self.memristive_history[state])):
+                self.memristive_history[state][t] = self.memristive_history[state][
+                    t
+                ].to(**target_kwargs)
+
+        for state in range(len(self.memristive_state)):
+            self.memristive_state[state] = self.memristive_state[state].to(
+                **target_kwargs
+            )
 
         return self
 
@@ -1784,20 +1983,7 @@ class QuantumLayer(MerlinModule):
         n_photons = sum(input_state)
         input_state = pcvl.BasicState(input_state)
 
-        builder = CircuitBuilder(n_modes=n_modes)
-
-        # Trainable entangling layer before encoding
-        builder.add_entangling_layer(trainable=True, name="LI_simple")
-
-        # Angle encoding
-        builder.add_angle_encoding(
-            modes=list(range(input_size)),
-            name="input",
-            subset_combinations=False,
-        )
-
-        # Trainable entangling layer after encoding
-        builder.add_entangling_layer(trainable=True, name="RI_simple")
+        builder = _build_simple_circuit(input_size)
 
         # new API forces explicit measurement strategy definition, so we set it here to match the old default behavior of returning probabilities
         measurement_strategy = MeasurementStrategy.probs(
@@ -1881,3 +2067,196 @@ class QuantumLayer(MerlinModule):
         )
 
         return base_str + ")"
+
+    def _serialize_memristive_runtime_state(
+        self, keep_vars: bool
+    ) -> dict[str, list[torch.Tensor]]:
+        """Serialize memristive state and history for checkpointing."""
+
+        def _tensor_for_checkpoint(tensor: torch.Tensor) -> torch.Tensor:
+            return tensor if keep_vars else tensor.detach()
+
+        return {
+            "memristive_state": [
+                _tensor_for_checkpoint(state) for state in self.memristive_state
+            ],
+            "memristive_history": [
+                (
+                    torch.stack([_tensor_for_checkpoint(tensor) for tensor in history])
+                    if history
+                    else torch.empty(0, device=self.device, dtype=self.dtype)
+                )
+                for history in self.memristive_history
+            ],
+        }
+
+    def _restore_memristive_runtime_state(self, state: dict[str, Any] | None) -> None:
+        """Restore memristive state and history from checkpointed runtime state."""
+        if not self._memristive_metadata:
+            return
+
+        if state is None or "memristive_state" not in state:
+            warnings.warn(
+                "Checkpoint does not contain memristive runtime state. "
+                "The memristive state will remain at its current (initial) value. "
+                "Re-save the checkpoint with the current version of Merlin to "
+                "preserve the memristive state across save/load round-trips.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return
+
+        loaded_states: list[torch.Tensor] = state["memristive_state"]
+        n_states = len(self.memristive_state)
+        if len(loaded_states) != n_states:
+            raise RuntimeError(
+                f"Checkpoint contains {len(loaded_states)} memristive state tensor(s) "
+                f"but the layer has {n_states}. The checkpoint is incompatible with this layer."
+            )
+
+        for index, tensor in enumerate(loaded_states):
+            self.memristive_state[index] = tensor.to(
+                device=self.device,
+                dtype=self.dtype,
+            )
+
+        loaded_histories: list[torch.Tensor] | None = state.get("memristive_history")
+        if loaded_histories is not None:
+            for index, stacked in enumerate(loaded_histories):
+                if stacked.numel() > 0:
+                    self.memristive_history[index] = [
+                        stacked[time_index].to(device=self.device, dtype=self.dtype)
+                        for time_index in range(stacked.shape[0])
+                    ]
+                else:
+                    self.memristive_history[index] = []
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        """Save module parameters plus memristive runtime state when present."""
+        super()._save_to_state_dict(destination, prefix, keep_vars)
+
+        if not self._memristive_metadata:
+            return
+
+        runtime_state = self._serialize_memristive_runtime_state(keep_vars)
+        destination[prefix + "_memristive_state"] = runtime_state["memristive_state"]
+        destination[prefix + "_memristive_history"] = runtime_state[
+            "memristive_history"
+        ]
+
+    def _load_from_state_dict(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ):
+        """Load module parameters plus memristive runtime state when present."""
+        memristive_state_key = prefix + "_memristive_state"
+        memristive_history_key = prefix + "_memristive_history"
+        legacy_extra_state_key = prefix + "_extra_state"
+
+        runtime_state: dict[str, Any] | None = None
+        if memristive_state_key in state_dict:
+            runtime_state = {"memristive_state": state_dict.pop(memristive_state_key)}
+            if memristive_history_key in state_dict:
+                runtime_state["memristive_history"] = state_dict.pop(
+                    memristive_history_key
+                )
+        elif legacy_extra_state_key in state_dict:
+            runtime_state = state_dict.pop(legacy_extra_state_key)
+
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
+
+        if runtime_state is not None or self._memristive_metadata:
+            self._restore_memristive_runtime_state(runtime_state)
+
+    def detach_memristive_state(self, *, clear_history: bool = False) -> None:
+        """Detach the current memristive state without resetting its value.
+
+        This method is intended for manual truncated backpropagation through
+        time. It cuts the autograd graph carried by the live recurrent
+        memristive state, so future forward passes keep using the same
+        numerical state values without backpropagating through earlier
+        recurrence updates.
+
+        Parameters
+        ----------
+        clear_history : bool
+            Whether to replace each memristive history with only the detached
+            current state. If ``False``, the history length is preserved but
+            stored tensors are detached. Default value is ``False``.
+
+        Returns
+        -------
+        None
+            The layer is updated in place.
+        """
+        if len(self.memristive_state) == 0:
+            return
+
+        self.memristive_state = [state.detach() for state in self.memristive_state]
+
+        if clear_history:
+            self.memristive_history = [[state] for state in self.memristive_state]
+            return
+
+        for index, history in enumerate(self.memristive_history):
+            if len(history) == 0:
+                self.memristive_history[index] = [self.memristive_state[index]]
+                continue
+
+            self.memristive_history[index] = [state.detach() for state in history]
+            self.memristive_history[index][-1] = self.memristive_state[index]
+
+    def reset(self, batch_size: int = 1) -> None:
+        """Resets the memristors to their initial state while clearing the history.
+
+        This also defines the allowed batch size to be ran per forward pass for circuits with
+        memristive phase shifters.
+
+        Parameters
+        ----------
+        batch_size : int
+            Batch size that will be used in forward passes. Must be at least 1.
+            Call this before each new batch to ensure memristive states are properly initialized.
+
+        Raises
+        ------
+        ValueError
+            If batch_size < 1.
+        """
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be at least 1, got {batch_size}")
+
+        self._memristive_smaller_last_batch = False
+
+        if len(self.memristive_history) == 0:
+            return
+
+        for i in range(len(self.memristive_history)):
+            self.memristive_state[i] = torch.full(
+                [batch_size],
+                self._memristive_metadata[i]["initial_state"],
+                device=self.device,
+                dtype=self.dtype,
+            )
+            self.memristive_history[i] = [self.memristive_state[i]]
+
+            # Initial state gradient tracking depends on detach flag
+            if self._memristive_metadata[i]["detach_at_each_forward"]:
+                self.memristive_state[i] = self.memristive_state[i].detach()
+                self.memristive_history[i][-1] = self.memristive_history[i][-1].detach()
+
+        return

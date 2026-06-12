@@ -177,7 +177,7 @@ class FeedForwardBlock(MerlinModule):
         ``None``).
     input_state : list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None
         Initial quantum state. May be provided as a Fock occupation list,
-        `pcvl.BasicState <https://perceval.quandela.net/docs/v1.1/reference/utils/states.html>`_, :class:`~exqalibur.StateVector`, or a tensor whose
+        `pcvl.BasicState <https://perceval.quandela.net/docs/v1.2/reference/utils/states.html>`_, :class:`~exqalibur.StateVector`, or a tensor whose
         components represent amplitudes in the experiment Fock basis. The tensor
         form is only required for amplitude-encoding inputs.
     trainable_parameters : list[str] | None
@@ -580,7 +580,6 @@ class FeedForwardBlock(MerlinModule):
                 measurement_strategy=MeasurementStrategy.amplitudes(
                     self.computation_space
                 ),
-                amplitude_encoding=amplitude_encoding,
                 device=self.device,
                 dtype=self.dtype,
             )
@@ -636,7 +635,6 @@ class FeedForwardBlock(MerlinModule):
             layer = QuantumLayer(
                 input_size=None,
                 circuit=stage.unitary.copy(),
-                amplitude_encoding=True,
                 n_photons=remaining,
                 measurement_strategy=MeasurementStrategy.amplitudes(
                     self.computation_space
@@ -1041,7 +1039,6 @@ class FeedForwardBlock(MerlinModule):
             layer = QuantumLayer(
                 input_size=None,
                 circuit=runtime.circuit.copy(),
-                amplitude_encoding=True,
                 n_photons=remaining_n,
                 measurement_strategy=MeasurementStrategy.amplitudes(
                     self.computation_space
@@ -1141,7 +1138,6 @@ class FeedForwardBlock(MerlinModule):
             layer = QuantumLayer(
                 input_size=None,
                 circuit=circuit.copy(),
-                amplitude_encoding=True,
                 n_photons=remaining_n,
                 measurement_strategy=MeasurementStrategy.amplitudes(
                     self.computation_space

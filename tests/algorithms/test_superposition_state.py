@@ -11,7 +11,7 @@ import pytest
 import torch
 
 from merlin.algorithms.layer import QuantumLayer
-from merlin.core import ComputationSpace
+from merlin.core import ComputationSpace, EncodingSpace, StateVector
 from merlin.measurement.strategies import MeasurementStrategy
 from merlin.utils.combinadics import Combinadics
 
@@ -41,6 +41,17 @@ def classical_method(layer, input_state, *x):
     return output_probs[1]
 
 
+def _encoding_for_computation_space(
+    computation_space: ComputationSpace,
+) -> EncodingSpace:
+    """Return the logical tensor encoding for a computation space."""
+    if computation_space is ComputationSpace.UNBUNCHED:
+        return EncodingSpace.UNBUNCHED
+    if computation_space is ComputationSpace.DUAL_RAIL:
+        return EncodingSpace.DUAL_RAIL
+    return EncodingSpace.FOCK
+
+
 class TestOutputSuperposedState:
     """Test cases for measurement-driven outputs in QuantumLayer.simple()."""
 
@@ -60,6 +71,12 @@ class TestOutputSuperposedState:
         sum_values = (input_state**2).sum(dim=-1, keepdim=True)
 
         input_state = input_state / sum_values
+        statevector = StateVector.from_tensor(
+            input_state,
+            n_modes=circuit.m,
+            n_photons=n_photons,
+            encoding=EncodingSpace.UNBUNCHED,
+        )
 
         layer = QuantumLayer(
             circuit=circuit,
@@ -67,7 +84,7 @@ class TestOutputSuperposedState:
             measurement_strategy=MeasurementStrategy.probs(
                 computation_space=ComputationSpace.UNBUNCHED
             ),
-            input_state=input_state,
+            input_state=statevector,
             trainable_parameters=["phi"],
             input_parameters=[],
             dtype=torch.float64,
@@ -102,6 +119,12 @@ class TestOutputSuperposedState:
         sum_values = (input_state**2).sum(dim=-1, keepdim=True)
 
         input_state = input_state / torch.sqrt(sum_values)
+        statevector = StateVector.from_tensor(
+            input_state,
+            n_modes=circuit.m,
+            n_photons=n_photons,
+            encoding=EncodingSpace.UNBUNCHED,
+        )
 
         layer = QuantumLayer(
             circuit=circuit,
@@ -109,7 +132,7 @@ class TestOutputSuperposedState:
             measurement_strategy=MeasurementStrategy.probs(
                 computation_space=ComputationSpace.UNBUNCHED
             ),
-            input_state=input_state,
+            input_state=statevector,
             trainable_parameters=["phi"],
             input_parameters=[],
             dtype=torch.float64,
@@ -142,6 +165,12 @@ class TestOutputSuperposedState:
         input_state = torch.rand(2, expected_states, dtype=torch.float64)
         sum_values = (input_state**2).sum(dim=-1, keepdim=True)
         input_state = input_state / sum_values
+        statevector = StateVector.from_tensor(
+            input_state,
+            n_modes=circuit.m,
+            n_photons=n_photons,
+            encoding=EncodingSpace.UNBUNCHED,
+        )
 
         layer = QuantumLayer(
             input_size=0,
@@ -150,7 +179,7 @@ class TestOutputSuperposedState:
             measurement_strategy=MeasurementStrategy.probs(
                 computation_space=ComputationSpace.UNBUNCHED
             ),
-            input_state=input_state,
+            input_state=statevector,
             trainable_parameters=["phi"],
             input_parameters=[],
             dtype=torch.float64,
@@ -162,15 +191,34 @@ class TestOutputSuperposedState:
         original_ebs = process.compute_ebs_simultaneously
         original_super = process.compute_superposition_state
 
-        def tracked_ebs(self, parameters, simultaneous_processes=1):
+        def tracked_ebs(
+            self, parameters, simultaneous_processes=1, memristive_current_state=None
+        ):
+            if memristive_current_state is None:
+                memristive_current_state = []
             call_tracker["ebs"] += 1
             return original_ebs(
-                parameters, simultaneous_processes=simultaneous_processes
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                memristive_current_state=memristive_current_state,
             )
 
-        def tracked_super(self, parameters):
+        def tracked_super(
+            self,
+            parameters,
+            simultaneous_processes=None,
+            return_keys=False,
+            memristive_current_state=None,
+        ):
+            if memristive_current_state is None:
+                memristive_current_state = []
             call_tracker["super"] += 1
-            return original_super(parameters)
+            return original_super(
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                return_keys=return_keys,
+                memristive_current_state=memristive_current_state,
+            )
 
         process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
         process.compute_superposition_state = MethodType(tracked_super, process)
@@ -192,6 +240,12 @@ class TestOutputSuperposedState:
         input_state = torch.rand(1, expected_states, dtype=torch.float64)
         sum_values = (input_state**2).sum(dim=-1, keepdim=True)
         input_state = input_state / sum_values
+        statevector = StateVector.from_tensor(
+            input_state,
+            n_modes=circuit.m,
+            n_photons=n_photons,
+            encoding=EncodingSpace.UNBUNCHED,
+        )
 
         layer = QuantumLayer(
             input_size=0,
@@ -200,7 +254,7 @@ class TestOutputSuperposedState:
             measurement_strategy=MeasurementStrategy.probs(
                 computation_space=ComputationSpace.UNBUNCHED
             ),
-            input_state=input_state,
+            input_state=statevector,
             trainable_parameters=["phi"],
             input_parameters=[],
             dtype=torch.float64,
@@ -212,15 +266,34 @@ class TestOutputSuperposedState:
         original_ebs = process.compute_ebs_simultaneously
         original_super = process.compute_superposition_state
 
-        def tracked_ebs(self, parameters, simultaneous_processes=1):
+        def tracked_ebs(
+            self, parameters, simultaneous_processes=1, memristive_current_state=None
+        ):
+            if memristive_current_state is None:
+                memristive_current_state = []
             call_tracker["ebs"] += 1
             return original_ebs(
-                parameters, simultaneous_processes=simultaneous_processes
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                memristive_current_state=memristive_current_state,
             )
 
-        def tracked_super(self, parameters):
+        def tracked_super(
+            self,
+            parameters,
+            simultaneous_processes=None,
+            return_keys=False,
+            memristive_current_state=None,
+        ):
+            if memristive_current_state is None:
+                memristive_current_state = []
             call_tracker["super"] += 1
-            return original_super(parameters)
+            return original_super(
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                return_keys=return_keys,
+                memristive_current_state=memristive_current_state,
+            )
 
         process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
         process.compute_superposition_state = MethodType(tracked_super, process)
@@ -240,6 +313,12 @@ class TestOutputSuperposedState:
         expected_states = math.comb(circuit.m, n_photons)
         input_state = torch.rand(2, expected_states, dtype=torch.float64)
         input_state = input_state / input_state.norm(p=2, dim=1, keepdim=True)
+        statevector = StateVector.from_tensor(
+            input_state,
+            n_modes=circuit.m,
+            n_photons=n_photons,
+            encoding=EncodingSpace.UNBUNCHED,
+        )
 
         layer = QuantumLayer(
             circuit=circuit,
@@ -247,7 +326,7 @@ class TestOutputSuperposedState:
             measurement_strategy=MeasurementStrategy.probs(
                 computation_space=ComputationSpace.UNBUNCHED
             ),
-            input_state=input_state,
+            input_state=statevector,
             trainable_parameters=[],
             input_parameters=["px"],
             dtype=torch.float64,
@@ -258,19 +337,38 @@ class TestOutputSuperposedState:
         original_ebs = process.compute_ebs_simultaneously
         original_super = process.compute_superposition_state
 
-        def tracked_ebs(self, parameters, simultaneous_processes=1):
+        def tracked_ebs(
+            self, parameters, simultaneous_processes=1, memristive_current_state=None
+        ):
+            if memristive_current_state is None:
+                memristive_current_state = []
             call_tracker["ebs"] += 1
             call_tracker["simultaneous_processes"] = simultaneous_processes
             # Surface the tensor shape returned by the batching kernel for regression checks.
             result = original_ebs(
-                parameters, simultaneous_processes=simultaneous_processes
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                memristive_current_state=memristive_current_state,
             )
             call_tracker["result_shape"] = result.shape
             return result
 
-        def tracked_super(self, parameters, return_keys=False):
+        def tracked_super(
+            self,
+            parameters,
+            simultaneous_processes=None,
+            return_keys=False,
+            memristive_current_state=None,
+        ):
+            if memristive_current_state is None:
+                memristive_current_state = []
             call_tracker["super"] += 1
-            return original_super(parameters, return_keys=return_keys)
+            return original_super(
+                parameters,
+                simultaneous_processes=simultaneous_processes,
+                return_keys=return_keys,
+                memristive_current_state=memristive_current_state,
+            )
 
         process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
         process.compute_superposition_state = MethodType(tracked_super, process)
@@ -335,6 +433,12 @@ class TestOutputSuperposedState:
         )
         phases = torch.rand(1, expected_states, dtype=torch.float64) * (2 * math.pi)
         input_state = torch.polar(magnitudes, phases)
+        statevector = StateVector.from_tensor(
+            input_state,
+            n_modes=n_modes,
+            n_photons=n_photons,
+            encoding=_encoding_for_computation_space(computation_space),
+        )
 
         amplitude_layer = QuantumLayer(
             circuit=circuit,
@@ -342,7 +446,7 @@ class TestOutputSuperposedState:
             measurement_strategy=MeasurementStrategy.amplitudes(
                 computation_space=computation_space
             ),
-            input_state=input_state,
+            input_state=statevector,
             input_parameters=["theta"],
             trainable_parameters=["phi"],
             dtype=torch.float64,
@@ -367,6 +471,7 @@ class TestOutputSuperposedState:
         coefficients = amplitude_layer.computation_process.input_state.to(output.dtype)
         if coefficients.dim() == 1:
             coefficients = coefficients.unsqueeze(0)
+        fock_basis = Combinadics("fock", n_photons, n_modes)
 
         shared_state = amplitude_layer.state_dict()
         amplitude_params = amplitude_layer.prepare_parameters([dummy_input])
@@ -379,7 +484,7 @@ class TestOutputSuperposedState:
         amplitude_params_dict = dict(amplitude_layer.named_parameters())
 
         expected_amplitudes = torch.zeros_like(output, dtype=output.dtype)
-        for idx, state in enumerate(amplitude_layer.output_keys):
+        for state in amplitude_layer.output_keys:
             basis_layer = QuantumLayer(
                 circuit=copy.deepcopy(circuit),
                 n_photons=n_photons,
@@ -419,7 +524,9 @@ class TestOutputSuperposedState:
                 basis_output = basis_output.unsqueeze(0).unsqueeze(1)
             basis_output = basis_output.to(expected_amplitudes.dtype)
 
-            coefficient = coefficients[:, idx].to(expected_amplitudes.dtype)
+            coefficient = coefficients[:, fock_basis.index(state)].to(
+                expected_amplitudes.dtype
+            )
             weight = coefficient.unsqueeze(0).unsqueeze(-1)
             if weight.abs().max() < 1e-10:
                 continue

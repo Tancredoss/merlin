@@ -2,7 +2,7 @@
 Algorithms-level tests for amplitude-encoded QuantumLayer workflows.
 
 These cases validate:
-* Construction and execution of QuantumLayer when amplitude encoding is enabled.
+* Construction and execution of QuantumLayer with forward amplitude inputs.
 * Measurement strategies applied to amplitude vectors (e.g. returning probabilities).
 * The combinatorial integrity of `output_keys` for both `no_bunching` and full Fock spaces.
 
@@ -21,8 +21,10 @@ import perceval as pcvl
 import pytest
 import torch
 
+import merlin.core.process as process_module
 from merlin import ComputationSpace
 from merlin.algorithms.layer import QuantumLayer
+from merlin.core.state_vector import StateVector
 from merlin.measurement.strategies import MeasurementStrategy
 
 
@@ -41,11 +43,9 @@ def make_layer():
             "trainable_parameters": ["phi"],
             "input_parameters": [],
             "dtype": torch.float32,
-            "amplitude_encoding": True,
         }
         params.update(overrides)
-        if not params.get("amplitude_encoding", False):
-            params.setdefault("input_size", 0)
+        params.setdefault("input_size", 0)
         return QuantumLayer(**params)
 
     return _make
@@ -108,13 +108,12 @@ def test_amplitude_encoding_output_matches_computation_space(
         circuit=circuit,
         n_photons=n_photons,
         measurement_strategy=MeasurementStrategy.probs(computation_space=space),
-        amplitude_encoding=True,
         trainable_parameters=["phi"],
         input_parameters=[],
         dtype=torch.float32,
     )
 
-    amplitude_input = _normalised_state(expected_size, dtype=torch.float32).squeeze(0)
+    amplitude_input = _normalised_state(expected_size, dtype=torch.complex64).squeeze(0)
     outputs = layer(amplitude_input)
 
     assert len(layer.output_keys) == expected_size
@@ -141,7 +140,6 @@ def test_amplitude_encoding_gradients_follow_computation_space(
         circuit=circuit,
         n_photons=n_photons,
         measurement_strategy=MeasurementStrategy.probs(computation_space=space),
-        amplitude_encoding=True,
         trainable_parameters=["phi"],
         input_parameters=[],
         dtype=torch.float32,
@@ -149,7 +147,7 @@ def test_amplitude_encoding_gradients_follow_computation_space(
     layer.zero_grad()
 
     amplitude_input = torch.randn(
-        expected_size, dtype=torch.float32, requires_grad=True
+        expected_size, dtype=torch.complex64, requires_grad=True
     )
 
     outputs = layer(amplitude_input)
@@ -160,9 +158,9 @@ def test_amplitude_encoding_gradients_follow_computation_space(
     assert amplitude_input.grad.shape == amplitude_input.shape
 
     trainable_params = [p for p in layer.parameters() if p.requires_grad]
-    assert trainable_params, (
-        "Expected at least one trainable parameter for gradient check"
-    )
+    assert (
+        trainable_params
+    ), "Expected at least one trainable parameter for gradient check"
     for param in trainable_params:
         assert param.grad is not None
         assert param.grad.shape == param.shape
@@ -192,7 +190,6 @@ def test_amplitude_encoding_gpu_roundtrip(
         circuit=circuit,
         n_photons=n_photons,
         measurement_strategy=MeasurementStrategy.probs(computation_space=space),
-        amplitude_encoding=True,
         trainable_parameters=["phi"],
         input_parameters=[],
         dtype=torch.float32,
@@ -200,7 +197,7 @@ def test_amplitude_encoding_gpu_roundtrip(
     layer.zero_grad()
 
     amplitude_input = torch.randn(
-        expected_size, dtype=torch.float32, device=device, requires_grad=True
+        expected_size, dtype=torch.complex64, device=device, requires_grad=True
     )
 
     outputs = layer(amplitude_input)
@@ -222,25 +219,26 @@ def test_amplitude_encoding_gpu_roundtrip(
         assert param.grad.shape == param.shape
 
 
-@pytest.mark.skip(
-    reason="compute_superposition state is broken but not sure it is necessary - not called anywhere anyway"
-)
 def test_amplitude_encoding_matches_superposition(make_layer):
     layer = make_layer()
     num_states = len(layer.computation_process.simulation_graph.mapped_keys)
-    raw_amplitude = torch.arange(1, num_states + 1, dtype=torch.float64)
+    raw_amplitude = torch.arange(1, num_states + 1, dtype=torch.float64).to(
+        torch.complex128
+    )
 
     prepared_state = layer._validate_amplitude_input(raw_amplitude)
     layer.set_input_state(prepared_state)
     params = layer.prepare_parameters([])
-    expected = layer.computation_process.compute_superposition_state(params)
+    expected = layer.computation_process.compute_superposition_state(
+        params, simultaneous_processes=2
+    )
 
     amplitudes = layer(raw_amplitude)
 
     assert torch.allclose(amplitudes, expected, rtol=1e-6, atol=1e-8)
 
 
-def test_amplitude_encoding_batches_use_vectorised_kernel(make_layer):
+def test_complex_amplitude_batches_use_superposition_path(make_layer):
     layer = make_layer()
     process = layer.computation_process
 
@@ -248,36 +246,340 @@ def test_amplitude_encoding_batches_use_vectorised_kernel(make_layer):
     original_ebs = process.compute_ebs_simultaneously
     original_super = process.compute_superposition_state
 
-    def tracked_ebs(self, parameters, simultaneous_processes=1):
+    def tracked_ebs(
+        self, parameters, simultaneous_processes=1, memristive_current_state=None
+    ):
+        if memristive_current_state is None:
+            memristive_current_state = []
         call_tracker["ebs"] += 1
-        return original_ebs(parameters, simultaneous_processes=simultaneous_processes)
+        return original_ebs(
+            parameters,
+            simultaneous_processes=simultaneous_processes,
+            memristive_current_state=memristive_current_state,
+        )
 
-    def tracked_super(self, parameters):
+    def tracked_super(
+        self,
+        parameters,
+        simultaneous_processes=None,
+        return_keys=False,
+        memristive_current_state=None,
+    ):
+        if memristive_current_state is None:
+            memristive_current_state = []
         call_tracker["super"] += 1
-        return original_super(parameters)
+        return original_super(
+            parameters,
+            simultaneous_processes=simultaneous_processes,
+            return_keys=return_keys,
+            memristive_current_state=memristive_current_state,
+        )
 
     process.compute_ebs_simultaneously = MethodType(tracked_ebs, process)
     process.compute_superposition_state = MethodType(tracked_super, process)
 
     num_states = len(process.simulation_graph.mapped_keys)
-    batched_state = torch.rand(3, num_states, dtype=torch.float64)
+    batched_state = torch.rand(3, num_states, dtype=torch.float64).to(torch.complex128)
 
     layer(batched_state)
 
-    assert call_tracker["ebs"] == 1
-    assert call_tracker["super"] == 0
+    assert call_tracker["ebs"] == 0
+    assert call_tracker["super"] == 1
 
 
-def test_amplitude_encoding_requires_first_argument(make_layer):
+def test_amplitude_encoding_superposition_streams_chunked_batches(
+    make_layer, monkeypatch
+):
     layer = make_layer()
-    with pytest.raises(ValueError, match="expects an amplitude tensor input"):
-        layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+    raw_amplitude = torch.arange(1, num_states + 1, dtype=torch.float64).to(
+        torch.complex128
+    )
+
+    prepared_state = layer._validate_amplitude_input(raw_amplitude)
+    layer.set_input_state(prepared_state)
+    params = layer.prepare_parameters([])
+    expected = layer.computation_process.compute_superposition_state(
+        params, simultaneous_processes=2
+    )
+
+    layer.set_input_state(prepared_state)
+    original_compute_batch = process.simulation_graph.compute_batch
+    recorded_batches: list[int] = []
+
+    def tracked_compute_batch(unitary, batch_fock_states):
+        recorded_batches.append(len(batch_fock_states))
+        return original_compute_batch(unitary, batch_fock_states)
+
+    monkeypatch.setattr(
+        process.simulation_graph, "compute_batch", tracked_compute_batch
+    )
+
+    original_zeros = process_module.torch.zeros
+
+    def tracked_zeros(*args, **kwargs):
+        shape = args[0] if args else kwargs.get("size")
+        if tuple(shape) == (num_states, len(process.simulation_graph.mapped_keys)):
+            raise AssertionError("dense support matrix allocated")
+        return original_zeros(*args, **kwargs)
+
+    monkeypatch.setattr(process_module.torch, "zeros", tracked_zeros)
+
+    amplitudes = layer(raw_amplitude, simultaneous_processes=2)
+
+    assert recorded_batches == [2, 1]
+    assert torch.allclose(amplitudes, expected, rtol=1e-6, atol=1e-8)
+
+
+def test_amplitude_encoding_sparse_superposition_matches_dense(make_layer):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+
+    dense = torch.arange(1, num_states + 1, dtype=torch.float32).to(torch.complex64)
+    dense = dense / dense.norm(p=2)
+    indices = torch.arange(num_states, dtype=torch.long).unsqueeze(0)
+    sparse = torch.sparse_coo_tensor(
+        indices,
+        dense.clone(),
+        (num_states,),
+        dtype=torch.complex64,
+    ).coalesce()
+
+    dense_output = layer(dense, simultaneous_processes=2)
+    sparse_output = layer(sparse, simultaneous_processes=2)
+
+    assert torch.allclose(sparse_output, dense_output, rtol=1e-6, atol=1e-8)
+
+
+def test_amplitude_encoding_dense_tensor_forward_uses_sparse_support(
+    make_layer, monkeypatch
+):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+
+    dense = torch.zeros(num_states, dtype=torch.complex64)
+    dense[0] = 1.0 + 0.0j
+    dense[-1] = 0.0 + 1.0j
+    dense = dense / dense.norm(p=2)
+    expected = layer(dense.to_sparse().coalesce(), simultaneous_processes=2)
+
+    seen = {"sparse": False, "nnz": 0, "shape": None}
+    original_chunked = process._compute_chunked_superposition
+
+    def tracked_chunked(self, prepared_state, unitary, *, simultaneous_processes):
+        seen["sparse"] = prepared_state.is_sparse
+        seen["nnz"] = prepared_state.nnz
+        seen["shape"] = prepared_state.shape
+        return original_chunked(
+            prepared_state,
+            unitary,
+            simultaneous_processes=simultaneous_processes,
+        )
+
+    process._compute_chunked_superposition = MethodType(tracked_chunked, process)
+
+    output = layer(dense, simultaneous_processes=2)
+
+    assert seen == {"sparse": True, "nnz": 2, "shape": (1, num_states)}
+    assert torch.allclose(output, expected, rtol=1e-6, atol=1e-8)
+
+
+def test_amplitude_encoding_dense_statevector_forward_uses_sparse_support(
+    make_layer, monkeypatch
+):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+
+    dense = torch.zeros(num_states, dtype=torch.complex64)
+    dense[0] = 1.0 + 0.0j
+    dense[1] = 1.0 - 1.0j
+    statevector = StateVector.from_tensor(dense, n_modes=3, n_photons=1)
+    expected = layer(dense, simultaneous_processes=2)
+
+    seen = {"sparse": False, "nnz": 0, "shape": None}
+    original_chunked = process._compute_chunked_superposition
+
+    def tracked_chunked(self, prepared_state, unitary, *, simultaneous_processes):
+        seen["sparse"] = prepared_state.is_sparse
+        seen["nnz"] = prepared_state.nnz
+        seen["shape"] = prepared_state.shape
+        return original_chunked(
+            prepared_state,
+            unitary,
+            simultaneous_processes=simultaneous_processes,
+        )
+
+    process._compute_chunked_superposition = MethodType(tracked_chunked, process)
+
+    output = layer(statevector, simultaneous_processes=2)
+
+    assert seen == {"sparse": True, "nnz": 2, "shape": (1, num_states)}
+    assert torch.allclose(output, expected, rtol=1e-6, atol=1e-8)
+
+
+def test_amplitude_encoding_sparse_statevector_forward_stays_sparse(
+    make_layer, monkeypatch
+):
+    layer = make_layer()
+    process = layer.computation_process
+    num_states = len(process.simulation_graph.mapped_keys)
+
+    values = torch.arange(1, num_states + 1, dtype=torch.float32).to(torch.complex64)
+    indices = torch.arange(num_states, dtype=torch.long).unsqueeze(0)
+    sparse = torch.sparse_coo_tensor(
+        indices,
+        values,
+        (num_states,),
+        dtype=torch.complex64,
+    ).coalesce()
+    statevector = StateVector.from_tensor(sparse, n_modes=3, n_photons=1)
+
+    expected = layer(sparse, simultaneous_processes=2)
+
+    def fail_to_dense(self):
+        raise AssertionError("sparse StateVector input was densified")
+
+    monkeypatch.setattr(StateVector, "to_dense", fail_to_dense)
+
+    seen = {"sparse": False}
+    original_chunked = process._compute_chunked_superposition
+
+    def tracked_chunked(self, prepared_state, unitary, *, simultaneous_processes):
+        seen["sparse"] = prepared_state.is_sparse
+        return original_chunked(
+            prepared_state,
+            unitary,
+            simultaneous_processes=simultaneous_processes,
+        )
+
+    process._compute_chunked_superposition = MethodType(tracked_chunked, process)
+
+    output = layer(statevector, simultaneous_processes=2)
+
+    assert seen["sparse"]
+    assert torch.allclose(output, expected, rtol=1e-6, atol=1e-8)
+
+
+def test_constructor_dense_statevector_input_uses_sparse_support():
+    circuit = pcvl.components.GenericInterferometer(
+        3,
+        pcvl.components.catalog["mzi phase last"].generate,
+        shape=pcvl.InterferometerShape.RECTANGLE,
+    )
+    dense = torch.zeros(3, dtype=torch.complex64)
+    dense[0] = 1.0 + 0.0j
+    dense[2] = 0.0 - 1.0j
+    statevector = StateVector.from_tensor(dense, n_modes=3, n_photons=1)
+
+    layer = QuantumLayer(
+        circuit=circuit,
+        n_photons=1,
+        measurement_strategy=MeasurementStrategy.NONE,
+        input_state=statevector,
+        trainable_parameters=["phi"],
+        input_parameters=[],
+        dtype=torch.float32,
+    )
+
+    seen = {"sparse": False, "nnz": 0, "shape": None}
+    original_chunked = layer.computation_process._compute_chunked_superposition
+
+    def tracked_chunked(self, prepared_state, unitary, *, simultaneous_processes):
+        seen["sparse"] = prepared_state.is_sparse
+        seen["nnz"] = prepared_state.nnz
+        seen["shape"] = prepared_state.shape
+        return original_chunked(
+            prepared_state,
+            unitary,
+            simultaneous_processes=simultaneous_processes,
+        )
+
+    layer.computation_process._compute_chunked_superposition = MethodType(
+        tracked_chunked, layer.computation_process
+    )
+
+    layer(simultaneous_processes=2)
+
+    assert seen == {"sparse": True, "nnz": 2, "shape": (1, 3)}
+
+
+def test_constructor_sparse_statevector_input_stays_sparse(monkeypatch):
+    circuit = pcvl.components.GenericInterferometer(
+        3,
+        pcvl.components.catalog["mzi phase last"].generate,
+        shape=pcvl.InterferometerShape.RECTANGLE,
+    )
+    values = torch.tensor([1.0 + 0.0j], dtype=torch.complex64)
+    indices = torch.tensor([[0]], dtype=torch.long)
+    sparse = torch.sparse_coo_tensor(
+        indices,
+        values,
+        (3,),
+        dtype=torch.complex64,
+    ).coalesce()
+    statevector = StateVector.from_tensor(sparse, n_modes=3, n_photons=1)
+
+    def fail_to_dense(self):
+        raise AssertionError("sparse constructor StateVector input was densified")
+
+    monkeypatch.setattr(StateVector, "to_dense", fail_to_dense)
+
+    layer = QuantumLayer(
+        circuit=circuit,
+        n_photons=1,
+        measurement_strategy=MeasurementStrategy.NONE,
+        input_state=statevector,
+        trainable_parameters=["phi"],
+        input_parameters=[],
+        dtype=torch.float32,
+    )
+
+    assert layer.computation_process.input_state.is_sparse
+
+    seen = {"sparse": False}
+    original_chunked = layer.computation_process._compute_chunked_superposition
+
+    def tracked_chunked(self, prepared_state, unitary, *, simultaneous_processes):
+        seen["sparse"] = prepared_state.is_sparse
+        return original_chunked(
+            prepared_state,
+            unitary,
+            simultaneous_processes=simultaneous_processes,
+        )
+
+    layer.computation_process._compute_chunked_superposition = MethodType(
+        tracked_chunked, layer.computation_process
+    )
+
+    layer(simultaneous_processes=2)
+
+    assert seen["sparse"]
+
+
+def test_amplitude_encoding_constructor_flag_is_removed():
+    with pytest.raises(ValueError) as exc_info:
+        QuantumLayer(
+            circuit=pcvl.Circuit(2),
+            n_photons=1,
+            amplitude_encoding=True,
+            measurement_strategy=MeasurementStrategy.NONE,
+        )
+
+    message = str(exc_info.value)
+    assert "0.4" in message
+    assert "forward(StateVector)" in message
+    assert "forward(complex_tensor)" in message
+    assert "StateVector.from_tensor()" in message
 
 
 def test_amplitude_encoding_validates_dimension(make_layer):
     layer = make_layer()
     num_states = len(layer.computation_process.simulation_graph.mapped_keys)
-    invalid = torch.rand(num_states + 1, dtype=torch.float64)
+    invalid = torch.rand(num_states + 1, dtype=torch.float64).to(torch.complex128)
 
     with pytest.raises(ValueError, match="Amplitude input expects"):
         layer(invalid)
@@ -285,7 +587,6 @@ def test_amplitude_encoding_validates_dimension(make_layer):
 
 def test_computation_space_selector(make_layer):
     layer_fock = make_layer(
-        amplitude_encoding=False,
         measurement_strategy=MeasurementStrategy.amplitudes(
             computation_space=ComputationSpace.FOCK
         ),
@@ -293,7 +594,6 @@ def test_computation_space_selector(make_layer):
     assert layer_fock.computation_space is ComputationSpace.FOCK
 
     layer_nb = make_layer(
-        amplitude_encoding=False,
         measurement_strategy=MeasurementStrategy.amplitudes(
             computation_space=ComputationSpace.UNBUNCHED
         ),
@@ -308,7 +608,6 @@ def test_computation_space_consistency_no_warning(make_layer):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         layer = make_layer(
-            amplitude_encoding=False,
             measurement_strategy=MeasurementStrategy.amplitudes(
                 computation_space=ComputationSpace.UNBUNCHED
             ),
@@ -321,7 +620,9 @@ def test_computation_space_consistency_no_warning(make_layer):
 def test_amplitude_encoding_probabilities_strategy(make_layer):
     layer = make_layer(measurement_strategy=MeasurementStrategy.probs())
     num_states = len(layer.computation_process.simulation_graph.mapped_keys)
-    raw_amplitude = torch.arange(1, num_states + 1, dtype=torch.float32)
+    raw_amplitude = torch.arange(1, num_states + 1, dtype=torch.float32).to(
+        torch.complex64
+    )
 
     prepared_state = layer._validate_amplitude_input(raw_amplitude)
     layer.set_input_state(prepared_state)
@@ -342,7 +643,6 @@ def test_mapped_keys_no_bunching_space():
     )
     n_photons = 2
     expected_states = math.comb(circuit.m, n_photons)
-    input_state = _normalised_state(expected_states, dtype=torch.float32)
 
     layer = QuantumLayer(
         circuit=circuit,
@@ -350,11 +650,9 @@ def test_mapped_keys_no_bunching_space():
         measurement_strategy=MeasurementStrategy.probs(
             computation_space=ComputationSpace.UNBUNCHED
         ),
-        input_state=input_state,
         trainable_parameters=["phi"],
         input_parameters=[],
         dtype=torch.float32,
-        amplitude_encoding=True,
     )
 
     mapped_keys = layer.output_keys
@@ -371,7 +669,6 @@ def test_mapped_keys_fock_space():
     )
     n_photons = 2
     expected_states = math.comb(circuit.m + n_photons - 1, n_photons)
-    input_state = _normalised_state(expected_states, dtype=torch.float32)
 
     layer = QuantumLayer(
         circuit=circuit,
@@ -379,11 +676,9 @@ def test_mapped_keys_fock_space():
         measurement_strategy=MeasurementStrategy.probs(
             computation_space=ComputationSpace.FOCK
         ),
-        input_state=input_state,
         trainable_parameters=["phi"],
         input_parameters=[],
         dtype=torch.float32,
-        amplitude_encoding=True,
     )
 
     mapped_keys = layer.output_keys
@@ -400,7 +695,6 @@ def test_mapped_keys_dual_rail_space():
         shape=pcvl.InterferometerShape.RECTANGLE,
     )
     expected_states = 2**n_photons
-    input_state = _normalised_state(expected_states, dtype=torch.float32)
 
     layer = QuantumLayer(
         circuit=circuit,
@@ -408,11 +702,9 @@ def test_mapped_keys_dual_rail_space():
         measurement_strategy=MeasurementStrategy.probs(
             computation_space=ComputationSpace.DUAL_RAIL
         ),
-        input_state=input_state,
         trainable_parameters=["phi"],
         input_parameters=[],
         dtype=torch.float32,
-        amplitude_encoding=True,
     )
 
     mapped_keys = layer.output_keys
@@ -447,11 +739,10 @@ def test_ebs_batches_group_fock_states(computation_space: ComputationSpace):
         trainable_parameters=["phi"],
         input_parameters=[],
         dtype=torch.float32,
-        amplitude_encoding=True,
     )
 
-    expected_states = layer.input_size
-    amplitude = torch.rand(8, expected_states, dtype=torch.float32)
+    expected_states = len(layer.output_keys)
+    amplitude = torch.rand(8, expected_states, dtype=torch.float32).to(torch.complex64)
 
     process = layer.computation_process
     original_compute_batch = process.simulation_graph.compute_batch
@@ -481,46 +772,40 @@ def test_ebs_batches_group_fock_states(computation_space: ComputationSpace):
         (ComputationSpace.DUAL_RAIL, 4, 8, 2**4),
     ],
 )
-def test_amplitude_encoding_input_size(
+def test_amplitude_forward_output_keys_match_computation_space(
     space: ComputationSpace, n_photons: int, n_modes: int, expected_size: int
 ):
-    """QuantumLayer computes the correct input size for amplitude encoding."""
+    """QuantumLayer computes amplitude output keys for each computation space."""
 
     circuit = pcvl.Circuit(n_modes)
 
     layer = QuantumLayer(
         circuit=circuit,
         n_photons=n_photons,
-        amplitude_encoding=True,
         measurement_strategy=MeasurementStrategy.probs(computation_space=space),
     )
 
-    assert layer.input_size == expected_size
+    assert layer.input_size == 0
     assert len(layer.output_keys) == expected_size
 
 
-def test_amplitude_encoding_requires_valid_configuration():
-    """Amplitude encoding enforces required constructor constraints."""
+def test_amplitude_encoding_flag_rejects_legacy_configuration():
+    """Removed amplitude_encoding flag points users to forward amplitude inputs."""
 
     circuit = pcvl.Circuit(8)
 
-    with pytest.raises(ValueError, match="n_photons must be provided"):
-        QuantumLayer(
-            circuit=circuit,
-            n_photons=None,
-            amplitude_encoding=True,
-        )
-
-    with pytest.raises(
-        ValueError,
-        match="Amplitude encoding cannot be combined with classical input parameters",
-    ):
+    with pytest.raises(ValueError) as exc_info:
         QuantumLayer(
             circuit=circuit,
             n_photons=4,
             input_parameters=["theta"],
             amplitude_encoding=True,
         )
+
+    message = str(exc_info.value)
+    assert "forward(StateVector)" in message
+    assert "forward(complex_tensor)" in message
+    assert "StateVector.from_tensor()" in message
 
 
 def test_amplitude_encoding_requires_input_state_for_more_photons_than_modes():
@@ -577,7 +862,6 @@ def test_dual_rail_requires_even_mode_count():
         QuantumLayer(
             circuit=circuit,
             n_photons=2,
-            amplitude_encoding=True,
             measurement_strategy=MeasurementStrategy.probs(
                 computation_space=ComputationSpace.DUAL_RAIL
             ),
@@ -590,12 +874,11 @@ def test_dual_rail_rejects_incorrect_amplitude_length():
     layer = QuantumLayer(
         circuit=circuit,
         n_photons=n_photons,
-        amplitude_encoding=True,
         measurement_strategy=MeasurementStrategy.probs(
             computation_space=ComputationSpace.DUAL_RAIL
         ),
     )
-    invalid = torch.rand((2**n_photons) + 1, dtype=torch.float32)
+    invalid = torch.rand((2**n_photons) + 1, dtype=torch.float32).to(torch.complex64)
 
     with pytest.raises(ValueError, match="Amplitude input expects .* components"):
         layer(invalid)
@@ -616,11 +899,11 @@ def test_amplitude_encoding_superposition_matches_basis_sum():
         measurement_strategy=MeasurementStrategy.amplitudes(
             computation_space=ComputationSpace.DUAL_RAIL
         ),
-        amplitude_encoding=True,
     )
 
     basis_indices = [0, 1, 2]
-    basis_vectors = torch.eye(layer.input_size, dtype=torch.complex64)[basis_indices]
+    basis_size = len(layer.output_keys)
+    basis_vectors = torch.eye(basis_size, dtype=torch.complex64)[basis_indices]
     basis_outputs = torch.stack([layer(state) for state in basis_vectors])
 
     coefficients = torch.tensor(
@@ -628,18 +911,73 @@ def test_amplitude_encoding_superposition_matches_basis_sum():
     )
     coefficients = coefficients / torch.linalg.norm(coefficients)
 
-    amplitude_input = torch.zeros(layer.input_size, dtype=torch.complex64)
+    amplitude_input = torch.zeros(basis_size, dtype=torch.complex64)
     amplitude_input[basis_indices] = coefficients
 
     combined_output = layer(amplitude_input)
     expected_output = torch.sum(coefficients[:, None, None] * basis_outputs, dim=0)
     difference = combined_output - expected_output
-    assert torch.allclose(combined_output, expected_output, atol=1e-6, rtol=1e-6), (
-        f"Max deviation {difference.abs().max().item():.2e}"
-    )
+    assert torch.allclose(
+        combined_output, expected_output, atol=1e-6, rtol=1e-6
+    ), f"Max deviation {difference.abs().max().item():.2e}"
 
     with pytest.raises(ValueError, match="Amplitude input expects"):
-        layer(torch.ones(layer.input_size + 1, dtype=torch.complex64))
+        layer(torch.ones(basis_size + 1, dtype=torch.complex64))
+
+
+def test_fock_amplitude_encoding_accepts_compact_unbunched_tensor():
+    m, n = 4, 2
+    layer = QuantumLayer(
+        circuit=pcvl.Circuit(m),
+        n_photons=n,
+        measurement_strategy=MeasurementStrategy.amplitudes(
+            computation_space=ComputationSpace.FOCK
+        ),
+    )
+
+    logical = torch.zeros(math.comb(m, n), dtype=torch.complex64)
+    logical[0] = 1.0 + 0.0j
+
+    embedded = layer._embed_amplitude_tensor(layer._validate_amplitude_input(logical))
+    out = layer(logical)
+
+    assert out.shape[-1] == len(layer.output_keys)
+    assert embedded.shape[-1] == math.comb(m + n - 1, n)
+
+
+def test_fock_amplitude_encoding_accepts_compact_unbunched_statevector():
+    m, n = 4, 2
+    layer = QuantumLayer(
+        circuit=pcvl.Circuit(m),
+        n_photons=n,
+        measurement_strategy=MeasurementStrategy.amplitudes(
+            computation_space=ComputationSpace.FOCK
+        ),
+    )
+
+    logical = torch.zeros(math.comb(m, n), dtype=torch.complex64)
+    logical[0] = 1.0 + 0.0j
+    sv = StateVector(logical, n_modes=m, n_photons=n)
+
+    out = layer(sv)
+
+    assert out.shape[-1] == len(layer.output_keys)
+
+
+def test_fock_amplitude_encoding_rejects_non_coercible_compact_shape():
+    m, n = 4, 2
+    layer = QuantumLayer(
+        circuit=pcvl.Circuit(m),
+        n_photons=n,
+        measurement_strategy=MeasurementStrategy.amplitudes(
+            computation_space=ComputationSpace.FOCK
+        ),
+    )
+
+    invalid = torch.zeros(math.comb(m, n) + 1, dtype=torch.complex64)
+
+    with pytest.raises(ValueError, match="Amplitude input expects"):
+        layer(invalid)
 
 
 @pytest.mark.parametrize(
@@ -675,7 +1013,6 @@ def test_ebs_wrt_quantumlayer(
         measurement_strategy=MeasurementStrategy.amplitudes(
             computation_space=computation_space
         ),
-        amplitude_encoding=True,
     )
 
     num_states = len(ebs_layer.output_keys)
@@ -711,7 +1048,6 @@ def test_ebs_wrt_quantumlayer(
                     computation_space=computation_space
                 ),
                 input_state=list(state),
-                amplitude_encoding=False,
             )
 
             single_layer.load_state_dict(shared_state, strict=False)
@@ -720,9 +1056,9 @@ def test_ebs_wrt_quantumlayer(
             single_unitary = single_layer.computation_process.converter.to_tensor(
                 *single_params
             )
-            assert torch.allclose(single_unitary, ebs_unitary, rtol=1e-6, atol=1e-8), (
-                "Expected identical unitaries between EBS and single-state layers."
-            )
+            assert torch.allclose(
+                single_unitary, ebs_unitary, rtol=1e-6, atol=1e-8
+            ), "Expected identical unitaries between EBS and single-state layers."
             assert (
                 single_layer.computation_process.simulation_graph.mapped_keys
                 == ebs_layer.computation_process.simulation_graph.mapped_keys
@@ -740,6 +1076,6 @@ def test_ebs_wrt_quantumlayer(
         p=2, dim=1, keepdim=True
     ).clamp_min(1e-12)
     # TODO: investigate why this tests failed with rtol=1e-6, atol=1e-8
-    assert torch.allclose(ebs_output, expected_output, rtol=1e-4, atol=1e-6), (
-        "EBS output deviates from the superposed QuantumLayer results."
-    )
+    assert torch.allclose(
+        ebs_output, expected_output, rtol=1e-4, atol=1e-6
+    ), "EBS output deviates from the superposed QuantumLayer results."
