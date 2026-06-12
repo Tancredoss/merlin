@@ -42,7 +42,6 @@ jobs:
           df -h
           pip install -e ".[docs]"
           df -h
-          python -m pip cache purge
 
       - name: Build documentation
         working-directory: docs

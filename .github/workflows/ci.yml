@@ -50,7 +50,6 @@ jobs:
         df -h
         pip install -e ".[dev]"
         df -h
-        python -m pip cache purge
     
     - name: Run code quality checks
       run: |
