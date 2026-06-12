@@ -505,6 +505,66 @@ def test_processor_argument_overrides_layer_processor_with_warning():
     assert layer_processor.calls == 0
 
 
+def test_fit_reservoir_works_with_local_perceval_aprocessor_backend():
+    X, _ = _toy_data()
+    direct_model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=1),
+        cache=True,
+        seed=13,
+    )
+    processor_model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=1),
+        cache=True,
+        seed=13,
+    )
+    processor = merlin.MerlinProcessor(processor=pcvl.Processor("SLOS"))
+
+    direct_model.fit_reservoir(X)
+    processor_model.fit_reservoir(X, processor=processor)
+
+    assert processor.backend_kind == "local_processor"
+    assert processor.available_commands == ("probs",)
+    assert processor_model._fit_quantum_cache is not None
+    assert direct_model._fit_quantum_cache is not None
+    torch.testing.assert_close(
+        processor_model._fit_quantum_cache,
+        direct_model._fit_quantum_cache,
+        rtol=1e-6,
+        atol=1e-6,
+    )
+
+
+def test_layer_processor_runs_cache_false_reservoir_with_local_perceval_aprocessor():
+    X, _ = _toy_data()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=1),
+        concatenate=False,
+        cache=False,
+        seed=17,
+    )
+    model.layer.processor = merlin.MerlinProcessor(processor=pcvl.Processor("SLOS"))
+
+    model.fit_reservoir(X)
+    embeddings = model.transform_reservoir(X)
+    logits = model.predict(X + 0.05)
+
+    assert embeddings.shape == (len(X), model.layer.output_size)
+    assert logits.shape == (len(X), 2)
+    assert model._quantum_mean is not None
+    assert model._quantum_std is not None
+    assert torch.isfinite(embeddings).all()
+    assert torch.isfinite(logits).all()
+
+
 def test_layer_processor_survives_reservoir_rebuild():
     processor = DummyProcessor()
     model = ReservoirClassifier(
