@@ -73,24 +73,24 @@ Use this docstring structure:
 def func(x: dtype1, y: QuantumLayer | None = None) -> dtype3:
     """Description of the function.
 
-    Parameters
-    ----------
-    x : dtype1
-        Description of the first parameter respecting the
-        indent
-    y : QuantumLayer|None
-        Description of an optional parameter. If omitted, description.
-        Default value is 0.
+        Parameters
+        ----------
+        x : dtype1
+            Description of the first parameter respecting the
+            indent
+        y : QuantumLayer|None
+            Description of an optional parameter. If omitted, description.
+            Default value is 0.
 
-    Returns
-    -------
-    dtype3
-        Description of the return value.
+        Returns
+        -------
+        dtype3
+            Description of the return value.
 
-    Raises
-    ------
-    ImportError
-        Description of the error.
+        Raises
+        ------
+        ImportError
+            Description of the error.
     """
 ```
 
