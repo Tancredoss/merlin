@@ -2928,37 +2928,45 @@ def test_quantum_layer_photon_count_mismatch_StateVector_superposition():
             measurement_strategy=ML.MeasurementStrategy.probs(),)
 
 def test_quantum_layer_photon_count_match_StateVector_superposition():
-    layer = QuantumLayer(
-        input_size=0,
-        circuit=pcvl.Circuit(3),
-        input_state=pcvl.StateVector("|1,0,1>"),
-        n_photons=2,
-        measurement_strategy=ML.MeasurementStrategy.probs(),
-    )
-    assert layer is not None
-    assert isinstance(layer, QuantumLayer)
-
-
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=pcvl.StateVector("|1,0,1>"), 
+            n_photons=2,
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+        assert layer is not None
+        assert isinstance(layer, QuantumLayer)
 def test_quantum_layer_photon_count_match_List():
-    layer = QuantumLayer(
-        input_size=0,
-        circuit=pcvl.Circuit(3),
-        input_state=[1, 0, 1],
-        n_photons=2,
-        measurement_strategy=ML.MeasurementStrategy.probs(),
-    )
-    assert layer is not None
-    assert isinstance(layer, QuantumLayer)
-
-
-# to see if the tensor doesn't crash.
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=[1,0,1], 
+            n_photons=2,
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+        assert layer is not None
+        assert isinstance(layer, QuantumLayer)
+# to see if the tensor doesn't crash. this code can be removed once tensor is depprecated.
 def test_quantum_layer_photon_count_match_StateVector_Tensor():
-    layer = QuantumLayer(
-        input_size=0,
-        circuit=pcvl.Circuit(3),
-        input_state=torch.tensor([0.5, 0, 0.5]),
-        n_photons=2,
-        measurement_strategy=ML.MeasurementStrategy.probs(),
-    )
-    assert layer is not None
-    assert isinstance(layer, QuantumLayer)
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=torch.tensor([0.5,0,0.5]), 
+            n_photons=2,
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+        assert layer is not None
+        assert isinstance(layer, QuantumLayer)
+
+
+
+def test_quantum_layer_list_not_contain_integers():
+    """see if an input state reject list of float."""
+    expected_msg =("List/tuple input_state must contain non-negative integer "
+                   "occupations; use a StateVector for superposed inputs.")
+    
+    with pytest.raises(ValueError, match=re.escape(expected_msg)):
+        QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=[0.3, 0, 1], #invalide input for list.
+            measurement_strategy=ML.MeasurementStrategy.probs(),
+        )
