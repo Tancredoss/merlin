@@ -709,13 +709,21 @@ def _run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     dtype = _dtype_from_name(args.dtype)
     curves = _build_cases(args)
     result = _benchmark_metadata(args, device)
-    result["curves"] = {}
+    result["curves"] = {
+        curve_name: {
+            **{key: value for key, value in curve_config.items() if key != "points"},
+            "points": [],
+        }
+        for curve_name, curve_config in curves.items()
+    }
+    if args.plot_dir is not None:
+        result["plots"] = []
 
     for curve_name, curve_config in curves.items():
-        points = []
+        curve_result = result["curves"][curve_name]
         for case in curve_config["points"]:
             print(f"Running {case.name}...", flush=True)
-            points.append(
+            curve_result["points"].append(
                 _run_case(
                     case,
                     dtype=dtype,
@@ -724,10 +732,12 @@ def _run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                     repetitions=args.repetitions,
                 )
             )
-        result["curves"][curve_name] = {
-            key: value for key, value in curve_config.items() if key != "points"
-        }
-        result["curves"][curve_name]["points"] = points
+            if args.plot_dir is not None:
+                _record_plot_path(
+                    result,
+                    _plot_curve(result, args.plot_dir, curve_name),
+                )
+            _write_json(result, args.json_out)
     return result
 
 
@@ -748,47 +758,68 @@ def _memory_series_mib(points: list[dict[str, Any]]) -> list[float]:
 
 def _plot_curves(result: dict[str, Any], plot_dir: Path) -> list[str]:
     """Write one three-panel plot per curve and return created paths."""
+    plot_paths = []
+    for curve_name in result["curves"]:
+        path = _plot_curve(result, plot_dir, curve_name)
+        if path is not None:
+            plot_paths.append(path)
+    return plot_paths
+
+
+def _plot_curve(
+    result: dict[str, Any],
+    plot_dir: Path,
+    curve_name: str,
+) -> str | None:
+    """Write one three-panel plot for a single curve."""
     import matplotlib.pyplot as plt
 
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    plot_paths = []
-    for curve_name, curve in result["curves"].items():
-        points = curve["points"]
-        x_values = [point["x_value"] for point in points]
-        if not x_values:
-            continue
+    curve = result["curves"][curve_name]
+    points = curve["points"]
+    x_values = [point["x_value"] for point in points]
+    if not x_values:
+        return None
 
-        fig, axes = plt.subplots(3, 1, figsize=(8, 10), constrained_layout=True)
-        _plot_metric_axis(
-            axes[0],
-            curve_name,
-            points,
-            x_values,
-            _metric_series(points, "forward_time_ms"),
-            "Forward time (ms)",
-        )
-        _plot_metric_axis(
-            axes[1],
-            curve_name,
-            points,
-            x_values,
-            _metric_series(points, "backward_time_ms"),
-            "Backward time (ms)",
-        )
-        _plot_metric_axis(
-            axes[2],
-            curve_name,
-            points,
-            x_values,
-            _memory_series_mib(points),
-            "Peak allocated delta (MiB)",
-        )
-        fig.suptitle(curve_name.replace("_", " ").title())
-        path = plot_dir / f"{curve_name}.png"
-        fig.savefig(path, dpi=160)
-        plt.close(fig)
-        plot_paths.append(str(path))
-    return plot_paths
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    fig, axes = plt.subplots(3, 1, figsize=(8, 10), constrained_layout=True)
+    _plot_metric_axis(
+        axes[0],
+        curve_name,
+        points,
+        x_values,
+        _metric_series(points, "forward_time_ms"),
+        "Forward time (ms)",
+    )
+    _plot_metric_axis(
+        axes[1],
+        curve_name,
+        points,
+        x_values,
+        _metric_series(points, "backward_time_ms"),
+        "Backward time (ms)",
+    )
+    _plot_metric_axis(
+        axes[2],
+        curve_name,
+        points,
+        x_values,
+        _memory_series_mib(points),
+        "Peak allocated delta (MiB)",
+    )
+    fig.suptitle(curve_name.replace("_", " ").title())
+    path = plot_dir / f"{curve_name}.png"
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return str(path)
+
+
+def _record_plot_path(result: dict[str, Any], path: str | None) -> None:
+    """Record a generated plot path once in the JSON result."""
+    if path is None:
+        return
+    plots = result.setdefault("plots", [])
+    if path not in plots:
+        plots.append(path)
 
 
 def _plot_metric_axis(
@@ -937,8 +968,6 @@ def main() -> int:
     """Run the benchmark from the command line."""
     args = _parse_args()
     result = _run_benchmark(args)
-    if args.plot_dir is not None:
-        result["plots"] = _plot_curves(result, args.plot_dir)
     _write_json(result, args.json_out)
     print(f"Wrote JSON results to {args.json_out}")
     if args.plot_dir is not None:
