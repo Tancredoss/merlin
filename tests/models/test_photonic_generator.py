@@ -753,6 +753,63 @@ def test_gradients_flow_through_photonic_generator():
     assert any(grad is not None for grad in grads)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA GPU not available")
+def test_photonic_qgan_forward_keeps_cuda_device():
+    device = torch.device("cuda")
+    strategy = ML.MeasurementStrategy.probs(
+        computation_space=ML.ComputationSpace.FOCK,
+        occupancy_readout=True,
+    )
+    generator = ML.PhotonicGenerator(
+        layers=_make_layer(input_size=2, measurement_strategy=strategy),
+        count=2,
+        output_adapter=ML.ImageAdapter(
+            shape=(1, 4, 4),
+            headwise=True,
+            normalize_patches=True,
+        ),
+    ).to(device)
+    z = torch.randn(3, generator.latent_dim, device=device)
+
+    measurements = generator.measure(z)
+    output = generator.output_adapter(measurements)
+
+    assert z.device.type == device.type
+    assert output.device.type == device.type
+    assert output.shape == (3, 1, 4, 4)
+    for layer in generator.layers:
+        assert isinstance(layer, ML.QuantumLayer)
+        assert torch.device(layer.device).type == device.type
+        for parameter in layer.parameters():
+            assert parameter.device.type == device.type
+    for measurement_output in measurements.outputs:
+        assert isinstance(measurement_output, torch.Tensor)
+        assert measurement_output.device.type == device.type
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA GPU not available")
+def test_photonic_qgan_generate_samples_and_gradients_on_cuda():
+    device = torch.device("cuda")
+    generator = ML.PhotonicGenerator(
+        layers=_make_layer(input_size=2),
+        count=2,
+        output_adapter=ML.VectorAdapter(size=4),
+    ).to(device)
+
+    z = generator.sample_latent(batch_size=4)
+    output = generator(z)
+    loss = output.sum()
+    loss.backward()
+
+    assert z.device.type == device.type
+    assert output.device.type == device.type
+    grads = [param.grad for param in generator.parameters() if param.requires_grad]
+    assert any(grad is not None for grad in grads)
+    for grad in grads:
+        if grad is not None:
+            assert grad.device.type == device.type
+
+
 def test_forward_rejects_wrong_latent_shape():
     generator = ML.PhotonicGenerator(
         layers=[_make_layer(input_size=2)],

@@ -520,6 +520,27 @@ class PhotonicGenerator(nn.Module):
         """
         return len(self.layers)
 
+    def to(self, *args: Any, **kwargs: Any) -> PhotonicGenerator:
+        """Move the generator and quantum-layer runtime state.
+
+        Parameters
+        ----------
+        *args : Any
+            Positional arguments forwarded to :meth:`torch.nn.Module.to`.
+        **kwargs : Any
+            Keyword arguments forwarded to :meth:`torch.nn.Module.to`.
+
+        Returns
+        -------
+        PhotonicGenerator
+            The updated generator instance.
+        """
+        super().to(*args, **kwargs)
+        for layer in self.layers:
+            if isinstance(layer, QuantumLayer):
+                layer.to(*args, **kwargs)
+        return self
+
     def sample_latent(
         self,
         batch_size: int,
