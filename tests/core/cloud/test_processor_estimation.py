@@ -87,7 +87,7 @@ class TestOutputAndExport:
 
     def test_export_config_includes_trained_thetas(self):
         q = make_layer(
-            5, 3, 3, computation_space=ComputationSpace.UNBUNCHED, trainable=True
+            5, 3, 3, computation_space=ComputationSpace.FOCK, trainable=True
         )
         before = {n: p.clone() for n, p in q.named_parameters()}
         q.train()
@@ -95,8 +95,11 @@ class TestOutputAndExport:
         X = torch.randn(6, 3)
         for _ in range(4):
             opt.zero_grad()
-            _ = q(X)
-            loss = sum(param.sum() for param in q.parameters())
+            output = q(X)
+            weights = torch.arange(
+                output.shape[1], dtype=output.dtype, device=output.device
+            )
+            loss = (output * weights).sum()
             loss.backward()
             opt.step()
         q.eval()
