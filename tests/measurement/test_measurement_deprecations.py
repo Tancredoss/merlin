@@ -65,7 +65,7 @@ class TestMeasurementStrategyDeprecations:
             AttributeError,
             match="Use MeasurementStrategy.probs",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -77,7 +77,7 @@ class TestMeasurementStrategyDeprecations:
             AttributeError,
             match="Use MeasurementStrategy.amplitudes",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -89,7 +89,7 @@ class TestMeasurementStrategyDeprecations:
             AttributeError,
             match="Use MeasurementStrategy.mode_expectations",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -99,7 +99,7 @@ class TestMeasurementStrategyDeprecations:
 
     def test_deprecated_enum_none_sill_passes_in_quantum_layer(self):
         circuit = pcvl.Circuit(2)
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],
@@ -112,7 +112,7 @@ class TestMeasurementStrategyDeprecations:
             TypeError,
             match="Passing measurement_strategy as a string is no longer supported as of v0.4.",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -125,7 +125,7 @@ class TestMeasurementStrategyDeprecations:
             TypeError,
             match="Passing measurement_strategy as a string is no longer supported as of v0.4.",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -138,7 +138,7 @@ class TestMeasurementStrategyDeprecations:
             TypeError,
             match="Passing measurement_strategy as a string is no longer supported as of v0.4.",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -151,7 +151,7 @@ class TestMeasurementStrategyDeprecations:
             AttributeError,
             match="Cannot specify 'computation_space' in QuantumLayer's constructor. Move",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -161,7 +161,7 @@ class TestMeasurementStrategyDeprecations:
             AttributeError,
             match="Cannot specify 'computation_space' in QuantumLayer's constructor.",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -172,7 +172,7 @@ class TestMeasurementStrategyDeprecations:
             AttributeError,
             match="Cannot specify 'computation_space' in QuantumLayer's constructor.",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -184,7 +184,7 @@ class TestMeasurementStrategyDeprecations:
             AttributeError,
             match="Cannot specify 'computation_space' in QuantumLayer's constructor.",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -196,7 +196,7 @@ class TestMeasurementStrategyDeprecations:
             AttributeError,
             match="Cannot specify 'computation_space' in QuantumLayer's constructor.",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -208,7 +208,7 @@ class TestMeasurementStrategyDeprecations:
             AttributeError,
             match="Cannot specify 'computation_space' in QuantumLayer's constructor.",
         ):
-            layer = QuantumLayer(
+            QuantumLayer(
                 input_size=0,
                 circuit=circuit,
                 input_state=[1, 0],
@@ -219,13 +219,13 @@ class TestMeasurementStrategyDeprecations:
     def modern_factory_raises_no_error():
         circuit = pcvl.Circuit(2)
 
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],
         )
 
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],
@@ -233,14 +233,14 @@ class TestMeasurementStrategyDeprecations:
         )
 
         # probs
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],
             measurement_strategy=MeasurementStrategy.probs(),
         )
 
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],
@@ -250,14 +250,14 @@ class TestMeasurementStrategyDeprecations:
         )
 
         # amplitudes
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],
             measurement_strategy=MeasurementStrategy.amplitudes(),
         )
 
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],
@@ -267,14 +267,14 @@ class TestMeasurementStrategyDeprecations:
         )
 
         # mode expectation
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],
             measurement_strategy=MeasurementStrategy.mode_expectations(),
         )
 
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],
@@ -284,14 +284,14 @@ class TestMeasurementStrategyDeprecations:
         )
 
         # Partial
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],
             measurement_strategy=MeasurementStrategy.partial(modes=[0]),
         )
 
-        layer = QuantumLayer(
+        QuantumLayer(
             input_size=0,
             circuit=circuit,
             input_state=[1, 0],

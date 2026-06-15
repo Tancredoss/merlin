@@ -293,8 +293,7 @@ class TestRemovedNoBunchingParam:
 
     def _assert_no_deprecation_warning(self, warning_list) -> None:
         assert not any(
-            issubclass(warning.category, DeprecationWarning)
-            for warning in warning_list
+            issubclass(warning.category, DeprecationWarning) for warning in warning_list
         )
 
     @pytest.mark.parametrize("no_bunching", [True, False])

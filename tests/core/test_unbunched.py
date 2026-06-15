@@ -530,8 +530,7 @@ class TestNoBunchingFunctionality:
                 )
 
         assert not any(
-            issubclass(warning.category, DeprecationWarning)
-            for warning in warning_list
+            issubclass(warning.category, DeprecationWarning) for warning in warning_list
         )
         message = str(exc_info.value)
         assert "MeasurementStrategy.probs" in message
