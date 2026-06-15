@@ -293,9 +293,9 @@ class TestBuilderDeclarative:
         _assert_config_contract(cfg)
 
         for name in cfg.input_param_order:
-            assert not name.startswith(
-                "W"
-            ), f"trainable leaked into input_param_order: {name}"
+            assert not name.startswith("W"), (
+                f"trainable leaked into input_param_order: {name}"
+            )
 
     def test_builder_input_only_no_trainables(self):
         layer, _b = _make_builder_layer(8, include_trainable=False, scale=1.0)

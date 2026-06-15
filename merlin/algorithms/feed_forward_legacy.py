@@ -157,7 +157,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
     simulate complex conditional evolution of quantum systems.
 
     Detector support: The current feed-forward implementation expects amplitude access for
-    every intermediate layer (``MeasurementStrategy.AMPLITUDES``) and
+    every intermediate layer (``MeasurementStrategy.amplitudes()``) and
     therefore assumes ideal PNR detectors. Custom detector transforms or
     Perceval experiments with threshold / hybrid detectors are not yet
     supported inside this block.

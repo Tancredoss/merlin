@@ -214,16 +214,15 @@ from the **type** of the first argument to ``forward()``:
        | underlying tensor. It uses the same active-support execution path and
        | is useful when you manage tensors directly without wrapping them.
    * - 3
-     - | Real ``torch.Tensor``
-       | + ``amplitude_encoding=True``
-     - | **Legacy path — deprecated (will be removed in 0.4).**
-       | The constructor flag forces amplitude interpretation on a real-valued
-       | tensor. Migrate to path 1 or 2.
+     - Real ``torch.Tensor``
+     - | Treated as classical angle-encoding input. Convert amplitude tensors
+       | with :meth:`~merlin.core.state_vector.StateVector.from_tensor` or use a
+       | complex tensor when amplitudes are intended.
 
 .. warning::
-   *Deprecated since version 0.3:* The ``amplitude_encoding=True`` constructor parameter is deprecated and will
-   be removed in **0.4**. Pass a :class:`~merlin.core.state_vector.StateVector`
-   or a complex ``torch.Tensor`` to ``forward()`` instead.
+   The ``amplitude_encoding=True`` constructor parameter was removed in
+   **0.4**. Pass a :class:`~merlin.core.state_vector.StateVector` or a complex
+   ``torch.Tensor`` to ``forward()`` instead.
 
 Chunked execution tradeoff
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -576,9 +575,9 @@ Troubleshooting
   ``torch.Tensor`` in the same ``forward()`` call. Use either angle encoding
   (real tensors) or amplitude encoding (``StateVector`` / complex tensor), not
   both.
-- **DeprecationWarning for** ``amplitude_encoding=True``: Migrate to passing a
-  :class:`~merlin.core.state_vector.StateVector` or complex tensor to
-  ``forward()`` instead of using the constructor flag.
+- **Removed constructor flag**: ``amplitude_encoding=True`` now raises an
+  error. Pass a :class:`~merlin.core.state_vector.StateVector` or complex
+  tensor to ``forward()`` instead of using the constructor flag.
 - **Batched amplitude encoding**: Pass a 2-D tensor to
   :meth:`~merlin.core.state_vector.StateVector.from_tensor` and call ``forward()`` with the resulting
   :class:`~merlin.core.state_vector.StateVector`. The layer normalizes each sample independently and

@@ -164,7 +164,7 @@ class TestDetectorsWithQuantumLayer:
 
         with pytest.raises(
             RuntimeError,
-            match="MeasurementStrategy\\.AMPLITUDES does not support experiments with detectors",
+            match=r"measurement_strategy=MeasurementStrategy\.amplitudes\(\) does not support experiments with detectors",
         ):
             ML.QuantumLayer(
                 input_size=0,
@@ -928,8 +928,12 @@ class TestDetectorsWithKernels:
         keys_pnr = kernel_pnr._quantum_layer._detector_transform.output_keys
         keys_threshold = kernel_threshold._quantum_layer._detector_transform.output_keys
 
-        assert kernel_pnr._quantum_layer._detector_transform.output_size == len(keys_pnr)
-        assert kernel_threshold._quantum_layer._detector_transform.output_size == len(keys_threshold)
+        assert kernel_pnr._quantum_layer._detector_transform.output_size == len(
+            keys_pnr
+        )
+        assert kernel_threshold._quantum_layer._detector_transform.output_size == len(
+            keys_threshold
+        )
         assert len(keys_pnr) > len(keys_threshold)
         assert all(sum(key) == sum(input_state) for key in keys_pnr)
         assert any(sum(key) < sum(input_state) for key in keys_threshold)
@@ -982,6 +986,6 @@ def test_detector_transform_row():
     transform = DetectorTransform(simulation_keys, detectors, partial_measurement=False)
     row = transform.row(index=0)
     expected = torch.tensor([1.0])
-    assert torch.allclose(row, expected), (
-        f"Unexpected value for row: got {row}, expected: {expected}"
-    )
+    assert torch.allclose(
+        row, expected
+    ), f"Unexpected value for row: got {row}, expected: {expected}"
