@@ -117,7 +117,7 @@ Usage
         experiment=experiment,
         input_parameters=["px"],
         input_state=[1, 1, 1],
-        computation_space=ML.ComputationSpace.FOCK  # Optional since this is the default value
+        measurement_strategy=ML.measurement_strategy(computation_space=ML.ComputationSpace.FOCK), # Optional since this is the default value
     )
 
     x = torch.rand(3, 1)  # Generated data
