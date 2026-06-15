@@ -61,8 +61,8 @@ Migration guide
    grouping
    kernels
    layer
-   models/index
    measurement_strategy
+   models/index
    migration_guide
    quantum_bridge
    remote_execution

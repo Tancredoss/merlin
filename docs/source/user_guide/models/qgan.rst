@@ -1,9 +1,9 @@
 Photonic QGAN
 ====================
 
-A Generative Adversarial Network (GAN) is a classical neural network that tries to create a generative model that generates new samples from a given distribution. Here we will present a photonic implementation of this model that is ready to use in MerLin. It was first presented in Sedrakyan and Salavrakos' `paper <https://opg.optica.org/opticaq/fulltext.cfm?uri=opticaq-2-6-458>`_. There is also a reproduction in Merlin of this paper `here <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/photonic_QGAN>`_.
+A Generative Adversarial Network (GAN) is a classical neural network that tries to create a  model that generates new samples from a given distribution. Here we will present a photonic implementation of this model that is ready-to-use in MerLin. It was first presented in Sedrakyan and Salavrakos' `paper <https://opg.optica.org/opticaq/fulltext.cfm?uri=opticaq-2-6-458>`_. There is also a reproduction in MerLin of this paper `here <https://github.com/merlinquantum/reproduced_papers/tree/main/papers/photonic_QGAN>`_.
 
-Lets first understand how a classical GAN works.
+Let's first understand how a classical GAN works.
 
 Classical GAN
 --------------
@@ -76,11 +76,12 @@ The photonic implementation of the QGAN is similar. Just like it is illustrated 
 
 MerLin implementation
 ----------------------
-The MerLin model that is ready to use created the generator. It is defined as the :class:`~merlin.models.photonic_generator.PhotonicGenerator` object. This model takes noise as input and generates new features that are close to the data distribution as an output.
+The ready-to-use MerLin model creats the generator. It is defined as the :class:`~merlin.models.photonic_generator.PhotonicGenerator` object. This model takes noise as input and generates new features that are close to the data distribution as an output.
 
 There is also a helper classes to help transform the output.
 
 * ``ImageAdapter``: Adapt tensor measurements to GAN-native image tensors.
+* ``VectorAdapter``: Concatenate tensor measurements into fixed-width vectors.
 
 Although the :class:`~merlin.models.photonic_generator.PhotonicGenerator`'s output adapter argument can accept a regular torch module as well.
 
