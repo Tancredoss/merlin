@@ -5,7 +5,7 @@ import warnings
 from collections.abc import Callable, Sequence
 from contextvars import ContextVar
 from functools import wraps
-from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Any, NoReturn, TypeVar, cast, overload
 
 from ..core.computation_space import ComputationSpace
 
@@ -35,7 +35,7 @@ _NO_BUNCHING_REMOVED_MESSAGE = (
 )
 
 
-def raise_no_bunching_removed() -> None:
+def raise_no_bunching_removed() -> NoReturn:
     """
     Raise when the removed ``no_bunching`` flag is used.
 
