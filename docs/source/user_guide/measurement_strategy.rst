@@ -122,8 +122,9 @@ derives a photon loss transform and a detector transform that remaps raw Fock-st
 outcomes defined by the experiment. The photon loss mapping is applied first. Then, the detector mapping is applied. Lastly, the
 measurement strategy converts the distribution into classical features. As a consequence:
 
-* ``MeasurementStrategy.probs()`` and ``MeasurementStrategy.mode_expectations()`` transparently work with any noise model and detector setup.
-* ``MeasurementStrategy.amplitudes()`` requires direct access to the complex amplitudes and therefore **cannot** be used when a noise model or custom detectors are defined (the layer will raise a ``RuntimeError``).
+* ``MeasurementStrategy.probs()`` transparently works with any noise model and detector setup.
+* ``MeasurementStrategy.mode_expectations()`` works with detector setup, but active noise models require ``MeasurementStrategy.probs()``.
+* ``MeasurementStrategy.amplitudes()`` requires direct access to the complex amplitudes and therefore **cannot** be used when a noise model or custom detectors are defined. Active noise models raise a ``ValueError``; custom detectors raise a ``RuntimeError``.
 
 Computation space and grouping
 ============================================

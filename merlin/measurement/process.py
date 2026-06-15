@@ -67,7 +67,7 @@ class SamplingProcess:
         self.method = method
 
     def pcvl_sampler(
-        self, distribution: torch.Tensor, shots: int, method: str = None
+        self, distribution: torch.Tensor, shots: int, method: str | None = None
     ) -> torch.Tensor:
         """Apply sampling noise to a probability distribution.
 
@@ -135,7 +135,7 @@ class SamplingProcess:
         )
 
     def pcvl_sampler_g2(
-        self, distribution: SectoredDistribution, shots: int, method: str = None
+        self, distribution: SectoredDistribution, shots: int, method: str | None = None
     ) -> SectoredDistribution:
         """Apply sampling noise to a SectoredDistribution.
 

@@ -39,8 +39,6 @@ from merlin.core.sectored_distribution import (
     clean_sectored_distribution,
 )
 from merlin.measurement.process import SamplingProcess, partial_measurement
-from merlin.utils.deprecations import warn_deprecated_enum_access
-from merlin.measurement.process import partial_measurement
 from merlin.utils.deprecations import error_deprecated_enum_access
 from merlin.utils.grouping import LexGrouping, ModGrouping
 

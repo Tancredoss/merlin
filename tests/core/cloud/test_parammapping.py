@@ -116,7 +116,7 @@ def _make_perceval_layer_two_prefixes(prefixes: list[str], counts: list[int], m:
     c = pcvl.Circuit(m)
 
     mode = 0
-    for pref, n in zip(prefixes, counts):
+    for pref, n in zip(prefixes, counts, strict=True):
         for i in range(n):
             c.add(mode, pcvl.PS(pcvl.P(f"{pref}{i + 1}")))
             mode += 1

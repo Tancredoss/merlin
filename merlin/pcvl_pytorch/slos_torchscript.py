@@ -1201,7 +1201,7 @@ def load_slos_distribution_computegraph(path):
 
     Returns
     -------
-    SLOSComputeGraph
+    SLOSComputeGraph | NoisySLOSComputeGraph | NoisyG2SLOSComputeGraph
         Loaded computation graph ready for computations.
 
     Examples
@@ -1225,7 +1225,6 @@ def load_slos_distribution_computegraph(path):
     m = metadata["m"]
     n_photons = metadata["n_photons"]
     computation_space = ComputationSpace.coerce(metadata.get("computation_space"))
-    keep_keys = metadata["keep_keys"]
 
     # Parse dtype
     dtype_str = metadata.get("dtype_str", "torch.float32")
@@ -1237,7 +1236,17 @@ def load_slos_distribution_computegraph(path):
         dtype = torch.float32
 
     noise_groups = metadata.get("noise_groups")
-    if noise_groups is not None:
+    is_g2_graph = metadata.get("graph_type") == "noisy_g2_slos"
+    if is_g2_graph:
+        graph = NoisyG2SLOSComputeGraph(
+            noise_groups,
+            m,
+            n_photons,
+            computation_space,
+            dtype=dtype,
+        )
+    elif noise_groups is not None:
+        keep_keys = metadata["keep_keys"]
         graph = NoisySLOSComputeGraph(
             noise_groups,
             m,
@@ -1247,6 +1256,7 @@ def load_slos_distribution_computegraph(path):
             dtype=dtype,
         )
     else:
+        keep_keys = metadata["keep_keys"]
         # Create basic graph (without output_map_func for now)
         graph = SLOSComputeGraph(
             m, n_photons, None, computation_space, keep_keys, dtype=dtype

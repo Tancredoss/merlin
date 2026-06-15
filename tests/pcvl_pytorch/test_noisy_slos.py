@@ -330,7 +330,13 @@ def test_noisy_slos_to_moves_cached_graph_and_preserves_probs():
     assert torch.allclose(probs_after, probs_before, atol=1e-6)
 
 
-def test_computation_space_and_indistinguishability_default_value():
+@pytest.mark.parametrize(
+    "unsupported_computation_space",
+    [ComputationSpace.UNBUNCHED, ComputationSpace.DUAL_RAIL],
+)
+def test_computation_space_and_indistinguishability_default_value(
+    unsupported_computation_space,
+):
     noise = pcvl.NoiseModel(indistinguishability=0.2)
     groups = classify_noise(noise)
     noisy_slos = NoisySLOSComputeGraph(
@@ -338,18 +344,17 @@ def test_computation_space_and_indistinguishability_default_value():
     )
     assert noisy_slos.computation_space == ComputationSpace.FOCK
 
-    with pytest.raises(
+    with pytest.warns(
         UserWarning,
         match="Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models.",
     ):
         noisy_slos = NoisySLOSComputeGraph(
-            groups, m=5, n_photons=3, computation_space=ComputationSpace.UNBUNCHED
+            groups,
+            m=5,
+            n_photons=3,
+            computation_space=unsupported_computation_space,
         )
-        assert noisy_slos.computation_space == ComputationSpace.FOCK
-        noisy_slos = NoisySLOSComputeGraph(
-            groups, m=5, n_photons=3, computation_space=ComputationSpace.UNBUNCHED
-        )
-        assert noisy_slos.computation_space == ComputationSpace.DUAL_RAIL
+    assert noisy_slos.computation_space == ComputationSpace.FOCK
 
     noise = pcvl.NoiseModel(g2=1.0)
     groups = classify_noise(noise)

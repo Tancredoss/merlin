@@ -10,7 +10,7 @@ from .computation_space import ComputationSpace
 
 @dataclass
 class SectorResult:
-    """One photon-number sector of a probability output. If keys are not given, the Combinatics.enumerate_states will be used."""
+    """One photon-number sector of a probability output. If keys are not given, the Combinadics.enumerate_states will be used."""
 
     tensor: torch.Tensor
     n_modes: int
@@ -307,7 +307,9 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
     - Batch dimensions are preserved: unbatched input produces unbatched output,
       batched input produces batched output.
     - Total probability is conserved across the reorganization.
-    - Output sectors are sorted by photon number in the returned SectoredDistribution.
+    - Output sectors preserve the original sector discovery order. Initial
+      photon numbers follow the input SectoredDistribution order, and newly
+      discovered photon numbers are appended when first encountered.
     - Keys are regenerated from Combinadics based on the actual photon counts,
       ensuring consistency with the Fock space structure.
 
@@ -334,7 +336,7 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
     photon_numbers = list(dist._photon_map.keys())
     sector_shape = dist.sectors[0].tensor.shape
 
-    # Combinatics per photon sector for faster indexing
+    # Combinadics per photon sector for faster indexing
     combinadics_per_sector = {
         i: Combinadics(scheme="fock", n=i, m=dist.sectors[0].n_modes)
         for i in photon_numbers

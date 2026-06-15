@@ -834,12 +834,12 @@ def setup_noise_and_detectors(
     Raises
     ------
     RuntimeError
-        If amplitude readout is requested together with custom detectors, or if
-        amplitude readout or object return is incompatible with the noise model.
+        If amplitude readout is requested together with custom detectors.
     NotImplementedError
         If a non-SLOS backend is specified.
     ValueError
-        If measurement strategy is incompatible with noisy simulation.
+        If measurement strategy is incompatible with noisy simulation, including
+        amplitude readout with active noise.
     """
     # Measurement resolution
     measurement_kind = _resolve_measurement_kind(measurement_strategy)

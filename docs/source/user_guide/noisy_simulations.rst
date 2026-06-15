@@ -266,52 +266,61 @@ Output:
 Multi-photon emission
 ---------------------
 
-``g2`` controls multi-photon emission from the source. When ``g2`` is active,
-one expected source photon can be duplicated. This means the simulation must
-include larger photon-number sectors.
-
-For example, an input state ``[1, 1]`` can produce output sectors with ``2``,
-``3``, or ``4`` photons.
-
+The g2 value is correlated to the probability that a source emits two photons instead of one. Mathematically, it is defined by :math:`g(2)=\frac{\langle n(n-1)\rangle}{\langle n \rangle^2}`. Here, since we only analyze the probability that a second photon is emitted and not higher-order emissions, we can define p as the probability that two photons are emitted: :math:`p=\frac{1-g(2)-\sqrt{1-2g(2)}}{2g(2)}`. So a ``g(2)`` of ``0.5`` corresponds to the case where all generated photons are duplicated.
+ 
+Merlin treats each intended input photon as one g2 source slot. If the input
+state is bunched, each photon in the occupied mode may be duplicated. For
+example, in the :math:`\ket{2,0,0}` input state, the :math:`\ket{2,0,0}`,
+:math:`\ket{3,0,0}`, and :math:`\ket{4,0,0}` states are simulated.
+ 
+This noise can change the output type considerably when running the ``forward`` method of a :class:`~merlin.algorithms.layer.QuantumLayer`. Indeed, if an extra photon is generated, the interferometer simulation is performed in a completely different Fock space. To illustrate this, we use the same simple circuit used to describe indistinguishability noise and the same :math:`\ket{1,1}` input state.
+ 
 .. code-block:: python
-
-    noise = pcvl.NoiseModel(
-        g2=0.25,
-        g2_distinguishable=False,
-    )
-
-    layer = ML.QuantumLayer(
+ 
+    import perceval as pcvl
+    import merlin as ml
+ 
+    #Creating the BS circuit
+    circuit = pcvl.Circuit(2)
+    circuit.add([0, 1], pcvl.BS.H())
+ 
+    #Running the circuit
+    layer = ml.QuantumLayer(
         input_size=0,
         circuit=circuit,
         input_state=[1, 1],
-        noise=noise,
-        measurement_strategy=ML.MeasurementStrategy.probs(
-            computation_space=ML.ComputationSpace.FOCK
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
         ),
+        noise=pcvl.NoiseModel(g2=0.25),
     )
-
-    probabilities = layer()
-
-    for sector in probabilities.sectors:
-        print(f"{sector.n_photons}-photon sector: {sector.tensor}")
-
+    output = layer()
+ 
+    #Printing the probabilities
+    for key, prob in zip(layer.output_keys, output.flatten()):
+        print(f"Output probability of state {key} is {prob}")
+ 
+ 
 Output:
-
-.. code-block:: text
-
-    2-photon sector: tensor([[0.3431, 0.0000, 0.3431]])
-    3-photon sector: tensor([[0.1066, 0.0355, 0.0355, 0.1066]])
-    4-photon sector: tensor([[0.0110, 0.0000, 0.0074, 0.0000, 0.0110]])
-
-When ``g2 > 0``, the layer returns a
-:class:`~merlin.core.sectored_distribution.SectoredDistribution` because each
-photon-number sector has a different Fock-space size.
-
-``g2_distinguishable`` only matters when ``g2`` is active. It controls whether
-the extra photons created by multi-photon emission are simulated as
-distinguishable from the intended photons. If ``indistinguishability=1.0``,
-Merlin treats the duplicated photons as indistinguishable.
-
+    - Output probability of state (2, 0) is 0.1348033845424652
+    - Output probability of state (1, 0) is 0.019606785848736763
+    - Output probability of state (0, 0) is 0.1348033845424652
+    - Output probability of state (1, 1) is 0.016084961593151093
+    - Output probability of state (0, 1) is 0.0053616538643836975
+    - Output probability of state (0, 2) is 0.0053616538643836975
+    - Output probability of state (3, 0) is 0.016084961593151093
+    - Output probability of state (2, 1) is 0.0006899359868839383
+    - Output probability of state (1, 2) is 0.0
+    - Output probability of state (0, 3) is 0.00045995728578418493
+    - Output probability of state (4, 0) is 0.0
+    - Output probability of state (3, 1) is 0.0006899359868839383
+    - Output probability of state (2, 2) is 0.2285533845424652
+    - Output probability of state (1, 3) is 0.2285533845424652
+    - Output probability of state (0, 4) is 0.2089466005563736
+ 
+We observe that the output is a large ``torch.Tensor``. Indeed, because the space analyzed by a quantum interferometer depends on the number of input photons (the Fock space dimension for n photons and m modes is defined by :math:`\binom{m+n-1}{n}`).  Thus, g2 noise simulations explore a larger space and are handled differently in the output of the :class:`~merlin.algorithms.layer.QuantumLayer`'s forward method. Photon loss and detectors are applied to each sector independently.
+ 
+The default value of the ``g2`` parameter of the ``NoiseModel`` is 0.0. This is the case where no extra photons are ever generated.
 
 Rules and limitations
 =====================
@@ -325,9 +334,8 @@ Noisy simulations currently have these constraints:
 5. Use :class:`~merlin.core.computation_space.ComputationSpace.FOCK` for source
    noise, because source noise can add photons, remove photons, and create
    bunched states.
-6. Do not use a grouping strategy with ``g2 > 0``. Apply grouping manually to
-   each sector of the returned
-   :class:`~merlin.core.sectored_distribution.SectoredDistribution`.
+6. With ``g2 > 0``, interpret columns through ``layer.output_keys`` because the
+   flattened output can contain several photon-number sectors.
 
 
 Use detectors to match hardware outputs

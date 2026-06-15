@@ -146,7 +146,9 @@ def test_noisy_layer_with_amplitudes_strategy_raises_value_error():
             input_size=5,
             experiment=exp,
             input_state=[1, 0, 0, 0, 0],
-            measurement_strategy=ml.MeasurementStrategy.AMPLITUDES,
+            measurement_strategy=ml.MeasurementStrategy.amplitudes(
+                computation_space=ml.ComputationSpace.FOCK
+            ),
         )
 
 
@@ -556,7 +558,9 @@ def test_impossible_noise():
             input_size=5,
             builder=circ,
             noise=noise,
-            computation_space=ml.ComputationSpace.FOCK,
+            measurement_strategy=ml.MeasurementStrategy.probs(
+                computation_space=ml.ComputationSpace.FOCK
+            ),
         )
 
     # Verify that g2_distinguishable was auto-corrected
@@ -679,7 +683,9 @@ def test_experiment_noise_amplitudes_uses_value_error_contract():
             input_size=4,
             experiment=experiment,
             input_state=[1, 0, 1, 0],
-            measurement_strategy=ml.MeasurementStrategy.AMPLITUDES,
+            measurement_strategy=ml.MeasurementStrategy.amplitudes(
+                computation_space=ml.ComputationSpace.FOCK
+            ),
         )
 
 
@@ -1068,7 +1074,9 @@ def test_computation_space_changed():
             builder=builder,
             noise=noise,
             n_photons=2,
-            computation_space=ml.ComputationSpace.UNBUNCHED,
+            measurement_strategy=ml.MeasurementStrategy.probs(
+                computation_space=ml.ComputationSpace.UNBUNCHED
+            ),
         )
         assert layer.computation_space == ml.ComputationSpace.FOCK
         assert layer.output_size == 15
@@ -1082,7 +1090,9 @@ def test_computation_space_changed():
             builder=builder,
             noise=noise,
             n_photons=2,
-            computation_space=ml.ComputationSpace.DUAL_RAIL,
+            measurement_strategy=ml.MeasurementStrategy.probs(
+                computation_space=ml.ComputationSpace.DUAL_RAIL
+            ),
         )
         assert layer.computation_space == ml.ComputationSpace.FOCK
         assert layer.output_size == 15
@@ -1092,7 +1102,9 @@ def test_computation_space_changed():
             builder=builder,
             noise=noise,
             n_photons=2,
-            computation_space=ml.ComputationSpace.UNBUNCHED,
+            measurement_strategy=ml.MeasurementStrategy.probs(
+                computation_space=ml.ComputationSpace.UNBUNCHED
+            ),
             amplitude_encoding=True,
         )
 

@@ -151,10 +151,11 @@ Photon loss and detectors
   every survival/loss configuration implied by the noise model.
 - ``MeasurementStrategy.amplitudes()`` requires access to raw complex amplitudes
   and is therefore incompatible with custom detectors **or** photon-loss noise
-  models. Attempting this combination raises a ``RuntimeError``. To emulate a
-  detector pipeline while still inspecting amplitudes, run the layer without
-  detectors and apply :class:`~merlin.measurement.detectors.DetectorTransform`
-  manually to the resulting amplitudes.
+  models. Active noise models raise a ``ValueError``; custom detectors raise a
+  ``RuntimeError``. To emulate a detector pipeline while still inspecting
+  amplitudes, run the layer without detectors and apply
+  :class:`~merlin.measurement.detectors.DetectorTransform` manually to the
+  resulting amplitudes.
 - Call :meth:`~merlin.algorithms.layer.QuantumLayer.output_keys` to inspect
   the classical outcomes produced by the detector transform.
 

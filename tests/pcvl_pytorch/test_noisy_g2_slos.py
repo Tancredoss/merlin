@@ -10,25 +10,26 @@ This module comprehensively tests:
 7. Comparison with Perceval Simulator
 """
 
-import pytest
-import torch
-import numpy as np
-import perceval as pcvl
 from copy import deepcopy
 
+import numpy as np
+import perceval as pcvl
+import pytest
+import torch
+
 from merlin import (
-    ComputationSpace,
     CircuitBuilder,
     Combinadics,
+    ComputationSpace,
     MeasurementStrategy,
     QuantumLayer,
 )
-from merlin.core import SectoredDistribution, SectorResult
-from merlin.pcvl_pytorch.noisy_slos import NoisyG2SLOSComputeGraph
-from merlin.pcvl_pytorch.slos_torchscript import SLOSComputeGraph
 from merlin.algorithms.layer_utils import NoiseGroups
+from merlin.core import SectoredDistribution, SectorResult
 from merlin.core.process import ComputationProcess
 from merlin.pcvl_pytorch.locirc_to_tensor import CircuitConverter
+from merlin.pcvl_pytorch.noisy_slos import NoisyG2SLOSComputeGraph
+from merlin.pcvl_pytorch.slos_torchscript import SLOSComputeGraph
 
 
 @pytest.fixture
@@ -337,7 +338,9 @@ class TestG2DistinguishabilityModes:
         # conv(SLOS([1,1,1,0]), SLOS([1,0,0,0])).
         sectors_higher_differ = any(
             not torch.allclose(si.tensor, sd.tensor, atol=1e-6)
-            for si, sd in zip(result_indist.sectors[1:], result_dist.sectors[1:])
+            for si, sd in zip(
+                result_indist.sectors[1:], result_dist.sectors[1:], strict=True
+            )
         )
         assert (
             sectors_higher_differ
@@ -390,6 +393,40 @@ class TestG2DistinguishabilityModes:
         # Sector 1 = 1.0 * NoisySLOS(n=2).compute_probs([2,0,0,0]) ≈ SLOS([2,0,0,0])
         sector_1_probs = result.sectors[1].tensor.squeeze()
         assert torch.allclose(sector_1_probs, probs_augmented.squeeze(), atol=1e-5)
+
+    def test_bunched_input_uses_one_g2_source_slot_per_photon(self):
+        """Bunched Fock inputs can duplicate each intended photon.
+
+        Input state [2, 0] represents two intended photons in mode 0, so the g2
+        model has two source slots in that mode. At g2=0.5, p_emit=1.0 and both
+        slots emit an extra photon, placing all probability in the four-photon
+        sector. A per-mode source model would only reach the three-photon sector.
+        """
+        groups = NoiseGroups(
+            source={
+                "g2": 0.5,
+                "g2_distinguishable": False,
+                "indistinguishability": 1.0,
+            },
+            circuit=None,
+            post_measurement=None,
+        )
+        noisy_slos = NoisyG2SLOSComputeGraph(
+            groups, m=2, n_photons=2, computation_space=ComputationSpace.FOCK
+        )
+
+        result = noisy_slos.compute_probs(torch.eye(2, dtype=torch.complex64), [2, 0])
+
+        assert isinstance(result, SectoredDistribution)
+        assert [sector.n_photons for sector in result.sectors] == [2, 3, 4]
+        sector_probabilities = torch.stack(
+            [sector.tensor.sum() for sector in result.sectors]
+        )
+        assert torch.allclose(
+            sector_probabilities,
+            torch.tensor([0.0, 0.0, 1.0], dtype=sector_probabilities.dtype),
+            atol=1e-6,
+        )
 
 
 class TestG2ExtraPhotonDistribution:

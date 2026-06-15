@@ -145,6 +145,23 @@ class NoisyG2SLOSComputeGraph:
         self,
         input_state: list[int] | tuple[int, ...],
     ) -> list[list[tuple[int, ...]]]:
+        """Return source-slot combinations that emit extra g2 photons.
+
+        The g2 model treats each intended input photon as one source slot. For
+        bunched inputs, a mode with occupation greater than one contributes one
+        slot per photon in that mode. For example, input state ``[2, 0]`` has
+        two source slots in mode 0 and can emit zero, one, or two extra photons.
+
+        Parameters
+        ----------
+        input_state : list[int] | tuple[int, ...]
+            Fock input state whose occupied photons define the g2 source slots.
+
+        Returns
+        -------
+        list[list[tuple[int, ...]]]
+            Extra-photon combinations grouped by the number of extra photons.
+        """
         num_photons = sum(input_state)
         output: list[list[tuple[int, ...]]] = [[]]
 
@@ -355,6 +372,7 @@ class NoisyG2SLOSComputeGraph:
             os.makedirs(dir_path)
 
         metadata = {
+            "graph_type": "noisy_g2_slos",
             "noise_groups": self.noise_groups,
             "m": self.m,
             "n_photons": self.n_photons,
@@ -670,7 +688,7 @@ class _InputStateNoisySLOSComputeGraph:
             self.computation_space = ComputationSpace.FOCK
 
         if indistinguishability < 0 or indistinguishability > 1:
-            raise ValueError("Indistinguishability must be in range (0, 1).")
+            raise ValueError("Indistinguishability must be in range [0, 1].")
 
         self.device = device
         self.dtype = dtype
@@ -766,6 +784,9 @@ class _InputStateNoisySLOSComputeGraph:
                 )
                 output_probs += bit_weight * convolution * count.item()
 
+        # OBB partition weights do not generally sum to one. This normalization
+        # assumes output_probs spans the full Fock basis for self.n_photons; it
+        # would hide real probability leakage if the output basis were truncated.
         output_probs = output_probs / output_probs.sum(dim=1).unsqueeze(1)
         return output_keys, output_probs
 

@@ -8,7 +8,7 @@ merlin.utils.deprecations module
 
 .. autofunction:: sanitize_parameters
 
-.. autofunction:: warn_deprecated_enum_access
+.. autofunction:: error_deprecated_enum_access
 
 .. autofunction:: raise_no_bunching_deprecated
 
