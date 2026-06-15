@@ -405,13 +405,12 @@ class TestQuantumLayerMeasurementStrategy:
 
         x = torch.rand(2, 2)
 
-        with pytest.warns(DeprecationWarning):
-            legacy_layer = ML.QuantumLayer(
-                input_size=2,
-                n_photons=2,
-                builder=builder,
-                measurement_strategy=ML.MeasurementStrategy.PROBABILITIES,
-            )
+        legacy_layer = ML.QuantumLayer(
+            input_size=2,
+            n_photons=2,
+            builder=builder,
+            measurement_strategy=ML.MeasurementStrategy.probs(),
+        )
 
         legacy_output = legacy_layer(x)
         grouping_cases = [
@@ -442,19 +441,6 @@ class TestQuantumLayerMeasurementStrategy:
 
 
 def test_resolve_measurement_strategy():
-    with pytest.warns(DeprecationWarning):
-        assert isinstance(
-            resolve_measurement_strategy(MeasurementStrategy.PROBABILITIES),
-            ProbabilitiesStrategy,
-        )
-        assert isinstance(
-            resolve_measurement_strategy(MeasurementStrategy.MODE_EXPECTATIONS),
-            ModeExpectationsStrategy,
-        )
-        assert isinstance(
-            resolve_measurement_strategy(MeasurementStrategy.AMPLITUDES),
-            AmplitudesStrategy,
-        )
     assert isinstance(
         resolve_measurement_strategy(MeasurementStrategy.probs()),
         ProbabilitiesStrategy,
@@ -936,7 +922,7 @@ class TestComputationSpaceConflictResolution:
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.raises(TypeError, match="Cannot specify 'computation_space'"):
+        with pytest.raises(AttributeError, match="Cannot specify 'computation_space'"):
             ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
@@ -954,7 +940,7 @@ class TestComputationSpaceConflictResolution:
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.raises(TypeError, match="Cannot specify 'computation_space'"):
+        with pytest.raises(AttributeError, match="Cannot specify 'computation_space'"):
             ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
@@ -971,7 +957,7 @@ class TestComputationSpaceConflictResolution:
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.raises(TypeError, match="Cannot specify 'computation_space'"):
+        with pytest.raises(AttributeError, match="Cannot specify 'computation_space'"):
             ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
@@ -1002,36 +988,36 @@ class TestComputationSpaceConflictResolution:
         assert layer.computation_space == ComputationSpace.FOCK
         assert layer.measurement_strategy.type == MeasurementKind.PROBABILITIES
 
-    def test_legacy_enum_with_constructor_computation_space_warns(self):
-        """Legacy enum (PROBABILITIES) with constructor computation_space should WARN but work."""
+    def test_constructor_computation_space_fails(self):
+        """Legacy enum (PROBABILITIES) with constructor computation_space should fail."""
         builder = ML.CircuitBuilder(n_modes=3)
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
         builder.add_entangling_layer(trainable=True, name="U2")
 
-        with pytest.warns(DeprecationWarning, match="deprecated"):
+        with pytest.raises(
+            AttributeError,
+            match="Cannot specify 'computation_space' in QuantumLayer's constructor. ",
+        ):
             layer = ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
                 builder=builder,
                 computation_space=ComputationSpace.FOCK,
-                measurement_strategy=MeasurementStrategy.PROBABILITIES,
+                measurement_strategy=MeasurementStrategy.probs(),
             )
-        # Should have used the constructor computation_space
-        assert layer.computation_space == ComputationSpace.FOCK
 
-    def test_legacy_enum_without_constructor_computation_space_defaults(self):
-        """Legacy enum without computation_space should default to UNBUNCHED."""
+    def test_new_ms_without_constructor_computation_space_defaults(self):
+        """New factory method should default to UNBUNCHED."""
         builder = ML.CircuitBuilder(n_modes=3)
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.warns(DeprecationWarning):
-            layer = ML.QuantumLayer(
-                input_size=2,
-                n_photons=1,
-                builder=builder,
-                measurement_strategy=MeasurementStrategy.PROBABILITIES,
-            )
+        layer = ML.QuantumLayer(
+            input_size=2,
+            n_photons=1,
+            builder=builder,
+            measurement_strategy=MeasurementStrategy.probs(),
+        )
         # Should default to UNBUNCHED
         assert layer.computation_space == ComputationSpace.UNBUNCHED
