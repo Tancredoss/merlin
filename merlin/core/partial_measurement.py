@@ -132,9 +132,9 @@ class PartialMeasurement:
                 f"overlapping modes: {overlap}."
             )
 
-        n_modes = len(measured_modes) + len(unmeasured_modes)
-        expected_modes = set(range(n_modes))
         actual_modes = measured_set | unmeasured_set
+        n_modes = max(actual_modes) + 1 if actual_modes else 0
+        expected_modes = set(range(n_modes))
         if actual_modes != expected_modes:
             missing = tuple(sorted(expected_modes - actual_modes))
             unexpected = tuple(sorted(actual_modes - expected_modes))
