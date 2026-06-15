@@ -5,7 +5,7 @@ import warnings
 from collections.abc import Callable, Sequence
 from contextvars import ContextVar
 from functools import wraps
-from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Any, NoReturn, TypeVar, cast, overload
 
 from ..core.computation_space import ComputationSpace
 
@@ -28,41 +28,28 @@ _ACTIVE_DEPRECATION_MESSAGES: ContextVar[frozenset[str]] = ContextVar(
 
 _NO_BUNCHING_REMOVED_MESSAGE = (
     "The 'no_bunching' parameter is removed. "
-    "Use measurement_strategy=MeasurementStrategy.probs(computation_space=ComputationSpace.UNBUNCHED) "
-    "for no_bunching=True or computation_space=ComputationSpace.FOCK for no_bunching=False."
+    "Use MeasurementStrategy.probs(computation_space=ComputationSpace.UNBUNCHED) "
+    "or MeasurementStrategy.probs(computation_space=ComputationSpace.FOCK) "
+    "for QuantumLayer measurements. Use computation_space=ComputationSpace.UNBUNCHED "
+    "or computation_space=ComputationSpace.FOCK for kernels."
 )
 
 
-def raise_no_bunching_deprecated(*, stacklevel: int = 2) -> None:
+def raise_no_bunching_removed() -> NoReturn:
     """
-    Warn and raise when deprecated ``no_bunching`` is used.
+    Raise when the removed ``no_bunching`` flag is used.
 
-    Parameters
-    ----------
-    stacklevel : int
-        Warning stack level used for the emitted deprecation warning. Default is ``2``.
+    Returns
+    -------
+    None
+        This function never returns normally.
 
     Raises
     ------
     ValueError
-        Always raised after emitting the deprecation warning.
+        Always raised with the 0.4 migration guidance.
     """
-    warnings.warn(
-        _NO_BUNCHING_REMOVED_MESSAGE,
-        DeprecationWarning,
-        stacklevel=stacklevel,
-    )
     raise ValueError(_NO_BUNCHING_REMOVED_MESSAGE)
-
-
-def _reject_no_bunching_init(
-    method_qualname: str, kwargs: dict[str, Any]
-) -> dict[str, Any]:
-    """Reject deprecated `no_bunching` usage (hard-fail with warning)."""
-    _ = method_qualname
-    if "no_bunching" in kwargs:
-        raise_no_bunching_deprecated(stacklevel=3)
-    return kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -152,9 +139,9 @@ DEPRECATION_REGISTRY: dict[
         None,
     ),
     "QuantumLayer.__init__.no_bunching": (
+        _NO_BUNCHING_REMOVED_MESSAGE,
+        True,
         None,
-        None,
-        _reject_no_bunching_init,
     ),
     "QuantumLayer.__init__.computation_space": (
         None,
@@ -163,9 +150,9 @@ DEPRECATION_REGISTRY: dict[
     ),
     # QuantumLayer.simple deprecations
     "QuantumLayer.simple.no_bunching": (
+        _NO_BUNCHING_REMOVED_MESSAGE,
+        True,
         None,
-        None,
-        _reject_no_bunching_init,
     ),
     "QuantumLayer.simple.computation_space": (
         "The 'computation_space' keyword is deprecated; move it into MeasurementStrategy.probs(computation_space).",
@@ -241,9 +228,9 @@ DEPRECATION_REGISTRY: dict[
         _remove_FidelityKernel_simple_n_photons,
     ),
     "FidelityKernel.simple.no_bunching": (
+        _NO_BUNCHING_REMOVED_MESSAGE,
+        True,
         None,
-        None,
-        _reject_no_bunching_init,
     ),
     "FidelityKernel.simple.trainable": (
         "Since merlin >= 0.3, input parameter allocation is automatically inferred from input dimensionality, following Gan et al. (2022) on Fock-space expressivity. Manual control of input/trainable parameters is deprecated.",
@@ -257,9 +244,9 @@ DEPRECATION_REGISTRY: dict[
     ),
     # FidelityKernel.__init__ deprecations
     "FidelityKernel.__init__.no_bunching": (
+        _NO_BUNCHING_REMOVED_MESSAGE,
+        True,
         None,
-        None,
-        _reject_no_bunching_init,
     ),
     # KernelCircuitBuilder deprecations
     # TODO: In release 0.5.x, remove these entries along with KernelCircuitBuilder.
@@ -285,9 +272,9 @@ DEPRECATION_REGISTRY: dict[
     ),
     # KernelCircuitBuilder.build_fidelity_kernel parameter-level deprecations
     "KernelCircuitBuilder.build_fidelity_kernel.no_bunching": (
+        _NO_BUNCHING_REMOVED_MESSAGE,
+        True,
         None,
-        None,
-        _reject_no_bunching_init,
     ),
 }
 
@@ -329,7 +316,10 @@ def _collect_deprecations_and_converters(
         if full_name in DEPRECATION_REGISTRY:
             msg, severity, converter = DEPRECATION_REGISTRY[full_name]
             if msg is not None and severity is not None:
-                base = f"Parameter '{key}' is deprecated. {msg}"
+                if msg == _NO_BUNCHING_REMOVED_MESSAGE:
+                    base = msg
+                else:
+                    base = f"Parameter '{key}' is deprecated. {msg}"
                 if severity is True:
                     raise_msgs.append(base)
                 elif severity is False:
