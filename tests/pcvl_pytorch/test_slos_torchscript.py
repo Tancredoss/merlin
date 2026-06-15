@@ -110,20 +110,20 @@ def test_slos_save_load_computation_graph(get_tmp_file):
     # Test for vectorized_operations
     assert len(graph.vectorized_operations) == len(
         loaded_graph.vectorized_operations
-    ), (sDoesntMatch + "vectorized_operations (length mismatch)")
+    ), sDoesntMatch + "vectorized_operations (length mismatch)"
 
     for i, (tuple1, tuple2) in enumerate(
         zip(
             graph.vectorized_operations, loaded_graph.vectorized_operations, strict=True
         )
     ):
-        assert len(tuple1) == len(
-            tuple2
-        ), f"{sDoesntMatch}vectorized_operations (tuple {i} length mismatch)"
+        assert len(tuple1) == len(tuple2), (
+            f"{sDoesntMatch}vectorized_operations (tuple {i} length mismatch)"
+        )
         for j, (tensor1, tensor2) in enumerate(zip(tuple1, tuple2, strict=True)):
-            assert torch.equal(
-                tensor1, tensor2
-            ), f"{sDoesntMatch}vectorized_operations (tuple {i}, tensor {j})"
+            assert torch.equal(tensor1, tensor2), (
+                f"{sDoesntMatch}vectorized_operations (tuple {i}, tensor {j})"
+            )
 
     assert graph.final_keys == loaded_graph.final_keys, sDoesntMatch + "final_keys"
     assert graph.mapped_keys == loaded_graph.mapped_keys, sDoesntMatch + "mapped_keys"
@@ -258,9 +258,9 @@ def test_slos_compute_slos_distribution_with_output_map_function():
         (0, 0, 0, 2),
     ]
     expected_keys = [i[::-1] for i in expected_keys]
-    assert (
-        keys == expected_keys
-    ), f"Keys do not match : expected {expected_keys}, calculated {keys}"
+    assert keys == expected_keys, (
+        f"Keys do not match : expected {expected_keys}, calculated {keys}"
+    )
 
     expected_amplitudes = torch.tensor(
         [

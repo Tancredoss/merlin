@@ -1039,7 +1039,7 @@ class TestComputationSpaceConflictResolution:
             AttributeError,
             match="Cannot specify 'computation_space' in QuantumLayer's constructor. ",
         ):
-            layer = ML.QuantumLayer(
+            ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
                 builder=builder,

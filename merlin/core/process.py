@@ -50,7 +50,7 @@ from ..pcvl_pytorch import (
     build_slos_distribution_computegraph,
 )
 from ..utils.combinadics import Combinadics
-from ..utils.deprecations import raise_no_bunching_deprecated
+from ..utils.deprecations import raise_no_bunching_removed
 from ..utils.normalization import normalize_probabilities, probabilities_from_amplitudes
 from .base import AbstractComputationProcess
 from .computation_space import ComputationSpace
@@ -110,7 +110,7 @@ class ComputationProcess(AbstractComputationProcess):
     computation_space : ComputationSpace | None
         Computation space used for basis enumeration.
     no_bunching : bool | None
-        Deprecated legacy parameter.
+        Removed legacy parameter.
     output_map_func : Any
         Optional output mapping function.
     noise_groups : NoiseGroups | None
@@ -163,7 +163,7 @@ class ComputationProcess(AbstractComputationProcess):
         memristive_metadata: list[dict] | None
             The memristive phase shifter metadata. If None, it will be stored as an empty list.
         no_bunching : bool | None
-            Deprecated legacy parameter.
+            Removed legacy parameter.
         output_map_func : Any
             Optional output mapping function.
         noise_groups : NoiseGroups | None
@@ -211,7 +211,7 @@ class ComputationProcess(AbstractComputationProcess):
         self._setup_phase_noise()
 
         if no_bunching is not None:
-            raise_no_bunching_deprecated(stacklevel=2)
+            raise_no_bunching_removed()
 
         if computation_space is None:
             computation_space = ComputationSpace.UNBUNCHED

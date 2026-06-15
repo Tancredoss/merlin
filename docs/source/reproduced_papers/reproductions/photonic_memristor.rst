@@ -56,8 +56,9 @@ Memristor ``QuantumLayer`` usage (from the implementation):
        trainable_parameters=["theta"],
        input_parameters=["px"],
        input_state=[0, 1, 0],
-       measurement_strategy=ml.MeasurementStrategy.probs(),
-       no_bunching=True,
+       measurement_strategy=ml.MeasurementStrategy.probs(
+           computation_space=ml.ComputationSpace.UNBUNCHED
+       ),
    )
 
    phi_enc = encode_phase(x)
