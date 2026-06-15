@@ -202,7 +202,7 @@ class FeedForwardBlock(MerlinModule):
           measurement keys. The :attr:`output_keys` attribute is retained for
           metadata while :attr:`output_state_sizes` reports ``num_modes`` for
           every key.
-        - ``MeasurementStrategy.AMPLITUDES`` yields a list of tuples
+        - ``MeasurementStrategy.amplitudes()`` yields a list of tuples
           ``(measurement_key, branch_probability, remaining_photons,
           amplitudes)`` so callers can reason about the mixed state left by each
           branch.

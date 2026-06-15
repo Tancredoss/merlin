@@ -120,9 +120,9 @@ class TestQuantumLayerDtypePropagation:
         )
 
         mask = qlayer.measurement_mapping.mask
-        assert mask.dtype == torch.float64, (
-            f"Expected mask dtype=torch.float64, got {mask.dtype}"
-        )
+        assert (
+            mask.dtype == torch.float64
+        ), f"Expected mask dtype=torch.float64, got {mask.dtype}"
 
     def test_mode_expectations_float32_mask_dtype(self, circuit_2mode):
         """Verify float32 still works (backward compatibility)."""
@@ -291,7 +291,7 @@ class TestQuantumLayerDtypePropagation:
         self, circuit_2mode_no_params
     ):
         """
-        MeasurementStrategy.AMPLITUDES with complex forward input:
+        MeasurementStrategy.amplitudes() (amplitude_encoding=True):
         ensure dtype=torch.float32 leads to complex64 (torch.cfloat) amplitudes.
 
         IMPORTANT: use a circuit with *no symbolic parameters* to avoid requiring
@@ -310,16 +310,16 @@ class TestQuantumLayerDtypePropagation:
 
         psi_out = layer(psi_in)
 
-        assert psi_out.dtype == torch.cfloat, (
-            f"Expected AMPLITUDES output dtype=torch.cfloat, got {psi_out.dtype}"
-        )
+        assert (
+            psi_out.dtype == torch.cfloat
+        ), f"Expected AMPLITUDES output dtype=torch.cfloat, got {psi_out.dtype}"
         assert psi_out.shape in {(num_states,), (1, num_states)}
 
     def test_amplitudes_complex_forward_float64_outputs_cdouble(
         self, circuit_2mode_no_params
     ):
         """
-        MeasurementStrategy.AMPLITUDES with complex forward input:
+        MeasurementStrategy.amplitudes() (amplitude_encoding=True):
         ensure dtype=torch.float64 leads to complex128 (torch.cdouble) amplitudes.
         """
         layer = QuantumLayer(
@@ -335,9 +335,9 @@ class TestQuantumLayerDtypePropagation:
 
         psi_out = layer(psi_in)
 
-        assert psi_out.dtype == torch.cdouble, (
-            f"Expected AMPLITUDES output dtype=torch.cdouble, got {psi_out.dtype}"
-        )
+        assert (
+            psi_out.dtype == torch.cdouble
+        ), f"Expected AMPLITUDES output dtype=torch.cdouble, got {psi_out.dtype}"
         assert psi_out.shape in {(num_states,), (1, num_states)}
 
 
@@ -384,9 +384,9 @@ class TestOriginalBugReproduction:
 
         # Verify mask dtype is now correct
         mask = qlayer.measurement_mapping.mask
-        assert mask.dtype == torch.float64, (
-            f"BUG NOT FIXED: mask dtype is {mask.dtype}, expected torch.float64"
-        )
+        assert (
+            mask.dtype == torch.float64
+        ), f"BUG NOT FIXED: mask dtype is {mask.dtype}, expected torch.float64"
 
         # Verify forward pass succeeds (this was the crash point)
         x = torch.zeros(1, 1, dtype=torch_dtype)
