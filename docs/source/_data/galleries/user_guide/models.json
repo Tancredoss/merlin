@@ -1,0 +1,9 @@
+[
+  {
+    "title": "MerLin ready to use models",
+    "summary": "Complete catalog of the fully implemented quantum models in MerLin.",
+    "image": "_static/reproduced_papers/photonicQGAN.png",
+    "doc": "user_guide/models/index",
+    "tags": ["Quantum models", "Ready to use"]
+  }
+]
