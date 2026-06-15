@@ -43,7 +43,6 @@ from merlin.pcvl_pytorch.noisy_slos import (
     NoisyG2SLOSComputeGraph,
     NoisySLOSComputeGraph,
 )
-from merlin.utils.deprecations import raise_no_bunching_deprecated
 from merlin.utils.deprecations import raise_no_bunching_removed
 from merlin.utils.dtypes import resolve_float_complex
 from merlin.utils.normalization import (
