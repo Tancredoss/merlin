@@ -2136,6 +2136,19 @@ def test_simple_num_photons_modes_and_input_state():
         assert ql.quantum_layer.input_state == pcvl.BasicState(input_state)
 
 
+def test_simple_parameters():
+    for i in range(1, 15):
+        ql = ML.QuantumLayer.simple(input_size=i)
+        params = list(ql.quantum_layer.parameters())
+        named_params = [k[0] for k in ql.quantum_layer.named_parameters()]
+
+        assert params[0].numel() == i * (i + 1)
+        assert params[1].numel() == i * (i + 1)
+        assert len(params) == 2
+        assert "LI_simple" in named_params
+        assert "RI_simple" in named_params
+
+
 def test_g2_with_photon_loss_forward_applies_loss_per_sector() -> None:
     """Check that photon loss is applied with the correct basis for every sector.
 
