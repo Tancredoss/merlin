@@ -3,15 +3,14 @@
 Migration guide
 ===============
 
-Migrating from ``no_bunching`` (deprecated)
--------------------------------------------
+Migrating from removed ``no_bunching``
+--------------------------------------
 
-.. warning:: *Deprecated since version 0.3:*
-   ``no_bunching`` is deprecated and is removed since version 0.3.0. Use
-   ``computation_space`` instead inside the chosen ``measurement_strategy``. 
-   See this migration section for the mapping.
+.. warning:: *Removed in version 0.4:*
+   ``no_bunching`` is removed in version 0.4. Use explicit
+   ``computation_space`` configuration instead.
    
-The ``no_bunching`` flag is deprecated. 
+The ``no_bunching`` flag is removed.
 
 If you are using a ``QuantumLayer`` and you need to control how Fock states are
 truncated or encoded, define the ``computation_space`` inside the ``measurement_strategy``
