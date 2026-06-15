@@ -1,9 +1,13 @@
 .. _user_guide_migration_guide:
 
-Migration guide (v0.3 to v.04)
+=================
+Migration guide
+=================
+
+Migration guide (v0.3 to v.0.4)
 ===============================
 
-Migrating from removed ``computation_space`` argument if the ``QuantumLayer``
+Migrating from removed ``computation_space`` argument in the ``QuantumLayer``
 -------------------------------------------------------------------------------
 
 .. warning::
@@ -11,9 +15,6 @@ Migrating from removed ``computation_space`` argument if the ``QuantumLayer``
    Use the ``computation_space`` flag inside ``measurement_strategy`` instead. For example, ``MeasurementStrategy.probs(computation_space=...)``.
 
 To define the ``computation_space`` of a :class:`~merlin.algorithms.layer.QuantumLayer`, a measurement strategy factory method must be used. For example, to use the probabilities measurement strategy with the Fock space computation space:
-
-
-Computation space now lives inside the strategy.
 
 .. code-block:: python
 
@@ -33,7 +34,7 @@ Migrating from removed ``amplitude_encoding`` flag in the ``QuantumLayer``
    **0.4**. Pass a :class:`~merlin.core.state_vector.StateVector` or a complex
    ``torch.Tensor`` to ``forward()`` instead.
 
-To use amplitude encoding in a :class:`~merlin.algorithms.layer.QuantumLayer`, you just need to pass a class:`~merlin.core.state_vector.StateVector` or a complex ``torch.Tensor``  a the forward call. Here is how to use amplitude encoding in MerLin v.0.4.
+To use amplitude encoding in a :class:`~merlin.algorithms.layer.QuantumLayer`, you just need to pass a :class:`~merlin.core.state_vector.StateVector` or a complex ``torch.Tensor``  at the forward call. Here is how to use amplitude encoding in MerLin v.0.4.
 
 .. code-block:: python
 
@@ -56,14 +57,15 @@ To use amplitude encoding in a :class:`~merlin.algorithms.layer.QuantumLayer`, y
   # Option 1: StateVector object
   # Basic object initialization
   input_state = StateVector(
-      tensor=torch.rand(1, layer.output_size),
+      tensor=torch.rand(1, 10), # the computation space's size
       n_modes=4,
       n_photons=2,
       encoding=EncodingSpace.FOCK,
   )
+  layer(input_state)
   # From tensor method
-  StateVector.from_tensor(
-      tensor=torch.rand(1, layer.output_size),
+    input_state =StateVector.from_tensor(
+      tensor=torch.rand(1, 10), # the computation space's size
       n_modes=4,
       n_photons=2,
       encoding=EncodingSpace.FOCK,
@@ -75,7 +77,7 @@ To use amplitude encoding in a :class:`~merlin.algorithms.layer.QuantumLayer`, y
   layer(input_state)
 
 
-v.0.3 deprecations are not errors
+v.0.3 deprecations are now errors
 --------------------------------------
 
 Deprecations in the next section are now errors. Please consult the following section for other migration notes.
