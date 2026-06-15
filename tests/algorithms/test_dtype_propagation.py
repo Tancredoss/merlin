@@ -57,8 +57,8 @@ def build_circuit_no_params(n_modes: int) -> pcvl.Circuit:
     """
     Build a simple interferometer circuit with NO symbolic parameters.
 
-    This is important for amplitude_encoding=True tests: amplitude encoding
-    provides a complex statevector input, and we don't want any classical
+    This is important for complex amplitude-input tests: forward amplitude
+    tensors provide the statevector input, and we don't want any classical
     input parameter specs to be required by CircuitConverter.
     """
     circuit = pcvl.Circuit(n_modes)
@@ -120,9 +120,9 @@ class TestQuantumLayerDtypePropagation:
         )
 
         mask = qlayer.measurement_mapping.mask
-        assert mask.dtype == torch.float64, (
-            f"Expected mask dtype=torch.float64, got {mask.dtype}"
-        )
+        assert (
+            mask.dtype == torch.float64
+        ), f"Expected mask dtype=torch.float64, got {mask.dtype}"
 
     def test_mode_expectations_float32_mask_dtype(self, circuit_2mode):
         """Verify float32 still works (backward compatibility)."""
@@ -287,20 +287,19 @@ class TestQuantumLayerDtypePropagation:
         assert x.grad is not None
         assert x.grad.dtype == torch.float64
 
-    def test_amplitudes_amplitude_encoding_float32_outputs_cfloat(
+    def test_amplitudes_complex_forward_float32_outputs_cfloat(
         self, circuit_2mode_no_params
     ):
         """
-        MeasurementStrategy.AMPLITUDES (amplitude_encoding=True):
+        MeasurementStrategy.amplitudes() (amplitude_encoding=True):
         ensure dtype=torch.float32 leads to complex64 (torch.cfloat) amplitudes.
 
         IMPORTANT: use a circuit with *no symbolic parameters* to avoid requiring
-        classical input specs (e.g. px0) when amplitude encoding is enabled.
+        classical input specs (e.g. px0) when no classical input is provided.
         """
         layer = QuantumLayer(
             circuit=circuit_2mode_no_params,
             n_photons=1,
-            amplitude_encoding=True,
             measurement_strategy=MeasurementStrategy.NONE,
             dtype=torch.float32,
         )
@@ -311,22 +310,21 @@ class TestQuantumLayerDtypePropagation:
 
         psi_out = layer(psi_in)
 
-        assert psi_out.dtype == torch.cfloat, (
-            f"Expected AMPLITUDES output dtype=torch.cfloat, got {psi_out.dtype}"
-        )
+        assert (
+            psi_out.dtype == torch.cfloat
+        ), f"Expected AMPLITUDES output dtype=torch.cfloat, got {psi_out.dtype}"
         assert psi_out.shape in {(num_states,), (1, num_states)}
 
-    def test_amplitudes_amplitude_encoding_float64_outputs_cdouble(
+    def test_amplitudes_complex_forward_float64_outputs_cdouble(
         self, circuit_2mode_no_params
     ):
         """
-        MeasurementStrategy.AMPLITUDES (amplitude_encoding=True):
+        MeasurementStrategy.amplitudes() (amplitude_encoding=True):
         ensure dtype=torch.float64 leads to complex128 (torch.cdouble) amplitudes.
         """
         layer = QuantumLayer(
             circuit=circuit_2mode_no_params,
             n_photons=1,
-            amplitude_encoding=True,
             measurement_strategy=MeasurementStrategy.NONE,
             dtype=torch.float64,
         )
@@ -337,9 +335,9 @@ class TestQuantumLayerDtypePropagation:
 
         psi_out = layer(psi_in)
 
-        assert psi_out.dtype == torch.cdouble, (
-            f"Expected AMPLITUDES output dtype=torch.cdouble, got {psi_out.dtype}"
-        )
+        assert (
+            psi_out.dtype == torch.cdouble
+        ), f"Expected AMPLITUDES output dtype=torch.cdouble, got {psi_out.dtype}"
         assert psi_out.shape in {(num_states,), (1, num_states)}
 
 
@@ -386,9 +384,9 @@ class TestOriginalBugReproduction:
 
         # Verify mask dtype is now correct
         mask = qlayer.measurement_mapping.mask
-        assert mask.dtype == torch.float64, (
-            f"BUG NOT FIXED: mask dtype is {mask.dtype}, expected torch.float64"
-        )
+        assert (
+            mask.dtype == torch.float64
+        ), f"BUG NOT FIXED: mask dtype is {mask.dtype}, expected torch.float64"
 
         # Verify forward pass succeeds (this was the crash point)
         x = torch.zeros(1, 1, dtype=torch_dtype)

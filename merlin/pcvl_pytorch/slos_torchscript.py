@@ -347,7 +347,8 @@ class SLOSComputeGraph:
             Number of photons in the input state given to the model during the
             forward pass.
         output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None
-            Function applied to output states before aggregation.
+            Function applied to output states before aggregation. It changes the output keys directly.
+            The output tensor is not changed nor permuted, only the keys are changed.
         computation_space : ComputationSpace
             Computation subspace used to build the graph. Default is
             ``ComputationSpace.UNBUNCHED``.
@@ -1048,7 +1049,9 @@ def build_slos_distribution_computegraph(
     n_photons : int
         Total number of photons injected in the circuit.
     output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None
-        Mapping applied to each output Fock state, allowing post-processing.
+        Mapping applied to each output Fock state, allowing post-processing. It changes
+        the output keys directly. The output tensor is not changed nor permuted, only the
+        keys are changed.
     computation_space : ComputationSpace | None
         Logical computation subspace used to build the basis and transitions.
         When omitted, defaults to ``ComputationSpace.UNBUNCHED``.
@@ -1247,7 +1250,8 @@ def compute_slos_distribution(
     input_state : list[int]
         Number of photons in every mode of the circuit.
     output_map_func : Callable[[tuple[int, ...]], tuple[int, ...] | None] | None
-        Function that maps output states.
+        Function that maps output states. It changes the output keys directly.
+        The output tensor is not changed nor permuted, only the keys are changed.
     computation_space : ComputationSpace
         Computation subspace used to build the graph. Default is
         ``ComputationSpace.UNBUNCHED``.

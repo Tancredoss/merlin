@@ -107,12 +107,12 @@ class TestScalewaySessionBasic:
         print(f"Backend capabilities: {proc.backend_capabilities.available_commands}")
 
         # Confirm probs is available
-        assert (
-            "probs" in proc.available_commands
-        ), f"'probs' not in available commands: {proc.available_commands}"
-        assert (
-            "probs" in proc.backend_capabilities.available_commands
-        ), f"'probs' not in backend capabilities: {proc.backend_capabilities.available_commands}"
+        assert "probs" in proc.available_commands, (
+            f"'probs' not in available commands: {proc.available_commands}"
+        )
+        assert "probs" in proc.backend_capabilities.available_commands, (
+            f"'probs' not in backend capabilities: {proc.backend_capabilities.available_commands}"
+        )
 
     def test_simple_forward_probs_zero(self, scaleway_session_probs):
         """Basic synchronous forward pass with nsample=0 should use probs."""
