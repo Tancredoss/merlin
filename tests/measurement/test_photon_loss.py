@@ -116,8 +116,8 @@ class TestPhotonLossWithQuantumLayer:
         )
 
         with pytest.raises(
-            ValueError,
-            match="When doing a noisy simulation, the probabilities measurement strategy must be used.",
+            RuntimeError,
+            match=r"measurement_strategy=MeasurementStrategy\.amplitudes\(\) cannot be used when the experiment defines a NoiseModel.",
         ):
             ML.QuantumLayer(
                 input_size=0,

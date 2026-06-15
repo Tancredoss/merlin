@@ -856,7 +856,7 @@ def setup_noise_and_detectors(
         )
     if amplitude_readout and has_custom_detectors:
         raise RuntimeError(
-            "measurement_strategy=MeasurementStrategy.AMPLITUDES does not support experiments with detectors. "
+            "measurement_strategy=MeasurementStrategy.amplitudes() does not support experiments with detectors. "
             "Compute amplitudes without detectors and apply a Partial DetectorTransform manually if needed."
         )
 

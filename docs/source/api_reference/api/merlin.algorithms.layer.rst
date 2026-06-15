@@ -423,3 +423,7 @@ Deprecations
 .. warning:: *Deprecated since version 0.3:*
    The use of the ``no_bunching`` flag  is deprecated and is removed since version 0.3.0.
    Use the ``computation_space`` flag inside ``measurement_strategy`` instead. See :doc:`/user_guide/migration_guide`.
+
+.. warning::
+   *Deprecated since version 0.4:* The use of the ``computation_space`` argument in the QuantumLayer's constructor is no longer supported as 0.4.0.
+   Use the ``computation_space`` flag inside ``measurement_strategy`` instead. See :doc:`/user_guide/migration_guide`.

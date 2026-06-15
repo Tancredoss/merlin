@@ -40,6 +40,8 @@ from merlin.core.sectored_distribution import (
 )
 from merlin.measurement.process import SamplingProcess, partial_measurement
 from merlin.utils.deprecations import warn_deprecated_enum_access
+from merlin.measurement.process import partial_measurement
+from merlin.utils.deprecations import error_deprecated_enum_access
 from merlin.utils.grouping import LexGrouping, ModGrouping
 
 # Deprecation guide (target: v0.4):
@@ -48,7 +50,7 @@ from merlin.utils.grouping import LexGrouping, ModGrouping
 # - Delete compatibility paths in `resolve_measurement_strategy` and
 #   `_resolve_measurement_kind` that accept `_LegacyMeasurementStrategy`.
 # - Drop :data:`~merlin.measurement.strategies.MeasurementStrategyLike` alias and any tests that rely on legacy enums.
-# - Update all call sites to use the new factories (lots of tetsts to update!):
+# - Update all call sites to use the new factories (lots of tests to update!):
 #     - `MeasurementStrategy.probs(computation_space)`
 #     - `MeasurementStrategy.mode_expectations(computation_space)`
 #     - `MeasurementStrategy.amplitudes()`
@@ -58,13 +60,13 @@ from merlin.utils.grouping import LexGrouping, ModGrouping
 # - If external compatibility is still needed, provide a separate shim module.
 
 
+# Note: kept some Legacy to keep the None measurement strategy
+
+
 class _LegacyMeasurementStrategy(Enum):
     """Legacy enum kept only for backward compatibility (deprecated API)."""
 
     NONE = "none"
-    PROBABILITIES = "probabilities"
-    MODE_EXPECTATIONS = "mode_expectations"
-    AMPLITUDES = "amplitudes"
 
 
 class BaseMeasurementStrategy:
@@ -184,7 +186,7 @@ class AmplitudesStrategy(BaseMeasurementStrategy):
         apply_sampling = bool(kwargs.get("apply_sampling", False))
         if apply_sampling:
             raise RuntimeError(
-                "Sampling cannot be applied when measurement_strategy=MeasurementStrategy.AMPLITUDES."
+                "Sampling cannot be applied when measurement_strategy=MeasurementStrategy.amplitudes()."
             )
         return amplitudes
 
@@ -254,13 +256,13 @@ class MeasurementKind(Enum):
 
 
 class _MeasurementStrategyMeta(type):
-    def __getattr__(cls, name: str) -> MeasurementStrategy | _LegacyMeasurementStrategy:
+    def __getattr__(cls, name: str) -> MeasurementStrategy:
         # Backward compatibility shim: allow MeasurementStrategy.NONE for amplitudes.
         if name == "NONE":
             return MeasurementStrategy.amplitudes()
-        # All other enum-style access is deprecated; warn and return legacy enum.
-        if warn_deprecated_enum_access("MeasurementStrategy", name):
-            return _LegacyMeasurementStrategy[name]
+        # All other enum-style access is deprecated; Fail
+        error_deprecated_enum_access("MeasurementStrategy", name)
+
         raise AttributeError(
             f"type object 'MeasurementStrategy' has no attribute {name!r}"
         )
@@ -290,10 +292,6 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         # Type-checker-only legacy/compat attributes. At runtime, the metaclass
         # resolves these names to either a new API instance (NONE) or legacy enums.
         NONE: ClassVar[MeasurementStrategy]
-        # TODO: verify if we want NONE or method none()
-        PROBABILITIES: ClassVar[_LegacyMeasurementStrategy]
-        MODE_EXPECTATIONS: ClassVar[_LegacyMeasurementStrategy]
-        AMPLITUDES: ClassVar[_LegacyMeasurementStrategy]
 
     @staticmethod
     def probs(
@@ -473,7 +471,6 @@ def _resolve_measurement_kind(
         if measurement_strategy == _LegacyMeasurementStrategy.NONE:
             # Legacy NONE aliases amplitudes.
             return MeasurementKind.AMPLITUDES
-        return MeasurementKind[measurement_strategy.name]
     raise TypeError(f"Unknown measurement_strategy: {measurement_strategy}")
 
 

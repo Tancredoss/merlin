@@ -128,7 +128,6 @@ class QuantumLayer(MerlinModule):
         input_parameters: list[str] | None = None,
         # Common parameters
         amplitude_encoding: bool = False,
-        computation_space: ComputationSpace | str | None = None,
         measurement_strategy: MeasurementStrategyLike | None = None,
         return_object: bool = False,
         noise: pcvl.NoiseModel | None = None,
@@ -185,10 +184,6 @@ class QuantumLayer(MerlinModule):
             Removed compatibility flag. Passing ``True`` raises an error. Pass a
             ``StateVector`` or complex tensor to ``forward()`` for amplitude
             input handling instead.
-        computation_space : ComputationSpace | str | None
-            Logical computation subspace to use: one of ``{"fock", "unbunched",
-            "dual_rail"}``. If omitted, defaults to ``UNBUNCHED``. This argument
-            is deprecated; move it into ``MeasurementStrategy.probs(...)``.
         measurement_strategy : MeasurementStrategy | None, default: None
             Output mapping strategy. When omitted, defaults to
             ``MeasurementStrategy.probs(computation_space)``. Supported values
@@ -232,12 +227,21 @@ class QuantumLayer(MerlinModule):
             annotated ``BasicState`` is passed (annotations are not supported).
         TypeError
             If an unknown measurement strategy is selected during setup.
+        AttributeError
+            When the computation space argument is used in the constructor. Please define it in
+            a measurement strategy.
 
         Warns
         -----
         UserWarning
             When ``experiment.min_photons_filter`` or ``experiment.detectors`` are
             present (currently ignored).
+        DeprecationWarning
+            When ``amplitude_encoding=True`` is passed (deprecated in favor of
+            passing ``StateVector`` to ``forward()``).
+            When ``torch.Tensor`` is passed as ``input_state`` (deprecated in favor
+            of ``StateVector``).
+
         """
         super().__init__()
 
@@ -250,7 +254,7 @@ class QuantumLayer(MerlinModule):
         )
         # Phase 2: computation space resolution (legacy vs strategy-driven)
         measurement_strategy, computation_space = normalize_measurement_strategy(
-            measurement_strategy, computation_space
+            measurement_strategy
         )
 
         # Phase 3: circuit source resolution (builder/circuit/experiment)
