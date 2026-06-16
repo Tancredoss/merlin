@@ -18,6 +18,10 @@ from merlin.algorithms.kernels import (
 from merlin.algorithms.loss import NKernelAlignment
 from merlin.builder import CircuitBuilder
 from merlin.core.computation_space import ComputationSpace
+from merlin.pcvl_pytorch.noisy_slos import (
+    NoisyG2SLOSComputeGraph,
+    NoisySLOSComputeGraph,
+)
 
 
 class TestCCInvBackend:
@@ -193,6 +197,14 @@ class TestCCInvBackend:
             force_psd=False,
         )
 
+        assert isinstance(
+            kernel._quantum_layer.computation_process.simulation_graph,
+            NoisyG2SLOSComputeGraph,
+        )
+        assert kernel._quantum_layer._noise_groups is not None
+        assert kernel._quantum_layer._noise_groups.source is not None
+        assert kernel._quantum_layer._noise_groups.source["g2"] == pytest.approx(0.05)
+
         x = torch.tensor([[0.0], [0.3]], dtype=torch.float32)
         kernel_matrix = kernel(x)
 
@@ -204,6 +216,128 @@ class TestCCInvBackend:
             torch.ones(2, dtype=kernel_matrix.dtype),
             atol=1e-6,
         )
+
+    def test_kernel_backend_uses_noisy_slos_for_indistinguishability(self):
+        """FidelityKernel should propagate indistinguishability into SLOS."""
+        circuit = pcvl.Circuit(2)
+        circuit.add(0, pcvl.PS(pcvl.P("x0")))
+        circuit.add((0, 1), pcvl.BS.H())
+        experiment = pcvl.Experiment(circuit)
+        experiment.noise = pcvl.NoiseModel(indistinguishability=0.4)
+        feature_map = FeatureMap(
+            experiment=experiment,
+            input_size=1,
+            input_parameters="x",
+        )
+        kernel = FidelityKernel(
+            feature_map=feature_map,
+            input_state=[1, 1],
+            force_psd=False,
+        )
+
+        assert isinstance(
+            kernel._quantum_layer.computation_process.simulation_graph,
+            NoisySLOSComputeGraph,
+        )
+        assert kernel._quantum_layer._noise_groups is not None
+        assert kernel._quantum_layer._noise_groups.source is not None
+        assert kernel._quantum_layer._noise_groups.source[
+            "indistinguishability"
+        ] == pytest.approx(0.4)
+
+        value = kernel(torch.tensor([0.0]), torch.tensor([0.3]))
+
+        assert isinstance(value, float)
+        assert np.isfinite(value)
+
+    def test_kernel_backend_propagates_phase_imprecision_to_converter(self):
+        """FidelityKernel should pass deterministic phase noise to the converter."""
+        circuit = pcvl.Circuit(2)
+        circuit.add((0, 1), pcvl.BS.H())
+        circuit.add(0, pcvl.PS(pcvl.P("x0")))
+        circuit.add((0, 1), pcvl.BS.H())
+        experiment = pcvl.Experiment(circuit)
+        experiment.noise = pcvl.NoiseModel(phase_imprecision=0.5)
+        feature_map = FeatureMap(
+            experiment=experiment,
+            input_size=1,
+            input_parameters="x",
+            dtype=torch.float64,
+        )
+        kernel = FidelityKernel(
+            feature_map=feature_map,
+            input_state=[1, 0],
+            force_psd=False,
+        )
+
+        assert kernel._quantum_layer._noise_groups is not None
+        assert kernel._quantum_layer._noise_groups.circuit is not None
+        assert kernel._quantum_layer._noise_groups.circuit[
+            "phase_imprecision"
+        ] == pytest.approx(0.5)
+        converter = kernel._quantum_layer.computation_process.converter
+        assert converter._phase_imprecision == pytest.approx(0.5)
+
+        quantized_value = kernel(torch.tensor([0.74]), torch.tensor([0.0]))
+
+        noiseless_feature_map = FeatureMap(
+            circuit=circuit,
+            input_size=1,
+            input_parameters="x",
+            dtype=torch.float64,
+        )
+        noiseless_kernel = FidelityKernel(
+            feature_map=noiseless_feature_map,
+            input_state=[1, 0],
+            force_psd=False,
+        )
+        expected_value = noiseless_kernel(torch.tensor([0.5]), torch.tensor([0.0]))
+
+        assert quantized_value == pytest.approx(expected_value, rel=1e-6, abs=1e-6)
+
+    def test_kernel_backend_applies_phase_error_during_unitary_conversion(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """FidelityKernel should activate stochastic phase noise when present."""
+        circuit = pcvl.Circuit(2)
+        circuit.add((0, 1), pcvl.BS.H())
+        circuit.add(0, pcvl.PS(pcvl.P("x0")))
+        circuit.add((0, 1), pcvl.BS.H())
+        experiment = pcvl.Experiment(circuit)
+        experiment.noise = pcvl.NoiseModel(phase_error=0.2)
+        feature_map = FeatureMap(
+            experiment=experiment,
+            input_size=1,
+            input_parameters="x",
+            dtype=torch.float64,
+        )
+        kernel = FidelityKernel(
+            feature_map=feature_map,
+            input_state=[1, 0],
+            force_psd=False,
+        )
+        converter = kernel._quantum_layer.computation_process.converter
+        original_to_tensor = converter.to_tensor
+        apply_phase_error_calls: list[bool] = []
+
+        def record_apply_phase_error(*args, **kwargs):
+            apply_phase_error_calls.append(bool(kwargs.get("apply_phase_error", False)))
+            return original_to_tensor(*args, **kwargs)
+
+        monkeypatch.setattr(converter, "to_tensor", record_apply_phase_error)
+
+        torch.manual_seed(123)
+        value = kernel(torch.tensor([0.0]), torch.tensor([0.0]))
+
+        assert isinstance(value, float)
+        assert np.isfinite(value)
+        assert kernel._quantum_layer._noise_groups is not None
+        assert kernel._quantum_layer._noise_groups.circuit is not None
+        assert kernel._quantum_layer._noise_groups.circuit[
+            "phase_error"
+        ] == pytest.approx(0.2)
+        assert any(apply_phase_error_calls)
 
     def test_new_backend_matches_perceval_slos_unbunched(self):
         """New backend with UNBUNCHED space must match Perceval thresholded probability.
@@ -326,6 +460,23 @@ class TestFidelityKernelInternals:
         )
 
         assert torch.allclose(actual, expected, atol=1e-6)
+
+    def test_raw_keys_are_sectored_detects_nested_key_layout(self):
+        """_raw_keys_are_sectored should detect g2-style nested raw keys."""
+        assert _CCInvQuantumLayer._raw_keys_are_sectored([[(1, 0)], [(1, 1)]])
+        assert not _CCInvQuantumLayer._raw_keys_are_sectored([(1, 0), (0, 1)])
+        assert not _CCInvQuantumLayer._raw_keys_are_sectored([])
+
+    def test_build_input_detection_seed_rejects_missing_input_state(self):
+        """Kernel backend should fail clearly if the input state is absent from raw keys."""
+        layer = self.kernel._quantum_layer
+        original_raw_output_keys = layer._raw_output_keys
+        layer._raw_output_keys = [(0, 2), (1, 1)]
+        try:
+            with pytest.raises(ValueError, match="Input state is not present"):
+                layer._build_input_detection_seed([2, 0], layer.device)
+        finally:
+            layer._raw_output_keys = original_raw_output_keys
 
 
 class TestFidelityKernel:
