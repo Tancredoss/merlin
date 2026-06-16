@@ -67,3 +67,19 @@ Migration guide
    :columns: 2
    :contour-color: #f2994a
 
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   angle_amplitude_encoding
+   computation_space
+   encoding_space
+   feed_forward
+   grouping
+   kernels
+   layer
+   measurement_strategy
+   migration_guide
+   quantum_bridge
+   remote_execution

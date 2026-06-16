@@ -336,11 +336,13 @@ internally — and validates that the last dimension matches the Fock basis size
    normalizing upstream (e.g. via ``nn.functional.normalize``) can improve
    numerical stability during training.
 
-Structured input encodings can infer their own dimensions. For example,
-dual-rail infers ``n_photons`` from the logical tensor width and sets
-``n_modes = 2 * n_photons``. QLOQ and other partitioned encodings infer
-``n_modes`` and ``n_photons`` from their ``modes_per_photon`` contract. The
-resolved values are available on the returned object:
+Structured input encodings
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If your amplitude tensor's final dimension indexes a logical basis rather than
+Merlin's full Fock basis, pass an ``EncodingSpace`` to
+``StateVector.from_tensor(..., encoding=...)``. Structured encodings can infer
+their own physical dimensions:
 
 .. code-block:: python
 
@@ -368,6 +370,10 @@ encoded state:
     padded = dual_rail @ [0]
     assert padded.n_modes == 5
     assert padded.n_photons == 2
+
+This section only introduces the mechanism. See :doc:`encoding_space` for the
+PyTorch-oriented decision table and runnable examples for Fock, unbunched,
+dual-rail, partitioned, and QLOQ inputs.
 
 
 Using a complex tensor directly
