@@ -43,7 +43,8 @@ from merlin.core.partial_measurement import (
 from merlin.core.probability_distribution import ProbabilityDistribution
 from merlin.core.state_vector import StateVector
 from merlin.algorithms.layer import QuantumLayer
-
+from merlin.core import StateVector, EncodingSpace
+from merlin import CircuitBuilder, QuantumLayer, MeasurementStrategy, ComputationSpace
 
 class TestQuantumLayer:
     """Test suite for QuantumLayer."""
@@ -2913,14 +2914,14 @@ def test_quantum_layer_photon_count_mismatch_list_is_float_compatible_working():
         QuantumLayer(
             input_size=0,
             circuit=pcvl.Circuit(3),
-            input_state=[1., 1., 1.], 
+            input_state=[1, 1, 1], 
             n_photons=1,
             measurement_strategy=ML.MeasurementStrategy.probs(),)
 def test_quantum_layer_photon_count_match_list_is_float_compatible_working():
         layer = QuantumLayer(
             input_size=0,
             circuit=pcvl.Circuit(3),
-            input_state=[1., 1., 1.], 
+            input_state=[1, 1, 1], 
             n_photons=3,
             measurement_strategy=ML.MeasurementStrategy.probs(),)
         assert layer is not None
@@ -2970,18 +2971,38 @@ def test_quantum_layer_photon_count_match_List():
             measurement_strategy=ML.MeasurementStrategy.probs(),)
         assert layer is not None
         assert isinstance(layer, QuantumLayer)
-# to see if the tensor doesn't crash. this code can be removed once tensor is depprecated.
-def test_quantum_layer_photon_count_match_StateVector_Tensor():
-        layer = QuantumLayer(
-            input_size=0,
-            circuit=pcvl.Circuit(3),
-            input_state=torch.tensor([0.5,0,0.5]), 
-            n_photons=2,
-            measurement_strategy=ML.MeasurementStrategy.probs(),)
-        assert layer is not None
-        assert isinstance(layer, QuantumLayer)
+def test_quantum_layer_photon_count_match_amplitude():
+    layer = QuantumLayer(
+        circuit=pcvl.Circuit(3),
+        n_photons=2,
+        measurement_strategy=ML.MeasurementStrategy.probs(),
+        input_state=None,
+        amplitude_encoding=True,   
+    )
+    assert layer is not None
+    assert isinstance(layer, QuantumLayer)
 
 
+def test_quantum_layer_photon_count_match_amplitude():
+    builder = CircuitBuilder(n_modes=4)
+    builder.add_entangling_layer()
+    
+    input_state = StateVector(
+        tensor=torch.rand(1, 10), 
+        n_modes=4,
+        n_photons=2,
+        encoding=ML.EncodingSpace.FOCK,
+    )
+    
+    QuantumLayer(
+        input_size=0,
+        builder=builder,
+        n_photons=2,
+        measurement_strategy=MeasurementStrategy.probs(
+            computation_space=ComputationSpace.FOCK
+        ),
+        input_state=input_state,
+    )
 
 def test_quantum_layer_list_not_contain_integers():
     """see if an input state reject list of float."""
