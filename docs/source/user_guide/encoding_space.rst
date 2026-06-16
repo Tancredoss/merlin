@@ -4,16 +4,61 @@
 Encoding Spaces
 ===============
 
-``EncodingSpace`` describes how a compact logical amplitude tensor maps into
-Merlin's canonical Fock basis. Use it when your data naturally lives in a
-smaller structured basis, but the photonic circuit still needs a full
-``StateVector`` at execution time.
+``EncodingSpace`` describes how the last dimension of a PyTorch amplitude
+tensor maps into Merlin's canonical Fock basis. Use it after you have decided
+to pass an amplitude input, but before constructing the
+:class:`~merlin.core.state_vector.StateVector` that goes into
+``QuantumLayer.forward``.
+
+This is different from choosing angle encoding versus amplitude encoding. If
+your input is an ordinary real-valued feature matrix such as
+``(batch_size, n_features)``, start with :doc:`angle_amplitude_encoding`.
+This page is for tensors whose values are intended to be state amplitudes and
+whose final dimension indexes a meaningful basis.
 
 This page covers the input encoding API:
 
 - :class:`~merlin.core.encoding_space.EncodingSpace`
 - :meth:`~merlin.core.state_vector.StateVector.from_tensor`
 - :meth:`~merlin.core.state_vector.StateVector.logical_to_fock_map`
+
+Choosing an encoding for PyTorch amplitudes
+-------------------------------------------
+
+Leading tensor dimensions are treated as batch dimensions. ``EncodingSpace``
+only decides what the final dimension means.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 25 45
+
+   * - PyTorch input intent
+     - Encoding
+     - Use it when
+   * - ``(..., fock_size)`` amplitudes already in full Fock order
+     - ``EncodingSpace.FOCK``
+     - The tensor comes from another photonic simulator, a previous Merlin
+       layer, or code that already emits Merlin's full Fock basis order.
+   * - ``(..., n_unbunched_states)`` amplitudes over collision-free states
+     - ``EncodingSpace.UNBUNCHED``
+     - The model should only place one photon in any mode, but the circuit or
+       output measurement still uses full Fock ordering internally.
+   * - ``(..., 2**n_qubits)`` amplitudes over binary logical states
+     - ``EncodingSpace.DUAL_RAIL``
+     - Your latent state is qubit-like and each logical bit should be encoded
+       by one photon shared over two modes.
+   * - ``(..., product(widths))`` amplitudes over discrete feature blocks
+     - ``EncodingSpace(modes_per_photon=widths)``
+     - The last dimension indexes joint choices from fixed-size blocks, such
+       as one three-choice block and one two-choice block.
+   * - ``(..., 2**sum(qubit_groups))`` grouped-qubit amplitudes
+     - ``EncodingSpace.qloq(qubit_groups)``
+     - You want QLOQ-style grouping, where each group of logical qubits becomes
+       one photon over a higher-dimensional mode block.
+
+Do not use ``EncodingSpace`` directly for integer class labels, token IDs, or
+ordinary real feature vectors. Convert those to amplitudes intentionally, or
+use angle encoding / a classical PyTorch preprocessing module first.
 
 Logical basis and Fock basis
 ----------------------------
@@ -22,15 +67,15 @@ Merlin simulates photonic states in the Fock basis. A Fock basis state is an
 occupation tuple such as ``(1, 0, 1, 0)``, meaning one photon in mode 0 and one
 photon in mode 2.
 
-Many machine-learning inputs are easier to express in a logical basis:
+Many amplitude inputs are easier to express in a logical basis:
 
 - A collision-free two-photon input over four modes has only six unbunched
   states, not the full ten-state Fock basis.
 - A dual-rail two-qubit state has four logical states, embedded into four
   modes with two photons.
-- A categorical feature pair with three values for the first feature and two
-  for the second has six logical states, embedded as one photon in each
-  feature block.
+- An amplitude tensor over two discrete feature blocks, one with three choices
+  and one with two choices, has six logical states. Those states can be
+  embedded as one photon in each feature block.
 
 ``EncodingSpace`` stores that mapping. ``StateVector.from_tensor(...,
 encoding=...)`` validates the logical tensor, embeds it into full Fock order,
@@ -155,8 +200,16 @@ Partitioned encodings
 ---------------------
 
 Use ``EncodingSpace(modes_per_photon=[...])`` when each photon has its own
-local set of modes. This is useful for ML features with heterogeneous
-cardinalities, such as a three-value category paired with a two-value category.
+local set of modes. In ML terms, this is useful when the last tensor dimension
+indexes amplitudes over discrete feature blocks with different numbers of
+choices. For example, one block might represent a three-choice feature and the
+second block might represent a binary feature, giving ``3 * 2 = 6`` joint
+logical states.
+
+This is not a replacement for a PyTorch embedding layer. If your raw data is an
+integer category or a table of real features, first decide how to turn it into
+amplitudes. The partitioned encoding only describes what those amplitudes mean
+once you have them.
 
 .. code-block:: python
 

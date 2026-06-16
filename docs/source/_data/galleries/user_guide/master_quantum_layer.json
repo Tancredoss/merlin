@@ -15,7 +15,7 @@
   },
   {
     "title": "Encoding Spaces",
-    "summary": "Map compact logical tensors into Merlin's Fock basis with EncodingSpace.",
+    "summary": "Interpret PyTorch amplitude tensors with EncodingSpace.",
     "image": "_static/img/computation_space.png",
     "doc": "user_guide/encoding_space",
     "tags": ["Encodings", "StateVector", "Fock"]
