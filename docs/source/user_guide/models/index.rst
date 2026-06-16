@@ -1,6 +1,6 @@
 :github_url: https://github.com/merlinquantum/merlin
 
-.. models:
+.. _models:
 
 ==========
 Models
