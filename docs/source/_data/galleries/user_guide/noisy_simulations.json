@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Noisy simulations",
+    "summary": "Guide on the different noises on the quantum computer and how to simulate them.",
+    "image": "_static/img/noise_types.png",
+    "doc": "user_guide/noisy_simulations",
+    "tags": ["Introduction", "Noise","Remote", "Overview"]
+  }
+]

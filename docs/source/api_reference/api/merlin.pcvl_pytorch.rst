@@ -13,6 +13,8 @@ Modules
 
    * - :doc:`merlin.pcvl_pytorch.locirc_to_tensor`
      - Conversion utilities centered on :class:`~merlin.pcvl_pytorch.locirc_to_tensor.CircuitConverter`.
+   * - :doc:`merlin.pcvl_pytorch.noisy_slos`
+     - Source-noise aware SLOS graph builders.
    * - :doc:`merlin.pcvl_pytorch.slos_torchscript`
      - SLOS compute-graph builders and tensorized simulation helpers for PyTorch workflows.
 
@@ -20,5 +22,6 @@ Modules
    :hidden:
 
    merlin.pcvl_pytorch.locirc_to_tensor
+   merlin.pcvl_pytorch.noisy_slos
    merlin.pcvl_pytorch.slos_torchscript
    merlin.pcvl_pytorch.utils

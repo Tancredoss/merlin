@@ -76,8 +76,7 @@ In ``papers/qSSL/lib/model.py``, ``QuantumLayer`` is used as the MerLin
        ],
        input_parameters=["feature"],
        input_state=input_state,
-       computation_space=ComputationSpace.UNBUNCHED,
-       measurement_strategy=MeasurementStrategy.PROBABILITIES,
+       measurement_strategy=MeasurementStrategy.probs(computation_space=ComputationSpace.UNBUNCHED),
    )
 
    # forward: encoder -> quantum layer -> projection head
