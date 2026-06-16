@@ -414,9 +414,11 @@ For manual truncated backpropagation through time (TBPTT), set ``detach_at_each_
 
 Deprecations
 -------------------------
-.. warning:: *Deprecated since version 0.3:*
-   The use of the ``no_bunching`` flag  is deprecated and is removed since version 0.3.0.
-   Use the ``computation_space`` flag inside ``measurement_strategy`` instead. See :doc:`/user_guide/migration_guide`.
+.. warning:: *Removed in version 0.4:*
+   The ``no_bunching`` flag is removed in version 0.4. Use
+   ``MeasurementStrategy.probs(computation_space=ComputationSpace.UNBUNCHED)``
+   or ``MeasurementStrategy.probs(computation_space=ComputationSpace.FOCK)``
+   instead. See :doc:`/user_guide/migration_guide`.
 
 .. warning::
    *Deprecated since version 0.4:* The use of the ``computation_space`` argument in the QuantumLayer's constructor is no longer supported as 0.4.0.

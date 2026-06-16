@@ -37,7 +37,7 @@ import torch
 import torch.jit as jit
 
 from merlin.core.computation_space import ComputationSpace
-from merlin.utils.deprecations import raise_no_bunching_deprecated
+from merlin.utils.deprecations import raise_no_bunching_removed
 from merlin.utils.dtypes import resolve_float_complex
 from merlin.utils.normalization import (
     normalize_probabilities,
@@ -1056,7 +1056,7 @@ def build_slos_distribution_computegraph(
         Logical computation subspace used to build the basis and transitions.
         When omitted, defaults to ``ComputationSpace.UNBUNCHED``.
     no_bunching : bool | None
-        Deprecated legacy flag. Use ``computation_space`` instead.
+        Removed legacy flag. Use ``computation_space`` instead.
     keep_keys : bool
         Whether to keep the list of mapped Fock states. Default is ``True``.
     device : torch.device | str | None
@@ -1074,7 +1074,7 @@ def build_slos_distribution_computegraph(
     """
 
     if no_bunching is not None:
-        raise_no_bunching_deprecated(stacklevel=2)
+        raise_no_bunching_removed()
 
     if computation_space is None:
         computation_space = ComputationSpace.UNBUNCHED
@@ -1277,7 +1277,6 @@ def compute_slos_distribution(
         sum(input_state),
         output_map_func,
         computation_space,
-        no_bunching=None,
         keep_keys=keep_keys,
         device=device,
         dtype=dtype,

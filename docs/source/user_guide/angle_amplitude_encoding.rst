@@ -222,7 +222,7 @@ from the **type** of the first argument to ``forward()``:
 .. warning::
    The ``amplitude_encoding=True`` constructor parameter was removed in
    **0.4**. Pass a :class:`~merlin.core.state_vector.StateVector` or a complex
-   ``torch.Tensor`` to ``forward()`` instead.
+   ``torch.Tensor`` to ``forward()`` instead. See :doc:`/user_guide/migration_guide`.
 
 Chunked execution tradeoff
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
