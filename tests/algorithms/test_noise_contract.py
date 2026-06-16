@@ -817,6 +817,76 @@ def test_noisy_quantumlayer_batched_forward_matches_single_forwards():
     )
 
 
+def _batched_fock_statevector() -> StateVector:
+    """Return two full-Fock input states for a 4-mode, 2-photon layer."""
+    states = torch.zeros((2, 10), dtype=torch.complex64)
+    states[0, 0] = 1.0
+    states[1, 1] = 1.0
+    return StateVector.from_tensor(states, n_modes=4, n_photons=2)
+
+
+def _assert_batched_noisy_state_and_parameter_axes(layer: ml.QuantumLayer) -> None:
+    """Check noisy batched-state output keeps parameter batch before state batch."""
+    batched_state = _batched_fock_statevector()
+    layer.set_input_state(batched_state)
+
+    x_batch = torch.tensor(
+        [
+            [0.0, 0.1, 0.2, 0.3],
+            [0.4, 0.5, 0.6, 0.7],
+            [0.8, 0.9, 1.0, 1.1],
+        ],
+        dtype=layer.dtype,
+    )
+
+    batched = layer(x_batch)
+
+    assert batched.shape[:2] == (x_batch.shape[0], batched_state.shape[0])
+
+    for param_index in range(x_batch.shape[0]):
+        for state_index in range(batched_state.shape[0]):
+            single_state = StateVector.from_tensor(
+                batched_state.tensor[state_index],
+                n_modes=batched_state.n_modes,
+                n_photons=batched_state.n_photons,
+            )
+            layer.set_input_state(single_state)
+            single = layer(x_batch[param_index : param_index + 1])
+            assert torch.allclose(
+                batched[param_index, state_index],
+                single[0],
+                atol=1e-6,
+            )
+
+
+def test_source_noise_keeps_parameter_batch_first_with_batched_input_state():
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=4,
+        builder=_builder(),
+        noise=pcvl.NoiseModel(indistinguishability=0.4),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    _assert_batched_noisy_state_and_parameter_axes(layer)
+
+
+def test_g2_noise_keeps_parameter_batch_first_with_batched_input_state():
+    layer = ml.QuantumLayer(
+        n_photons=2,
+        input_size=4,
+        builder=_builder(),
+        noise=pcvl.NoiseModel(g2=0.1, indistinguishability=0.4),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+    )
+
+    _assert_batched_noisy_state_and_parameter_axes(layer)
+
+
 def test_indistiguishable_layer_against_perceval_unitary():
     """Validate QuantumLayer with indistinguishability matches Perceval reference."""
     # Create a simple 2-mode circuit for testing

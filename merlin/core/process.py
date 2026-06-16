@@ -398,9 +398,11 @@ class ComputationProcess(AbstractComputationProcess):
                             sector.tensor.dtype
                         )
                         sector.tensor = torch.einsum(
-                            "i,bo->ibo", selected_weights, sector.tensor
+                            "i,bo->bio", selected_weights, sector.tensor
                         )
-                        if sector.tensor.shape[1] == 1:
+                        if sector.tensor.shape[0] == 1:
+                            sector.tensor = sector.tensor.squeeze(0)
+                        if sector.tensor.ndim == 3 and sector.tensor.shape[1] == 1:
                             sector.tensor = sector.tensor.squeeze(1)
 
                     if output_distribution is None:
@@ -432,9 +434,11 @@ class ComputationProcess(AbstractComputationProcess):
 
             probs_stacked = torch.stack(tensor_probs_per_state, dim=0)
             selected_weights = weights.to(probs_stacked.dtype)
-            mixed_probs = torch.einsum("is,sbo->ibo", selected_weights, probs_stacked)
+            mixed_probs = torch.einsum("is,sbo->bio", selected_weights, probs_stacked)
 
-            if mixed_probs.shape[1] == 1:
+            if mixed_probs.shape[0] == 1:
+                mixed_probs = mixed_probs.squeeze(0)
+            if mixed_probs.ndim == 3 and mixed_probs.shape[1] == 1:
                 mixed_probs = mixed_probs.squeeze(1)
 
             return mixed_probs

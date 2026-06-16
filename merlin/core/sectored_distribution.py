@@ -196,8 +196,8 @@ class SectoredDistribution:
         """Convert the SectoredDistribution to a single concatenated tensor.
 
         Concatenates probability tensors from all sectors in photon-number order.
-        For batched distributions, maintains the batch dimension and concatenates
-        along the state dimension.
+        For batched distributions, maintains all leading batch dimensions and
+        concatenates along the state dimension.
 
         Parameters
         ----------
@@ -209,7 +209,8 @@ class SectoredDistribution:
         -------
         torch.Tensor
             If return_keys is False: concatenated probability tensor of shape
-            (total_states,) for unbatched or (batch_size, total_states) for batched.
+            (total_states,) for unbatched or
+            (*batch_shape, total_states) for batched.
         tuple[list[tuple[int, ...]], torch.Tensor]
             If return_keys is True: tuple of (keys, tensor) where keys is a list
             of tuples representing Fock occupation numbers for each state.
@@ -235,13 +236,14 @@ class SectoredDistribution:
         5
         """
         is_batched = len(self.sectors[0].tensor.shape) > 1
-        output_shape: int | tuple[int, int]
+        output_shape: int | tuple[int, ...]
         if not is_batched:
             output_shape = sum(sector.tensor.shape[0] for sector in self.sectors)
         else:
+            batch_shape = self.sectors[0].tensor.shape[:-1]
             output_shape = (
-                self.sectors[0].tensor.shape[0],
-                sum(sector.tensor.shape[1] for sector in self.sectors),
+                *batch_shape,
+                sum(sector.tensor.shape[-1] for sector in self.sectors),
             )
         output_tensor = torch.zeros(
             output_shape,
@@ -255,8 +257,8 @@ class SectoredDistribution:
         # Create the tensor
         for sector in self.sectors:
             if is_batched:
-                size_of_sector = sector.tensor.shape[1]
-                output_tensor[:, output_index : output_index + size_of_sector] = (
+                size_of_sector = sector.tensor.shape[-1]
+                output_tensor[..., output_index : output_index + size_of_sector] = (
                     sector.tensor
                 )
             else:
@@ -286,7 +288,7 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
     their probability values.
 
     For batched distributions, the operation is performed independently for each
-    batch item while maintaining the batch dimension.
+    batch item while maintaining the batch dimensions.
 
     Parameters
     ----------
@@ -305,7 +307,7 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
     Notes
     -----
     - Batch dimensions are preserved: unbatched input produces unbatched output,
-      batched input produces batched output.
+      batched input produces batched output with the same leading dimensions.
     - Total probability is conserved across the reorganization.
     - Output sectors preserve the original sector discovery order. Initial
       photon numbers follow the input SectoredDistribution order, and newly
@@ -361,13 +363,11 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
         }
     else:
         is_batched = True
+        batch_shape = sector_shape[:-1]
         # Tensor per sector
         sectors = {
             i: torch.zeros(
-                (
-                    sector_shape[0],
-                    combinadics_per_sector[i].compute_space_size(),
-                ),
+                (*batch_shape, combinadics_per_sector[i].compute_space_size()),
                 device=dist.sectors[0].tensor.device,
                 dtype=dist.sectors[0].tensor.dtype,
             )
@@ -394,7 +394,7 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
 
                     sectors[number_of_photons_in_state] = torch.zeros(
                         (
-                            sector_shape[0],
+                            *batch_shape,
                             combinadics_per_sector[
                                 number_of_photons_in_state
                             ].compute_space_size(),
@@ -409,9 +409,9 @@ def clean_sectored_distribution(dist: SectoredDistribution) -> SectoredDistribut
                     number_of_photons_in_state
                 ].index(key)
 
-                sectors[number_of_photons_in_state][:, column_in_new_tensor] = (
-                    sectors[number_of_photons_in_state][:, column_in_new_tensor]
-                    + (sector_to_fix.tensor[:, col_index_in_previous_sector])
+                sectors[number_of_photons_in_state][..., column_in_new_tensor] = (
+                    sectors[number_of_photons_in_state][..., column_in_new_tensor]
+                    + (sector_to_fix.tensor[..., col_index_in_previous_sector])
                 )
 
         else:

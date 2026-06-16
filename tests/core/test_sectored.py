@@ -314,6 +314,25 @@ class TestSectoredDistribution:
         assert len(keys) == 2
         assert tensor.shape == (2, 2)
 
+    def test_to_tensor_preserves_multiple_batch_dimensions(self):
+        """Test to_tensor preserves all leading batch dimensions."""
+        sector1 = SectorResult(
+            tensor=torch.arange(12, dtype=torch.float32).reshape(2, 3, 2),
+            n_modes=2,
+            n_photons=1,
+        )
+        sector2 = SectorResult(
+            tensor=torch.arange(18, dtype=torch.float32).reshape(2, 3, 3),
+            n_modes=2,
+            n_photons=2,
+        )
+
+        tensor = SectoredDistribution(sectors=(sector1, sector2)).to_tensor()
+
+        assert tensor.shape == (2, 3, 5)
+        assert torch.allclose(tensor[..., :2], sector1.tensor)
+        assert torch.allclose(tensor[..., 2:], sector2.tensor)
+
     def test_to_tensor_with_out_of_place_keys(self):
         """Test to_tensor with out-of-place keys (photon loss)."""
         sector2 = SectorResult(
@@ -691,6 +710,31 @@ class TestCleanSectoredDistribution:
         for sector in cleaned.sectors:
             assert len(sector.tensor.shape) == 2
             assert sector.tensor.shape[0] == 2
+
+    def test_clean_distribution_preserves_multiple_batch_dimensions(self):
+        """Test cleaning preserves all leading batch dimensions."""
+        tensor = torch.arange(30, dtype=torch.float32).reshape(2, 3, 5)
+        sector2 = SectorResult(
+            tensor=tensor,
+            n_modes=2,
+            n_photons=2,
+            keys=((2, 0), (1, 1), (0, 2), (1, 0), (0, 0)),
+        )
+
+        cleaned = clean_sectored_distribution(
+            SectoredDistribution(sectors=(sector2,))
+        )
+
+        assert cleaned.get_sector(2).tensor.shape == (2, 3, 3)
+        assert torch.allclose(cleaned.get_sector(2).tensor, tensor[..., :3])
+
+        expected_one_photon = torch.zeros(2, 3, 2)
+        expected_one_photon[..., 0] = tensor[..., 3]
+        assert cleaned.get_sector(1).tensor.shape == (2, 3, 2)
+        assert torch.allclose(cleaned.get_sector(1).tensor, expected_one_photon)
+
+        assert cleaned.get_sector(0).tensor.shape == (2, 3, 1)
+        assert torch.allclose(cleaned.get_sector(0).tensor[..., 0], tensor[..., 4])
 
     def test_clean_single_state_per_photon_number(self):
         """Test cleaning where each photon count has a single state."""
