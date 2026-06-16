@@ -144,40 +144,30 @@ class TestQuantumLayer:
                 measurement_strategy=ML.MeasurementStrategy.probs(),
             )
 
-    def test_amplitude_encoding_rejects_input_size(self):
-        """Amplitude encoding forbids explicit input_size."""
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"input_size": 2, "n_photons": 1},
+            {"input_size": None},
+            {"n_photons": 1, "input_parameters": ["x"]},
+        ],
+    )
+    def test_amplitude_encoding_flag_is_removed(self, kwargs):
+        """amplitude_encoding=True should raise the 0.4 removal error."""
         circuit = pcvl.Circuit(2)
 
-        with pytest.raises(ValueError, match="amplitude_encoding"):
-            ML.QuantumLayer(
-                input_size=2,
-                circuit=circuit,
-                amplitude_encoding=True,
-                n_photons=1,
-            )
-
-    def test_amplitude_encoding_requires_n_photons(self):
-        """Amplitude encoding requires n_photons."""
-        circuit = pcvl.Circuit(2)
-
-        with pytest.raises(ValueError, match="n_photons"):
-            ML.QuantumLayer(
-                input_size=None,
-                circuit=circuit,
-                amplitude_encoding=True,
-            )
-
-    def test_amplitude_encoding_rejects_input_parameters(self):
-        """Amplitude encoding cannot be combined with classical input parameters."""
-        circuit = pcvl.Circuit(2)
-
-        with pytest.raises(ValueError, match="input parameters"):
+        with pytest.raises(ValueError) as exc_info:
             ML.QuantumLayer(
                 circuit=circuit,
                 amplitude_encoding=True,
-                n_photons=1,
-                input_parameters=["x"],
+                **kwargs,
             )
+
+        message = str(exc_info.value)
+        assert "0.4" in message
+        assert "forward(StateVector)" in message
+        assert "forward(complex_tensor)" in message
+        assert "StateVector.from_tensor()" in message
 
     def test_experiment_input_state_overrides_warns(self):
         """Experiment input_state should override user input_state with a warning."""
@@ -287,38 +277,24 @@ class TestQuantumLayer:
         assert output.shape == (10, 3)
         assert torch.all(output >= -1e6)  # More reasonable bounds for quantum outputs
 
-    def test_prepare_amplitude_input_updates_state_and_splits_inputs(self):
-        """Amplitude input helper should capture state and return remaining inputs."""
+    def test_complex_forward_restores_stored_input_state(self):
+        """Complex amplitude forward should not permanently replace input_state."""
         circuit = pcvl.Circuit(2)
         layer = ML.QuantumLayer(
             circuit=circuit,
             n_photons=1,
-            amplitude_encoding=True,
             measurement_strategy=ML.MeasurementStrategy.NONE,
             trainable_parameters=[],
             input_parameters=[],
         )
-        # TODO: will need to be updated to StateVector when implemented
-        original_state = torch.tensor([0.0])
-        layer.computation_process.input_state = original_state
+        original_state = layer.computation_process.input_state
 
-        amplitude = torch.rand(len(layer.output_keys))
-        remaining_input = torch.rand(2)
-        amplitude_out, remaining, saved_state = layer._prepare_amplitude_input(
-            [
-                amplitude,
-                remaining_input,
-            ]
-        )
+        amplitude = torch.rand(len(layer.output_keys), dtype=torch.complex64)
+        amplitude = amplitude / amplitude.abs().pow(2).sum().sqrt()
+        output = layer(amplitude)
 
-        assert saved_state is original_state
-        assert remaining[0] is remaining_input
-        assert torch.allclose(amplitude_out, amplitude)
-        assert torch.allclose(layer.computation_process.input_state, original_state)
-
-        with layer._temporary_input_state(amplitude_out, saved_state):
-            assert torch.allclose(layer.computation_process.input_state, amplitude_out)
-        assert torch.allclose(layer.computation_process.input_state, original_state)
+        assert torch.all(torch.isfinite(output))
+        assert layer.computation_process.input_state == original_state
 
     def test_prepare_classical_parameters_detects_batch_mismatch(self):
         """Classical parameter helper should reject mismatched batch sizes."""
@@ -350,24 +326,18 @@ class TestQuantumLayer:
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
 
-        params, batch_dim = layer._prepare_classical_parameters(
-            [
-                torch.rand(2, 2),
-                torch.rand(2, 2),
-            ]
-        )
+        params, batch_dim = layer._prepare_classical_parameters([
+            torch.rand(2, 2),
+            torch.rand(2, 2),
+        ])
 
         assert batch_dim == 2
         assert len(params) >= 2
 
     def test_amplitude_encoding_rejects_classical_input_parameters(self):
-        """Amplitude encoding should not allow classical input parameters."""
-        # TODO: to remove when dual encoding will be implemented (>0.4.x)
+        """Removed amplitude_encoding flag should reject any legacy configuration."""
         circuit = pcvl.Circuit(2)
-        with pytest.raises(
-            ValueError,
-            match="Amplitude encoding cannot be combined with classical input parameters.",
-        ):
+        with pytest.raises(ValueError, match="forward\\(StateVector\\)"):
             ML.QuantumLayer(
                 circuit=circuit,
                 n_photons=1,
@@ -377,20 +347,21 @@ class TestQuantumLayer:
                 measurement_strategy=ML.MeasurementStrategy.NONE,
             )
 
-    def test_amplitude_encoding_requires_amplitude_input(self):
-        """Amplitude encoding should require an amplitude tensor at call time."""
+    def test_complex_tensor_forward_accepts_amplitude_input(self):
+        """Complex tensors should provide amplitude input at call time."""
         circuit = pcvl.Circuit(2)
         layer = ML.QuantumLayer(
             circuit=circuit,
             n_photons=1,
-            amplitude_encoding=True,
             measurement_strategy=ML.MeasurementStrategy.NONE,
             trainable_parameters=[],
             input_parameters=[],
         )
 
-        with pytest.raises(ValueError, match="expects an amplitude tensor input"):
-            layer()
+        amplitude = torch.tensor([1.0 + 0.0j, 0.0 + 0.0j], dtype=torch.complex64)
+        output = layer(amplitude)
+
+        assert torch.all(torch.isfinite(output))
 
     def test_multiple_classical_inputs_forward(self):
         """Classical encoding should accept one tensor per input prefix."""
@@ -943,9 +914,9 @@ class TestQuantumLayer:
         assert model[1].out_features == 3
         # Check that it has trainable parameters (only in Linear layer)
         trainable_params_layer = [p for p in layer.parameters() if p.requires_grad]
-        assert (
-            len(trainable_params_layer) == 0
-        ), "Layer should have no trainable parameters"
+        assert len(trainable_params_layer) == 0, (
+            "Layer should have no trainable parameters"
+        )
         trainable_params = [p for p in model.parameters() if p.requires_grad]
         assert len(trainable_params) > 0, "Model should have trainable parameters"
 
@@ -2182,12 +2153,12 @@ def test_memristive_state_dict_round_trip_preserves_state_and_history():
     restored = _layer(_builder_with_memristor(with_inputs=True), input_size=2)
     restored.load_state_dict(torch.load(buffer, weights_only=True))
 
-    assert torch.allclose(
-        restored.memristive_state[0], state_before
-    ), "memristive_state was not preserved across a state_dict round-trip"
-    assert (
-        len(restored.memristive_history[0]) == history_len_before
-    ), "memristive_history length was not preserved across a state_dict round-trip"
+    assert torch.allclose(restored.memristive_state[0], state_before), (
+        "memristive_state was not preserved across a state_dict round-trip"
+    )
+    assert len(restored.memristive_history[0]) == history_len_before, (
+        "memristive_history length was not preserved across a state_dict round-trip"
+    )
 
 
 def test_memristive_state_dict_round_trip_as_submodule():
@@ -2450,9 +2421,9 @@ def test_memristive_works_with_typed_objects_and_cloning_protects_gradients():
     loss_sv = output_sv_typed.tensor.abs().sum()
     loss_sv.backward()
     assert input_data.grad is not None
-    assert torch.any(
-        input_data.grad != 0
-    ), "Gradients should flow through StateVector output"
+    assert torch.any(input_data.grad != 0), (
+        "Gradients should flow through StateVector output"
+    )
 
     # Verify memristive history accumulated (one forward pass = one state)
     assert len(layer_statevector_typed.memristive_history[0]) >= 1
@@ -2467,7 +2438,9 @@ def test_memristive_works_with_typed_objects_and_cloning_protects_gradients():
     # Verify output is NOT modified by the update rule (cloning protected it)
     assert not torch.allclose(
         output_pd_typed.tensor, torch.full_like(output_pd_typed.tensor, 999.0)
-    ), "ProbabilityDistribution output was incorrectly modified by memristive update rule"
+    ), (
+        "ProbabilityDistribution output was incorrectly modified by memristive update rule"
+    )
     assert output_pd_typed.tensor.requires_grad
 
     # Compute loss and backward for ProbabilityDistribution
@@ -2601,9 +2574,9 @@ def test_detach_at_each_forward_false_allows_full_gradient_history():
     outputs = [layer(input_batch) for input_batch in inputs]
 
     # Verify memristive history accumulated
-    assert (
-        len(layer.memristive_history[0]) == 6
-    ), f"Expected 6 history entries, got {len(layer.memristive_history[0])}"
+    assert len(layer.memristive_history[0]) == 6, (
+        f"Expected 6 history entries, got {len(layer.memristive_history[0])}"
+    )
 
     # Compute loss from the last output and backpropagate
     loss = outputs[-1][:, 0].sum()
@@ -2618,9 +2591,9 @@ def test_detach_at_each_forward_false_allows_full_gradient_history():
 
     # All inputs should have non-zero gradients (full history retained)
     for i, grad_norm in enumerate(grad_norms):
-        assert (
-            grad_norm > 1e-8
-        ), f"Input {i} should have non-zero gradient with full history, got {grad_norm}"
+        assert grad_norm > 1e-8, (
+            f"Input {i} should have non-zero gradient with full history, got {grad_norm}"
+        )
 
 
 def test_detach_at_each_forward_is_boolean_flag():
@@ -2716,9 +2689,9 @@ def test_mixed_memristors_with_different_detach_settings():
         assert state.grad_fn is None, "Detached memristor states should have no grad_fn"
 
     # Second memristor (full grad) should retain gradients
-    assert (
-        layer.memristive_history[1][-1].grad_fn is not None
-    ), "Non-detached memristor should retain gradients"
+    assert layer.memristive_history[1][-1].grad_fn is not None, (
+        "Non-detached memristor should retain gradients"
+    )
 
 
 def test_detach_at_each_forward_false_has_larger_gradients_than_true():
@@ -2763,9 +2736,9 @@ def test_detach_at_each_forward_false_has_larger_gradients_than_true():
 
     # Earlier inputs should have larger or equal gradients with full history
     for i in range(N - 1):  # All except last
-        assert (
-            grads_full[i] >= grads_detached[i] * 0.9
-        ), "Full gradient flow should have larger or equal gradients for earlier inputs"
+        assert grads_full[i] >= grads_detached[i] * 0.9, (
+            "Full gradient flow should have larger or equal gradients for earlier inputs"
+        )
 
 
 def test_reset_properly_detaches_or_keeps_initial_state():
@@ -2779,12 +2752,12 @@ def test_reset_properly_detaches_or_keeps_initial_state():
     # Test with detach=True
     layer_detached = _make_memristive_layer(detach_at_each_forward=True)
     layer_detached.reset(batch_size=1)
-    assert (
-        layer_detached.memristive_state[0].grad_fn is None
-    ), "Initial state should be detached with detach_at_each_forward=True"
-    assert (
-        layer_detached.memristive_history[0][0].grad_fn is None
-    ), "Initial history state should be detached with detach_at_each_forward=True"
+    assert layer_detached.memristive_state[0].grad_fn is None, (
+        "Initial state should be detached with detach_at_each_forward=True"
+    )
+    assert layer_detached.memristive_history[0][0].grad_fn is None, (
+        "Initial history state should be detached with detach_at_each_forward=True"
+    )
 
     # Test with detach=False
     layer_full = _make_memristive_layer(detach_at_each_forward=False)
@@ -2793,9 +2766,9 @@ def test_reset_properly_detaches_or_keeps_initial_state():
     # But after first forward it should retain gradients
     inp = torch.randn(1, 2, requires_grad=True)
     layer_full(inp)
-    assert (
-        layer_full.memristive_state[0].grad_fn is not None
-    ), "State should retain gradients after forward with detach_at_each_forward=False"
+    assert layer_full.memristive_state[0].grad_fn is not None, (
+        "State should retain gradients after forward with detach_at_each_forward=False"
+    )
 
 
 def test_detach_at_each_forward_with_batch_dimension():

@@ -405,13 +405,12 @@ class TestQuantumLayerMeasurementStrategy:
 
         x = torch.rand(2, 2)
 
-        with pytest.warns(DeprecationWarning):
-            legacy_layer = ML.QuantumLayer(
-                input_size=2,
-                n_photons=2,
-                builder=builder,
-                measurement_strategy=ML.MeasurementStrategy.PROBABILITIES,
-            )
+        legacy_layer = ML.QuantumLayer(
+            input_size=2,
+            n_photons=2,
+            builder=builder,
+            measurement_strategy=ML.MeasurementStrategy.probs(),
+        )
 
         legacy_output = legacy_layer(x)
         grouping_cases = [
@@ -442,19 +441,6 @@ class TestQuantumLayerMeasurementStrategy:
 
 
 def test_resolve_measurement_strategy():
-    with pytest.warns(DeprecationWarning):
-        assert isinstance(
-            resolve_measurement_strategy(MeasurementStrategy.PROBABILITIES),
-            ProbabilitiesStrategy,
-        )
-        assert isinstance(
-            resolve_measurement_strategy(MeasurementStrategy.MODE_EXPECTATIONS),
-            ModeExpectationsStrategy,
-        )
-        assert isinstance(
-            resolve_measurement_strategy(MeasurementStrategy.AMPLITUDES),
-            AmplitudesStrategy,
-        )
     assert isinstance(
         resolve_measurement_strategy(MeasurementStrategy.probs()),
         ProbabilitiesStrategy,
@@ -810,22 +796,19 @@ class _DummyComputationProcess:
         return torch.tensor([2.0])
 
 
-def _build_test_layer(amplitude_encoding: bool = False) -> ML.QuantumLayer:
+def _build_test_layer(with_angle_encoding: bool = True) -> ML.QuantumLayer:
     builder = ML.CircuitBuilder(n_modes=2)
     builder.add_entangling_layer(trainable=True, name="U1")
     kwargs: dict[str, Any] = {"builder": builder}
-    if amplitude_encoding:
-        kwargs["amplitude_encoding"] = True
-        kwargs["n_photons"] = 1
-    else:
+    if with_angle_encoding:
         builder.add_angle_encoding(modes=[0, 1], name="input")
         kwargs["input_size"] = 2
-        kwargs["n_photons"] = 1
+    kwargs["n_photons"] = 1
     return ML.QuantumLayer(**kwargs)
 
 
-def test_compute_amplitudes_helper_prefers_amplitude_ebs_path():
-    layer = _build_test_layer(amplitude_encoding=True)
+def test_compute_amplitudes_helper_uses_superposition_for_amplitude_state():
+    layer = _build_test_layer(with_angle_encoding=False)
     stub = _DummyComputationProcess()
     layer.computation_process = stub
 
@@ -837,13 +820,13 @@ def test_compute_amplitudes_helper_prefers_amplitude_ebs_path():
         simultaneous_processes=None,
     )
 
-    assert stub.called == "ebs"
-    assert stub.last_simultaneous_processes == 1
+    assert stub.called == "superposition"
+    assert stub.last_simultaneous_processes is None
     assert torch.allclose(result, torch.tensor([1.0]))
 
 
-def test_compute_amplitudes_helper_uses_across_batch_when_requested():
-    layer = _build_test_layer(amplitude_encoding=True)
+def test_compute_amplitudes_helper_forwards_superposition_chunk_size():
+    layer = _build_test_layer(with_angle_encoding=False)
     stub = _DummyComputationProcess()
     layer.computation_process = stub
 
@@ -855,22 +838,23 @@ def test_compute_amplitudes_helper_uses_across_batch_when_requested():
         simultaneous_processes=4,
     )
 
-    assert stub.called == "ebs"
+    assert stub.called == "superposition"
     assert stub.last_simultaneous_processes == 4
-    assert torch.allclose(result, torch.tensor([4.0]))
+    assert torch.allclose(result, torch.tensor([1.0]))
 
 
-def test_compute_amplitudes_helper_handles_missing_state_in_amplitude_mode():
-    layer = _build_test_layer(amplitude_encoding=True)
+def test_compute_amplitudes_helper_delegates_when_amplitude_state_missing():
+    layer = _build_test_layer(with_angle_encoding=False)
     layer.computation_process = _DummyComputationProcess()
 
-    with pytest.raises(TypeError):
-        layer._compute_amplitudes(
-            params=[torch.tensor([0.0])],
-            inferred_state=None,
-            parameter_batch_dim=0,
-            simultaneous_processes=None,
-        )
+    result = layer._compute_amplitudes(
+        params=[torch.tensor([0.0])],
+        inferred_state=None,
+        parameter_batch_dim=0,
+        simultaneous_processes=None,
+    )
+
+    assert torch.allclose(result, torch.tensor([2.0]))
 
 
 def test_compute_amplitudes_helper_batches_classical_inputs():
@@ -938,7 +922,7 @@ class TestComputationSpaceConflictResolution:
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.raises(TypeError, match="Cannot specify 'computation_space'"):
+        with pytest.raises(AttributeError, match="Cannot specify 'computation_space'"):
             ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
@@ -956,7 +940,7 @@ class TestComputationSpaceConflictResolution:
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.raises(TypeError, match="Cannot specify 'computation_space'"):
+        with pytest.raises(AttributeError, match="Cannot specify 'computation_space'"):
             ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
@@ -973,7 +957,7 @@ class TestComputationSpaceConflictResolution:
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.raises(TypeError, match="Cannot specify 'computation_space'"):
+        with pytest.raises(AttributeError, match="Cannot specify 'computation_space'"):
             ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
@@ -1004,36 +988,36 @@ class TestComputationSpaceConflictResolution:
         assert layer.computation_space == ComputationSpace.FOCK
         assert layer.measurement_strategy.type == MeasurementKind.PROBABILITIES
 
-    def test_legacy_enum_with_constructor_computation_space_warns(self):
-        """Legacy enum (PROBABILITIES) with constructor computation_space should WARN but work."""
+    def test_constructor_computation_space_fails(self):
+        """Legacy enum (PROBABILITIES) with constructor computation_space should fail."""
         builder = ML.CircuitBuilder(n_modes=3)
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
         builder.add_entangling_layer(trainable=True, name="U2")
 
-        with pytest.warns(DeprecationWarning, match="deprecated"):
-            layer = ML.QuantumLayer(
+        with pytest.raises(
+            AttributeError,
+            match="Cannot specify 'computation_space' in QuantumLayer's constructor. ",
+        ):
+            ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
                 builder=builder,
                 computation_space=ComputationSpace.FOCK,
-                measurement_strategy=MeasurementStrategy.PROBABILITIES,
+                measurement_strategy=MeasurementStrategy.probs(),
             )
-        # Should have used the constructor computation_space
-        assert layer.computation_space == ComputationSpace.FOCK
 
-    def test_legacy_enum_without_constructor_computation_space_defaults(self):
-        """Legacy enum without computation_space should default to UNBUNCHED."""
+    def test_new_ms_without_constructor_computation_space_defaults(self):
+        """New factory method should default to UNBUNCHED."""
         builder = ML.CircuitBuilder(n_modes=3)
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.warns(DeprecationWarning):
-            layer = ML.QuantumLayer(
-                input_size=2,
-                n_photons=1,
-                builder=builder,
-                measurement_strategy=MeasurementStrategy.PROBABILITIES,
-            )
+        layer = ML.QuantumLayer(
+            input_size=2,
+            n_photons=1,
+            builder=builder,
+            measurement_strategy=MeasurementStrategy.probs(),
+        )
         # Should default to UNBUNCHED
         assert layer.computation_space == ComputationSpace.UNBUNCHED

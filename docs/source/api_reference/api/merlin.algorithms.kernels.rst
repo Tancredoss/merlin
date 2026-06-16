@@ -16,18 +16,24 @@ merlin.algorithms.kernels module
    :undoc-members:
    :show-inheritance:
 
+Deprecations
+------------
+
+.. warning:: *Deprecated since version 0.4:*
+   :class:`KernelCircuitBuilder` is deprecated and will be removed in release
+   0.5. Use :class:`~merlin.builder.circuit_builder.CircuitBuilder` with
+   :class:`FeatureMap` and :class:`FidelityKernel` directly instead.
+
 .. autoclass:: KernelCircuitBuilder
    :members:
    :undoc-members:
    :show-inheritance:
 
-Deprecations
-------------
-
-.. warning:: *Deprecated since version 0.3:*
+.. warning:: *Removed in version 0.4:*
    The ``no_bunching`` flag accepted by legacy kernel constructors is removed
-   since version 0.3.0. Use the ``computation_space`` parameter instead.
-   See :doc:`/user_guide/migration_guide`.
+   in version 0.4. Use ``computation_space=ComputationSpace.UNBUNCHED`` or
+   ``computation_space=ComputationSpace.FOCK`` instead. See
+   :doc:`/user_guide/migration_guide`.
 
 .. warning:: *Deprecated since version 0.4:*
    Direct unitary construction through :meth:`FeatureMap.compute_unitary` is a
@@ -81,8 +87,8 @@ Quickstart: Fidelity kernel in a few lines
     X_train = torch.rand(10, 2)
     X_test = torch.rand(5, 2)
 
-    K_train = kernel(X_train)               # (N, N)
-    K_test = kernel(X_test, X_train)        # (M, N)
+    K_train = kernel(X_train)           # (N, N)
+    K_test = kernel(X_test, X_train)    # (M, N)
 
 Custom experiment with FeatureMap
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -130,10 +136,17 @@ Use with scikit-learn (precomputed kernel)
     import torch
     from sklearn.svm import SVC
     from merlin.algorithms.kernels import FeatureMap, FidelityKernel
+    from merlin.builder import CircuitBuilder
 
-    # Build kernel and compute Gram matrices
-    feature_map = FeatureMap.simple(input_size=4)
-    kernel = FidelityKernel(feature_map=feature_map)
+    # Build a kernel with 4 input features in 5 modes
+    builder = CircuitBuilder(n_modes=5)
+    builder.add_superpositions(depth=1)
+    builder.add_angle_encoding(modes=[0, 1, 2, 3], name="input")
+    builder.add_superpositions(depth=1)
+
+    feature_map = FeatureMap(builder=builder, input_size=4, input_parameters=None)
+    kernel = FidelityKernel(feature_map=feature_map, input_state=[1, 0, 1, 0, 1])
+
     K_train = kernel(X_train)
     K_test = kernel(X_test, X_train)
 

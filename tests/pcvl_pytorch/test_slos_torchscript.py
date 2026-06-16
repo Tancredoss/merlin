@@ -153,18 +153,21 @@ def test_slos_compute_slos_distribution_with_output_map_function():
 
     # Can't output_map_func = reverse_state:
     # Error l.513 '@jit.script' : DeprecationWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`
-    # def reverse_state(state):
-    #    return state[::-1]
-    output_map_func = None
+    def reverse_state(state):
+        return state[::-1]
 
-    keys, amplitudes = compute_slos_distribution(
-        unitary=U_torch,
-        input_state=input_state,
-        output_map_func=output_map_func,
-        keep_keys=True,
-        computation_space=ComputationSpace.FOCK,
-    )
-    print(amplitudes)
+    output_map_func = reverse_state
+    with pytest.warns(
+        DeprecationWarning,
+        match=r"torch\.jit\.script.*(deprecated|not supported)",
+    ):
+        keys, amplitudes = compute_slos_distribution(
+            unitary=U_torch,
+            input_state=input_state,
+            output_map_func=output_map_func,
+            keep_keys=True,
+            computation_space=ComputationSpace.FOCK,
+        )
 
     expected_keys = [
         (2, 0, 0, 0),
@@ -178,6 +181,7 @@ def test_slos_compute_slos_distribution_with_output_map_function():
         (0, 0, 1, 1),
         (0, 0, 0, 2),
     ]
+    expected_keys = [i[::-1] for i in expected_keys]
     assert keys == expected_keys, (
         f"Keys do not match : expected {expected_keys}, calculated {keys}"
     )
