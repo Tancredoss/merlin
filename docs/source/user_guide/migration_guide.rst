@@ -80,11 +80,14 @@ passed as four logical amplitudes instead of a ten-entry full-Fock vector:
   from merlin.core import EncodingSpace, StateVector
 
   logical = torch.tensor([1.0, 0.0, 0.0, 1.0], dtype=torch.complex64)
-  logical = logical / torch.linalg.vector_norm(logical)
   input_state = StateVector.from_tensor(
       logical,
       encoding=EncodingSpace.DUAL_RAIL,
   )
+
+``StateVector`` normalizes lazily when a normalized dense view or layer
+execution needs it, so explicit pre-normalization is not required for this
+construction.
 
 See :doc:`/user_guide/encoding_space` for Fock, unbunched, dual-rail,
 partitioned, and QLOQ examples.

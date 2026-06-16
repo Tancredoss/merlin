@@ -82,6 +82,11 @@ encoding=...)`` validates the logical tensor, embeds it into full Fock order,
 and returns a ``StateVector`` that can be passed to
 :class:`~merlin.algorithms.layer.QuantumLayer.forward`.
 
+``StateVector.from_tensor`` stores the amplitudes you provide and lets
+``StateVector`` normalize lazily when a normalized dense view or layer
+execution needs it. The examples below therefore pass raw illustrative tensors
+directly to ``from_tensor`` instead of normalizing before construction.
+
 The usual workflow is:
 
 .. code-block:: python
@@ -179,11 +184,10 @@ components, embedded into four modes with two photons.
 
 .. code-block:: python
 
-   import math
    import torch
    from merlin.core import EncodingSpace, StateVector
 
-   logical = torch.tensor([1.0, 0.0, 0.0, 1.0]) / math.sqrt(2)
+   logical = torch.tensor([1.0, 0.0, 0.0, 1.0])
    state = StateVector.from_tensor(logical, encoding=EncodingSpace.DUAL_RAIL)
 
    assert state.n_modes == 4
@@ -239,7 +243,8 @@ photon delocalized over ``2**k`` modes. For example,
 16-component logical tensor.
 
 QLOQ was introduced for quantum circuit compression in Lysaght et al.,
-"Quantum circuit compression using qubit logic on qudits", arXiv:2411.03878.
+`Quantum circuit compression using qubit logic on qudits
+<https://arxiv.org/abs/2411.03878>`__.
 The example below uses the same grouping idea for an ML latent state rather
 than a chemistry VQE: a compact 16-component latent vector is embedded into an
 8-mode, 2-photon photonic state and passed through a ``QuantumLayer``.
@@ -255,7 +260,6 @@ than a chemistry VQE: a compact 16-component latent vector is embedded into an
    latent = torch.zeros(encoding.logical_basis_size(), dtype=torch.complex64)
    latent[0] = 1.0
    latent[-1] = 1.0
-   latent = latent / torch.linalg.vector_norm(latent)
 
    state = StateVector.from_tensor(latent, encoding=encoding)
    assert encoding.modes_per_photon == (4, 4)
@@ -294,7 +298,6 @@ Manual full-Fock construction:
    full = torch.zeros(10, dtype=torch.complex64)
    full[2] = 1.0
    full[6] = 1.0
-   full = full / torch.linalg.vector_norm(full)
 
    state = StateVector.from_tensor(
        full,
@@ -311,7 +314,6 @@ Equivalent logical construction:
    from merlin.core import EncodingSpace, StateVector
 
    logical = torch.tensor([1.0, 0.0, 0.0, 1.0], dtype=torch.complex64)
-   logical = logical / torch.linalg.vector_norm(logical)
 
    state = StateVector.from_tensor(
        logical,

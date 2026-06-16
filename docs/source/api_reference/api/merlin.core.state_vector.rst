@@ -38,7 +38,9 @@ Constructors
 
 **from_tensor** — wrap a real or complex tensor with Fock metadata.
 Real data is auto-promoted to complex. By default, the last dimension must match
-the Fock basis size :math:`\binom{n\_modes + n\_photons - 1}{n\_photons}`:
+the Fock basis size :math:`\binom{n\_modes + n\_photons - 1}{n\_photons}`.
+The raw amplitudes are stored as provided; ``StateVector`` normalizes lazily
+when a normalized dense view or layer execution needs it:
 
 .. code-block:: python
 

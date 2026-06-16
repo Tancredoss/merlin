@@ -1,5 +1,3 @@
-import math
-
 import torch
 
 from merlin import CircuitBuilder, EncodingSpace, MeasurementStrategy, QuantumLayer
@@ -86,7 +84,7 @@ def test_unbunched_example_embeds_only_collision_free_states():
 
 
 def test_dual_rail_bell_example_maps_logical_qubits_to_modes():
-    logical = torch.tensor([1.0, 0.0, 0.0, 1.0]) / math.sqrt(2)
+    logical = torch.tensor([1.0, 0.0, 0.0, 1.0])
 
     state = StateVector.from_tensor(logical, encoding=EncodingSpace.DUAL_RAIL)
 
@@ -133,7 +131,6 @@ def test_qloq_latent_example_forwards_through_quantum_layer():
     latent = torch.zeros(encoding.logical_basis_size(), dtype=torch.complex64)
     latent[0] = 1.0
     latent[-1] = 1.0
-    latent = latent / torch.linalg.vector_norm(latent)
 
     state = StateVector.from_tensor(latent, encoding=encoding)
 
