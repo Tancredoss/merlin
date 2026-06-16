@@ -7,6 +7,16 @@ Migration guide
 Migration guide (v0.3 to v.0.4)
 ===============================
 
+Migrating dependency versions for MerLin 0.4
+--------------------------------------------
+
+MerLin 0.4 requires Perceval ``>=1.2.1``. Previous MerLin versions supported
+Perceval ``<=1.1``.
+
+MerLin 0.4 also supports PyTorch ``2.11`` and ``2.12``. See
+:doc:`/user_guide/compatibility` for the supported MerLin, Perceval, PyTorch,
+and Python version combinations.
+
 Migrating from removed ``computation_space`` argument in the ``QuantumLayer``
 -------------------------------------------------------------------------------
 
@@ -25,6 +35,8 @@ To define the ``computation_space`` of a :class:`~merlin.algorithms.layer.Quantu
    # Recommended
    QuantumLayer(..., measurement_strategy=MeasurementStrategy.probs(ComputationSpace.FOCK))
 
+Migrating from ``no_bunching`` (deprecated)
+-------------------------------------------
 
 Migrating from removed ``amplitude_encoding`` flag in the ``QuantumLayer``
 -------------------------------------------------------------------------------
@@ -109,7 +121,7 @@ Migrating from removed ``no_bunching``
 .. warning:: *Removed in version 0.4:*
    ``no_bunching`` is removed in version 0.4. Use explicit
    ``computation_space`` configuration instead.
-   
+
 The ``no_bunching`` flag is removed.
 
 If you are using a ``QuantumLayer`` and you need to control how Fock states are
