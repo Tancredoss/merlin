@@ -1,17 +1,16 @@
+import numpy as np
+import perceval as pcvl
 import pytest
 import torch
-import perceval as pcvl
-import numpy as np
 
-from merlin import ComputationSpace, Combinadics
-from merlin.pcvl_pytorch.noisy_slos import (
-    _InputStateNoisySLOSComputeGraph,
-    NoisySLOSComputeGraph,
-)
-from merlin.pcvl_pytorch.slos_torchscript import SLOSComputeGraph
-
+from merlin import Combinadics, ComputationSpace
 from merlin.algorithms.layer_utils import NoiseGroups, classify_noise
 from merlin.pcvl_pytorch.locirc_to_tensor import CircuitConverter
+from merlin.pcvl_pytorch.noisy_slos import (
+    NoisySLOSComputeGraph,
+    _InputStateNoisySLOSComputeGraph,
+)
+from merlin.pcvl_pytorch.slos_torchscript import SLOSComputeGraph
 
 
 @pytest.fixture
@@ -127,7 +126,6 @@ def test_against_perceval(entangling_circuit):
         sim.set_circuit(circuit_to_analyze)
 
         for state in Combinadics(scheme="fock", n=3, m=5).enumerate_states():
-
             noisy_output = noisy_slos.compute_probs(unitary, state)
             # Normalisation check
             assert torch.sum(noisy_output[1]).item() == pytest.approx(1.0, abs=1e-6)
@@ -137,7 +135,7 @@ def test_against_perceval(entangling_circuit):
             perceval_probs = sim.probs_svd((source, input_state))
 
             for out_state, noisy_slos_probability in zip(
-                noisy_output[0], noisy_output[1][0]
+                noisy_output[0], noisy_output[1][0], strict=True
             ):
                 assert np.allclose(
                     perceval_probs["results"][pcvl.FockState(out_state)],

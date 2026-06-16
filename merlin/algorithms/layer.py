@@ -1560,9 +1560,7 @@ class QuantumLayer(MerlinModule):
                 )
 
         if self._probability_readout is not None:
-            self._probability_readout = self._probability_readout.to(
-                device=self.device
-            )
+            self._probability_readout = self._probability_readout.to(device=self.device)
 
         target_kwargs: dict[str, Any] = {"dtype": self.dtype}
         if self.device is not None:
