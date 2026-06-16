@@ -66,7 +66,7 @@ from .utils.combinadics import Combinadics
 from .utils.grouping import LexGrouping, ModGrouping
 
 # Version and metadata
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 __author__ = "Merlin Team"
 __description__ = "Photonic Quantum Machine Learning Framework"
 
