@@ -2970,6 +2970,16 @@ def test_quantum_layer_photon_count_match_List():
             measurement_strategy=ML.MeasurementStrategy.probs(),)
         assert layer is not None
         assert isinstance(layer, QuantumLayer)
+# to see if the tensor doesn't crash. this code can be removed once tensor is depprecated.
+def test_quantum_layer_photon_count_match_StateVector_Tensor():
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=torch.tensor([0.5,0,0.5]), 
+            n_photons=2,
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+        assert layer is not None
+        assert isinstance(layer, QuantumLayer)
 
 
 
