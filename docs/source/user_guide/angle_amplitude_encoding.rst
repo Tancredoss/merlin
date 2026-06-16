@@ -341,9 +341,39 @@ Structured input encodings
 
 If your amplitude tensor's final dimension indexes a logical basis rather than
 Merlin's full Fock basis, pass an ``EncodingSpace`` to
-``StateVector.from_tensor(..., encoding=...)``. This covers dual-rail,
-unbunched, partitioned, and QLOQ inputs. See :doc:`encoding_space` for the
-decision table and runnable examples.
+``StateVector.from_tensor(..., encoding=...)``. Structured encodings can infer
+their own physical dimensions:
+
+.. code-block:: python
+
+    import torch
+    from merlin.core import EncodingSpace
+    from merlin.core.state_vector import StateVector
+
+    dual_rail = StateVector.from_tensor(
+        torch.zeros(4),
+        encoding=EncodingSpace.DUAL_RAIL,
+    )
+    assert dual_rail.n_modes == 4
+    assert dual_rail.n_photons == 2
+
+    qloq = EncodingSpace.qloq(qubit_groups=[2, 1])
+    qloq_state = StateVector.from_tensor(torch.zeros(8), encoding=qloq)
+    assert qloq_state.n_modes == 6
+    assert qloq_state.n_photons == 2
+
+If a circuit needs auxiliary vacuum modes, append them after constructing the
+encoded state:
+
+.. code-block:: python
+
+    padded = dual_rail @ [0]
+    assert padded.n_modes == 5
+    assert padded.n_photons == 2
+
+This section only introduces the mechanism. See :doc:`encoding_space` for the
+PyTorch-oriented decision table and runnable examples for Fock, unbunched,
+dual-rail, partitioned, and QLOQ inputs.
 
 
 Using a complex tensor directly
