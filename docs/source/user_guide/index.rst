@@ -31,6 +31,12 @@ Send your code to simulators or QPUs
    :data: _data/galleries/user_guide/send_code_qpu.json
    :columns: 2
 
+Ready to use quantum models
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/models.json
+   :columns: 2
+
 Specific algorithms
 ----------------------------------------
 .. merlin-gallery::
@@ -56,6 +62,7 @@ Migration guide
    kernels
    layer
    measurement_strategy
+   models/index
    migration_guide
    quantum_bridge
    remote_execution
