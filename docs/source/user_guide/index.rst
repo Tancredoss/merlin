@@ -51,6 +51,7 @@ Migration guide
 
    angle_amplitude_encoding
    computation_space
+   encoding_space
    feed_forward
    grouping
    kernels

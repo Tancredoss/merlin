@@ -145,6 +145,9 @@ the stored encoding:
    )
    sv.logical_to_fock_map()  # {(0, 0): 2, (0, 1): 3, (1, 0): 5, (1, 1): 6}
 
+See :doc:`/user_guide/encoding_space` for full worked examples that compare
+logical labels, Fock occupation tuples, and tensor indices.
+
 
 Amplitude lookup
 ^^^^^^^^^^^^^^^^
