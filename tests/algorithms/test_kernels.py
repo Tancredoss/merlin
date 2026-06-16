@@ -1,3 +1,4 @@
+import re
 import warnings
 
 import numpy as np
@@ -14,9 +15,11 @@ from merlin.algorithms.kernels import (
     FidelityKernel,
     KernelCircuitBuilder,
     _CCInvQuantumLayer,
+    _require_angle_encoding_spec,
 )
 from merlin.algorithms.loss import NKernelAlignment
 from merlin.builder import CircuitBuilder
+from merlin.builder.circuit_builder import ANGLE_ENCODING_MODE_ERROR
 from merlin.core.computation_space import ComputationSpace
 from merlin.pcvl_pytorch.noisy_slos import (
     NoisyG2SLOSComputeGraph,
@@ -922,6 +925,136 @@ class TestFeatureMapDescriptor:
                 circuit=self.circuit, input_size=2, input_parameters=["x1", "x2"]
             )
 
+    def test_feature_map_requires_exactly_one_circuit_source(self):
+        """FeatureMap should reject missing or ambiguous circuit sources."""
+        with pytest.raises(ValueError, match="Provide exactly one"):
+            FeatureMap(input_size=1, input_parameters="x")
+
+        with pytest.raises(ValueError, match="Provide exactly one"):
+            FeatureMap(
+                circuit=self.circuit,
+                experiment=pcvl.Experiment(self.circuit),
+                input_size=1,
+                input_parameters="x",
+            )
+
+    def test_feature_map_requires_input_size(self):
+        """FeatureMap should fail clearly when input_size is omitted."""
+        with pytest.raises(TypeError, match="input_size"):
+            FeatureMap(circuit=self.circuit, input_parameters="x")
+
+    def test_feature_map_requires_input_parameter_prefix(self):
+        """Direct circuit FeatureMap should require input_parameters."""
+        with pytest.raises(ValueError, match="input_parameters must be provided"):
+            FeatureMap(circuit=self.circuit, input_size=2, input_parameters=None)
+
+    def test_require_angle_encoding_spec_rejects_missing_prefix(self):
+        """Builder metadata validation should reject missing input prefixes."""
+        with pytest.raises(RuntimeError, match="missing an input parameter prefix"):
+            _require_angle_encoding_spec({}, None)
+
+    @pytest.mark.parametrize(
+        ("spec", "message"),
+        [
+            ({"combinations": [], "scales": {}}, "combinations"),
+            ({"combinations": [(0,)], "scales": []}, "scales"),
+            ({"combinations": [(0, 1)], "scales": {0: 1.0}}, "missing"),
+        ],
+    )
+    def test_require_angle_encoding_spec_rejects_malformed_metadata(
+        self,
+        spec,
+        message,
+    ):
+        """Builder metadata validation should reject malformed specs."""
+        with pytest.raises(RuntimeError, match=message):
+            _require_angle_encoding_spec({"input": spec}, "input")
+
+    def test_subset_sum_expand_handles_padding_and_empty_input(self):
+        """Legacy subset expansion should pad or return zeros when needed."""
+        padded = self.feature_map._subset_sum_expand(torch.tensor([1.0, 2.0]), 4)
+        assert torch.allclose(padded, torch.tensor([1.0, 2.0, 3.0, 0.0]))
+
+        empty = self.feature_map._subset_sum_expand(torch.tensor([]), 3)
+        assert torch.allclose(empty, torch.zeros(3))
+
+    def test_legacy_encode_uses_encoder_outputs_and_fallbacks(self):
+        """Legacy FeatureMap encoding should cover encoder success and fallback paths."""
+        circuit = pcvl.Circuit(3)
+        circuit.add(0, pcvl.PS(pcvl.P("x0")))
+        circuit.add(1, pcvl.PS(pcvl.P("x1")))
+        circuit.add(2, pcvl.PS(pcvl.P("x2")))
+
+        feature_map = FeatureMap(
+            circuit=circuit,
+            input_size=2,
+            input_parameters="x",
+            encoder=lambda x: np.array([1.0, 2.0, 3.0]),
+        )
+        assert torch.allclose(
+            feature_map._encode_x(torch.tensor([0.1, 0.2])),
+            torch.tensor([1.0, 2.0, 3.0]),
+        )
+
+        feature_map._encoder = lambda x: torch.tensor([9.0])
+        assert torch.allclose(
+            feature_map._encode_x(torch.tensor([0.1, 0.2])),
+            torch.tensor([0.1, 0.2, 0.3]),
+        )
+
+        def failing_encoder(x):
+            raise ValueError("encoder failed")
+
+        feature_map._encoder = failing_encoder
+        assert torch.allclose(
+            feature_map._encode_x(torch.tensor([0.1, 0.2])),
+            torch.tensor([0.1, 0.2, 0.3]),
+        )
+
+    def test_legacy_encode_with_specs_rejects_invalid_metadata(self):
+        """Legacy angle metadata encoder should reject invalid specs."""
+        with pytest.raises(ValueError, match="combinations"):
+            self.feature_map._encode_with_specs(
+                torch.tensor([0.1]),
+                {"combinations": "bad", "scales": {}},
+            )
+
+        with pytest.raises(ValueError, match="scales"):
+            self.feature_map._encode_with_specs(
+                torch.tensor([0.1]),
+                {"combinations": [(0,)], "scales": []},
+            )
+
+        with pytest.raises(ValueError, match="insufficient"):
+            self.feature_map._encode_with_specs(
+                torch.tensor([0.1]),
+                {"combinations": [(0, 1)], "scales": {0: 1.0, 1: 1.0}},
+            )
+
+        empty = self.feature_map._encode_with_specs(
+            torch.tensor([0.1]),
+            {"combinations": [], "scales": {}},
+        )
+        assert empty.numel() == 0
+
+    def test_is_datapoint_scalar_and_invalid_shapes(self):
+        """FeatureMap.is_datapoint should cover scalar and invalid-shape paths."""
+        scalar_feature_map = FeatureMap(
+            circuit=pcvl.Circuit(1) // pcvl.PS(pcvl.P("x")),
+            input_size=1,
+            input_parameters="x",
+        )
+
+        assert scalar_feature_map.is_datapoint(0.5)
+        assert not scalar_feature_map.is_datapoint(torch.tensor([[0.5]]))
+
+        with pytest.raises(ValueError, match="does not match data shape"):
+            self.feature_map.is_datapoint(0.5)
+        with pytest.raises(ValueError, match="does not match data shape"):
+            self.feature_map.is_datapoint(torch.ones(1, 1, 2))
+        with pytest.raises(ValueError, match="does not match data shape"):
+            self.feature_map.is_datapoint(torch.ones(3))
+
 
 class TestNKernelAlignment:
     def setup_method(self):
@@ -1066,6 +1199,25 @@ class TestFeatureMapFactoryMethods:
         for i in range(1, 20):
             kernel = FeatureMap.simple(input_size=i)
             assert kernel.is_trainable
+
+    @pytest.mark.parametrize(
+        ("input_size", "n_modes", "message"),
+        [
+            (1, 1, "at least 2"),
+            (20, None, "too large"),
+            (0, 2, "at least 1"),
+            (3, 2, ANGLE_ENCODING_MODE_ERROR),
+        ],
+    )
+    def test_simple_factory_rejects_invalid_dimensions(
+        self,
+        input_size,
+        n_modes,
+        message,
+    ):
+        """Simple FeatureMap factory should reject invalid size combinations."""
+        with pytest.raises(ValueError, match=re.escape(message)):
+            FeatureMap.simple(input_size=input_size, n_modes=n_modes)
 
 
 class TestFidelityKernelFactoryMethods:
