@@ -537,15 +537,15 @@ def prepare_input_state(
 
     # === Handle StateVector (canonical, preferred) ===
     if isinstance(input_state, StateVector):
+        if n_photons is not None and input_state.n_photons != n_photons:
+            raise ValueError(
+                "Inconsistent number of photons between input_state and n_photons."
+            )
         return input_state, input_state.n_photons
 
     # === Reject removed tensor constructor state ===
     if isinstance(input_state, torch.Tensor):
         raise ValueError(_CONSTRUCTOR_TENSOR_INPUT_STATE_REMOVAL_MESSAGE)
-
-    # === Handle tuple/list (convert to BasicState) ===
-    if isinstance(input_state, tuple):
-        input_state = list(input_state)
 
     # === Handle pcvl.BasicState ===
     if isinstance(input_state, pcvl.BasicState):
@@ -594,8 +594,14 @@ def prepare_input_state(
             return generate_state(circuit_m, n_photons, StatePattern.SPACED), n_photons
 
     # === Handle list[int] (legacy) ===
-    if isinstance(input_state, list):
-        return pcvl.BasicState(tuple(cast(list[int], input_state))), n_photons
+
+    if isinstance(input_state, (list, tuple)):
+        if any(x != int(x) or int(x) < 0 for x in input_state):
+            raise ValueError(
+                "List/tuple input_state must contain non-negative integer "
+                "occupations; use a StateVector for superposed inputs."
+            )
+        return pcvl.BasicState(tuple(int(x) for x in input_state)), n_photons
 
     return (
         cast(StateVector | pcvl.BasicState | None, input_state),
@@ -696,7 +702,6 @@ def vet_experiment(experiment: pcvl.Experiment) -> dict[str, bool]:
         If the experiment uses unsupported features such as post-selection,
         heralding, feed-forward, time dependence, or minimum-photon filters.
     """
-    has_post_select = not experiment.post_select_fn == pcvl.PostSelect()
     _post_select_fn = experiment.post_select_fn
     has_post_select = (
         _post_select_fn is not None and _post_select_fn != pcvl.PostSelect()
@@ -1189,6 +1194,46 @@ def normalize_output_key(
     if isinstance(key, torch.Tensor):
         return tuple(int(v) for v in key.tolist())
     return tuple(int(v) for v in key)
+
+
+def extract_photon_count(
+    input_state: StateVector | pcvl.StateVector | pcvl.BasicState | None,
+) -> int | list[int] | None:
+    """Extract photon number (for stateVector and basicState only)
+
+    Parameters
+    ----------
+    input_state : :class:`~merlin.core.state_vector.StateVector` | pcvl.StateVector | pcvl.BasicState
+    Returns
+    ----------
+    int | None
+    """
+    if input_state is None:
+        return None
+
+    if isinstance(input_state, pcvl.BasicState):
+        val = input_state.n
+        if isinstance(val, type({1, 2})):
+            s = list(val)
+            for i in s:
+                if i != s[0]:
+                    return s
+            return s[0]
+        else:
+            return val
+
+    if type(input_state).__name__ == "StateVector":
+        val = getattr(input_state, "n_photons", getattr(input_state, "n", None))
+        if isinstance(val, type({1, 2})):
+            set = list(val)
+            for i in set:
+                if i != set[0]:
+                    return set
+            return set[0]
+        else:
+            return val
+
+    return None
 
 
 def classify_noise(noise: pcvl.NoiseModel | None) -> NoiseGroups | None:

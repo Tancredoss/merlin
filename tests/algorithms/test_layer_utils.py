@@ -83,6 +83,22 @@ def test_prepare_input_state_statevector():
     assert resolved == 1
 
 
+def test_prepare_input_state_merlin_statevector_n_photons_mismatch_raises():
+    state_vector = StateVector.from_basic_state([1, 0, 1, 0])
+
+    with pytest.raises(
+        ValueError,
+        match="Inconsistent number of photons between input_state and n_photons",
+    ):
+        prepare_input_state(
+            state_vector,
+            1,
+            ComputationSpace.UNBUNCHED,
+            None,
+            torch.complex64,
+        )
+
+
 def test_prepare_input_state_rejects_tensor_input_state():
     tensor = torch.tensor([1.0, 0.0], dtype=torch.complex64)
 
