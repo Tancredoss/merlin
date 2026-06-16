@@ -13,6 +13,7 @@ Here are a few pages to guide you through your MerLin usage.
 
    angle_amplitude_encoding
    computation_space
+   encoding_space
    feed_forward
    grouping
    kernels
