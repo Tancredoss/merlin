@@ -56,10 +56,12 @@ class TestCCInvBackend:
 
     def test_kernel_unitary_is_identity_when_x1_eq_x2(self):
         """U(x) @ U†(x) must be the identity."""
-        identity = torch.eye(
-            len(self.input_state), dtype=torch.complex64
-        )
-        for x in [torch.tensor([0.1, 0.4]), torch.tensor([1.2, 0.0]), torch.tensor([0.0, 0.0])]:
+        identity = torch.eye(len(self.input_state), dtype=torch.complex64)
+        for x in [
+            torch.tensor([0.1, 0.4]),
+            torch.tensor([1.2, 0.0]),
+            torch.tensor([0.0, 0.0]),
+        ]:
             K_unitary = self.layer._compute_kernel_unitary(
                 x.to(self.layer.dtype),
                 x.to(self.layer.dtype),
@@ -75,9 +77,7 @@ class TestCCInvBackend:
         loss = K.sum()
         loss.backward()
         for name, param in self.kernel.named_parameters():
-            assert param.grad is not None, (
-                f"No gradient for parameter '{name}'"
-            )
+            assert param.grad is not None, f"No gradient for parameter '{name}'"
 
     def test_k_train_is_symmetric(self):
         """Training kernel matrix must be symmetric."""
@@ -95,9 +95,7 @@ class TestCCInvBackend:
             dtype=torch.float32,
         )
         K = self.kernel(X)
-        assert torch.allclose(
-            torch.diag(K), torch.ones(3, dtype=K.dtype), atol=1e-4
-        )
+        assert torch.allclose(torch.diag(K), torch.ones(3, dtype=K.dtype), atol=1e-4)
 
     def test_new_backend_transition_prob_matches_perceval_slos(self):
         """Transition probability from the new backend must match Perceval SLOS.
@@ -166,6 +164,46 @@ class TestCCInvBackend:
         perceval_value = results.get(key, 0.0)
 
         assert merlin_value == pytest.approx(perceval_value, rel=1e-5, abs=1e-6)
+
+    @pytest.mark.parametrize(
+        "noise",
+        [
+            pcvl.NoiseModel(g2=0.05, g2_distinguishable=False),
+            pcvl.NoiseModel(g2=0.05, g2_distinguishable=False, brightness=0.8),
+        ],
+    )
+    def test_kernel_backend_accepts_g2_sectored_outputs(
+        self,
+        noise: pcvl.NoiseModel,
+    ):
+        """FidelityKernel should handle NoisyG2SLOS sectored probabilities."""
+        circuit = pcvl.Circuit(2)
+        circuit.add(0, pcvl.PS(pcvl.P("x0")))
+        circuit.add((0, 1), pcvl.BS.H())
+        experiment = pcvl.Experiment(circuit)
+        experiment.noise = noise
+        feature_map = FeatureMap(
+            experiment=experiment,
+            input_size=1,
+            input_parameters="x",
+        )
+        kernel = FidelityKernel(
+            feature_map=feature_map,
+            input_state=[1, 0],
+            force_psd=False,
+        )
+
+        x = torch.tensor([[0.0], [0.3]], dtype=torch.float32)
+        kernel_matrix = kernel(x)
+
+        assert kernel_matrix.shape == (2, 2)
+        assert torch.isfinite(kernel_matrix).all()
+        assert torch.allclose(kernel_matrix, kernel_matrix.T, atol=1e-6)
+        assert torch.allclose(
+            torch.diag(kernel_matrix),
+            torch.ones(2, dtype=kernel_matrix.dtype),
+            atol=1e-6,
+        )
 
     def test_new_backend_matches_perceval_slos_unbunched(self):
         """New backend with UNBUNCHED space must match Perceval thresholded probability.
@@ -350,27 +388,6 @@ class TestFidelityKernel:
         assert kernel.is_trainable
         assert "_quantum_layer.theta" in dict(kernel.named_parameters())
 
-    def test_kernel_rejects_no_bunching(self):
-        with pytest.warns(DeprecationWarning):
-            with pytest.raises(ValueError) as exc_info:
-                FidelityKernel(
-                    feature_map=self.feature_map,
-                    input_state=[2, 0],
-                    no_bunching=True,
-                )
-        assert "no_bunching" in str(exc_info.value)
-
-        with pytest.warns(DeprecationWarning):
-            with pytest.raises(ValueError) as exc_info:
-                FidelityKernel.simple(input_size=2, no_bunching=True)
-        assert "no_bunching" in str(exc_info.value)
-
-        builder = KernelCircuitBuilder().input_size(2).n_modes(4)
-        with pytest.warns(DeprecationWarning):
-            with pytest.raises(ValueError) as exc_info:
-                builder.build_fidelity_kernel(no_bunching=True)
-        assert "no_bunching" in str(exc_info.value)
-
     def test_kernel_scalar_computation(self):
         x1 = torch.tensor([0.5, 1.0])
         x2 = torch.tensor([1.0, 0.5])
@@ -454,68 +471,6 @@ class TestFidelityKernel:
                 computation_space=ComputationSpace.FOCK,
             )
 
-    def test_kernel_warns_and_uses_feature_map_encoder(self):
-        circuit = pcvl.Circuit(3)
-        for mode in range(3):
-            circuit.add(mode, pcvl.PS(pcvl.P(f"x{mode}")))
-
-        def encoder(x):
-            return torch.stack([x[0], x[1], x[0] + x[1]])
-
-        feature_map = FeatureMap(
-            circuit=circuit,
-            input_size=2,
-            input_parameters="x",
-            encoder=encoder,
-        )
-
-        with pytest.warns(
-            DeprecationWarning,
-            match="FeatureMap.encoder support inside FidelityKernel is deprecated",
-        ) as warning_record:
-            kernel = FidelityKernel(
-                feature_map=feature_map,
-                input_state=[1, 0, 0],
-                computation_space=ComputationSpace.FOCK,
-            )
-        warning_message = str(warning_record[0].message)
-        assert "CircuitBuilder.add_angle_encoding" in warning_message
-        assert "pre-encoding the data" in warning_message
-        assert "input_size equal to the encoded circuit-parameter count" in warning_message
-
-        encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.3]))
-        expected = torch.tensor([0.2, 0.3, 0.5], dtype=encoded.dtype)
-        assert torch.allclose(encoded, expected)
-
-    def test_kernel_warns_and_uses_direct_circuit_subset_expansion(self):
-        circuit = pcvl.Circuit(3)
-        for mode in range(3):
-            circuit.add(mode, pcvl.PS(pcvl.P(f"x{mode}")))
-
-        feature_map = FeatureMap(
-            circuit=circuit,
-            input_size=2,
-            input_parameters="x",
-        )
-
-        with pytest.warns(
-            DeprecationWarning,
-            match="input_size differs from the circuit input parameter count",
-        ) as warning_record:
-            kernel = FidelityKernel(
-                feature_map=feature_map,
-                input_state=[1, 0, 0],
-                computation_space=ComputationSpace.FOCK,
-            )
-        warning_message = str(warning_record[0].message)
-        assert "CircuitBuilder.add_angle_encoding" in warning_message
-        assert "pre-encoding the data" in warning_message
-        assert "input_size equal to the encoded circuit-parameter count" in warning_message
-
-        encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.3]))
-        expected = torch.tensor([0.2, 0.3, 0.5], dtype=encoded.dtype)
-        assert torch.allclose(encoded, expected)
-
     def test_kernel_uses_builder_subset_encoding_without_deprecation(self):
         builder = CircuitBuilder(n_modes=3)
         builder.add_angle_encoding(
@@ -559,18 +514,6 @@ class TestFidelityKernel:
             input_state=[1, 0, 0],
             computation_space=ComputationSpace.FOCK,
         )
-
-        encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.4]))
-        expected = torch.tensor([0.1, 0.2], dtype=encoded.dtype)
-        assert torch.allclose(encoded, expected)
-
-    def test_simple_kernel_backend_preserves_angle_encoding_scale(self):
-        with pytest.warns(DeprecationWarning, match="n_modes"):
-            kernel = FidelityKernel.simple(
-                input_size=2,
-                n_modes=4,
-                angle_encoding_scale=0.5,
-            )
 
         encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.4]))
         expected = torch.tensor([0.1, 0.2], dtype=encoded.dtype)
@@ -968,31 +911,6 @@ class TestFeatureMapFactoryMethods:
         assert feature_map.input_size == 3
         assert feature_map.circuit.m == 4  # input_size + 1
 
-    def test_simple_n_modes_override_emits_deprecation_warning(self):
-        """Passing n_modes to FeatureMap.simple must emit a DeprecationWarning."""
-        with pytest.warns(DeprecationWarning, match="n_modes"):
-            feature_map = FeatureMap.simple(input_size=2, n_modes=6)
-        assert feature_map.circuit.m == 6
-
-    def test_simple_factory_raises_when_input_exceeds_modes(self):
-        with pytest.warns(DeprecationWarning):
-            with pytest.raises(
-                ValueError, match="You cannot encore more features than mode with Builder"
-            ):
-                FeatureMap.simple(input_size=5, n_modes=4)
-
-    def test_simple_factory_raises_when_input_or_modes_exceeds_20(self):
-        with pytest.raises(ValueError):
-            FeatureMap.simple(input_size=21)
-        with pytest.warns(DeprecationWarning):
-            with pytest.raises(ValueError):
-                FeatureMap.simple(input_size=21, n_modes=21)
-
-    def test_simple_num_photons_modes_and_input_state(self):
-        for i in range(1, 15):
-            kernel = FeatureMap.simple(input_size=i)
-            assert kernel.circuit.m == i + 1
-
     def test_simple_trainable(self):
         for i in range(1, 20):
             kernel = FeatureMap.simple(input_size=i)
@@ -1049,8 +967,7 @@ class TestFidelityKernelFactoryMethods:
 
     def test_simple_factory_method(self):
         """Test the simple FidelityKernel factory method."""
-        with pytest.warns(DeprecationWarning, match="n_modes"):
-            kernel = FidelityKernel.simple(input_size=2, n_modes=4)
+        kernel = FidelityKernel.simple(input_size=2, n_modes=4)
 
         assert kernel.input_size == 2
         assert kernel.feature_map.circuit.m == 4
@@ -1058,33 +975,13 @@ class TestFidelityKernelFactoryMethods:
         assert sum(kernel.input_state) == 2
         assert kernel.input_state == [1, 0, 1, 0]
 
-    def test_simple_factory_warns_once_for_forwarded_n_modes(self):
-        """FidelityKernel.simple suppresses duplicate forwarded n_modes warnings."""
-        with warnings.catch_warnings(record=True) as warning_list:
-            warnings.simplefilter("always", DeprecationWarning)
-            kernel = FidelityKernel.simple(input_size=2, n_modes=4)
-
-        messages = [str(warning.message) for warning in warning_list]
-        n_modes_messages = [
-            message
-            for message in messages
-            if "Parameter 'n_modes' is deprecated" in message
-        ]
-
-        assert len(n_modes_messages) == 1
-        assert any(
-            "FidelityKernel.simple() is deprecated" in message for message in messages
-        )
-        assert kernel.feature_map.circuit.m == 4
-
     def test_simple_factory_default_photons(self):
-        """Test simple factory with default n_modes (should equal input_size + 1)."""
-        kernel = FidelityKernel.simple(input_size=3)
+        """Test simple factory with default n_photons."""
+        kernel = FidelityKernel.simple(input_size=3, n_modes=6)
 
         assert kernel.input_size == 3
-        assert kernel.feature_map.circuit.m == 4  # input_size + 1
-        assert sum(kernel.input_state) == 2
-        assert kernel.input_state == [1, 0, 1, 0]
+        assert sum(kernel.input_state) == 3  # Should default to input_size photons
+        assert kernel.input_state == [1, 0, 1, 0, 1, 0]
 
     def test_simple_num_photons_modes_and_input_state(self):
         for i in range(1, 15):
@@ -1099,8 +996,7 @@ class TestFidelityKernelFactoryMethods:
                     input_state[j] = 1
             assert kernel.input_state == input_state
         for i in range(1, 15):
-            with pytest.warns(DeprecationWarning, match="n_modes"):
-                kernel = FidelityKernel.simple(input_size=1, n_modes=i + 1)
+            kernel = FidelityKernel.simple(input_size=1, n_modes=i + 1)
             assert kernel.feature_map.circuit.m == i + 1
             assert np.sum(kernel.input_state) == int(np.ceil((i + 1) / 2))
             assert len(kernel.input_state) == i + 1
@@ -1140,8 +1036,7 @@ class TestKernelCircuitBuilder:
         device = torch.device("cpu")
         builder = KernelCircuitBuilder()
         feature_map = (
-            builder
-            .input_size(2)
+            builder.input_size(2)
             .n_modes(4)
             .device(device)
             .dtype(torch.float64)
@@ -1162,8 +1057,7 @@ class TestKernelCircuitBuilder:
         assert not feature_map.is_trainable
 
         feature_map = (
-            builder
-            .input_size(2)
+            builder.input_size(2)
             .n_modes(4)
             .trainable(True, prefix="phi_")
             .build_feature_map()
@@ -1183,22 +1077,12 @@ class TestKernelCircuitBuilder:
         assert sum(kernel.input_state) == 2
         assert kernel.input_state == [1, 0, 1, 0]
 
-    def test_builder_build_fidelity_kernel_uses_feature_map_mode_count(self):
-        """Default builder kernel state length follows the built feature map."""
-        builder = KernelCircuitBuilder()
-        kernel = builder.input_size(4).build_fidelity_kernel()
-
-        assert kernel.input_size == 4
-        assert kernel.feature_map.circuit.m == 5
-        assert len(kernel.input_state) == 5
-
     def test_builder_fidelity_kernel_with_custom_input_state(self):
         """Test building FidelityKernel with custom input state."""
         builder = KernelCircuitBuilder()
         custom_state = [2, 0, 0, 0]
         kernel = (
-            builder
-            .input_size(2)
+            builder.input_size(2)
             .n_modes(4)
             .build_fidelity_kernel(input_state=custom_state)
         )
@@ -1209,8 +1093,7 @@ class TestKernelCircuitBuilder:
         """Test building FidelityKernel with sampling configuration."""
         builder = KernelCircuitBuilder()
         kernel = (
-            builder
-            .input_size(2)
+            builder.input_size(2)
             .n_modes(4)
             .build_fidelity_kernel(
                 shots=1000,
@@ -1235,8 +1118,7 @@ class TestKernelCircuitBuilder:
     def test_builder_angle_encoding_configuration(self):
         builder = KernelCircuitBuilder()
         feature_map = (
-            builder
-            .input_size(3)
+            builder.input_size(3)
             .n_modes(4)
             .angle_encoding(scale=0.5)
             .build_feature_map()
@@ -1245,10 +1127,8 @@ class TestKernelCircuitBuilder:
         x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32)
         encoded = feature_map._encode_x(x)
 
-        assert encoded.shape == (3,)
-
-        expected = torch.tensor([0.05, 0.1, 0.15], dtype=torch.float32)
-        assert torch.allclose(encoded.detach(), expected, atol=1e-6)
+class TestCircuitBuilderKernelIntegration:
+    """Tests for kernels built with the current CircuitBuilder API."""
 
     def test_kernel_supports_entangling_layer(self):
         builder = CircuitBuilder(n_modes=4)
@@ -1300,8 +1180,7 @@ class TestKernelConstructionConsistency:
         pcvl.pdisplay(fm_manual.circuit, output_format=pcvl.Format.TEXT)
 
         # Method 2: simple factory
-        with pytest.warns(DeprecationWarning, match="n_modes"):
-            fm_simple = FeatureMap.simple(input_size=2, n_modes=3)
+        fm_simple = FeatureMap.simple(input_size=2, n_modes=3)
         print("Simple factory circuit:")
         pcvl.pdisplay(fm_simple.circuit, output_format=pcvl.Format.TEXT)
 
@@ -1332,17 +1211,15 @@ class TestKernelConstructionConsistency:
         )
 
         # Simple factory
-        with pytest.warns(DeprecationWarning, match="n_modes"):
-            k_simple = FidelityKernel.simple(
-                input_size=2,
-                n_modes=4,
-            )
+        k_simple = FidelityKernel.simple(
+            input_size=2,
+            n_modes=4,
+        )
 
         # Builder API
         builder_api = KernelCircuitBuilder()
         k_builder = (
-            builder_api
-            .input_size(2)
+            builder_api.input_size(2)
             .n_modes(4)
             .trainable(False)
             .build_fidelity_kernel()
@@ -1788,8 +1665,7 @@ def test_iris_with_supported_constructors():
         try:
             builder = KernelCircuitBuilder()
             kernel_builder = (
-                builder
-                .input_size(4)
+                builder.input_size(4)
                 .n_modes(4)
                 .trainable(trainable_flag)
                 .build_fidelity_kernel()

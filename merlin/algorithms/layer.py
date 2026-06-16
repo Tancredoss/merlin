@@ -42,7 +42,8 @@ from ..core.computation_space import ComputationSpace
 from ..core.partial_measurement import PartialMeasurement, PartialMeasurementBranch
 from ..core.probability_distribution import ProbabilityDistribution
 from ..core.process import ComputationProcessFactory
-from ..core.state import StatePattern, generate_state
+from ..core.sectored_distribution import SectoredDistribution, SectorResult
+from ..core.state import StatePattern, _generate_default_input_state, generate_state
 from ..core.state_vector import StateVector, embed_tensor_in_fock_basis
 from ..measurement import OutputMapper
 from ..measurement.autodiff import AutoDiffProcess
@@ -50,12 +51,14 @@ from ..measurement.detectors import DetectorTransform
 from ..measurement.photon_loss import PhotonLossTransform
 from ..measurement.readouts import _OccupancyReadout
 from ..measurement.strategies import (
+    DistributionStrategy,
     MeasurementKind,
     MeasurementStrategy,
     MeasurementStrategyLike,
     _resolve_measurement_kind,
     resolve_measurement_strategy,
 )
+from ..utils.combinadics import Combinadics
 from ..utils.deprecations import (
     normalize_measurement_strategy,
     sanitize_parameters,
@@ -63,11 +66,16 @@ from ..utils.deprecations import (
 from ..utils.grouping import ModGrouping
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
+    _CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE,
     InitializationContext,
     _build_simple_circuit,
+    _normalize_sector_keys,
     apply_angle_encoding,
     compute_new_memristive_ps_angles,
     feature_count_for_prefix,
+    has_phase_error,
+    has_source_noise,
+    normalize_noise,
     prepare_input_encoding,
     prepare_input_state,
     resolve_circuit,
@@ -121,9 +129,10 @@ class QuantumLayer(MerlinModule):
         input_parameters: list[str] | None = None,
         # Common parameters
         amplitude_encoding: bool = False,
-        computation_space: ComputationSpace | str | None = None,
         measurement_strategy: MeasurementStrategyLike | None = None,
         return_object: bool = False,
+        noise: pcvl.NoiseModel | None = None,
+        n_phase_error_samples: int = 1,
         # device and dtype
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
@@ -138,10 +147,9 @@ class QuantumLayer(MerlinModule):
         Parameters
         ----------
         input_size : int | None
-            Size of the classical input vector when angle encoding is used
-            (``amplitude_encoding=False``). If omitted, it is inferred from the
-            circuit metadata (input parameter prefixes and/or encoding specs).
-            Must be omitted when ``amplitude_encoding=True``.
+            Size of the classical input vector when angle encoding is used. If
+            omitted, it is inferred from the circuit metadata (input parameter
+            prefixes and/or encoding specs).
         builder : CircuitBuilder | None
             High-level circuit builder that defines trainable structure, input
             encoders and their prefixes. Mutually exclusive with ``circuit`` and
@@ -152,13 +160,14 @@ class QuantumLayer(MerlinModule):
         experiment : pcvl.Experiment | None
             A Perceval experiment. Must be unitary and without post-selection or
             heralding. Mutually exclusive with ``builder`` and ``circuit``.
-        input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
+        input_state : StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | None
             Logical input state of the circuit. Accepted forms:
             - ``StateVector`` (preferred, canonical type),
             - ``pcvl.StateVector`` (converted via ``StateVector.from_perceval()``),
             - ``pcvl.BasicState`` (converted via ``StateVector.from_basic_state()``),
-            - list/tuple of occupations (converted via ``StateVector.from_basic_state()``),
-            - ``torch.Tensor`` (DEPRECATED - will be removed in 0.4).
+            - list/tuple of occupations (converted via ``StateVector.from_basic_state()``).
+            Pass amplitude tensors to ``forward()``. Use
+            ``StateVector.from_tensor()`` when a constructor state object is needed.
             If QuantumLayer is built from an experiment, the experiment's input state is used.
             If omitted, ``n_photons`` must be provided to derive a default state.
         n_photons : int | None
@@ -173,16 +182,9 @@ class QuantumLayer(MerlinModule):
             Perceval parameter prefixes used for classical (angle) encoding. For
             amplitude encoding, this must be empty/None.
         amplitude_encoding : bool, default: False
-            DEPRECATED - will be removed in 0.4. Pass a ``StateVector`` to
-            ``forward()`` for amplitude encoding instead.
-            When True, the forward call expects an amplitude vector (or batch) on
-            the first positional argument and propagates it through the quantum
-            layer; ``input_size`` must not be set in this mode and
-            ``n_photons`` must be provided.
-        computation_space : ComputationSpace | str | None
-            Logical computation subspace to use: one of ``{"fock", "unbunched",
-            "dual_rail"}``. If omitted, defaults to ``UNBUNCHED``. This argument
-            is deprecated; move it into ``MeasurementStrategy.probs(...)``.
+            Removed compatibility flag. Passing ``True`` raises an error. Pass a
+            ``StateVector`` or complex tensor to ``forward()`` for amplitude
+            input handling instead.
         measurement_strategy : MeasurementStrategy | None, default: None
             Output mapping strategy. When omitted, defaults to
             ``MeasurementStrategy.probs(computation_space)``. Supported values
@@ -197,6 +199,17 @@ class QuantumLayer(MerlinModule):
             - ``MeasurementKind.PROBABILITIES`` returns a ``ProbabilityDistribution``
             - ``MeasurementKind.PARTIAL`` returns a ``PartialMeasurement``.
             - ``MeasurementKind.MODE_EXPECTATIONS`` returns a ``torch.Tensor``.
+        noise : pcvl.NoiseModel | None
+            Noise model used in the simulation. If omitted, no noise is
+            applied.
+        n_phase_error_samples : int
+            Number of Monte Carlo unitary samples used when active
+            ``phase_error`` is present. Each sample builds one perturbed
+            unitary, computes probabilities, and contributes to the averaged
+            probability distribution. Amplitudes are not averaged. Runtime
+            scales roughly linearly with this value; with source noise or
+            ``g2``, each phase-error sample runs the full source-noise mixture.
+            If omitted, one sample is used.
         device : torch.device | None
             Target device for internal tensors (e.g., ``torch.device("cuda")``).
         dtype : torch.dtype | None
@@ -208,15 +221,16 @@ class QuantumLayer(MerlinModule):
         ValueError
             If an unexpected keyword argument is provided; if both or none of
             ``builder``, ``circuit``, ``experiment`` are provided; if
-            ``amplitude_encoding=True`` and ``input_size`` is set; if
-            ``amplitude_encoding=True`` and ``n_photons`` is not provided; if
-            classical ``input_parameters`` are combined with
-            ``amplitude_encoding=True``; if an ``experiment`` is not unitary or
-            uses post-selection/heralding; if neither ``input_state`` nor
-            ``n_photons`` is provided when required; or if an annotated
-            ``BasicState`` is passed (annotations are not supported).
+            ``amplitude_encoding=True`` is passed; if an ``experiment`` is not
+            unitary or uses post-selection/heralding; if neither
+            ``input_state`` nor ``n_photons`` is provided when required; if
+            ``torch.Tensor`` is passed as constructor ``input_state``; or if an
+            annotated ``BasicState`` is passed (annotations are not supported).
         TypeError
             If an unknown measurement strategy is selected during setup.
+        AttributeError
+            When the computation space argument is used in the constructor. Please define it in
+            a measurement strategy.
 
         Warns
         -----
@@ -232,14 +246,8 @@ class QuantumLayer(MerlinModule):
         """
         super().__init__()
 
-        # === DEPRECATION WARNING: amplitude_encoding ===
         if amplitude_encoding:
-            warnings.warn(
-                "amplitude_encoding=True is deprecated and will be removed in 0.4. "
-                "Pass a StateVector to forward() for amplitude encoding instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+            raise ValueError(_CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE)
 
         # Phase 1: device + dtype normalization
         device, dtype, complex_dtype = MerlinModule.setup_device_and_dtype(
@@ -247,12 +255,16 @@ class QuantumLayer(MerlinModule):
         )
         # Phase 2: computation space resolution (legacy vs strategy-driven)
         measurement_strategy, computation_space = normalize_measurement_strategy(
-            measurement_strategy, computation_space
+            measurement_strategy
         )
 
         # Phase 3: circuit source resolution (builder/circuit/experiment)
         circuit_source = validate_and_resolve_circuit_source(
             builder, circuit, experiment, trainable_parameters, input_parameters
+        )
+        # Phase 3.5 normalization of the noise
+        self.noise = normalize_noise(
+            noise, experiment.noise if experiment is not None else None
         )
 
         # Phase 4: encoding validation (post-resolution)
@@ -266,9 +278,10 @@ class QuantumLayer(MerlinModule):
         # Phase 6: experiment vetting (if provided)
         if experiment is not None:
             vet_experiment(experiment)
+            experiment.noise = self.noise
 
         # Phase 7: circuit resolution
-        resolved_circuit = resolve_circuit(circuit_source, pcvl)
+        resolved_circuit = resolve_circuit(circuit_source, pcvl, self.noise)
         # Phase 8: input state normalization
         input_state, resolved_n_photons = prepare_input_state(
             input_state,
@@ -281,12 +294,27 @@ class QuantumLayer(MerlinModule):
             amplitude_encoding=amplitude_encoding,
         )
         # Phase 9: noise + detector setup
+        self.backend = None  # TODO Change when implemented
         noise_and_detectors = setup_noise_and_detectors(
             resolved_circuit.experiment,
             resolved_circuit.circuit,
             computation_space,
             measurement_strategy,
+            backend=self.backend,
+            noise=self.noise,
+            return_object=return_object,
         )
+
+        # Adapt the computation space if a noisy simulation with source noise is done
+        source_noise = has_source_noise(noise_and_detectors.noise_groups)
+
+        if source_noise and (not computation_space == ComputationSpace.FOCK):
+            warnings.warn(
+                "Noisy simulations with source noise currently use ComputationSpace.FOCK. Other computation spaces are not yet supported for noise models. pcvl.detectors can be used to use custom post-selection.",
+                UserWarning,
+                stacklevel=2,
+            )
+            computation_space = ComputationSpace.FOCK
 
         # Phase 10: build initialization context
         context = InitializationContext(
@@ -297,7 +325,7 @@ class QuantumLayer(MerlinModule):
             input_size=encoding_config.input_size,
             circuit=resolved_circuit.circuit,
             experiment=resolved_circuit.experiment,
-            noise_model=resolved_circuit.noise_model,
+            noise=resolved_circuit.noise,
             has_custom_noise=resolved_circuit.has_custom_noise,
             input_state=input_state,
             n_photons=resolved_n_photons,
@@ -311,6 +339,8 @@ class QuantumLayer(MerlinModule):
             measurement_strategy=measurement_strategy,
             warnings=noise_and_detectors.detector_warnings,
             return_object=return_object,
+            noise_groups=noise_and_detectors.noise_groups,
+            n_phase_error_samples=n_phase_error_samples,
         )
 
         # Phase 11: Extract memristive metadata
@@ -350,7 +380,7 @@ class QuantumLayer(MerlinModule):
         self.input_size = context.input_size
         self.measurement_strategy = context.measurement_strategy
         self.experiment = context.experiment
-        self.noise_model = context.noise_model
+        self.noise = context.noise
         self.amplitude_encoding = context.amplitude_encoding
         self.computation_space = context.computation_space
         self.angle_encoding_specs = context.angle_encoding_specs
@@ -364,17 +394,22 @@ class QuantumLayer(MerlinModule):
         self._detectors = context.detectors
         self._has_custom_detectors = context.has_custom_detectors
         self.detectors = self._detectors
-        self._detector_transform: DetectorTransform | None = None
-        self._photon_loss_transform: PhotonLossTransform | None = None
-        self._detector_keys: list[tuple[int, ...]] = []
-        self._raw_output_keys: list[tuple[int, ...]] = []
-        self._measurement_output_keys: list[tuple[int, ...]] = []
+        self._detector_transform: list[DetectorTransform] | DetectorTransform | None = (
+            None
+        )
+        self._photon_loss_transform: (
+            list[PhotonLossTransform] | PhotonLossTransform | None
+        ) = None
+        self._photon_loss_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]] = []
+        self._detector_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]] = []
+        self._raw_output_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]] = []
         self._probability_readout_output_keys: list[tuple[int, ...]] | None = None
         self._probability_readout: _OccupancyReadout | None = None
         self._detector_is_identity = True
         self._output_size = 0
         self._current_params: dict[str, Any] = {}
         self.return_object = context.return_object
+        self._noise_groups = context.noise_groups
 
         for warning_msg in context.warnings:
             warnings.warn(warning_msg, UserWarning, stacklevel=3)
@@ -401,7 +436,11 @@ class QuantumLayer(MerlinModule):
                     circuit.m, n_photons, StatePattern.SPACED
                 )
             else:
-                self.input_state = [1] * n_photons + [0] * (circuit.m - n_photons)
+                self.input_state = _generate_default_input_state(
+                    circuit.m,
+                    n_photons,
+                    self.computation_space,
+                )
         else:
             raise ValueError("Either input_state or n_photons must be provided")
 
@@ -415,17 +454,8 @@ class QuantumLayer(MerlinModule):
                 n_photons if n_photons is not None else self.input_state.n_photons
             )
             # Pass a placeholder list to ComputationProcess to avoid tensor dimension validation
-            process_input_state = [1] * resolved_n_photons + [0] * (
-                circuit.m - resolved_n_photons
-            )
+            process_input_state = list(self.input_state.basis[0])
             statevector_input = self.input_state
-        elif isinstance(self.input_state, torch.Tensor):
-            resolved_n_photons = (
-                n_photons  # n_photons must be provided for tensor input
-            )
-            process_input_state = self._embed_amplitude_tensor(
-                self._validate_amplitude_input(self.input_state)
-            )
         elif isinstance(self.input_state, pcvl.BasicState):
             resolved_n_photons = (
                 n_photons if n_photons is not None else sum(self.input_state)
@@ -447,6 +477,8 @@ class QuantumLayer(MerlinModule):
             device=self.device,
             dtype=self.dtype,
             computation_space=self.computation_space,
+            noise_groups=self._noise_groups,
+            n_phase_error_samples=context.n_phase_error_samples,
             memristive_metadata=self._memristive_metadata,
         )
 
@@ -458,10 +490,35 @@ class QuantumLayer(MerlinModule):
 
         # Setup PhotonLossTransform & DetectorTransform
         self.n_photons = self.computation_process.n_photons
-        raw_keys = cast(
-            list[tuple[int, ...]], self.computation_process.simulation_graph.mapped_keys
-        )
-        self._raw_output_keys = [self._normalize_output_key(key) for key in raw_keys]
+
+        g2_noise = False
+        if self._noise_groups is not None:
+            if self._noise_groups.source is not None:
+                if "g2" in self._noise_groups.source:
+                    g2_noise = True
+        if g2_noise:
+            raw_keys_per_n = cast(
+                list[list[tuple[int, ...]]],
+                [
+                    list(keys_per_n)
+                    for keys_per_n in self.computation_process.simulation_graph.mapped_keys
+                ],
+            )
+            self._raw_output_keys = cast(
+                list[list[tuple[int, ...]]],
+                [
+                    [self._normalize_output_key(key) for key in raw_keys]
+                    for raw_keys in raw_keys_per_n
+                ],
+            )
+        else:
+            flat_raw_keys = cast(
+                list[tuple[int, ...]],
+                self.computation_process.simulation_graph.mapped_keys,
+            )
+            self._raw_output_keys = [
+                self._normalize_output_key(key) for key in flat_raw_keys
+            ]
         self._initialize_photon_loss_transform()
         self._initialize_detector_transform()
 
@@ -490,34 +547,28 @@ class QuantumLayer(MerlinModule):
             if not specs_provided:
                 expected_features = None
 
-        if not self.amplitude_encoding:
-            inferred_size = (
-                expected_features
-                if expected_features is not None
-                else total_input_params
-            )
+        inferred_size = (
+            expected_features if expected_features is not None else total_input_params
+        )
 
-            if self.input_size is None:
-                # When the caller omits input_size, take the size the circuit exposes via its metadata.
-                self.input_size = inferred_size
-            elif inferred_size != self.input_size:
-                if expected_features is not None:
-                    raise ValueError(
-                        f"Input size ({self.input_size}) must equal the number of encoded input features "
-                        f"generated by the circuit ({expected_features})."
-                    )
-                else:
-                    raise ValueError(
-                        f"Input size ({self.input_size}) must equal the number of input parameters "
-                        f"generated by the circuit ({total_input_params})."
-                    )
+        if self.input_size is None:
+            # When the caller omits input_size, take the size the circuit exposes via its metadata.
+            self.input_size = inferred_size
+        elif inferred_size != self.input_size:
+            if expected_features is not None:
+                raise ValueError(
+                    f"Input size ({self.input_size}) must equal the number of encoded input features "
+                    f"generated by the circuit ({expected_features})."
+                )
+            else:
+                raise ValueError(
+                    f"Input size ({self.input_size}) must equal the number of input parameters "
+                    f"generated by the circuit ({total_input_params})."
+                )
 
         # Setup parameters and measurement strategy
         self._setup_parameters_from_custom(trainable_parameters)
         self._setup_measurement_strategy_from_custom(measurement_strategy)
-
-        if self.amplitude_encoding:
-            self._init_amplitude_metadata()
 
     def _setup_parameters_from_custom(self, trainable_parameters: list[str] | None):
         """Setup parameters from custom circuit configuration."""
@@ -544,7 +595,13 @@ class QuantumLayer(MerlinModule):
     def _setup_measurement_strategy_from_custom(
         self, measurement_strategy: MeasurementStrategyLike
     ):
-        """Setup output mapping for custom circuit construction."""
+        """Setup output mapping for custom circuit construction.
+
+        Correctly handles output sizing based on the key contract:
+        - _raw_output_keys: complete output basis (flat or nested for g2)
+        - _photon_loss_keys: derived from _raw_output_keys
+        - _detector_keys: derived from _photon_loss_keys
+        """
         if self._photon_loss_transform is None:
             raise RuntimeError(
                 "Photon loss transform must be initialised before sizing."
@@ -554,26 +611,37 @@ class QuantumLayer(MerlinModule):
 
         kind = _resolve_measurement_kind(measurement_strategy)
 
+        # Determine if keys are nested (g2 noise) or flat
+        is_nested = (
+            isinstance(self._raw_output_keys, list)
+            and self._raw_output_keys
+            and isinstance(self._raw_output_keys[0], list)
+        )
+
+        # Select the appropriate keys based on measurement kind and key contract
         if kind == MeasurementKind.AMPLITUDES:
-            keys = list(self._raw_output_keys)
+            # For amplitudes, use raw output keys (complete basis)
+            output_keys = self._raw_output_keys
         else:
-            keys = (
-                list(self._photon_loss_keys)
-                if self._detector_is_identity
-                else list(self._detector_keys)
-            )
+            # For probabilities and other modes, use final output keys after transforms
+            if self._detector_is_identity:
+                output_keys = self._photon_loss_keys
+            else:
+                output_keys = self._detector_keys
 
-        self._measurement_output_keys = list(keys)
-        self._probability_readout_output_keys = None
+        # Calculate distribution size uniformly for nested and flat cases.
+        if is_nested:
+            flat_output_keys = [
+                key
+                for key_list in cast(list[list[tuple[int, ...]]], output_keys)
+                for key in key_list
+            ]
+        else:
+            flat_output_keys = cast(list[tuple[int, ...]], output_keys)
+        dist_size = len(flat_output_keys)
+
         self._probability_readout = None
-        if (
-            kind == MeasurementKind.PROBABILITIES
-            and isinstance(measurement_strategy, MeasurementStrategy)
-            and measurement_strategy.occupancy_readout
-        ):
-            self._probability_readout = _OccupancyReadout(keys)
-
-        dist_size = len(keys)
+        self._probability_readout_output_keys = None
 
         # Determine output size (upstream model)
         if kind == MeasurementKind.PROBABILITIES:
@@ -591,24 +659,27 @@ class QuantumLayer(MerlinModule):
                 raise RuntimeError(
                     "Detector transform must be initialised before sizing."
                 )
-            self._output_size = self._detector_transform.output_size
+            if isinstance(self._detector_transform, Sequence):
+                self._output_size = 1
+                for detector in self._detector_transform:
+                    self._output_size += detector.output_size
+            else:
+                self._output_size = self._detector_transform.output_size
         else:
             raise TypeError(f"Unknown measurement_strategy: {measurement_strategy}")
 
         if (
             kind == MeasurementKind.PROBABILITIES
-            and self._probability_readout is not None
+            and isinstance(measurement_strategy, MeasurementStrategy)
+            and measurement_strategy.occupancy_readout
         ):
+            self._probability_readout = _OccupancyReadout(flat_output_keys)
             self._probability_readout_output_keys = [
                 self._normalize_output_key(key)
                 for key in self._probability_readout.output_keys
             ]
-            self._output_size = len(self._probability_readout_output_keys)
-            grouping = (
-                measurement_strategy.grouping
-                if isinstance(measurement_strategy, MeasurementStrategy)
-                else None
-            )
+            self._output_size = self._probability_readout.output_size
+            grouping = measurement_strategy.grouping
             if grouping is not None:
                 if grouping.input_size != self._probability_readout.output_size:
                     raise ValueError(
@@ -619,25 +690,19 @@ class QuantumLayer(MerlinModule):
                 self._output_size = grouping.output_size
 
         # Create measurement mapping
-        if kind == MeasurementKind.PARTIAL:
+
+        # Check if there is source noise, if so, it directly returns probabilities and should stay probabilities
+        source_noise = has_source_noise(self._noise_groups)
+
+        if kind == MeasurementKind.PARTIAL or source_noise:
             self.measurement_mapping = nn.Identity()
         else:
             self.measurement_mapping = OutputMapper.create_mapping(
                 measurement_strategy,
                 self.computation_process.computation_space,
-                keys,
+                flat_output_keys,
                 dtype=self.dtype,
             )
-
-    def _init_amplitude_metadata(self) -> None:
-        logical_keys = getattr(
-            self.computation_process,
-            "logical_keys",
-            list(self.computation_process.simulation_graph.mapped_keys),
-        )
-        # TODO: here, the input_size corresponds to the size of the computation space
-        # In future, we might want to decouple those two concepts
-        self.input_size = len(logical_keys)
 
     def _create_dummy_parameters(self) -> list[torch.Tensor]:
         """Create dummy parameters for initialization."""
@@ -719,6 +784,70 @@ class QuantumLayer(MerlinModule):
             raise ValueError(
                 "Amplitude-encoded inputs must be 1D (single state) or 2D (batch of states) tensors"
             )
+
+        # With partial measurement, the amplitude input size cannot be verified using `output_keys` (reduced by the partial measurement)
+        # Instead it should be confirmed with `_raw_output_keys`.
+        g2_noise = False
+        if self._noise_groups is not None:
+            if self._noise_groups.source is not None:
+                if "g2" in self._noise_groups.source:
+                    g2_noise = True
+        if g2_noise or not self._photon_loss_is_identity:
+            expected_dim = Combinadics(
+                scheme=self.computation_space.lower(),
+                n=self.n_photons,
+                m=self.circuit.m,
+            ).compute_space_size()
+        else:
+            if (
+                isinstance(self._raw_output_keys, list)
+                and self._raw_output_keys
+                and isinstance(self._raw_output_keys[0], list)
+            ):
+                if (
+                    isinstance(self.measurement_strategy, MeasurementStrategy)
+                    and self.measurement_strategy.type is MeasurementKind.PARTIAL
+                ):
+                    expected_dim = len([len(key) for key in self._raw_output_keys])
+                else:
+                    expected_dim = len(self.output_keys)
+            else:
+                if (
+                    isinstance(self.measurement_strategy, MeasurementStrategy)
+                    and self.measurement_strategy.type is MeasurementKind.PARTIAL
+                ):
+                    expected_dim = len(self._raw_output_keys)
+                else:
+                    expected_dim = len(self.output_keys)
+
+        feature_dim = amplitude.shape[-1]
+        accepted_dims = {expected_dim}
+        compact_unbunched_dim: int | None = None
+        if (
+            self.computation_space is ComputationSpace.FOCK
+            and self.n_photons <= self.circuit.m
+        ):
+            compact_unbunched_dim = Combinadics(
+                scheme=ComputationSpace.UNBUNCHED.value,
+                n=self.n_photons,
+                m=self.circuit.m,
+            ).compute_space_size()
+            accepted_dims.add(compact_unbunched_dim)
+
+        if feature_dim not in accepted_dims:
+            expected_message = f"{expected_dim} components"
+            if (
+                compact_unbunched_dim is not None
+                and compact_unbunched_dim != expected_dim
+            ):
+                expected_message = (
+                    f"{expected_message} or compact unbunched size "
+                    f"{compact_unbunched_dim}"
+                )
+            raise ValueError(
+                f"Amplitude input expects {expected_message}, received {feature_dim}."
+            )
+            # TODO: suggest/implement zero-padding or sparsity tensor format
 
         if amplitude.dtype not in (
             torch.float32,
@@ -958,25 +1087,6 @@ class QuantumLayer(MerlinModule):
             )
             # tensor_inputs stays empty
 
-        # Legacy amplitude_encoding=True flag
-        elif self.amplitude_encoding:
-            tensor_inputs = [x for x in input_parameters if isinstance(x, torch.Tensor)]
-            if not tensor_inputs:
-                raise ValueError(
-                    "QuantumLayer configured with amplitude_encoding=True expects an amplitude tensor input."
-                )
-            # Warn if using real tensor with amplitude_encoding (internal conversion is deprecated)
-            if tensor_inputs and not tensor_inputs[0].is_complex():
-                warnings.warn(
-                    "Passing real-valued tensor with amplitude_encoding=True is deprecated and will be "
-                    "removed in 0.4. Pass a StateVector or complex tensor to forward() instead.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-            amplitude_input, tensor_inputs, original_input_state = (
-                self._prepare_amplitude_input(tensor_inputs)
-            )
-
         # Float tensor(s) → angle encoding
         else:
             tensor_inputs = [x for x in input_parameters if isinstance(x, torch.Tensor)]
@@ -1058,41 +1168,100 @@ class QuantumLayer(MerlinModule):
             needs_gradient, apply_sampling, requested_shots
         )
 
-        # Phase 5: Convert and normalize amplitudes
-        if isinstance(amplitudes, tuple):
-            amplitudes = amplitudes[1]
-        elif not isinstance(amplitudes, torch.Tensor):
-            raise TypeError(f"Unexpected amplitudes type: {type(amplitudes)}")
+        # Phase 5: Convert and normalize amplitudes if it is a non noisy simulation. If it is noisy, they are already normalized
+        source_noise = has_source_noise(self._noise_groups)
+        probability_output_noise = source_noise or has_phase_error(self._noise_groups)
 
-        distribution, amplitudes = self._renormalize_distribution_and_amplitudes(
-            amplitudes
-        )
+        if not probability_output_noise:
+            if isinstance(amplitudes, tuple):
+                amplitudes = amplitudes[1]
+            elif not isinstance(amplitudes, torch.Tensor):
+                raise TypeError(f"Unexpected amplitudes type: {type(amplitudes)}")
+
+            distribution, amplitudes = self._renormalize_distribution_and_amplitudes(
+                amplitudes
+            )
+        else:
+            # The `amplitudes` are already probabilities in the noisy case
+            # In g2 noise case, amplitudes is SectoredDistribution; use it as distribution
+            distribution: torch.Tensor | SectoredDistribution = amplitudes
+            # mypy handling
+            # For noisy g2 case, set amplitudes to empty tensor since no raw amplitudes exist
+            if isinstance(amplitudes, SectoredDistribution):
+                amplitudes = torch.tensor([], dtype=torch.complex128)
+            else:
+                # In non-g2 noisy case, amplitudes is already a Tensor
+                amplitudes = cast(torch.Tensor, amplitudes)
 
         # Phase 6: Measurement strategy dispatch and output mapping
         strategy = resolve_measurement_strategy(self.measurement_strategy)
-        # Keep key-aware readout separate from optional user grouping.
-        readout: nn.Module | None = None
-        grouping: nn.Module | None = None
+        grouping = None
+        post_readout_grouping = None
         if isinstance(self.measurement_strategy, MeasurementStrategy):
             if self.measurement_strategy.type in (
                 MeasurementKind.PROBABILITIES,
                 MeasurementKind.PARTIAL,
             ):
                 grouping = self.measurement_strategy.grouping
-            if self.measurement_strategy.type is MeasurementKind.PROBABILITIES:
-                readout = self._probability_readout
+            if (
+                self.measurement_strategy.type is MeasurementKind.PROBABILITIES
+                and self.measurement_strategy.occupancy_readout
+                and self._probability_readout is not None
+            ):
+                post_readout_grouping = grouping
+                grouping = None
 
         results = strategy.process(
             distribution=distribution,
             amplitudes=amplitudes,
             apply_sampling=apply_sampling,
             effective_shots=effective_shots,
-            sample_fn=adp.sampling_noise.pcvl_sampler,
+            sampler=adp.sampling_noise,
             apply_photon_loss=self._apply_photon_loss_transform,
             apply_detectors=self._apply_detector_transform,
-            readout=readout,
             grouping=grouping,
         )
+        if isinstance(strategy, DistributionStrategy):
+            # Reorder tensor to match layer's expected key order if needed
+            if strategy.keys is not None and isinstance(results, torch.Tensor):
+                tensor_result_keys = cast(list[tuple[int, ...]], strategy.keys)
+                # Flatten expected keys if nested (g2 case)
+                if (
+                    isinstance(self._detector_keys, list)
+                    and self._detector_keys
+                    and isinstance(self._detector_keys[0], list)
+                ):
+                    expected_keys_list = [
+                        key
+                        for key_list in cast(
+                            list[list[tuple[int, ...]]], self._detector_keys
+                        )
+                        for key in key_list
+                    ]
+                else:
+                    expected_keys_list = cast(
+                        list[tuple[int, ...]], self._detector_keys
+                    )
+                # Create mapping from tensor key order to expected key order
+                if tensor_result_keys != expected_keys_list:
+                    key_to_tensor_idx = {
+                        key: idx for idx, key in enumerate(tensor_result_keys)
+                    }
+                    reorder_indices = [
+                        key_to_tensor_idx[key] for key in expected_keys_list
+                    ]
+                    results = results[..., reorder_indices]
+
+        if (
+            isinstance(self.measurement_strategy, MeasurementStrategy)
+            and self.measurement_strategy.type is MeasurementKind.PROBABILITIES
+            and self._probability_readout is not None
+        ):
+            if not isinstance(results, torch.Tensor):
+                raise TypeError("occupancy_readout=True expects tensor probabilities.")
+            results = self._probability_readout(results)
+            if post_readout_grouping is not None:
+                results = post_readout_grouping(results)
 
         output: (
             torch.Tensor | PartialMeasurement | ProbabilityDistribution | StateVector
@@ -1101,6 +1270,10 @@ class QuantumLayer(MerlinModule):
             _resolve_measurement_kind(self.measurement_strategy)
             == MeasurementKind.PARTIAL
         ):
+            if not isinstance(results, PartialMeasurement):
+                raise TypeError(
+                    "Partial measurement strategy must return a PartialMeasurement."
+                )
             output = results
 
         elif (
@@ -1203,42 +1376,51 @@ class QuantumLayer(MerlinModule):
         inferred_state: torch.Tensor | None,
         parameter_batch_dim: int,
         simultaneous_processes: int | None,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | SectoredDistribution:
         """Select the computation path based on the encoding mode and input state."""
+        probability_output_noise = has_source_noise(
+            self._noise_groups
+        ) or has_phase_error(self._noise_groups)
 
-        if self.amplitude_encoding:
-            if inferred_state is None:
-                raise TypeError(
-                    "Amplitude encoding requires the computation process input_state to be a tensor."
+        if not probability_output_noise:
+            if self.amplitude_encoding:
+                if inferred_state is None:
+                    raise TypeError(
+                        "Amplitude encoding requires the computation process input_state to be a tensor."
+                    )
+                batch_size = (
+                    simultaneous_processes
+                    if simultaneous_processes is not None
+                    else (1 if inferred_state.dim() == 1 else inferred_state.shape[0])
                 )
-            batch_size = (
-                simultaneous_processes
-                if simultaneous_processes is not None
-                else (1 if inferred_state.dim() == 1 else inferred_state.shape[0])
-            )
-            return self.computation_process.compute_ebs_simultaneously(
-                params,
-                simultaneous_processes=batch_size,
-                memristive_current_state=self.memristive_state,
-            )
-        if isinstance(inferred_state, torch.Tensor):
-            if parameter_batch_dim:
-                chunk = simultaneous_processes or inferred_state.shape[-1]
                 return self.computation_process.compute_ebs_simultaneously(
                     params,
-                    simultaneous_processes=chunk,
+                    simultaneous_processes=batch_size,
                     memristive_current_state=self.memristive_state,
                 )
-            return cast(
-                torch.Tensor,
-                self.computation_process.compute_superposition_state(
-                    params,
-                    simultaneous_processes=simultaneous_processes,
-                    memristive_current_state=self.memristive_state,
-                ),
-            )
+            if isinstance(inferred_state, torch.Tensor):
+                if parameter_batch_dim:
+                    chunk = simultaneous_processes or inferred_state.shape[-1]
+                    return self.computation_process.compute_ebs_simultaneously(
+                        params,
+                        simultaneous_processes=chunk,
+                        memristive_current_state=self.memristive_state,
+                    )
+                return cast(
+                    torch.Tensor,
+                    self.computation_process.compute_superposition_state(
+                        params,
+                        simultaneous_processes=simultaneous_processes,
+                        memristive_current_state=self.memristive_state,
+                    ),
+                )
+
+        should_use_amplitude_encoding = self.amplitude_encoding or isinstance(
+            inferred_state, torch.Tensor
+        )
         return self.computation_process.compute(
             params,
+            amplitude_encoding=should_use_amplitude_encoding,
             memristive_current_state=self.memristive_state,
         )
 
@@ -1249,20 +1431,6 @@ class QuantumLayer(MerlinModule):
         return normalize_probabilities_and_amplitudes(
             amplitudes, self.computation_space
         )
-
-    def _prepare_amplitude_input(
-        self, inputs: list[torch.Tensor]
-    ) -> tuple[torch.Tensor, list[torch.Tensor], torch.Tensor | None]:
-        """Validate amplitude-encoded input and return remaining inputs."""
-        if not inputs:
-            raise ValueError(
-                "QuantumLayer configured with amplitude_encoding=True expects an amplitude tensor input."
-            )
-        amplitude_input = self._embed_amplitude_tensor(
-            self._validate_amplitude_input(inputs[0])
-        )
-        original_input_state = getattr(self.computation_process, "input_state", None)
-        return amplitude_input, inputs[1:], original_input_state
 
     @contextmanager
     def _temporary_input_state(
@@ -1365,16 +1533,35 @@ class QuantumLayer(MerlinModule):
 
         # Photon loss Module
         if self._photon_loss_transform is not None:
-            self._photon_loss_transform = self._photon_loss_transform.to(
-                device=self.device,
-                dtype=self.dtype,
-            )
+            if isinstance(self._photon_loss_transform, Sequence):
+                for i in range(len(self._photon_loss_transform)):
+                    self._photon_loss_transform[i] = self._photon_loss_transform[i].to(
+                        device=self.device,
+                        dtype=self.dtype,
+                    )
+            else:
+                self._photon_loss_transform = self._photon_loss_transform.to(
+                    device=self.device,
+                    dtype=self.dtype,
+                )
 
         # Detector Module
         if self._detector_transform is not None:
-            self._detector_transform = self._detector_transform.to(
-                device=self.device,
-                dtype=self.dtype,
+            if isinstance(self._detector_transform, Sequence):
+                for i in range(len(self._detector_transform)):
+                    self._detector_transform[i] = self._detector_transform[i].to(
+                        device=self.device,
+                        dtype=self.dtype,
+                    )
+            else:
+                self._detector_transform = self._detector_transform.to(
+                    device=self.device,
+                    dtype=self.dtype,
+                )
+
+        if self._probability_readout is not None:
+            self._probability_readout = self._probability_readout.to(
+                device=self.device
             )
 
         target_kwargs: dict[str, Any] = {"dtype": self.dtype}
@@ -1397,26 +1584,60 @@ class QuantumLayer(MerlinModule):
 
     @property
     def output_keys(self):
-        """Return the Fock basis associated with the layer outputs."""
+        """Return the Fock basis associated with the layer outputs.
+
+        For g2 noise cases with photon loss/detectors, returns flattened keys matching the tensor output order.
+        For other cases, returns keys with original structure.
+        """
         if (
             getattr(self, "_photon_loss_transform", None) is None
             or getattr(self, "_detector_transform", None) is None
         ):
-            return [self._normalize_output_key(key) for key in self._raw_output_keys]
+            if (
+                isinstance(self._raw_output_keys, list)
+                and self._raw_output_keys
+                and isinstance(self._raw_output_keys[0], list)
+            ):
+                return [
+                    [self._normalize_output_key(key) for key in output_key_per_photon]
+                    for output_key_per_photon in self._raw_output_keys
+                ]
+            else:
+                return [
+                    self._normalize_output_key(key) for key in self._raw_output_keys
+                ]
         if (
             _resolve_measurement_kind(self.measurement_strategy)
             == MeasurementKind.AMPLITUDES
         ):
-            return list(self._raw_output_keys)
+            if (
+                isinstance(self._raw_output_keys, list)
+                and self._raw_output_keys
+                and isinstance(self._raw_output_keys[0], list)
+            ):
+                return cast(list[list[tuple[int, ...]]], self._raw_output_keys)
+            else:
+                return cast(list[tuple[int, ...]], self._raw_output_keys)
         if (
             _resolve_measurement_kind(self.measurement_strategy)
             == MeasurementKind.PROBABILITIES
             and self._probability_readout_output_keys is not None
         ):
             return list(self._probability_readout_output_keys)
+        # For probabilities/other modes: flatten nested keys for g2 cases
         if self._detector_is_identity:
-            return list(self._photon_loss_keys)
-        return list(self._detector_keys)
+            keys = self._photon_loss_keys
+        else:
+            keys = self._detector_keys
+        # Flatten if nested (g2 case)
+        if isinstance(keys, list) and keys and isinstance(keys[0], list):
+            return [
+                key
+                for key_list in cast(list[list[tuple[int, ...]]], keys)
+                for key in key_list
+            ]
+        else:
+            return cast(list[tuple[int, ...]], keys)
 
     @property
     def output_size(self) -> int:
@@ -1429,18 +1650,67 @@ class QuantumLayer(MerlinModule):
         return self._has_custom_detectors
 
     def _initialize_photon_loss_transform(self) -> None:
-        self._photon_loss_transform = PhotonLossTransform(
-            self._raw_output_keys,
-            self._photon_survival_probs,
-            dtype=self.dtype,
-            device=self.device,
-        )
-        self._photon_loss_keys = self._photon_loss_transform.output_keys
-        self._photon_loss_is_identity = self._photon_loss_transform.is_identity
+        if (
+            isinstance(self._raw_output_keys, list)
+            and self._raw_output_keys
+            and isinstance(self._raw_output_keys[0], list)
+        ):
+            # Build transforms with their corresponding photon counts
+            transform_with_photon_counts = []
+            for keys in self._raw_output_keys:
+                photon_loss_keys = cast(list[tuple[int, ...]], keys)
+                transform = PhotonLossTransform(
+                    photon_loss_keys,
+                    self._photon_survival_probs,
+                    dtype=self.dtype,
+                    device=self.device,
+                )
+                # Compute photon count from first key (sum of Fock state values)
+                photon_count = sum(photon_loss_keys[0]) if photon_loss_keys else 0
+                transform_with_photon_counts.append((transform, photon_count))
+
+            # Sort by photon count (smallest to biggest)
+            transform_with_photon_counts.sort(key=lambda x: x[1])
+            self._photon_loss_transform = [t for t, _ in transform_with_photon_counts]
+
+            # Deduplicate photon loss keys across photon numbers (photon loss can cause overlaps)
+            all_photon_loss_keys_set: set[tuple[int, ...]] = set()
+            deduplicated_photon_loss_keys: list[list[tuple[int, ...]]] = []
+            for transform in self._photon_loss_transform:
+                output_keys_per_n = cast(list[tuple[int, ...]], transform.output_keys)
+                unique_keys = [
+                    k for k in output_keys_per_n if k not in all_photon_loss_keys_set
+                ]
+                deduplicated_photon_loss_keys.append(unique_keys)
+                all_photon_loss_keys_set.update(unique_keys)
+            self._photon_loss_keys = deduplicated_photon_loss_keys
+            photon_loss_identities = [
+                transform.is_identity for transform in self._photon_loss_transform
+            ]
+            self._photon_loss_is_identity = all(photon_loss_identities)
+        else:
+            self._photon_loss_transform = PhotonLossTransform(
+                cast(list[tuple[int, ...]], self._raw_output_keys),
+                self._photon_survival_probs,
+                dtype=self.dtype,
+                device=self.device,
+            )
+            self._photon_loss_keys = self._photon_loss_transform.output_keys
+            self._photon_loss_is_identity = self._photon_loss_transform.is_identity
 
     def _initialize_detector_transform(self) -> None:
         detectors = self._detectors
         partial = False
+
+        if (
+            isinstance(self._raw_output_keys, list)
+            and self._raw_output_keys
+            and isinstance(self._raw_output_keys[0], list)
+        ):
+            g2_noise = True
+        else:
+            g2_noise = False
+
         if (
             _resolve_measurement_kind(self.measurement_strategy)
             == MeasurementKind.PARTIAL
@@ -1458,7 +1728,10 @@ class QuantumLayer(MerlinModule):
                 raise ValueError(
                     "Partial measurement requires at least one measured mode."
                 )
-            n_modes = len(self._photon_loss_keys[0])
+            if g2_noise is True and isinstance(self._photon_loss_keys[0], list):
+                n_modes = len(cast(tuple[int, ...], self._photon_loss_keys[0][0]))
+            else:
+                n_modes = len(cast(tuple[int, ...], self._photon_loss_keys[0]))
             self.measurement_strategy.validate_modes(n_modes)
             measured = set(self.measurement_strategy.measured_modes)
             detectors = [
@@ -1466,16 +1739,68 @@ class QuantumLayer(MerlinModule):
                 for idx, det in enumerate(self._detectors)
             ]
             partial = True
-        detector_transform = DetectorTransform(
-            self._photon_loss_keys,
-            detectors,
-            dtype=self.dtype,
-            device=self.device,
-            partial_measurement=partial,
-        )
-        self._detector_transform = detector_transform
-        self._detector_keys = detector_transform.output_keys
-        self._detector_is_identity = detector_transform.is_identity
+        if g2_noise:
+            # Build detector transforms with their corresponding photon counts
+            # Use output keys from each photon loss transform (not deduplicated) to get correct basis size
+            transform_with_photon_counts = []
+            if not isinstance(self._photon_loss_transform, Sequence):
+                raise RuntimeError(
+                    "g2_noise requires photon loss transform to be a Sequence"
+                )
+            for photon_loss_transform in self._photon_loss_transform:
+                photon_loss_output_keys = cast(
+                    list[tuple[int, ...]], photon_loss_transform.output_keys
+                )
+                transform = DetectorTransform(
+                    cast(Iterable[Sequence[int]], photon_loss_output_keys),
+                    detectors,
+                    dtype=self.dtype,
+                    device=self.device,
+                    partial_measurement=partial,
+                )
+                # Compute photon count from first key (sum of Fock state values)
+                photon_count = (
+                    sum(photon_loss_output_keys[0]) if photon_loss_output_keys else 0
+                )
+                transform_with_photon_counts.append((transform, photon_count))
+
+            # Sort by photon count (smallest to biggest)
+            transform_with_photon_counts.sort(key=lambda x: x[1])
+            detector_transform_list = [t for t, _ in transform_with_photon_counts]
+
+            self._detector_transform = detector_transform_list
+            # Deduplicate detector keys across photon numbers (photon loss can cause overlaps)
+            all_detector_keys_set: set[tuple[int, ...]] = set()
+            deduplicated_detector_keys: list[list[tuple[int, ...]]] = []
+            for transform_per_n in detector_transform_list:
+                output_keys_per_n = cast(
+                    list[tuple[int, ...]], transform_per_n.output_keys
+                )
+                unique_keys = [
+                    k for k in output_keys_per_n if k not in all_detector_keys_set
+                ]
+                deduplicated_detector_keys.append(unique_keys)
+                all_detector_keys_set.update(unique_keys)
+            self._detector_keys = deduplicated_detector_keys
+            detector_transform_identities = [
+                transform.is_identity for transform in detector_transform_list
+            ]
+            self._detector_is_identity = all(detector_transform_identities)
+        else:
+            flat_photon_loss_keys = cast(
+                Iterable[Sequence[int]],
+                self._photon_loss_keys,
+            )
+            detector_transform = DetectorTransform(
+                flat_photon_loss_keys,
+                detectors,
+                dtype=self.dtype,
+                device=self.device,
+                partial_measurement=partial,
+            )
+            self._detector_transform = detector_transform
+            self._detector_keys = detector_transform.output_keys
+            self._detector_is_identity = detector_transform.is_identity
 
     @staticmethod
     def _normalize_output_key(
@@ -1485,23 +1810,118 @@ class QuantumLayer(MerlinModule):
             return tuple(int(v) for v in key.tolist())
         return tuple(int(v) for v in key)
 
-    def _apply_photon_loss_transform(self, distribution: torch.Tensor) -> torch.Tensor:
+    def _apply_photon_loss_transform(
+        self, distribution: torch.Tensor | SectoredDistribution
+    ) -> torch.Tensor | SectoredDistribution:
         if self._photon_loss_transform is None:
             raise RuntimeError(
                 "Photon loss transform must be initialised before applying photon loss."
             )
         if self._photon_loss_is_identity:
             return distribution
-        return self._photon_loss_transform(distribution)
+        if (
+            _resolve_measurement_kind(self.measurement_strategy).name.lower()
+            == "partial"
+        ):
+            # If it is partial measurement, return the tensor as it is supposed to.
+            if isinstance(self._photon_loss_transform, PhotonLossTransform):
+                return self._photon_loss_transform(distribution)
+            raise ValueError(
+                "Since noisy simulations cannot be ran with partial measurement, there should be only one photon loss transform."
+            )
 
-    def _apply_detector_transform(self, distribution: torch.Tensor) -> torch.Tensor:
+        # If it is not a SectoredDistribution, wrap it in one.
+        if isinstance(distribution, torch.Tensor):
+            sector_result: SectorResult = SectorResult(
+                tensor=distribution,
+                n_modes=self.circuit.m,
+                n_photons=self.n_photons,
+                keys=_normalize_sector_keys(self._raw_output_keys),
+            )
+            distribution_to_use: SectoredDistribution = SectoredDistribution((
+                sector_result,
+            ))
+        else:
+            distribution_to_use: SectoredDistribution = distribution
+
+        if isinstance(self._photon_loss_transform, Sequence):
+            distribution_copy = distribution_to_use.clone()
+            for i, sector in enumerate(distribution_copy.sectors):
+                # Here num photon_min is evidently the n_photons
+                index = sector.n_photons - self.n_photons
+                distribution_copy.sectors[i].tensor = self._photon_loss_transform[
+                    index
+                ](sector.tensor)
+                distribution_copy.sectors[i].keys = tuple(
+                    self._photon_loss_transform[index].output_keys
+                )
+            return distribution_copy
+
+        # Only one photon loss --> One sector
+        distribution_copy = distribution_to_use.clone()
+        distribution_copy.sectors[0].tensor = self._photon_loss_transform(
+            distribution_copy.sectors[0].tensor
+        )
+        distribution_copy.sectors[0].keys = tuple(
+            self._photon_loss_transform.output_keys
+        )
+        return distribution_copy
+
+    def _apply_detector_transform(
+        self, distribution: torch.Tensor | SectoredDistribution
+    ) -> torch.Tensor | SectoredDistribution:
         if self._detector_transform is None:
             raise RuntimeError(
                 "Detector transform must be initialised before applying detectors."
             )
         if self._detector_is_identity:
             return distribution
-        return self._detector_transform(distribution)
+        if (
+            _resolve_measurement_kind(self.measurement_strategy).name.lower()
+            == "partial"
+        ):
+            # If it is partial measurement, return the tensor as it is supposed to
+            if isinstance(self._detector_transform, DetectorTransform):
+                return self._detector_transform(distribution)
+            raise ValueError(
+                "Since noisy simulations cannot be ran with partial measurement, there should be only one detector transform."
+            )
+        # If it is not a SectoredDistribution, wrap it in one.
+        if isinstance(distribution, torch.Tensor):
+            sector_result: SectorResult = SectorResult(
+                tensor=distribution,
+                n_modes=self.circuit.m,
+                n_photons=self.n_photons,
+                keys=_normalize_sector_keys(self._raw_output_keys),
+            )
+            distribution_to_use: SectoredDistribution = SectoredDistribution((
+                sector_result,
+            ))
+        else:
+            distribution_to_use: SectoredDistribution = distribution
+
+        if isinstance(self._detector_transform, Sequence):
+            distribution_copy = distribution_to_use.clone()
+            for i, sector in enumerate(distribution_copy.sectors):
+                # Here num photon_min is evidently the n_photons since we dont clean the dist
+                index = sector.n_photons - self.n_photons
+
+                distribution_copy.sectors[i].tensor = self._detector_transform[index](
+                    sector.tensor
+                )
+                distribution_copy.sectors[i].keys = tuple(
+                    self._detector_transform[index].output_keys
+                )
+            return distribution_copy
+
+        # Only one detector --> One sector
+        distribution_copy = distribution_to_use.clone()
+        distribution_copy.sectors[0].tensor = self._detector_transform(
+            distribution_copy.sectors[0].tensor
+        )
+        distribution_copy.sectors[0].keys = tuple(self._detector_transform.output_keys)
+
+        return distribution_copy
 
     # =====================  EXPORT API FOR REMOTE PROCESSORS  =====================
 
@@ -1562,7 +1982,7 @@ class QuantumLayer(MerlinModule):
             ),
             "trainable_parameters": list(self.trainable_parameters),
             "input_parameters": list(self.input_parameters),
-            "noise_model": self.noise_model,
+            "noise": self.noise,
             "input_param_order": [
                 name
                 for prefix in self.input_parameters

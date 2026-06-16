@@ -24,12 +24,15 @@
 Tests comparing MerLin probability distributions with direct Perceval QPU implementation.
 """
 
+from copy import deepcopy
+
 import numpy as np
 import perceval as pcvl
 import torch
 from perceval.algorithm.sampler import Sampler
 
 import merlin as ML
+from merlin.pcvl_pytorch.locirc_to_tensor import CircuitConverter
 
 
 class TestPercevalComparison:
@@ -39,6 +42,48 @@ class TestPercevalComparison:
     N_MODES = 12
     N_PHOTONS = 3
     N_SAMPLES = 1_000_000
+
+    def test_phase_imprecision_unitary_matches_perceval_oracle(self):
+        """Test MerLin phase quantization against Perceval phase-imprecision noise."""
+        phase_value = 0.74
+        phase_imprecision = 0.5
+
+        circuit = pcvl.Circuit(2)
+        circuit.add((0, 1), pcvl.BS.H())
+        circuit.add(0, pcvl.PS(pcvl.P("phi")))
+        circuit.add((0, 1), pcvl.BS.H())
+
+        merlin_unitary = (
+            CircuitConverter(
+                deepcopy(circuit),
+                input_specs=["phi"],
+                dtype=torch.float64,
+                phase_imprecision=phase_imprecision,
+            )
+            .to_tensor(torch.tensor([phase_value], dtype=torch.float64))
+            .squeeze(0)
+            .detach()
+            .numpy()
+        )
+
+        perceval_circuit = deepcopy(circuit)
+        phi_parameter = next(
+            parameter
+            for parameter in perceval_circuit.get_parameters()
+            if parameter.name == "phi"
+        )
+        phi_parameter.set_value(phase_value)
+        experiment = pcvl.Experiment(
+            perceval_circuit,
+            noise=pcvl.NoiseModel(phase_imprecision=phase_imprecision),
+        )
+        perceval_noisy_circuit = experiment.unitary_circuit(use_phase_noise=True)
+        perceval_unitary = np.array(
+            perceval_noisy_circuit.compute_unitary(),
+            dtype=np.complex128,
+        )
+
+        assert np.allclose(merlin_unitary, perceval_unitary, atol=1e-12)
 
     def test_probability_distribution_comparison_simple(self):
         """Test that MerLin gives same probability distribution as direct Perceval QPU."""
@@ -65,8 +110,7 @@ class TestPercevalComparison:
             parameters.append(parameter)
 
         chip = (
-            pcvl
-            .Circuit(self.N_MODES, name="chip")
+            pcvl.Circuit(self.N_MODES, name="chip")
             .add(0, pre_U)
             .add(0, phases_U, merge=False)
             .add(0, reservoir_U, merge=False)

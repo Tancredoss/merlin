@@ -32,11 +32,15 @@ from torch import Tensor
 
 from ..builder.circuit_builder import ANGLE_ENCODING_MODE_ERROR, CircuitBuilder
 from ..core.computation_space import ComputationSpace
+from ..core.sectored_distribution import (
+    SectoredDistribution,
+    SectorResult,
+    clean_sectored_distribution,
+)
 from ..core.state import StatePattern, generate_state
 from ..core.state_vector import StateVector
 from ..measurement.autodiff import AutoDiffProcess
 from ..measurement.detectors import resolve_detectors
-from ..measurement.photon_loss import resolve_photon_loss
 from ..measurement.strategies import MeasurementStrategy
 from ..pcvl_pytorch.locirc_to_tensor import CircuitConverter
 from ..utils.deprecations import sanitize_parameters
@@ -717,10 +721,24 @@ class FeatureMap:
 class KernelCircuitBuilder:
     """Builder for creating photonic quantum kernel circuits.
 
+    .. warning:: *Deprecated since version 0.4:*
+        ``KernelCircuitBuilder`` is deprecated and will be removed in release 0.5.
+        Use :class:`~merlin.builder.circuit_builder.CircuitBuilder` with
+        :class:`FeatureMap` and :class:`FidelityKernel` directly instead::
+
+            builder = CircuitBuilder(n_modes=3)
+            builder.add_entangling_layer(name="U1")
+            builder.add_angle_encoding(modes=[0, 1], name="input")
+            builder.add_entangling_layer(name="U2")
+            feature_map = FeatureMap(builder=builder, input_size=2)
+            kernel = FidelityKernel(feature_map=feature_map, input_state=[1, 0, 1])
+
     This class provides a fluent interface for building quantum kernel circuits
     with various configurations, inspired by the core.layer architecture.
     """
 
+    # TODO: In release 0.5.x, remove KernelCircuitBuilder.
+    @sanitize_parameters
     def __init__(self) -> None:
         self._input_size: int | None = None
         self._n_modes: int | None = None
@@ -859,8 +877,14 @@ class KernelCircuitBuilder:
         self._angle_encoding_scale = scale
         return self
 
+    # TODO: In release 0.5.x, remove KernelCircuitBuilder.build_feature_map.
+    @sanitize_parameters
     def build_feature_map(self) -> FeatureMap:
         """Build and return a :class:`FeatureMap` instance.
+
+        .. warning:: *Deprecated since version 0.4:*
+            Use :class:`~merlin.builder.circuit_builder.CircuitBuilder` with
+            :class:`FeatureMap` directly instead.
 
         Returns
         -------
@@ -911,6 +935,7 @@ class KernelCircuitBuilder:
             device=self._device,
         )
 
+    # TODO: In release 0.5.x, remove KernelCircuitBuilder.build_fidelity_kernel.
     @sanitize_parameters
     def build_fidelity_kernel(
         self,
@@ -922,6 +947,10 @@ class KernelCircuitBuilder:
         force_psd: bool = True,
     ) -> "FidelityKernel":
         """Build and return a :class:`~merlin.algorithms.kernels.FidelityKernel` instance.
+
+        .. warning:: *Deprecated since version 0.4:*
+            Use :class:`~merlin.builder.circuit_builder.CircuitBuilder` with
+            :class:`FeatureMap` and :class:`FidelityKernel` directly instead.
 
         Parameters
         ----------
@@ -1057,20 +1086,11 @@ class _CCInvQuantumLayer(QuantumLayer):
         # TODO: In release 0.5.x, remove FeatureMap.encoder compatibility.
         self._encoder = encoder
 
-        raw_keys = self._raw_output_keys
-        try:
-            self._input_state_index: int = raw_keys.index(tuple(input_state))
-        except ValueError as exc:
-            raise ValueError(
-                "Input state is not present in the simulation basis produced by the circuit."
-            ) from exc
-
         # Build the detection weight vector: track which output bin the input
         # state maps to after photon loss and detector transforms.
         weight_device = self.device or torch.device("cpu")
-        one_hot = torch.zeros(len(raw_keys), dtype=self.dtype, device=weight_device)
-        one_hot[self._input_state_index] = 1.0
-        detection_vector = self._apply_detection_pipeline(one_hot)
+        detection_seed = self._build_input_detection_seed(input_state, weight_device)
+        detection_vector = self._apply_detection_pipeline(detection_seed)
         detection_vector = detection_vector.to(dtype=self.dtype, device=weight_device)
 
         nonzero = torch.nonzero(detection_vector > 1e-8, as_tuple=True)[0]
@@ -1085,6 +1105,104 @@ class _CCInvQuantumLayer(QuantumLayer):
             self._input_detection_index = int(nonzero[0].item())
         self.register_buffer("_input_detection_weights", detection_vector)
         self._kernel_autodiff_process = AutoDiffProcess()
+
+    @staticmethod
+    def _raw_keys_are_sectored(
+        raw_output_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]],
+    ) -> bool:
+        """Return whether raw output keys are grouped by photon-number sector.
+
+        Parameters
+        ----------
+        raw_output_keys : list[tuple[int, ...]] | list[list[tuple[int, ...]]]
+            Raw keys produced by the simulation graph.
+
+        Returns
+        -------
+        bool
+            True when the first level contains per-sector key lists.
+        """
+        return bool(raw_output_keys) and isinstance(raw_output_keys[0], list)
+
+    def _build_input_detection_seed(
+        self,
+        input_state: list[int],
+        device: torch.device,
+    ) -> Tensor | SectoredDistribution:
+        """Build a one-hot raw distribution for the kernel input state.
+
+        Parameters
+        ----------
+        input_state : list[int]
+            Fock occupation list whose return probability defines the fidelity
+            kernel transition probability.
+        device : torch.device
+            Device on which the one-hot tensors are allocated.
+
+        Returns
+        -------
+        torch.Tensor | SectoredDistribution
+            Flat one-hot tensor for ordinary SLOS keys, or a sectored one-hot
+            distribution when the noisy backend returns photon-number sectors.
+
+        Raises
+        ------
+        ValueError
+            If ``input_state`` is not present in the raw simulation basis.
+        """
+        input_key = tuple(input_state)
+        raw_output_keys = self._raw_output_keys
+
+        if self._raw_keys_are_sectored(raw_output_keys):
+            sectors: list[SectorResult] = []
+            flattened_index = 0
+            found_index: int | None = None
+
+            for sector_keys in cast(list[list[tuple[int, ...]]], raw_output_keys):
+                if len(sector_keys) == 0:
+                    raise ValueError("Raw output key sectors must not be empty.")
+
+                sector_tensor = torch.zeros(
+                    len(sector_keys),
+                    dtype=self.dtype,
+                    device=device,
+                )
+                try:
+                    sector_index = sector_keys.index(input_key)
+                except ValueError:
+                    pass
+                else:
+                    sector_tensor[sector_index] = 1.0
+                    found_index = flattened_index + sector_index
+
+                sectors.append(
+                    SectorResult(
+                        sector_tensor,
+                        n_modes=self.circuit.m,
+                        n_photons=sum(sector_keys[0]),
+                        keys=tuple(sector_keys),
+                    )
+                )
+                flattened_index += len(sector_keys)
+
+            if found_index is None:
+                raise ValueError(
+                    "Input state is not present in the simulation basis produced by the circuit."
+                )
+            self._input_state_index = found_index
+            return SectoredDistribution(tuple(sectors))
+
+        raw_keys = cast(list[tuple[int, ...]], raw_output_keys)
+        try:
+            self._input_state_index = raw_keys.index(input_key)
+        except ValueError as exc:
+            raise ValueError(
+                "Input state is not present in the simulation basis produced by the circuit."
+            ) from exc
+
+        one_hot = torch.zeros(len(raw_keys), dtype=self.dtype, device=device)
+        one_hot[self._input_state_index] = 1.0
+        return one_hot
 
     def _encode_single(self, x: Tensor) -> Tensor:
         """Encode one datapoint to the circuit's input parameter shape.
@@ -1183,7 +1301,10 @@ class _CCInvQuantumLayer(QuantumLayer):
             dim=0,
         )
 
-    def _apply_detection_pipeline(self, distribution: Tensor) -> Tensor:
+    def _apply_detection_pipeline(
+        self,
+        distribution: Tensor | SectoredDistribution,
+    ) -> Tensor:
         """Apply photon-loss and detector transforms in sequence.
 
         This is the single canonical place where the two-step detection
@@ -1193,9 +1314,10 @@ class _CCInvQuantumLayer(QuantumLayer):
 
         Parameters
         ----------
-        distribution : torch.Tensor
-            Probability distribution tensor; either 1-D (single output
-            vector) or 2-D ``(batch, bins)``.
+        distribution : torch.Tensor | SectoredDistribution
+            Probability distribution tensor or sectored probability
+            distribution. Tensors are either 1-D (single output vector) or 2-D
+            ``(batch, bins)``.
 
         Returns
         -------
@@ -1203,11 +1325,16 @@ class _CCInvQuantumLayer(QuantumLayer):
             Distribution after photon-loss and detector transforms, with
             any trailing batch dimension squeezed away if the input was 1-D.
         """
+        distribution_was_vector = (
+            isinstance(distribution, Tensor) and distribution.ndim == 1
+        )
         result = self._apply_photon_loss_transform(distribution)
-        if result.ndim > 1 and distribution.ndim == 1:
-            result = result.squeeze(0)
         result = self._apply_detector_transform(result)
-        if result.ndim > 1 and distribution.ndim == 1:
+        if isinstance(result, SectoredDistribution):
+            result = cast(Tensor, clean_sectored_distribution(result).to_tensor())
+        if not isinstance(result, Tensor):
+            raise TypeError("Detection pipeline must return a tensor distribution.")
+        if distribution_was_vector and result.ndim > 1:
             result = result.squeeze(0)
         return result
 
@@ -1290,12 +1417,19 @@ class _CCInvQuantumLayer(QuantumLayer):
         torch.Tensor
             Transition probability for each circuit, shape ``(P,)``.
         """
-        _, probabilities = self.computation_process.simulation_graph.compute_probs(
+        result = self.computation_process.simulation_graph.compute_probs(
             all_circuits, input_state
         )
-        if probabilities.ndim == 1:
+        if isinstance(result, SectoredDistribution):
+            probabilities: Tensor | SectoredDistribution = result.to(
+                dtype=self.dtype,
+            )
+        else:
+            _keys, probabilities = result
+            probabilities = probabilities.to(dtype=self.dtype)
+
+        if isinstance(probabilities, Tensor) and probabilities.ndim == 1:
             probabilities = probabilities.unsqueeze(0)
-        probabilities = probabilities.to(dtype=self.dtype)
         detection_probs = self._apply_detection_pipeline(probabilities)
 
         if shots > 0:
@@ -1701,10 +1835,6 @@ class FidelityKernel(MerlinModule):
                 "computation_space must be FOCK if Experiment contains at least one Detector."
             )
 
-        # Resolve noise model presence from the experiment before building the backend.
-        _, empty_noise_model = resolve_photon_loss(self.experiment, m)
-        self.has_custom_noise_model = not empty_noise_model
-
         self._quantum_layer = _CCInvQuantumLayer(
             experiment=self.experiment,
             input_state=input_state,
@@ -1722,6 +1852,7 @@ class FidelityKernel(MerlinModule):
             ),
             encoder=self.feature_map._encoder,
         )
+        self.has_custom_noise_model = self._quantum_layer.has_custom_noise_model
 
         self.is_trainable = feature_map.is_trainable
 
