@@ -987,7 +987,9 @@ def normalize_output_key(
     return tuple(int(v) for v in key)
 
 
-def extract_photon_count(input_state) -> int | None:
+def extract_photon_count(
+    input_state: StateVector | pcvl.StateVector | pcvl.BasicState | None,
+) -> int | list[int] | None:
     """Extract photon number (for stateVector and basicState only)
 
     Parameters
@@ -1001,9 +1003,25 @@ def extract_photon_count(input_state) -> int | None:
         return None
 
     if isinstance(input_state, pcvl.BasicState):
-        return input_state.n
+        val = input_state.n
+        if isinstance(val, type({1, 2})):
+            s = list(val)
+            for i in s:
+                if i != s[0]:
+                    return s
+            return s[0]
+        else:
+            return val
 
     if type(input_state).__name__ == "StateVector":
-        return getattr(input_state, "n_photons", getattr(input_state, "n", None))
+        val = getattr(input_state, "n_photons", getattr(input_state, "n", None))
+        if isinstance(val, type({1, 2})):
+            set = list(val)
+            for i in set:
+                if i != set[0]:
+                    return set
+            return set[0]
+        else:
+            return val
 
     return None
