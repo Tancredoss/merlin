@@ -24,7 +24,7 @@ Use the supported version combinations below when installing or upgrading MerLin
    * - ``<=0.3``
      - ``>=0.13.1, <=1.1``
      - ``>=2.0.0, <=2.10.0``
-     - ``>=1.7.0, <1.10``
+     - ``>=1.1.0, <1.10``
      - ``>=3.10, <=3.14``
      - Legacy Perceval API support.
 
