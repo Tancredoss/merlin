@@ -990,8 +990,8 @@ def normalize_output_key(
 def extract_photon_count(
     input_state: StateVector | pcvl.StateVector | pcvl.BasicState | None,
 ) -> int | list[int] | None:
-    """Extract photon number (for stateVector and basicState only)
-
+    """Extract photon number (for stateVector and basicState only). If the state entered is a superposition of multiple states, it will return a dictionnary, if
+        all states doesn't have the same number of photon.
     Parameters
     ----------
     input_state : :class:`~merlin.core.state_vector.StateVector` | pcvl.StateVector | pcvl.BasicState
