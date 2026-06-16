@@ -34,13 +34,16 @@ Migrating from removed ``amplitude_encoding`` flag in the ``QuantumLayer``
    **0.4**. Pass a :class:`~merlin.core.state_vector.StateVector` or a complex
    ``torch.Tensor`` to ``forward()`` instead.
 
-To use amplitude encoding in a :class:`~merlin.algorithms.layer.QuantumLayer`, you just need to pass a :class:`~merlin.core.state_vector.StateVector` or a complex ``torch.Tensor``  at the forward call. Here is how to use amplitude encoding in MerLin v.0.4.
+To use amplitude encoding in a :class:`~merlin.algorithms.layer.QuantumLayer`,
+pass a :class:`~merlin.core.state_vector.StateVector` or a complex
+``torch.Tensor`` at the forward call. The constructor no longer needs an
+amplitude-encoding flag.
 
 .. code-block:: python
 
   import torch
-  from merlin.core import StateVector, EncodingSpace
   from merlin import CircuitBuilder, QuantumLayer, MeasurementStrategy, ComputationSpace
+  from merlin.core import EncodingSpace, StateVector
 
   builder = CircuitBuilder(n_modes=4)
   builder.add_entangling_layer()
@@ -54,18 +57,9 @@ To use amplitude encoding in a :class:`~merlin.algorithms.layer.QuantumLayer`, y
       ),
   )
 
-  # Option 1: StateVector object
-  # Basic object initialization
-  input_state = StateVector(
-      tensor=torch.rand(1, 10), # the computation space's size
-      n_modes=4,
-      n_photons=2,
-      encoding=EncodingSpace.FOCK,
-  )
-  layer(input_state)
-  # From tensor method
-    input_state =StateVector.from_tensor(
-      tensor=torch.rand(1, 10), # the computation space's size
+  # Option 1: StateVector input
+  input_state = StateVector.from_tensor(
+      tensor=torch.rand(1, 10),
       n_modes=4,
       n_photons=2,
       encoding=EncodingSpace.FOCK,
@@ -75,6 +69,28 @@ To use amplitude encoding in a :class:`~merlin.algorithms.layer.QuantumLayer`, y
   # Option 2: complex tensor
   input_state = torch.rand(1, layer.output_size, dtype=torch.complex64)
   layer(input_state)
+
+If you previously built full Fock-sized tensors manually, prefer a logical
+encoding when the data has one. For example, a two-qubit dual-rail state can be
+passed as four logical amplitudes instead of a ten-entry full-Fock vector:
+
+.. code-block:: python
+
+  import torch
+  from merlin.core import EncodingSpace, StateVector
+
+  logical = torch.tensor([1.0, 0.0, 0.0, 1.0], dtype=torch.complex64)
+  input_state = StateVector.from_tensor(
+      logical,
+      encoding=EncodingSpace.DUAL_RAIL,
+  )
+
+``StateVector`` normalizes lazily when a normalized dense view or layer
+execution needs it, so explicit pre-normalization is not required for this
+construction.
+
+See :doc:`/user_guide/encoding_space` for Fock, unbunched, dual-rail,
+partitioned, and QLOQ examples.
 
 
 v.0.3 deprecations are now errors

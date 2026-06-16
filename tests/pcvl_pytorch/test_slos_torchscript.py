@@ -6,7 +6,13 @@ import pytest
 import torch
 from perceval.components import BS
 
+from merlin.algorithms.layer_utils import NoiseGroups
 from merlin.core.computation_space import ComputationSpace
+from merlin.core.sectored_distribution import SectoredDistribution
+from merlin.pcvl_pytorch.noisy_slos import (
+    NoisyG2SLOSComputeGraph,
+    NoisySLOSComputeGraph,
+)
 from merlin.pcvl_pytorch.slos_torchscript import (
     build_slos_distribution_computegraph,
     compute_slos_distribution,
@@ -124,6 +130,76 @@ def test_slos_save_load_computation_graph(get_tmp_file):
     assert graph.total_mapped_keys == loaded_graph.total_mapped_keys, (
         sDoesntMatch + "total_mapped_keys"
     )
+
+
+def test_slos_save_load_noisy_computation_graph(get_tmp_file):
+    noise_groups = NoiseGroups(
+        source={"indistinguishability": 0.35},
+        circuit=None,
+        post_measurement=None,
+    )
+
+    graph = build_slos_distribution_computegraph(
+        m=2,
+        n_photons=2,
+        computation_space=ComputationSpace.FOCK,
+        noise_groups=noise_groups,
+        keep_keys=True,
+        dtype=torch.float,
+    )
+
+    unitary = torch.tensor(BS().compute_unitary(), dtype=torch.complex64).unsqueeze(0)
+    keys_before, probs_before = graph.compute_probs(unitary, [1, 1])
+
+    graph.save(get_tmp_file)
+    loaded_graph = load_slos_distribution_computegraph(get_tmp_file)
+
+    assert isinstance(loaded_graph, NoisySLOSComputeGraph)
+
+    keys_after, probs_after = loaded_graph.compute_probs(unitary, [1, 1])
+    assert keys_after == keys_before
+    assert torch.allclose(probs_after, probs_before, atol=1e-6)
+
+
+def test_slos_save_load_noisy_g2_computation_graph_without_keep_keys(get_tmp_file):
+    noise_groups = NoiseGroups(
+        source={"g2": 0.1, "g2_distinguishable": False},
+        circuit=None,
+        post_measurement=None,
+    )
+
+    graph = build_slos_distribution_computegraph(
+        m=2,
+        n_photons=2,
+        computation_space=ComputationSpace.FOCK,
+        noise_groups=noise_groups,
+        dtype=torch.float,
+    )
+    assert isinstance(graph, NoisyG2SLOSComputeGraph)
+
+    unitary = torch.tensor(BS().compute_unitary(), dtype=torch.complex64).unsqueeze(0)
+    probs_before = graph.compute_probs(unitary, [1, 1])
+
+    graph.save(get_tmp_file)
+    saved_data = torch.load(get_tmp_file, weights_only=False)
+    assert saved_data["metadata"]["graph_type"] == "noisy_g2_slos"
+    assert "keep_keys" not in saved_data["metadata"]
+
+    loaded_graph = load_slos_distribution_computegraph(get_tmp_file)
+
+    assert isinstance(loaded_graph, NoisyG2SLOSComputeGraph)
+    probs_after = loaded_graph.compute_probs(unitary, [1, 1])
+
+    assert isinstance(probs_before, SectoredDistribution)
+    assert isinstance(probs_after, SectoredDistribution)
+    assert len(probs_after.sectors) == len(probs_before.sectors)
+    for sector_after, sector_before in zip(
+        probs_after.sectors, probs_before.sectors, strict=True
+    ):
+        assert sector_after.n_modes == sector_before.n_modes
+        assert sector_after.n_photons == sector_before.n_photons
+        assert sector_after.keys == sector_before.keys
+        assert torch.allclose(sector_after.tensor, sector_before.tensor, atol=1e-6)
 
 
 def test_slos_compute_slos_distribution_with_output_map_function():
