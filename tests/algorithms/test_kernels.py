@@ -1036,7 +1036,8 @@ class TestKernelCircuitBuilder:
         device = torch.device("cpu")
         builder = KernelCircuitBuilder()
         feature_map = (
-            builder.input_size(2)
+            builder
+            .input_size(2)
             .n_modes(4)
             .device(device)
             .dtype(torch.float64)
@@ -1057,7 +1058,8 @@ class TestKernelCircuitBuilder:
         assert not feature_map.is_trainable
 
         feature_map = (
-            builder.input_size(2)
+            builder
+            .input_size(2)
             .n_modes(4)
             .trainable(True, prefix="phi_")
             .build_feature_map()
@@ -1082,7 +1084,8 @@ class TestKernelCircuitBuilder:
         builder = KernelCircuitBuilder()
         custom_state = [2, 0, 0, 0]
         kernel = (
-            builder.input_size(2)
+            builder
+            .input_size(2)
             .n_modes(4)
             .build_fidelity_kernel(input_state=custom_state)
         )
@@ -1093,7 +1096,8 @@ class TestKernelCircuitBuilder:
         """Test building FidelityKernel with sampling configuration."""
         builder = KernelCircuitBuilder()
         kernel = (
-            builder.input_size(2)
+            builder
+            .input_size(2)
             .n_modes(4)
             .build_fidelity_kernel(
                 shots=1000,
@@ -1118,7 +1122,8 @@ class TestKernelCircuitBuilder:
     def test_builder_angle_encoding_configuration(self):
         builder = KernelCircuitBuilder()
         feature_map = (
-            builder.input_size(3)
+            builder
+            .input_size(3)
             .n_modes(4)
             .angle_encoding(scale=0.5)
             .build_feature_map()
@@ -1126,6 +1131,11 @@ class TestKernelCircuitBuilder:
 
         x = torch.tensor([0.1, 0.2, 0.3], dtype=torch.float32)
         encoded = feature_map._encode_x(x)
+        assert torch.allclose(
+            encoded,
+            torch.tensor([0.05, 0.1, 0.15], dtype=feature_map.dtype),
+        )
+
 
 class TestCircuitBuilderKernelIntegration:
     """Tests for kernels built with the current CircuitBuilder API."""
@@ -1219,7 +1229,8 @@ class TestKernelConstructionConsistency:
         # Builder API
         builder_api = KernelCircuitBuilder()
         k_builder = (
-            builder_api.input_size(2)
+            builder_api
+            .input_size(2)
             .n_modes(4)
             .trainable(False)
             .build_fidelity_kernel()
@@ -1665,7 +1676,8 @@ def test_iris_with_supported_constructors():
         try:
             builder = KernelCircuitBuilder()
             kernel_builder = (
-                builder.input_size(4)
+                builder
+                .input_size(4)
                 .n_modes(4)
                 .trainable(trainable_flag)
                 .build_fidelity_kernel()
