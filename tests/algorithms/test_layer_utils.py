@@ -28,6 +28,7 @@ import merlin as ML
 from merlin.algorithms.layer_utils import (
     _build_simple_circuit,
     apply_angle_encoding,
+    classify_noise,
     compute_new_memristive_ps_angles,
     feature_count_for_prefix,
     normalize_output_key,
@@ -38,6 +39,7 @@ from merlin.algorithms.layer_utils import (
     split_inputs_by_prefix,
     validate_and_resolve_circuit_source,
     validate_encoding_mode,
+    validate_noisy_measurement_strategy,
     vet_experiment,
 )
 from merlin.core.computation_space import ComputationSpace
@@ -221,6 +223,34 @@ def test_setup_noise_and_detectors_computation_space_overrides():
     assert config.has_custom_detectors is True
     assert len(config.detectors) == 2
     assert config.detector_warnings
+
+
+def test_validate_noisy_measurement_strategy_allows_noiseless_amplitudes():
+    noise = validate_noisy_measurement_strategy(
+        None,
+        output="amplitudes",
+        noise=None,
+        noise_groups=None,
+        empty_detectors=False,
+    )
+
+    assert noise is None
+
+
+def test_validate_noisy_measurement_strategy_rejects_active_noise_amplitudes():
+    noise = pcvl.NoiseModel(brightness=0.5)
+
+    with pytest.raises(
+        ValueError,
+        match="When doing a noisy simulation, the probabilities measurement strategy must be used.",
+    ):
+        validate_noisy_measurement_strategy(
+            None,
+            output="amplitudes",
+            noise=noise,
+            noise_groups=classify_noise(noise),
+            empty_detectors=False,
+        )
 
 
 def test_apply_angle_encoding_basic():
