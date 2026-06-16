@@ -537,6 +537,10 @@ def prepare_input_state(
 
     # === Handle StateVector (canonical, preferred) ===
     if isinstance(input_state, StateVector):
+        if n_photons is not None and input_state.n_photons != n_photons:
+            raise ValueError(
+                "Inconsistent number of photons between input_state and n_photons."
+            )
         return input_state, input_state.n_photons
 
     # === Reject removed tensor constructor state ===

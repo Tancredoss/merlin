@@ -71,6 +71,7 @@ from .layer_utils import (
     _normalize_sector_keys,
     apply_angle_encoding,
     compute_new_memristive_ps_angles,
+    extract_photon_count,
     feature_count_for_prefix,
     has_phase_error,
     has_source_noise,
