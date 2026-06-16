@@ -173,8 +173,7 @@ The active implementation in ``lib/generators.py`` follows this structure:
                    input_parameters=pcvl_circuit.enc_param_names,
                    trainable_parameters=pcvl_circuit.var_param_names,
                    input_state=input_state,
-                   measurement_strategy=ml.MeasurementStrategy.PROBABILITIES,
-                   computation_space=ml.ComputationSpace.FOCK,
+                   measurement_strategy=ml.MeasurementStrategy.probs(computation_space=ml.ComputationSpace.FOCK),
                )
                self.layers.append(layer)
 

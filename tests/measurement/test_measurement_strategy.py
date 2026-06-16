@@ -405,13 +405,12 @@ class TestQuantumLayerMeasurementStrategy:
 
         x = torch.rand(2, 2)
 
-        with pytest.warns(DeprecationWarning):
-            legacy_layer = ML.QuantumLayer(
-                input_size=2,
-                n_photons=2,
-                builder=builder,
-                measurement_strategy=ML.MeasurementStrategy.PROBABILITIES,
-            )
+        legacy_layer = ML.QuantumLayer(
+            input_size=2,
+            n_photons=2,
+            builder=builder,
+            measurement_strategy=ML.MeasurementStrategy.probs(),
+        )
 
         legacy_output = legacy_layer(x)
         grouping_cases = [
@@ -442,19 +441,6 @@ class TestQuantumLayerMeasurementStrategy:
 
 
 def test_resolve_measurement_strategy():
-    with pytest.warns(DeprecationWarning):
-        assert isinstance(
-            resolve_measurement_strategy(MeasurementStrategy.PROBABILITIES),
-            ProbabilitiesStrategy,
-        )
-        assert isinstance(
-            resolve_measurement_strategy(MeasurementStrategy.MODE_EXPECTATIONS),
-            ModeExpectationsStrategy,
-        )
-        assert isinstance(
-            resolve_measurement_strategy(MeasurementStrategy.AMPLITUDES),
-            AmplitudesStrategy,
-        )
     assert isinstance(
         resolve_measurement_strategy(MeasurementStrategy.probs()),
         ProbabilitiesStrategy,
@@ -577,12 +563,22 @@ def test_probabilities_strategy_applies_transforms_and_sampling():
         assert shots == 5
         return dist * 0 + shots
 
+    # Create a mock sampler with the expected interface
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            assert torch.allclose(dist, torch.tensor([3.0]))
+            assert shots == 5
+            return dist * 0 + shots
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=True,
         effective_shots=5,
-        sample_fn=sample_fn,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -602,15 +598,20 @@ def test_probabilities_strategy_skips_sampling_when_zero_shots():
     def apply_detectors(dist: torch.Tensor) -> torch.Tensor:
         return dist * 2.0
 
-    def sample_fn(dist: torch.Tensor, shots: int) -> torch.Tensor:
-        raise AssertionError("Sampling should not be called when shots are zero.")
+    # Create a mock sampler that should not be called
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            raise AssertionError("Sampling should not be called when shots are zero.")
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            raise AssertionError("Sampling should not be called when shots are zero.")
 
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=True,
         effective_shots=0,
-        sample_fn=sample_fn,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -630,17 +631,22 @@ def test_mode_expectations_strategy_skips_sampling_when_disabled():
     def apply_detectors(dist: torch.Tensor) -> torch.Tensor:
         return dist - 1.0
 
-    def sample_fn(dist: torch.Tensor, shots: int) -> torch.Tensor:
-        nonlocal sample_called
-        sample_called = True
-        return dist
+    # Create a mock sampler
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            nonlocal sample_called
+            sample_called = True
+            return dist
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
 
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=False,
         effective_shots=10,
-        sample_fn=sample_fn,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -734,12 +740,19 @@ def test_partial_measurement_strategy_applies_photon_loss_before_detectors():
             }
         ]
 
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=False,
         effective_shots=0,
-        sample_fn=lambda dist, shots: dist,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -762,12 +775,19 @@ def test_partial_measurement_strategy_applies_grouping_to_tensor():
             }
         ]
 
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
     result = strategy.process(
         distribution=torch.tensor([1.0]),
         amplitudes=torch.tensor([0.25]),
         apply_sampling=False,
         effective_shots=0,
-        sample_fn=lambda dist, shots: dist,
+        sampler=MockSampler(),
         apply_photon_loss=lambda amps: amps,
         apply_detectors=apply_detectors,
         grouping=grouping,
@@ -803,10 +823,16 @@ class _DummyComputationProcess:
         self.last_simultaneous_processes = simultaneous_processes
         return torch.tensor([1.0])
 
-    def compute(self, params, memristive_current_state=None):
+    def compute(
+        self,
+        params,
+        amplitude_encoding=False,
+        memristive_current_state=None,
+    ):
         if memristive_current_state is None:
             memristive_current_state = []
         self.called = "compute"
+        self.last_amplitude_encoding = amplitude_encoding
         return torch.tensor([2.0])
 
 
@@ -936,7 +962,7 @@ class TestComputationSpaceConflictResolution:
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.raises(TypeError, match="Cannot specify 'computation_space'"):
+        with pytest.raises(AttributeError, match="Cannot specify 'computation_space'"):
             ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
@@ -954,7 +980,7 @@ class TestComputationSpaceConflictResolution:
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.raises(TypeError, match="Cannot specify 'computation_space'"):
+        with pytest.raises(AttributeError, match="Cannot specify 'computation_space'"):
             ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
@@ -971,7 +997,7 @@ class TestComputationSpaceConflictResolution:
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.raises(TypeError, match="Cannot specify 'computation_space'"):
+        with pytest.raises(AttributeError, match="Cannot specify 'computation_space'"):
             ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
@@ -1002,36 +1028,36 @@ class TestComputationSpaceConflictResolution:
         assert layer.computation_space == ComputationSpace.FOCK
         assert layer.measurement_strategy.type == MeasurementKind.PROBABILITIES
 
-    def test_legacy_enum_with_constructor_computation_space_warns(self):
-        """Legacy enum (PROBABILITIES) with constructor computation_space should WARN but work."""
+    def test_constructor_computation_space_fails(self):
+        """Legacy enum (PROBABILITIES) with constructor computation_space should fail."""
         builder = ML.CircuitBuilder(n_modes=3)
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
         builder.add_entangling_layer(trainable=True, name="U2")
 
-        with pytest.warns(DeprecationWarning, match="deprecated"):
-            layer = ML.QuantumLayer(
+        with pytest.raises(
+            AttributeError,
+            match="Cannot specify 'computation_space' in QuantumLayer's constructor. ",
+        ):
+            ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
                 builder=builder,
                 computation_space=ComputationSpace.FOCK,
-                measurement_strategy=MeasurementStrategy.PROBABILITIES,
+                measurement_strategy=MeasurementStrategy.probs(),
             )
-        # Should have used the constructor computation_space
-        assert layer.computation_space == ComputationSpace.FOCK
 
-    def test_legacy_enum_without_constructor_computation_space_defaults(self):
-        """Legacy enum without computation_space should default to UNBUNCHED."""
+    def test_new_ms_without_constructor_computation_space_defaults(self):
+        """New factory method should default to UNBUNCHED."""
         builder = ML.CircuitBuilder(n_modes=3)
         builder.add_entangling_layer(trainable=True, name="U1")
         builder.add_angle_encoding(modes=[0, 1], name="input")
 
-        with pytest.warns(DeprecationWarning):
-            layer = ML.QuantumLayer(
-                input_size=2,
-                n_photons=1,
-                builder=builder,
-                measurement_strategy=MeasurementStrategy.PROBABILITIES,
-            )
+        layer = ML.QuantumLayer(
+            input_size=2,
+            n_photons=1,
+            builder=builder,
+            measurement_strategy=MeasurementStrategy.probs(),
+        )
         # Should default to UNBUNCHED
         assert layer.computation_space == ComputationSpace.UNBUNCHED

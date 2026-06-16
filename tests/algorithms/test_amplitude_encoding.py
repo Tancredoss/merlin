@@ -158,9 +158,9 @@ def test_amplitude_encoding_gradients_follow_computation_space(
     assert amplitude_input.grad.shape == amplitude_input.shape
 
     trainable_params = [p for p in layer.parameters() if p.requires_grad]
-    assert (
-        trainable_params
-    ), "Expected at least one trainable parameter for gradient check"
+    assert trainable_params, (
+        "Expected at least one trainable parameter for gradient check"
+    )
     for param in trainable_params:
         assert param.grad is not None
         assert param.grad.shape == param.shape
@@ -808,6 +808,49 @@ def test_amplitude_encoding_flag_rejects_legacy_configuration():
     assert "StateVector.from_tensor()" in message
 
 
+def test_amplitude_encoding_requires_input_state_for_more_photons_than_modes():
+    circuit = pcvl.Circuit(3)
+
+    with pytest.raises(ValueError, match="amplitude_encoding=True was removed"):
+        QuantumLayer(
+            circuit=circuit,
+            n_photons=5,
+            amplitude_encoding=True,
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK
+            ),
+        )
+
+
+def test_amplitude_encoding_flag_rejects_explicit_bunched_fock_input_state():
+    circuit = pcvl.Circuit(3)
+
+    with pytest.raises(ValueError, match="amplitude_encoding=True was removed"):
+        QuantumLayer(
+            circuit=circuit,
+            input_state=[5, 0, 0],
+            n_photons=5,
+            amplitude_encoding=True,
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK
+            ),
+        )
+
+
+def test_amplitude_encoding_unbunched_rejects_more_photons_than_modes():
+    circuit = pcvl.Circuit(3)
+
+    with pytest.raises(ValueError, match="amplitude_encoding=True was removed"):
+        QuantumLayer(
+            circuit=circuit,
+            n_photons=5,
+            amplitude_encoding=True,
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.UNBUNCHED
+            ),
+        )
+
+
 def test_dual_rail_requires_even_mode_count():
     circuit = pcvl.Circuit(6)
 
@@ -873,9 +916,9 @@ def test_amplitude_encoding_superposition_matches_basis_sum():
     combined_output = layer(amplitude_input)
     expected_output = torch.sum(coefficients[:, None, None] * basis_outputs, dim=0)
     difference = combined_output - expected_output
-    assert torch.allclose(
-        combined_output, expected_output, atol=1e-6, rtol=1e-6
-    ), f"Max deviation {difference.abs().max().item():.2e}"
+    assert torch.allclose(combined_output, expected_output, atol=1e-6, rtol=1e-6), (
+        f"Max deviation {difference.abs().max().item():.2e}"
+    )
 
     with pytest.raises(ValueError, match="Amplitude input expects"):
         layer(torch.ones(basis_size + 1, dtype=torch.complex64))
@@ -1012,9 +1055,9 @@ def test_ebs_wrt_quantumlayer(
             single_unitary = single_layer.computation_process.converter.to_tensor(
                 *single_params
             )
-            assert torch.allclose(
-                single_unitary, ebs_unitary, rtol=1e-6, atol=1e-8
-            ), "Expected identical unitaries between EBS and single-state layers."
+            assert torch.allclose(single_unitary, ebs_unitary, rtol=1e-6, atol=1e-8), (
+                "Expected identical unitaries between EBS and single-state layers."
+            )
             assert (
                 single_layer.computation_process.simulation_graph.mapped_keys
                 == ebs_layer.computation_process.simulation_graph.mapped_keys
@@ -1032,6 +1075,6 @@ def test_ebs_wrt_quantumlayer(
         p=2, dim=1, keepdim=True
     ).clamp_min(1e-12)
     # TODO: investigate why this tests failed with rtol=1e-6, atol=1e-8
-    assert torch.allclose(
-        ebs_output, expected_output, rtol=1e-4, atol=1e-6
-    ), "EBS output deviates from the superposed QuantumLayer results."
+    assert torch.allclose(ebs_output, expected_output, rtol=1e-4, atol=1e-6), (
+        "EBS output deviates from the superposed QuantumLayer results."
+    )

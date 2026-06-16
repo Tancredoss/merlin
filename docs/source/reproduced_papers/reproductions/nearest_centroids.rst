@@ -114,8 +114,7 @@ only the distance metric:
        trainable_parameters=[],
        input_parameters=["theta"],
        input_state=[1] + [0] * (n - 1),
-       computation_space=ComputationSpace.UNBUNCHED,
-       measurement_strategy=MeasurementStrategy.probs(),
+       measurement_strategy=MeasurementStrategy.probs(computation_space=ComputationSpace.UNBUNCHED),
    )
 
    class MLQuantumNearestCentroid(NearestCentroid):

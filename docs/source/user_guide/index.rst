@@ -7,6 +7,23 @@ User Guide
 ==========
 Here are a few pages to guide you through your MerLin usage.
 
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   angle_amplitude_encoding
+   computation_space
+   feed_forward
+   grouping
+   kernels
+   layer
+   measurement_strategy
+   migration_guide
+   noisy_simulations
+   quantum_bridge
+   remote_execution
+
+
 Master the QuantumLayer
 ----------------------------
 .. merlin-gallery::
@@ -23,6 +40,12 @@ Mixing gates and interferometers
 ----------------------------------------
 .. merlin-gallery::
    :data: _data/galleries/user_guide/mixing_gates.json
+   :columns: 2
+
+Noisy simulations
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/noisy_simulations.json
    :columns: 2
 
 Send your code to simulators or QPUs
@@ -58,6 +81,7 @@ Migration guide
 
    angle_amplitude_encoding
    computation_space
+   encoding_space
    feed_forward
    grouping
    kernels

@@ -291,7 +291,7 @@ class TestQuantumLayerDtypePropagation:
         self, circuit_2mode_no_params
     ):
         """
-        MeasurementStrategy.AMPLITUDES with complex forward input:
+        MeasurementStrategy.amplitudes() (amplitude_encoding=True):
         ensure dtype=torch.float32 leads to complex64 (torch.cfloat) amplitudes.
 
         IMPORTANT: use a circuit with *no symbolic parameters* to avoid requiring
@@ -319,7 +319,7 @@ class TestQuantumLayerDtypePropagation:
         self, circuit_2mode_no_params
     ):
         """
-        MeasurementStrategy.AMPLITUDES with complex forward input:
+        MeasurementStrategy.amplitudes() (amplitude_encoding=True):
         ensure dtype=torch.float64 leads to complex128 (torch.cdouble) amplitudes.
         """
         layer = QuantumLayer(

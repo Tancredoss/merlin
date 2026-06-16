@@ -43,12 +43,13 @@ from typing import Any, Literal, cast
 import exqalibur as xqlbr
 import perceval as pcvl
 import torch
+from perceval.components import PS, AComponent
 
 from ..builder.circuit_builder import CircuitBuilder
 from ..core.computation_space import ComputationSpace
 from ..core.partial_measurement import PartialMeasurement
 from ..core.probability_distribution import ProbabilityDistribution
-from ..core.state import StatePattern, generate_state
+from ..core.state import StatePattern, _generate_default_input_state, generate_state
 from ..core.state_vector import StateVector
 from ..measurement.detectors import resolve_detectors
 from ..measurement.photon_loss import resolve_photon_loss
@@ -136,7 +137,7 @@ class ResolvedCircuit:
         Resolved circuit instance.
     experiment : pcvl.Experiment
         Experiment wrapping the resolved circuit.
-    noise_model : Any | None
+    noise : Any | None
         Attached experiment noise model, if present.
     has_custom_noise : bool
         Whether the experiment exposes a non-empty custom noise model.
@@ -144,7 +145,7 @@ class ResolvedCircuit:
 
     circuit: pcvl.Circuit
     experiment: pcvl.Experiment
-    noise_model: Any | None
+    noise: Any | None
     has_custom_noise: bool
 
 
@@ -164,6 +165,8 @@ class NoiseAndDetectorConfig:
         Whether the experiment defines non-default detectors.
     detector_warnings : list[str]
         Compatibility warnings emitted while resolving detector behavior.
+    noise_groups: NoiseGroups | None
+        The noise groups applied to the circuit to be ran.
     """
 
     photon_survival_probs: list[float]
@@ -171,6 +174,172 @@ class NoiseAndDetectorConfig:
     detectors: list[pcvl.Detector]
     has_custom_detectors: bool
     detector_warnings: list[str]
+    noise_groups: NoiseGroups | None
+
+
+@dataclass(frozen=True)
+class NoiseGroups:
+    """Stores the classified noise sources
+
+    Parameters
+    ----------
+    source : dict[str, float | bool | None] | None
+        Source noises e.g. {"indistinguishability": 0.9, "g2": 0.05, "g2_distinguishable": True},
+        or ``None`` when no source noise is present.
+    circuit : dict[str, float | None] | None
+        Circuit noises e.g. {"phase_error": 0.05, "phase_imprecision": 0.1},
+        or ``None`` when no circuit noise is present.
+    post_measurement : dict[str, float | None] | None
+        Post measurement noises e.g. {"brightness": 0.3, "transmittance": 0.9},
+        or ``None`` when no post-measurement noise is present.
+    """
+
+    source: dict[str, float | bool | None] | None
+    circuit: dict[str, float | None] | None
+    post_measurement: dict[str, float | None] | None
+
+
+def has_active_noise(noise_groups: NoiseGroups | None) -> bool:
+    """Return whether any classified noise group is active.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Classified noise groups returned by :func:`classify_noise`.
+
+    Returns
+    -------
+    bool
+        True when at least one source, circuit, or post-measurement noise group
+        is active.
+    """
+    if noise_groups is None:
+        return False
+    return bool(
+        noise_groups.source or noise_groups.circuit or noise_groups.post_measurement
+    )
+
+
+def has_source_noise(noise_groups: NoiseGroups | None) -> bool:
+    """Return whether source noise is active.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Classified noise groups returned by :func:`classify_noise`.
+
+    Returns
+    -------
+    bool
+        True when a source noise group is present.
+    """
+    return noise_groups is not None and bool(noise_groups.source)
+
+
+def has_circuit_noise(noise_groups: NoiseGroups | None) -> bool:
+    """Return whether circuit noise is active.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Classified noise groups returned by :func:`classify_noise`.
+
+    Returns
+    -------
+    bool
+        True when a circuit noise group is present.
+    """
+    return noise_groups is not None and bool(noise_groups.circuit)
+
+
+def has_phase_error(noise_groups: NoiseGroups | None) -> bool:
+    """Return whether stochastic phase-error noise is active.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Classified noise groups returned by :func:`classify_noise`.
+
+    Returns
+    -------
+    bool
+        True when ``phase_error`` is present in the circuit noise group. A
+        ``None`` value means the stochastic half-width is stored locally on one
+        or more Perceval phase shifters.
+    """
+    if not has_circuit_noise(noise_groups):
+        return False
+    circuit_noise = cast(dict[str, float | None], noise_groups.circuit)
+    return "phase_error" in circuit_noise
+
+
+def _phase_shifter_max_error(component: AComponent) -> float:
+    """Return the local phase-error half-width stored on a Perceval phase shifter.
+
+    Parameters
+    ----------
+    component : AComponent
+        Component to inspect.
+
+    Returns
+    -------
+    float
+        Positive local phase-error half-width, or 0.0 when no local stochastic
+        phase-error is configured.
+    """
+    if not isinstance(component, PS):
+        return 0.0
+    return float(getattr(component, "_max_error", 0.0))
+
+
+def _circuit_has_phase_error(circuit: pcvl.Circuit) -> bool:
+    """Return whether a circuit contains local phase-shifter error.
+
+    Parameters
+    ----------
+    circuit : pcvl.Circuit
+        Circuit whose components are inspected.
+
+    Returns
+    -------
+    bool
+        True when at least one :class:`pcvl.PS` component has a positive
+        ``max_error`` value.
+    """
+    return any(_phase_shifter_max_error(component) > 0.0 for _, component in circuit)
+
+
+def _with_component_phase_error(
+    noise_groups: NoiseGroups | None,
+) -> NoiseGroups:
+    """Mark classified noise groups as containing local phase-error noise.
+
+    Parameters
+    ----------
+    noise_groups : NoiseGroups | None
+        Existing noise groups derived from a :class:`pcvl.NoiseModel`, if any.
+
+    Returns
+    -------
+    NoiseGroups
+        Noise groups with ``phase_error`` present in the circuit group. A
+        ``None`` value is used when the stochastic width is provided by
+        individual phase shifters rather than by :class:`pcvl.NoiseModel`.
+    """
+    if noise_groups is None:
+        return NoiseGroups(
+            source=None,
+            circuit={"phase_error": None},
+            post_measurement=None,
+        )
+
+    circuit_noise = dict(noise_groups.circuit or {})
+    circuit_noise.setdefault("phase_error", None)
+    return NoiseGroups(
+        source=noise_groups.source,
+        circuit=circuit_noise,
+        post_measurement=noise_groups.post_measurement,
+    )
 
 
 @dataclass(frozen=True)
@@ -193,7 +362,7 @@ class InitializationContext:
         Resolved circuit.
     experiment : pcvl.Experiment
         Resolved experiment.
-    noise_model : Any | None
+    noise : Any | None
         Attached noise model, if any.
     has_custom_noise : bool
         Whether the experiment defines custom noise.
@@ -221,6 +390,8 @@ class InitializationContext:
         Initialization warnings to surface to the caller.
     return_object : bool
         Whether the layer returns structured objects instead of tensors.
+    noise_groups: NoiseGroups | None
+        The noise groups applied to the circuit to be ran.
     """
 
     device: torch.device | None
@@ -230,7 +401,7 @@ class InitializationContext:
     input_size: int | None
     circuit: pcvl.Circuit
     experiment: pcvl.Experiment
-    noise_model: Any | None
+    noise: Any | None
     has_custom_noise: bool
     input_state: StateVector | pcvl.BasicState | None
     n_photons: int | None
@@ -244,6 +415,8 @@ class InitializationContext:
     measurement_strategy: MeasurementStrategyLike
     warnings: list[str]
     return_object: bool
+    noise_groups: NoiseGroups | None
+    n_phase_error_samples: int
 
 
 def validate_encoding_mode(
@@ -403,6 +576,16 @@ def prepare_input_state(
     if input_state is None and n_photons is not None:
         if computation_space is ComputationSpace.DUAL_RAIL:
             return pcvl.BasicState(tuple([1, 0] * n_photons)), n_photons
+        elif amplitude_encoding:
+            if circuit_m is None:
+                raise ValueError(
+                    "circuit_m must be provided to generate default state for amplitude encoding."
+                )
+            input_state = _generate_default_input_state(
+                circuit_m,
+                n_photons,
+                computation_space,
+            )
         else:
             if circuit_m is None:
                 raise ValueError(
@@ -513,6 +696,7 @@ def vet_experiment(experiment: pcvl.Experiment) -> dict[str, bool]:
         If the experiment uses unsupported features such as post-selection,
         heralding, feed-forward, time dependence, or minimum-photon filters.
     """
+    has_post_select = not experiment.post_select_fn == pcvl.PostSelect()
     _post_select_fn = experiment.post_select_fn
     has_post_select = (
         _post_select_fn is not None and _post_select_fn != pcvl.PostSelect()
@@ -552,6 +736,7 @@ def vet_experiment(experiment: pcvl.Experiment) -> dict[str, bool]:
 def resolve_circuit(
     circuit_source: CircuitSource,
     pcvl_module,
+    noise: pcvl.NoiseModel | None = None,
 ) -> ResolvedCircuit:
     """Resolve a builder, circuit, or experiment into a unified circuit form.
 
@@ -561,6 +746,8 @@ def resolve_circuit(
         Resolved circuit source configuration.
     pcvl_module : Any
         Perceval module used to instantiate experiments when needed.
+    noise: pcvl.NoiseModel | None
+        The resolved NoiseModel of the layer. Defaults to None (no noise).
 
     Returns
     -------
@@ -577,32 +764,31 @@ def resolve_circuit(
             raise RuntimeError("Builder must be provided for builder source type.")
         circuit = circuit_source.builder.to_pcvl_circuit(pcvl_module)
         experiment = pcvl_module.Experiment(circuit)
-        noise_model = None
-        has_custom_noise = False
+        if noise is not None:
+            experiment.noise = noise
     elif circuit_source.source_type == "circuit":
         if circuit_source.circuit is None:
             raise RuntimeError("Circuit must be provided for circuit source type.")
         circuit = circuit_source.circuit
         experiment = pcvl_module.Experiment(circuit)
-        noise_model = None
-        has_custom_noise = False
+        if noise is not None:
+            experiment.noise = noise
     elif circuit_source.source_type == "experiment":
         if circuit_source.experiment is None:
             raise RuntimeError(
                 "Experiment must be provided for experiment source type."
             )
         experiment = circuit_source.experiment
-        noise_model = getattr(experiment, "noise", None)
+        noise = getattr(experiment, "noise", None) if noise is None else noise
         circuit = experiment.unitary_circuit()
-        has_custom_noise = noise_model is not None
     else:
         raise RuntimeError("Resolved circuit could not be determined.")
 
     return ResolvedCircuit(
         circuit=circuit,
         experiment=experiment,
-        noise_model=noise_model,
-        has_custom_noise=has_custom_noise,
+        noise=noise,
+        has_custom_noise=noise is not None,
     )
 
 
@@ -611,6 +797,9 @@ def setup_noise_and_detectors(
     circuit: pcvl.Circuit,
     computation_space: ComputationSpace,
     measurement_strategy: MeasurementStrategyLike,
+    backend: str | None = None,
+    noise: pcvl.NoiseModel | None = None,
+    return_object: bool = False,
 ) -> NoiseAndDetectorConfig:
     """Extract and validate photon-loss and detector configuration.
 
@@ -624,52 +813,81 @@ def setup_noise_and_detectors(
         Logical computation space requested by the layer.
     measurement_strategy : :data:`~merlin.measurement.strategies.MeasurementStrategyLike`
         Measurement strategy used to validate detector and noise compatibility.
+    backend : str | None
+        Backend identifier used when validating supported noisy measurement
+        configurations. If omitted, no backend-specific validation is applied.
+        Default value is None.
+    noise : pcvl.NoiseModel | None
+        Noise model to validate and classify. If omitted, the simulation is
+        treated as noise-free unless detector configuration requires validation.
+        Default value is None.
+    return_object : bool
+        Whether the layer returns structured objects instead of tensors.
+        Default value is False.
 
     Returns
     -------
     NoiseAndDetectorConfig
-        Extracted and validated noise/detector configuration.
+        Extracted and validated noise/detector configuration including photon
+        survival probabilities, detector settings, and classified noise groups.
 
     Raises
     ------
     RuntimeError
-        If amplitude readout is requested together with incompatible noise or
-        detector settings.
+        If amplitude readout is requested together with custom detectors.
+    NotImplementedError
+        If a non-SLOS backend is specified.
+    ValueError
+        If measurement strategy is incompatible with noisy simulation, including
+        amplitude readout with active noise.
     """
-    photon_survival_probs, empty_noise_model = resolve_photon_loss(
-        experiment, circuit.m
-    )
+    # Measurement resolution
+    measurement_kind = _resolve_measurement_kind(measurement_strategy)
+    amplitude_readout = measurement_kind == MeasurementKind.AMPLITUDES
+
+    # Checking and resolving the detectors
     detectors, empty_detectors = resolve_detectors(experiment, circuit.m)
-
-    has_custom_noise = not empty_noise_model
-    has_custom_detectors = not empty_detectors
     detector_warnings: list[str] = []
-
+    has_custom_detectors = not empty_detectors
     if has_custom_detectors and computation_space is not ComputationSpace.FOCK:
         detectors = [pcvl.Detector.pnr()] * circuit.m
         detector_warnings.append(
             f"Detectors are ignored in favor of ComputationSpace: {computation_space}"
         )
-
-    amplitude_readout = (
-        _resolve_measurement_kind(measurement_strategy) == MeasurementKind.AMPLITUDES
-    )
-    if amplitude_readout and has_custom_noise:
-        raise RuntimeError(
-            "measurement_strategy=MeasurementStrategy.AMPLITUDES cannot be used when the experiment defines a NoiseModel."
-        )
     if amplitude_readout and has_custom_detectors:
         raise RuntimeError(
-            "measurement_strategy=MeasurementStrategy.AMPLITUDES does not support experiments with detectors. "
+            "measurement_strategy=MeasurementStrategy.amplitudes() does not support experiments with detectors. "
             "Compute amplitudes without detectors and apply a Partial DetectorTransform manually if needed."
         )
 
+    # Validating and sorting the noise model
+    noise_groups = None if noise is None else classify_noise(noise)
+    if _circuit_has_phase_error(circuit):
+        noise_groups = _with_component_phase_error(noise_groups)
+    validate_noisy_measurement_strategy(
+        backend,
+        output=measurement_kind.name.lower(),
+        noise=noise,
+        noise_groups=noise_groups,
+        empty_detectors=empty_detectors,
+        return_object=return_object,
+        measurement_kind=measurement_kind,
+    )
+
+    # Post measurement error
+    photon_survival_probs, no_post_measurement_noise = resolve_photon_loss(
+        noise_groups, circuit.m
+    )
+    has_post_measurement_noise = not no_post_measurement_noise
+
+    # Creating the noise config object
     return NoiseAndDetectorConfig(
         photon_survival_probs=photon_survival_probs,
-        has_custom_noise=has_custom_noise,
+        has_custom_noise=has_post_measurement_noise,
         detectors=detectors,
         has_custom_detectors=has_custom_detectors,
         detector_warnings=detector_warnings,
+        noise_groups=noise_groups,
     )
 
 
@@ -971,3 +1189,251 @@ def normalize_output_key(
     if isinstance(key, torch.Tensor):
         return tuple(int(v) for v in key.tolist())
     return tuple(int(v) for v in key)
+
+
+def classify_noise(noise: pcvl.NoiseModel | None) -> NoiseGroups | None:
+    """From a noise model, create a NoiseGroups object splitting the noise inputs.
+
+    Parameters
+    ----------
+    noise : pcvl.NoiseModel | None
+        The noise model to apply to the circuit
+
+    Returns
+    -------
+    NoiseGroups | None
+        The NoiseGroups object that contains the noise sources per category.
+    """
+
+    # The classifying pipeline can be seen as following. For a specific noise source.
+    # 1. Is the noise value None. If it is, don't add anything to its category dictionary.
+    # 2. Is the value the default value (noiseless case). If it is, don't add anything to its category dictionary
+    # 3. Otherwise, add the noise value its corresponding category.
+    #
+    # If a category does not have any noises, it should be set to None.
+
+    if noise is None:
+        return None
+    # Source noise
+    source = {}
+    # indistinguishability
+    if noise.indistinguishability is None:
+        pass
+    elif not noise.indistinguishability == 1.0:  # indistinguishability's default value
+        source["indistinguishability"] = noise.indistinguishability
+    g2_active = noise.g2 is not None and noise.g2 != 0.0
+    # g2_distinguishable
+    if noise.g2_distinguishable is None:
+        pass
+    elif noise.g2_distinguishable and g2_active:
+        source["g2_distinguishable"] = True
+    # g2
+    if noise.g2 is None:
+        pass
+    elif g2_active:  # g2's default value
+        source["g2"] = noise.g2
+    if source == {}:
+        source = None
+
+    # Circuit noise
+    circuit = {}
+    # phase_imprecision
+    if noise.phase_imprecision is None:
+        pass
+    elif not noise.phase_imprecision == 0.0:
+        circuit["phase_imprecision"] = (
+            noise.phase_imprecision
+        )  # phase_imprecision's default value
+    # phase_error
+    if noise.phase_error is None:
+        pass
+    elif not noise.phase_error == 0.0:  # phase_error's default value
+        circuit["phase_error"] = noise.phase_error
+    if circuit == {}:
+        circuit = None
+
+    # Post-measurement noise
+    post_measurement = {}
+    # transmittance
+    if noise.transmittance is None:
+        pass
+    elif not noise.transmittance == 1.0:  # transmittance's default value
+        post_measurement["transmittance"] = noise.transmittance
+    # brightness
+    if noise.brightness is None:
+        pass
+    elif not noise.brightness == 1.0:  # brightness's default value
+        post_measurement["brightness"] = noise.brightness
+
+    if post_measurement == {}:
+        post_measurement = None
+
+    # Building the NoiseGroups object
+    if (source is None) and (circuit is None) and (post_measurement is None):
+        return None
+    return NoiseGroups(
+        source=source, circuit=circuit, post_measurement=post_measurement
+    )
+
+
+def validate_noisy_measurement_strategy(
+    strategy: str | None,
+    output: str,
+    noise: pcvl.NoiseModel | None = None,
+    noise_groups: NoiseGroups | None = None,
+    empty_detectors: bool = False,
+    return_object: bool = False,
+    measurement_kind: MeasurementKind | None = None,
+) -> pcvl.NoiseModel | None:
+    """Validate the noise model and QuantumLayer configurations so that they match.
+
+    Validates that the noise model, measurement strategy, backend, and output
+    configuration are compatible.
+
+    Parameters
+    ----------
+    strategy : str | None
+        The simulation backend used (e.g., "slos"). If provided and not "slos",
+        raises NotImplementedError. Default is None.
+    output : str
+        The measurement strategy output type (e.g., "amplitudes", "probabilities",
+        "mode_expectations"). Must be "probabilities" when noise is present.
+    noise : pcvl.NoiseModel | None
+        The noise model to validate. Default is None.
+    noise_groups : NoiseGroups | None
+        Classified active noise groups. Neutral noise models should pass None
+        here so they are not treated as active noise. Default is None.
+    empty_detectors : bool
+        Whether the circuit has no custom detectors. Used to determine early returns
+        when there is no noise. Default is False.
+    return_object : bool
+        Whether the layer returns structured objects instead of tensors.
+        Cannot be True when active noise is present. Default is False.
+    measurement_kind : MeasurementKind | None
+        Resolved measurement kind. Used to reject partial measurement with
+        active noise. Default is None.
+
+    Returns
+    -------
+    pcvl.NoiseModel | None
+        The input noise model.
+
+    Raises
+    ------
+    NotImplementedError
+        If return_object=True and active noise is present, or if the backend
+        strategy is not "slos".
+    ValueError
+        If output measurement strategy is incompatible with noisy simulation
+        (e.g., "amplitudes" or "mode_expectations" with noise).
+    """
+    active_noise = has_active_noise(noise_groups)
+    if not active_noise and empty_detectors:
+        return noise
+
+    if active_noise and return_object:
+        raise NotImplementedError(
+            "The noise computation with the return_object feature set at True is not yet implemented."
+        )
+    if active_noise and (
+        measurement_kind is MeasurementKind.PARTIAL or output == "partial"
+    ):
+        raise ValueError(
+            "Partial measurement is not supported with active noise. Use full measurement or disable noise."
+        )
+    if active_noise and output != "probabilities":
+        raise ValueError(
+            "When doing a noisy simulation, the probabilities measurement strategy must be used."
+        )
+    if strategy is not None and strategy.upper() != "SLOS":
+        raise NotImplementedError(
+            f"Backend '{strategy}' is not supported. "
+            "Only 'slos' is currently available."
+        )
+    return noise
+
+
+def normalize_noise(
+    layer_noise: pcvl.NoiseModel | None,
+    experiment_noise: pcvl.NoiseModel | None,
+) -> pcvl.NoiseModel:
+    """Normalize and resolve noise models from multiple QuantumLayer sources.
+
+    Resolves conflicting noise model sources and validates g2_distinguishable
+    settings for coherence consistency. When both sources provide a noise model,
+    they must be identical. Automatically corrects g2_distinguishable when
+    indistinguishability is 1.0 (fully indistinguishable photons).
+
+    Parameters
+    ----------
+    layer_noise : pcvl.NoiseModel | None
+        The noise model declared via the noise argument of QuantumLayer.
+    experiment_noise : pcvl.NoiseModel | None
+        The noise model declared via experiment.noise in QuantumLayer.
+
+    Returns
+    -------
+    pcvl.NoiseModel
+        The resolved and validated noise model with corrected g2_distinguishable
+        and g2 settings as needed.
+
+    Raises
+    ------
+    ValueError
+        If both layer_noise and experiment_noise are None, or if both
+        are provided but not identical.
+
+    Warns
+    -----
+    UserWarning
+        When g2_distinguishable is automatically corrected from True to False due
+        to fully indistinguishable photons (indistinguishability == 1.0).
+    """
+
+    output_nm = None
+    if layer_noise is None:
+        output_nm = experiment_noise
+        # Both noise models are None
+        if output_nm is None:
+            return None
+    else:
+        if experiment_noise is None:
+            output_nm = layer_noise
+        else:
+            if layer_noise == experiment_noise:
+                output_nm = layer_noise
+
+    if output_nm is None:
+        raise ValueError(
+            "Conflicting noise models: specify via noise= or experiment.noise, not both"
+        )
+
+    # Warning if trying to use g2 distinguishable photons if the photons are completly indistiguishable
+    if (
+        output_nm.indistinguishability == 1.0
+        and (not output_nm.g2 == 0.0)
+        and output_nm.g2_distinguishable
+    ):
+        warnings.warn(
+            "When indistinguishability is 1.0 (fully indistinguishable photons) and g2 noise is present, "
+            "g2_distinguishable must be False since indistinguishable g2 photons (indistinguishability=1.0) cannot be distinguished. "
+            "Setting g2_distinguishable=False automatically.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    # If there is no application possible for g2_distinguishable (no g2 or indistiguishable photons), set it to False as it has no impact of the simulation
+    if output_nm.indistinguishability == 1.0 or output_nm.g2 == 0.0:
+        output_nm.g2_distinguishable = False
+
+    return output_nm
+
+
+def _normalize_sector_keys(
+    keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]],
+) -> tuple[tuple[int, ...], ...]:
+    if keys and isinstance(keys[0], list):
+        nested_keys = cast(list[list[tuple[int, ...]]], keys)
+        return tuple(tuple(k) for key_list in nested_keys for k in key_list)
+    flat_keys = cast(list[tuple[int, ...]], keys)
+    return tuple(tuple(k) for k in flat_keys)

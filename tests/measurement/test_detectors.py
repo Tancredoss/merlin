@@ -164,7 +164,7 @@ class TestDetectorsWithQuantumLayer:
 
         with pytest.raises(
             RuntimeError,
-            match="MeasurementStrategy\\.AMPLITUDES does not support experiments with detectors",
+            match=r"measurement_strategy=MeasurementStrategy\.amplitudes\(\) does not support experiments with detectors",
         ):
             ML.QuantumLayer(
                 input_size=0,
