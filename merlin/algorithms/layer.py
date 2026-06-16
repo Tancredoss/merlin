@@ -71,6 +71,7 @@ from .layer_utils import (
     _normalize_sector_keys,
     apply_angle_encoding,
     compute_new_memristive_ps_angles,
+    extract_photon_count,
     feature_count_for_prefix,
     has_phase_error,
     has_source_noise,
@@ -292,6 +293,20 @@ class QuantumLayer(MerlinModule):
             circuit_m=resolved_circuit.circuit.m,
             amplitude_encoding=amplitude_encoding,
         )
+        # Phase 8.5 : We count number of photons from input_state and compare it to resolved_n_photons to see if it match, resolved_n_photons is better to use than n_photons
+        # because n_photons is treated by prepare_input_state. because of that, this value can be ubdate since it was initialised, so we make sure to take the last value to
+        # to avoid easy to correct errors.
+
+        extracted_n = extract_photon_count(input_state)
+        if (
+            extracted_n is not None
+            and resolved_n_photons is not None
+            and extracted_n != resolved_n_photons
+        ):
+            raise ValueError(
+                "Inconsistent number of photons between input_state and n_photons."
+            )
+
         # Phase 9: noise + detector setup
         self.backend = None  # TODO Change when implemented
         noise_and_detectors = setup_noise_and_detectors(
