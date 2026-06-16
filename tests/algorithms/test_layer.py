@@ -2897,9 +2897,34 @@ def test_quantum_layer_photon_count_mismatch_list():
         QuantumLayer(
             input_size=0,
             circuit=pcvl.Circuit(3),
+            input_state=[1, 1, 1], 
+            n_photons=1,
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+def test_quantum_layer_photon_count_mismatch_tuple():
+    with pytest.raises(ValueError, match="Inconsistent number of photons between input_state and n_photons."):
+        QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=(1, 1, 1), 
+            n_photons=1,
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+def test_quantum_layer_photon_count_mismatch_list_is_float_compatible_working():
+    with pytest.raises(ValueError, match="Inconsistent number of photons between input_state and n_photons."):
+        QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
             input_state=[1., 1., 1.], 
             n_photons=1,
             measurement_strategy=ML.MeasurementStrategy.probs(),)
+def test_quantum_layer_photon_count_match_list_is_float_compatible_working():
+        layer = QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=[1., 1., 1.], 
+            n_photons=3,
+            measurement_strategy=ML.MeasurementStrategy.probs(),)
+        assert layer is not None
+        assert isinstance(layer, QuantumLayer)
 def test_quantum_layer_photon_count_mismatch_StateVector():
     with pytest.raises(ValueError, match="Inconsistent number of photons between input_state and n_photons."):
         QuantumLayer(
@@ -2927,7 +2952,7 @@ def test_quantum_layer_photon_count_mismatch_StateVector_superposition():
             n_photons=1,
             measurement_strategy=ML.MeasurementStrategy.probs(),)
 
-def test_quantum_layer_photon_count_match_StateVector_superposition():
+def test_quantum_layer_photon_count_match_StateVector():
         layer = QuantumLayer(
             input_size=0,
             circuit=pcvl.Circuit(3),
@@ -2970,3 +2995,32 @@ def test_quantum_layer_list_not_contain_integers():
             input_state=[0.3, 0, 1], #invalide input for list.
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
+
+def test_quantum_layer_tuple_not_contain_integers():
+    """see if an input state reject list of float."""
+    expected_msg =("List/tuple input_state must contain non-negative integer "
+                   "occupations; use a StateVector for superposed inputs.")
+    
+    with pytest.raises(ValueError, match=re.escape(expected_msg)):
+        QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(3),
+            input_state=(0.3, 0, 1), #invalide input for list.
+            measurement_strategy=ML.MeasurementStrategy.probs(),
+        )
+
+def test_quantum_layer_experiment_input_state_overrides_without_error():
+    circuit = pcvl.Circuit(2)
+    experiment = pcvl.Experiment(circuit)
+    experiment.with_input(pcvl.BasicState([1, 0]))
+    expected_warning = "Both 'experiment.input_state' and 'input_state' are provided. 'experiment.input_state' will be used."
+    
+    with pytest.raises(UserWarning, match=re.escape(expected_warning)):
+        layer = QuantumLayer(
+            input_size=0,
+            experiment=experiment,
+            input_state=[1, 1],   # ignored, replaced by experiment.input_state
+            n_photons=1,
+            measurement_strategy=ML.MeasurementStrategy.probs(),
+        )
+        assert layer.n_photons == 1
