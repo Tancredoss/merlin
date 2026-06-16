@@ -210,7 +210,7 @@ class SectoredDistribution:
         torch.Tensor
             If return_keys is False: concatenated probability tensor of shape
             (total_states,) for unbatched or
-            (*batch_shape, total_states) for batched.
+            (batch_shape..., total_states) for batched.
         tuple[list[tuple[int, ...]], torch.Tensor]
             If return_keys is True: tuple of (keys, tensor) where keys is a list
             of tuples representing Fock occupation numbers for each state.
