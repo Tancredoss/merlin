@@ -32,11 +32,15 @@ from torch import Tensor
 
 from ..builder.circuit_builder import ANGLE_ENCODING_MODE_ERROR, CircuitBuilder
 from ..core.computation_space import ComputationSpace
+from ..core.sectored_distribution import (
+    SectoredDistribution,
+    SectorResult,
+    clean_sectored_distribution,
+)
 from ..core.state import StatePattern, generate_state
 from ..core.state_vector import StateVector
 from ..measurement.autodiff import AutoDiffProcess
 from ..measurement.detectors import resolve_detectors
-from ..measurement.photon_loss import resolve_photon_loss
 from ..measurement.strategies import MeasurementStrategy
 from ..pcvl_pytorch.locirc_to_tensor import CircuitConverter
 from ..utils.deprecations import sanitize_parameters
@@ -150,6 +154,16 @@ def _inputs_are_equal(x1: Tensor, x2: Tensor | None) -> bool:
     if x1.shape != x2.shape:
         return False
     return torch.allclose(x1, x2)
+
+
+# This message is deliberately FidelityKernel-specific. Keep it local so the
+# guidance can differ from QuantumLayer and FeedForwardBlock.
+_TENSOR_INPUT_STATE_REMOVAL_MESSAGE = (
+    "torch.Tensor is no longer accepted as FidelityKernel input_state. "
+    "FidelityKernel input_state must be a Fock occupation list such as "
+    "[1, 0, 1]. For amplitude tensors, build a StateVector with "
+    "StateVector.from_tensor() and use QuantumLayer instead."
+)
 
 
 class FeatureMap:
@@ -1082,20 +1096,11 @@ class _CCInvQuantumLayer(QuantumLayer):
         # TODO: In release 0.5.x, remove FeatureMap.encoder compatibility.
         self._encoder = encoder
 
-        raw_keys = self._raw_output_keys
-        try:
-            self._input_state_index: int = raw_keys.index(tuple(input_state))
-        except ValueError as exc:
-            raise ValueError(
-                "Input state is not present in the simulation basis produced by the circuit."
-            ) from exc
-
         # Build the detection weight vector: track which output bin the input
         # state maps to after photon loss and detector transforms.
         weight_device = self.device or torch.device("cpu")
-        one_hot = torch.zeros(len(raw_keys), dtype=self.dtype, device=weight_device)
-        one_hot[self._input_state_index] = 1.0
-        detection_vector = self._apply_detection_pipeline(one_hot)
+        detection_seed = self._build_input_detection_seed(input_state, weight_device)
+        detection_vector = self._apply_detection_pipeline(detection_seed)
         detection_vector = detection_vector.to(dtype=self.dtype, device=weight_device)
 
         nonzero = torch.nonzero(detection_vector > 1e-8, as_tuple=True)[0]
@@ -1110,6 +1115,104 @@ class _CCInvQuantumLayer(QuantumLayer):
             self._input_detection_index = int(nonzero[0].item())
         self.register_buffer("_input_detection_weights", detection_vector)
         self._kernel_autodiff_process = AutoDiffProcess()
+
+    @staticmethod
+    def _raw_keys_are_sectored(
+        raw_output_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]],
+    ) -> bool:
+        """Return whether raw output keys are grouped by photon-number sector.
+
+        Parameters
+        ----------
+        raw_output_keys : list[tuple[int, ...]] | list[list[tuple[int, ...]]]
+            Raw keys produced by the simulation graph.
+
+        Returns
+        -------
+        bool
+            True when the first level contains per-sector key lists.
+        """
+        return bool(raw_output_keys) and isinstance(raw_output_keys[0], list)
+
+    def _build_input_detection_seed(
+        self,
+        input_state: list[int],
+        device: torch.device,
+    ) -> Tensor | SectoredDistribution:
+        """Build a one-hot raw distribution for the kernel input state.
+
+        Parameters
+        ----------
+        input_state : list[int]
+            Fock occupation list whose return probability defines the fidelity
+            kernel transition probability.
+        device : torch.device
+            Device on which the one-hot tensors are allocated.
+
+        Returns
+        -------
+        torch.Tensor | SectoredDistribution
+            Flat one-hot tensor for ordinary SLOS keys, or a sectored one-hot
+            distribution when the noisy backend returns photon-number sectors.
+
+        Raises
+        ------
+        ValueError
+            If ``input_state`` is not present in the raw simulation basis.
+        """
+        input_key = tuple(input_state)
+        raw_output_keys = self._raw_output_keys
+
+        if self._raw_keys_are_sectored(raw_output_keys):
+            sectors: list[SectorResult] = []
+            flattened_index = 0
+            found_index: int | None = None
+
+            for sector_keys in cast(list[list[tuple[int, ...]]], raw_output_keys):
+                if len(sector_keys) == 0:
+                    raise ValueError("Raw output key sectors must not be empty.")
+
+                sector_tensor = torch.zeros(
+                    len(sector_keys),
+                    dtype=self.dtype,
+                    device=device,
+                )
+                try:
+                    sector_index = sector_keys.index(input_key)
+                except ValueError:
+                    pass
+                else:
+                    sector_tensor[sector_index] = 1.0
+                    found_index = flattened_index + sector_index
+
+                sectors.append(
+                    SectorResult(
+                        sector_tensor,
+                        n_modes=self.circuit.m,
+                        n_photons=sum(sector_keys[0]),
+                        keys=tuple(sector_keys),
+                    )
+                )
+                flattened_index += len(sector_keys)
+
+            if found_index is None:
+                raise ValueError(
+                    "Input state is not present in the simulation basis produced by the circuit."
+                )
+            self._input_state_index = found_index
+            return SectoredDistribution(tuple(sectors))
+
+        raw_keys = cast(list[tuple[int, ...]], raw_output_keys)
+        try:
+            self._input_state_index = raw_keys.index(input_key)
+        except ValueError as exc:
+            raise ValueError(
+                "Input state is not present in the simulation basis produced by the circuit."
+            ) from exc
+
+        one_hot = torch.zeros(len(raw_keys), dtype=self.dtype, device=device)
+        one_hot[self._input_state_index] = 1.0
+        return one_hot
 
     def _encode_single(self, x: Tensor) -> Tensor:
         """Encode one datapoint to the circuit's input parameter shape.
@@ -1208,7 +1311,10 @@ class _CCInvQuantumLayer(QuantumLayer):
             dim=0,
         )
 
-    def _apply_detection_pipeline(self, distribution: Tensor) -> Tensor:
+    def _apply_detection_pipeline(
+        self,
+        distribution: Tensor | SectoredDistribution,
+    ) -> Tensor:
         """Apply photon-loss and detector transforms in sequence.
 
         This is the single canonical place where the two-step detection
@@ -1218,9 +1324,10 @@ class _CCInvQuantumLayer(QuantumLayer):
 
         Parameters
         ----------
-        distribution : torch.Tensor
-            Probability distribution tensor; either 1-D (single output
-            vector) or 2-D ``(batch, bins)``.
+        distribution : torch.Tensor | SectoredDistribution
+            Probability distribution tensor or sectored probability
+            distribution. Tensors are either 1-D (single output vector) or 2-D
+            ``(batch, bins)``.
 
         Returns
         -------
@@ -1228,30 +1335,53 @@ class _CCInvQuantumLayer(QuantumLayer):
             Distribution after photon-loss and detector transforms, with
             any trailing batch dimension squeezed away if the input was 1-D.
         """
+        distribution_was_vector = (
+            isinstance(distribution, Tensor) and distribution.ndim == 1
+        )
         result = self._apply_photon_loss_transform(distribution)
-        if result.ndim > 1 and distribution.ndim == 1:
-            result = result.squeeze(0)
         result = self._apply_detector_transform(result)
-        if result.ndim > 1 and distribution.ndim == 1:
+        if isinstance(result, SectoredDistribution):
+            result = cast(Tensor, clean_sectored_distribution(result).to_tensor())
+        if not isinstance(result, Tensor):
+            raise TypeError("Detection pipeline must return a tensor distribution.")
+        if distribution_was_vector and result.ndim > 1:
             result = result.squeeze(0)
         return result
 
-    def _compute_unitary(self, x_enc: Tensor) -> Tensor:
+    def _compute_unitary(
+        self,
+        x_enc: Tensor,
+        *,
+        apply_phase_error: bool = False,
+    ) -> Tensor:
         """Evaluate the circuit unitary for an already-encoded input.
 
         Parameters
         ----------
         x_enc : torch.Tensor
             Encoded input tensor produced by :meth:`_encode_single`.
+        apply_phase_error : bool
+            Whether stochastic phase-error samples should be applied while
+            converting the circuit. Default is ``False``.
 
         Returns
         -------
         torch.Tensor
             Complex unitary matrix of shape ``(m, m)``.
         """
-        return self.computation_process.converter.to_tensor(*self.thetas, x_enc)
+        return self.computation_process.converter.to_tensor(
+            *self.thetas,
+            x_enc,
+            apply_phase_error=apply_phase_error,
+        )
 
-    def _compute_kernel_unitary(self, x1: Tensor, x2: Tensor) -> Tensor:
+    def _compute_kernel_unitary(
+        self,
+        x1: Tensor,
+        x2: Tensor,
+        *,
+        apply_phase_error: bool = False,
+    ) -> Tensor:
         """Compute the combined kernel unitary ``U(x1) @ U†(x2)``.
 
         Parameters
@@ -1260,23 +1390,40 @@ class _CCInvQuantumLayer(QuantumLayer):
             First raw feature tensor.
         x2 : torch.Tensor
             Second raw feature tensor.
+        apply_phase_error : bool
+            Whether stochastic phase-error samples should be applied while
+            converting both feature-map unitaries. Default is ``False``.
 
         Returns
         -------
         torch.Tensor
             Combined kernel unitary of shape ``(m, m)``.
         """
-        U1 = self._compute_unitary(self._encode_single(x1))
-        U2 = self._compute_unitary(self._encode_single(x2))
+        U1 = self._compute_unitary(
+            self._encode_single(x1),
+            apply_phase_error=apply_phase_error,
+        )
+        U2 = self._compute_unitary(
+            self._encode_single(x2),
+            apply_phase_error=apply_phase_error,
+        )
         return U1 @ U2.conj().mT
 
-    def _compute_unitary_batch(self, x_batch: Tensor) -> Tensor:
+    def _compute_unitary_batch(
+        self,
+        x_batch: Tensor,
+        *,
+        apply_phase_error: bool = False,
+    ) -> Tensor:
         """Compute a batch of circuit unitaries.
 
         Parameters
         ----------
         x_batch : torch.Tensor
             Batch of feature tensors with shape ``(N, input_size)``.
+        apply_phase_error : bool
+            Whether stochastic phase-error samples should be applied while
+            converting each feature-map unitary. Default is ``False``.
 
         Returns
         -------
@@ -1286,8 +1433,126 @@ class _CCInvQuantumLayer(QuantumLayer):
         # Serial loop is intentional: CircuitConverter.to_tensor holds shared
         # mutable state and is not safe to call concurrently.
         return torch.stack([
-            self._compute_unitary(self._encode_single(x)) for x in x_batch
+            self._compute_unitary(
+                self._encode_single(x),
+                apply_phase_error=apply_phase_error,
+            )
+            for x in x_batch
         ])
+
+    def _compute_all_kernel_circuits(
+        self,
+        x1: Tensor,
+        x2: Tensor | None,
+        *,
+        apply_phase_error: bool = False,
+    ) -> Tensor:
+        """Compute composed kernel unitaries for all requested input pairs.
+
+        Parameters
+        ----------
+        x1 : torch.Tensor
+            First raw feature batch with shape ``(N, input_size)``.
+        x2 : torch.Tensor | None
+            Optional second raw feature batch with shape ``(M, input_size)``.
+            If omitted, only the strict upper triangle of ``x1`` pairs is
+            computed.
+        apply_phase_error : bool
+            Whether stochastic phase-error samples should be applied while
+            converting feature-map unitaries. Default is ``False``.
+
+        Returns
+        -------
+        torch.Tensor
+            Composed unitary batch. For two input batches the shape is
+            ``(N * M, m, m)``. For one input batch the shape is
+            ``(N * (N - 1) / 2, m, m)``.
+        """
+        U_forward = self._compute_unitary_batch(
+            x1,
+            apply_phase_error=apply_phase_error,
+        ).to(x1.device)
+
+        if x2 is not None:
+            U_adjoint = (
+                self
+                ._compute_unitary_batch(
+                    x2,
+                    apply_phase_error=apply_phase_error,
+                )
+                .conj()
+                .transpose(1, 2)
+                .to(x1.device)
+            )
+            all_circuits = U_forward.unsqueeze(1) @ U_adjoint.unsqueeze(0)
+            return all_circuits.view(-1, *all_circuits.shape[2:])
+
+        len_x1 = len(x1)
+        upper_idx = torch.triu_indices(
+            len_x1,
+            len_x1,
+            offset=1,
+            device=x1.device,
+        )
+        U_adjoint = U_forward.conj().transpose(1, 2)
+        return U_forward[upper_idx[0]] @ U_adjoint[upper_idx[1]]
+
+    def _compute_transition_probs_for_inputs(
+        self,
+        x1: Tensor,
+        x2: Tensor | None,
+        shots: int,
+        sampling_method: str,
+    ) -> Tensor:
+        """Compute transition probabilities for input pairs, including phase noise.
+
+        Parameters
+        ----------
+        x1 : torch.Tensor
+            First raw feature batch with shape ``(N, input_size)``.
+        x2 : torch.Tensor | None
+            Optional second raw feature batch with shape ``(M, input_size)``.
+        shots : int
+            Number of pseudo-sampling shots; 0 for exact probabilities.
+        sampling_method : str
+            Sampling method; one of ``"multinomial"``, ``"binomial"``,
+            ``"gaussian"``.
+
+        Returns
+        -------
+        torch.Tensor
+            Transition probabilities for all computed input pairs.
+        """
+        if not self.computation_process._has_phase_error():
+            all_circuits = self._compute_all_kernel_circuits(x1, x2)
+            return self._compute_transition_probs(
+                all_circuits,
+                self._kernel_input_state,
+                shots,
+                sampling_method,
+            )
+
+        accumulated: Tensor | None = None
+        for _sample_index in range(self.computation_process._n_phase_error_samples):
+            all_circuits = self._compute_all_kernel_circuits(
+                x1,
+                x2,
+                apply_phase_error=True,
+            )
+            sample_probs = self._compute_transition_probs(
+                all_circuits,
+                self._kernel_input_state,
+                shots,
+                sampling_method,
+            )
+            if accumulated is None:
+                accumulated = sample_probs
+            else:
+                accumulated = accumulated + sample_probs
+
+        if accumulated is None:
+            raise RuntimeError("No phase-error samples were computed.")
+        return accumulated / self.computation_process._n_phase_error_samples
 
     def _compute_transition_probs(
         self,
@@ -1315,12 +1580,19 @@ class _CCInvQuantumLayer(QuantumLayer):
         torch.Tensor
             Transition probability for each circuit, shape ``(P,)``.
         """
-        _, probabilities = self.computation_process.simulation_graph.compute_probs(
+        result = self.computation_process.simulation_graph.compute_probs(
             all_circuits, input_state
         )
-        if probabilities.ndim == 1:
+        if isinstance(result, SectoredDistribution):
+            probabilities: Tensor | SectoredDistribution = result.to(
+                dtype=self.dtype,
+            )
+        else:
+            _keys, probabilities = result
+            probabilities = probabilities.to(dtype=self.dtype)
+
+        if isinstance(probabilities, Tensor) and probabilities.ndim == 1:
             probabilities = probabilities.unsqueeze(0)
-        probabilities = probabilities.to(dtype=self.dtype)
         detection_probs = self._apply_detection_pipeline(probabilities)
 
         if shots > 0:
@@ -1394,15 +1666,15 @@ class _CCInvQuantumLayer(QuantumLayer):
         effective_shots = 0 if shots is None else shots
         effective_sampling_method = sampling_method or "multinomial"
         equal_inputs = _inputs_are_equal(x1, x2)
-        U_forward = self._compute_unitary_batch(x1).to(x1.device)
 
         len_x1 = len(x1)
         if x2 is not None:
-            U_adjoint = (
-                self._compute_unitary_batch(x2).conj().transpose(1, 2).to(x1.device)
+            transition_probs = self._compute_transition_probs_for_inputs(
+                x1,
+                x2,
+                effective_shots,
+                effective_sampling_method,
             )
-            all_circuits = U_forward.unsqueeze(1) @ U_adjoint.unsqueeze(0)
-            all_circuits = all_circuits.view(-1, *all_circuits.shape[2:])
         else:
             if len_x1 < 2:
                 return torch.ones(
@@ -1412,21 +1684,18 @@ class _CCInvQuantumLayer(QuantumLayer):
                     device=x1.device,
                 )
 
-            U_adjoint = U_forward.conj().transpose(1, 2)
             upper_idx = torch.triu_indices(
                 len_x1,
                 len_x1,
                 offset=1,
                 device=x1.device,
             )
-            all_circuits = U_forward[upper_idx[0]] @ U_adjoint[upper_idx[1]]
-
-        transition_probs = self._compute_transition_probs(
-            all_circuits,
-            self._kernel_input_state,
-            effective_shots,
-            effective_sampling_method,
-        )
+            transition_probs = self._compute_transition_probs_for_inputs(
+                x1,
+                None,
+                effective_shots,
+                effective_sampling_method,
+            )
 
         if x2 is None:
             kernel_matrix = torch.zeros(
@@ -1486,7 +1755,10 @@ class FidelityKernel(MerlinModule):
         Input Fock state occupation list. If ``None``, the state is derived
         from ``n_photons`` when given, otherwise defaults to an alternating
         single-photon state ``[1, 0, 1, 0, ...]`` of length
-        ``feature_map.circuit.m``.
+        ``feature_map.circuit.m``. Passing ``torch.Tensor`` is removed; build
+        a :class:`~merlin.core.state_vector.StateVector` with
+        :meth:`~merlin.core.state_vector.StateVector.from_tensor` for
+        amplitude-state workflows.
     n_photons : int | None
         Number of photons to place in the input state when ``input_state`` is
         ``None``. If ``n_photons <= ceil(m / 2)`` (where ``m`` is the number of
@@ -1575,7 +1847,9 @@ class FidelityKernel(MerlinModule):
             Input Fock state occupation list. If ``None``, the state is derived
             from ``n_photons`` when given, otherwise defaults to an alternating
             single-photon state ``[1, 0, 1, 0, ...]`` of length
-            ``feature_map.circuit.m``.
+            ``feature_map.circuit.m``. Passing ``torch.Tensor`` is removed; use
+            ``StateVector.from_tensor()`` for amplitude tensors and evaluate
+            them with :class:`~merlin.algorithms.layer.QuantumLayer`.
         n_photons : int | None
             Number of photons used to derive ``input_state`` when
             ``input_state`` is ``None``.  Must satisfy
@@ -1609,7 +1883,8 @@ class FidelityKernel(MerlinModule):
         ------
         ValueError
             If the input state, experiment, circuit size, or computation space
-            is incompatible with fidelity-kernel evaluation.
+            is incompatible with fidelity-kernel evaluation, or if
+            ``torch.Tensor`` is passed as ``input_state``.
         RuntimeError
             If detector transforms are combined with a non-FOCK computation
             space.
@@ -1637,6 +1912,9 @@ class FidelityKernel(MerlinModule):
         else:
             self.dtype = to_torch_dtype(dtype, default=feature_map.dtype)
         self.input_size = self.feature_map.input_size
+        if isinstance(input_state, torch.Tensor):
+            raise ValueError(_TENSOR_INPUT_STATE_REMOVAL_MESSAGE)
+
         backend_input_size = self._resolve_backend_input_size()
 
         m = self.feature_map.circuit.m
@@ -1726,10 +2004,6 @@ class FidelityKernel(MerlinModule):
                 "computation_space must be FOCK if Experiment contains at least one Detector."
             )
 
-        # Resolve noise model presence from the experiment before building the backend.
-        _, empty_noise_model = resolve_photon_loss(self.experiment, m)
-        self.has_custom_noise_model = not empty_noise_model
-
         self._quantum_layer = _CCInvQuantumLayer(
             experiment=self.experiment,
             input_state=input_state,
@@ -1747,6 +2021,7 @@ class FidelityKernel(MerlinModule):
             ),
             encoder=self.feature_map._encoder,
         )
+        self.has_custom_noise_model = self._quantum_layer.has_custom_noise_model
 
         self.is_trainable = feature_map.is_trainable
 

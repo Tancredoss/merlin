@@ -80,6 +80,7 @@ Model Families
    ../notebooks/iris_classification
    ../notebooks/reproduced_papers/GanEtAl_VQC_classification
    ../notebooks/reproduced_papers/photonic_QCNN
+   ../notebooks/reproduced_papers/photonic_QGAN
    ../reproduced_papers/reproductions/photonic_QGAN
 
 .. merlin-gallery::
@@ -207,4 +208,5 @@ Based on reproduced papers
    ../notebooks/reproduced_papers/GanEtAl_VQC_fourier_series
    ../notebooks/reproduced_papers/amplitude_limitations_tutorial
    ../notebooks/reproduced_papers/photonic_QCNN
+   ../notebooks/reproduced_papers/photonic_QGAN
    ../notebooks/reproduced_papers/quantum_reservoir

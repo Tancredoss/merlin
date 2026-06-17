@@ -25,6 +25,7 @@ Tests for UNBUNCHED vs FOCK computation-space behavior in quantum computation.
 """
 
 import math
+import warnings
 
 import pytest
 import torch
@@ -512,13 +513,14 @@ class TestNoBunchingFunctionality:
                 "Conversion from distribution_full_fock_space to distribution_unbunched completed successfully"
             )
 
-    def test_no_bunching_deprecation_warning_and_error(self):
-        """Passing no_bunching should warn and raise a ValueError."""
+    def test_no_bunching_removed_error_without_warning(self):
+        """Passing no_bunching should raise a removal error without a warning."""
         circuit = _build_parallel_columns(2, 1).to_pcvl_circuit()
         input_state = list(generate_state(2, 1, StatePattern.SEQUENTIAL))
 
-        with pytest.warns(DeprecationWarning):
-            with pytest.raises(ValueError):
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
+            with pytest.raises(ValueError) as exc_info:
                 ComputationProcessFactory.create(
                     circuit=circuit,
                     input_state=input_state,
@@ -527,13 +529,22 @@ class TestNoBunchingFunctionality:
                     no_bunching=True,
                 )
 
+        assert not any(
+            issubclass(warning.category, DeprecationWarning) for warning in warning_list
+        )
+        message = str(exc_info.value)
+        assert "MeasurementStrategy.probs" in message
+        assert "ComputationSpace.UNBUNCHED" in message
+        assert "ComputationSpace.FOCK" in message
+
 
 @pytest.mark.parametrize("no_bunching", [True, False])
 def test_quantum_layer_rejects_no_bunching(no_bunching: bool):
     circuit = _build_series(4, 2).to_pcvl_circuit()
     input_state = list(generate_state(4, 2, StatePattern.PERIODIC))
 
-    with pytest.warns(DeprecationWarning):
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
         with pytest.raises(ValueError) as exc_info:
             QuantumLayer(
                 input_size=3,
@@ -544,6 +555,9 @@ def test_quantum_layer_rejects_no_bunching(no_bunching: bool):
                 no_bunching=no_bunching,
             )
 
+    assert not any(
+        issubclass(warning.category, DeprecationWarning) for warning in warning_list
+    )
     message = str(exc_info.value)
     assert "MeasurementStrategy.probs" in message
     assert "ComputationSpace.UNBUNCHED" in message
@@ -552,10 +566,14 @@ def test_quantum_layer_rejects_no_bunching(no_bunching: bool):
 
 @pytest.mark.parametrize("no_bunching", [True, False])
 def test_quantum_layer_simple_rejects_no_bunching(no_bunching: bool):
-    with pytest.warns(DeprecationWarning):
+    with warnings.catch_warnings(record=True) as warning_list:
+        warnings.simplefilter("always")
         with pytest.raises(ValueError) as exc_info:
             QuantumLayer.simple(input_size=2, no_bunching=no_bunching)
 
+    assert not any(
+        issubclass(warning.category, DeprecationWarning) for warning in warning_list
+    )
     message = str(exc_info.value)
     assert "MeasurementStrategy.probs" in message
     assert "ComputationSpace.UNBUNCHED" in message

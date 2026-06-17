@@ -27,9 +27,11 @@ import torch
 from perceval.components import BS, PS
 
 from ..core.computation_space import ComputationSpace
+from ..core.encoding_space import EncodingSpace
 from ..core.state import StatePattern, generate_state
+from ..core.state_vector import StateVector
 from ..measurement.strategies import MeasurementStrategy
-from ..utils.deprecations import raise_no_bunching_deprecated
+from ..utils.deprecations import raise_no_bunching_removed
 from .layer import QuantumLayer
 
 
@@ -157,7 +159,7 @@ class FeedForwardBlockLegacy(torch.nn.Module):
     simulate complex conditional evolution of quantum systems.
 
     Detector support: The current feed-forward implementation expects amplitude access for
-    every intermediate layer (``MeasurementStrategy.AMPLITUDES``) and
+    every intermediate layer (``MeasurementStrategy.amplitudes()``) and
     therefore assumes ideal PNR detectors. Custom detector transforms or
     Perceval experiments with threshold / hybrid detectors are not yet
     supported inside this block.
@@ -440,8 +442,13 @@ class FeedForwardBlockLegacy(torch.nn.Module):
                         keys, keys_next, self.conditional_modes, combo
                     )
 
-                # Set input quantum state for the layer
-                layer.set_input_state(remaining_amplitudes[:, match_idx])
+                state_vector = StateVector.from_tensor(
+                    remaining_amplitudes[:, match_idx],
+                    n_modes=layer.circuit.m,
+                    n_photons=layer.n_photons,
+                    encoding=self._encoding_space_for_layer(layer),
+                )
+                layer.set_input_state(state_vector)
                 start, end = self.input_segments[current_key]
 
                 # Execute layer with or without classical input
@@ -534,6 +541,34 @@ class FeedForwardBlockLegacy(torch.nn.Module):
             ):
                 idx.append(out_map[reduced])
         return torch.tensor(idx)
+
+    @staticmethod
+    def _encoding_space_for_layer(layer: QuantumLayer) -> EncodingSpace:
+        """Return the input tensor encoding expected by a target layer.
+
+        Parameters
+        ----------
+        layer : QuantumLayer
+            Layer receiving the branch amplitudes.
+
+        Returns
+        -------
+        EncodingSpace
+            Encoding corresponding to the layer computation space.
+
+        Raises
+        ------
+        ValueError
+            If the layer computation space is unsupported.
+        """
+        computation_space = ComputationSpace.coerce(layer.computation_space)
+        if computation_space is ComputationSpace.FOCK:
+            return EncodingSpace.FOCK
+        if computation_space is ComputationSpace.UNBUNCHED:
+            return EncodingSpace.UNBUNCHED
+        if computation_space is ComputationSpace.DUAL_RAIL:
+            return EncodingSpace.DUAL_RAIL
+        raise ValueError(f"Unsupported computation space: {computation_space!r}.")
 
     # =======================================================================
     #  Forward Pass & Layer Management
@@ -667,7 +702,7 @@ class PoolingFeedForwardLegacy(torch.nn.Module):
         Each sublist contains the indices of input modes to pool together
         for one output mode. If None, an even pooling scheme is automatically generated.
     no_bunching : bool | None
-        Deprecated and now removed; use computation_space in MeasurementStrategy instead.
+        Removed legacy flag. Use computation_space in MeasurementStrategy instead.
 
     Attributes
     ----------
@@ -692,17 +727,13 @@ class PoolingFeedForwardLegacy(torch.nn.Module):
     ):
         super().__init__()
         if no_bunching is not None:
-            raise_no_bunching_deprecated(stacklevel=2)
-        if no_bunching is None:
-            no_bunching = True
+            raise_no_bunching_removed()
         keys_in = QuantumLayer(
             0,
             circuit=pcvl.Circuit(n_modes),
             n_photons=n_photons,
             measurement_strategy=MeasurementStrategy.probs(
-                computation_space=ComputationSpace.coerce(
-                    ComputationSpace.UNBUNCHED if no_bunching else ComputationSpace.FOCK
-                )
+                computation_space=ComputationSpace.UNBUNCHED
             ),
         ).computation_process.simulation_graph.mapped_keys
         keys_out = QuantumLayer(
@@ -710,9 +741,7 @@ class PoolingFeedForwardLegacy(torch.nn.Module):
             circuit=pcvl.Circuit(n_output_modes),
             n_photons=n_photons,
             measurement_strategy=MeasurementStrategy.probs(
-                computation_space=ComputationSpace.coerce(
-                    ComputationSpace.UNBUNCHED if no_bunching else ComputationSpace.FOCK
-                )
+                computation_space=ComputationSpace.UNBUNCHED
             ),
         ).computation_process.simulation_graph.mapped_keys
 

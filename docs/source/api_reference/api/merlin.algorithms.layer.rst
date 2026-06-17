@@ -17,6 +17,12 @@ merlin.algorithms.layer module
 
    If the experiment carries a :class:`pcvl.NoiseModel` (via ``experiment.noise``), MerLin inserts a :class:`~merlin.measurement.photon_loss.PhotonLossTransform` ahead of any detector transform. The resulting ``output_keys`` and ``output_size`` therefore include every survival/loss configuration implied by the model, and amplitude read-out is disabled whenever custom detectors or photon loss are present.
 
+   Circuit phase noise is applied while MerLin builds the differentiable unitary. ``phase_imprecision`` quantizes each phase to the nearest grid point using ``round(phi / phase_imprecision) * phase_imprecision``; it is not truncation. Exact half-step ties follow ``torch.round`` behavior, so ``phi = pi / 8`` with ``phase_imprecision = pi / 4`` maps to ``0``.
+
+   ``phase_error`` is sampled after any ``phase_imprecision`` quantization. With both active, each sampled unitary uses ``round(phi / phase_imprecision) * phase_imprecision + epsilon`` where ``epsilon`` is drawn from ``Uniform(-phase_error, phase_error)``.
+
+   ``n_phase_error_samples`` controls the Monte Carlo sample count used for active ``phase_error`` circuit noise. Each ``phase_error`` sample is a coherent unitary evolution: tensor input superpositions interfere before that sample is converted to probabilities. MerLin then averages the sampled probability distributions, not amplitudes or unitaries. Source-noise simulations are incoherent mixtures: tensor input components are propagated independently and combined with weights ``|c_i|^2``. Runtime scales roughly linearly with this value when ``phase_error > 0``; when source noise or ``g2`` is also active, each phase-error sample runs the full source-noise mixture, so the worst-case cost is roughly ``n_phase_error_samples * n_active_input_states * SLOS``. The default is 1 sample.
+
 Example: Quickstart QuantumLayer
 --------------------------------
 
@@ -170,8 +176,12 @@ following representations:
 When ``input_state`` is passed, the layer always injects that photonic state. In more elaborate pipelines you may want
 to cascade circuits and let the output amplitudes of the previous layer become the input state of the next. Merlin
 calls this *amplitude encoding*: the probability amplitudes themselves carry information and are passed to the next
-layer as a tensor. Enabling this behaviour is done with ``amplitude_encoding=True``; in that mode the forward input of
-``QuantumLayer`` is the complex photonic state.
+layer as a tensor. Amplitude input handling is activated by passing a
+:class:`~merlin.core.state_vector.StateVector` or a complex ``torch.Tensor`` to
+``forward()``. The removed ``amplitude_encoding=True`` constructor flag now
+raises an error; use :meth:`~merlin.core.state_vector.StateVector.from_tensor`
+when a constructor tensor must become a state object. Passing
+``torch.Tensor`` directly as ``input_state`` is also removed.
 
 The snippet below prepares a dual-rail Bell state as the initial condition and evaluates a batch of classical parameters:
 
@@ -202,7 +212,7 @@ The snippet below prepares a dual-rail Bell state as the initial condition and e
     amplitudes = layer(x)
     assert amplitudes.shape == (10, 2**2)
 
-For comparison, the ``amplitude_encoding`` variant supplies the photonic state during the forward pass:
+For comparison, a complex tensor supplies the photonic state during the forward pass:
 
 .. code-block:: python
 
@@ -216,7 +226,6 @@ For comparison, the ``amplitude_encoding`` variant supplies the photonic state d
     layer = QuantumLayer(
         circuit=circuit,
         n_photons=2,
-        amplitude_encoding=True,
         measurement_strategy=MeasurementStrategy.probs(computation_space=ComputationSpace.UNBUNCHED),
         dtype=torch.cdouble,
     )
@@ -412,6 +421,12 @@ For manual truncated backpropagation through time (TBPTT), set ``detach_at_each_
 
 Deprecations
 -------------------------
-.. warning:: *Deprecated since version 0.3:*
-   The use of the ``no_bunching`` flag  is deprecated and is removed since version 0.3.0.
+.. warning:: *Removed in version 0.4:*
+   The ``no_bunching`` flag is removed in version 0.4. Use
+   ``MeasurementStrategy.probs(computation_space=ComputationSpace.UNBUNCHED)``
+   or ``MeasurementStrategy.probs(computation_space=ComputationSpace.FOCK)``
+   instead. See :doc:`/user_guide/migration_guide`.
+
+.. warning::
+   *Deprecated since version 0.4:* The use of the ``computation_space`` argument in the QuantumLayer's constructor is no longer supported as 0.4.0.
    Use the ``computation_space`` flag inside ``measurement_strategy`` instead. See :doc:`/user_guide/migration_guide`.

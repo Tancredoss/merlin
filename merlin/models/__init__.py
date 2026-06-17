@@ -20,12 +20,30 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""High-level ready-to-use Merlin models."""
+"""
+Merlin models package containing various quantum machine learning models.
+"""
 
+from .photonic_generator import (
+    GeneratorMeasurements,
+    ImageAdapter,
+    LatentDistribution,
+    NormalLatent,
+    OutputAdapter,
+    PhotonicGenerator,
+    VectorAdapter,
+)
 from .qcnn import QCNNClassifier
 from .reservoir_classifier import ReservoirClassifier
 
 __all__ = [
     "ReservoirClassifier",
+    "GeneratorMeasurements",
+    "ImageAdapter",
+    "LatentDistribution",
+    "NormalLatent",
+    "OutputAdapter",
+    "VectorAdapter",
+    "PhotonicGenerator",
     "QCNNClassifier",
 ]

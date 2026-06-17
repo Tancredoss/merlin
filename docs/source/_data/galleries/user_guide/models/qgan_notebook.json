@@ -1,0 +1,9 @@
+[
+  {
+    "title": "PhotonicGenerator tutorial",
+    "summary": "Tutorial on the PhotonicGenerator usage",
+    "image": "_static/reproduced_papers/photonicQGAN.png",
+    "doc": "notebooks/reproduced_papers/photonic_QGAN",
+    "tags": ["Quantum models", "Ready to use","GAN","Generative"]
+  }
+]

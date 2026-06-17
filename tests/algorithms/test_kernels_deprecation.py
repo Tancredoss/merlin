@@ -268,11 +268,11 @@ class TestLegacyFeatureMapUnitaryPath:
 
 
 # ---------------------------------------------------------------------------
-# Deprecated no_bunching parameter
+# Removed no_bunching parameter
 # ---------------------------------------------------------------------------
 
 
-class TestDeprecatedNoBunchingParam:
+class TestRemovedNoBunchingParam:
     """Tests for the removed ``no_bunching`` parameter across kernel APIs."""
 
     def setup_method(self):
@@ -286,26 +286,45 @@ class TestDeprecatedNoBunchingParam:
             input_parameters="x",
         )
 
-    def test_kernel_rejects_no_bunching(self):
-        with pytest.warns(DeprecationWarning):
+    def _assert_removed_message(self, message: str) -> None:
+        assert "no_bunching" in message
+        assert "ComputationSpace.UNBUNCHED" in message
+        assert "ComputationSpace.FOCK" in message
+
+    def _assert_no_deprecation_warning(self, warning_list) -> None:
+        assert not any(
+            issubclass(warning.category, DeprecationWarning) for warning in warning_list
+        )
+
+    @pytest.mark.parametrize("no_bunching", [True, False])
+    def test_kernel_rejects_no_bunching(self, no_bunching: bool):
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
             with pytest.raises(ValueError) as exc_info:
                 FidelityKernel(
                     feature_map=self.feature_map,
                     input_state=[2, 0],
-                    no_bunching=True,
+                    no_bunching=no_bunching,
                 )
-        assert "no_bunching" in str(exc_info.value)
+        self._assert_no_deprecation_warning(warning_list)
+        self._assert_removed_message(str(exc_info.value))
 
-        with pytest.warns(DeprecationWarning):
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
             with pytest.raises(ValueError) as exc_info:
-                FidelityKernel.simple(input_size=2, no_bunching=True)
-        assert "no_bunching" in str(exc_info.value)
+                FidelityKernel.simple(input_size=2, no_bunching=no_bunching)
+        self._assert_no_deprecation_warning(warning_list)
+        self._assert_removed_message(str(exc_info.value))
 
-        builder = KernelCircuitBuilder().input_size(2).n_modes(4)
-        with pytest.warns(DeprecationWarning):
+        with pytest.warns(DeprecationWarning, match="KernelCircuitBuilder"):
+            builder = KernelCircuitBuilder()
+        builder = builder.input_size(2).n_modes(4)
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
             with pytest.raises(ValueError) as exc_info:
-                builder.build_fidelity_kernel(no_bunching=True)
-        assert "no_bunching" in str(exc_info.value)
+                builder.build_fidelity_kernel(no_bunching=no_bunching)
+        self._assert_no_deprecation_warning(warning_list)
+        self._assert_removed_message(str(exc_info.value))
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +362,9 @@ class TestDeprecatedLegacyKernelPaths:
         warning_message = str(warning_record[0].message)
         assert "CircuitBuilder.add_angle_encoding" in warning_message
         assert "pre-encoding the data" in warning_message
-        assert "input_size equal to the encoded circuit-parameter count" in warning_message
+        assert (
+            "input_size equal to the encoded circuit-parameter count" in warning_message
+        )
 
         encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.3]))
         expected = torch.tensor([0.2, 0.3, 0.5], dtype=encoded.dtype)
@@ -372,7 +393,9 @@ class TestDeprecatedLegacyKernelPaths:
         warning_message = str(warning_record[0].message)
         assert "CircuitBuilder.add_angle_encoding" in warning_message
         assert "pre-encoding the data" in warning_message
-        assert "input_size equal to the encoded circuit-parameter count" in warning_message
+        assert (
+            "input_size equal to the encoded circuit-parameter count" in warning_message
+        )
 
         encoded = kernel._quantum_layer._encode_single(torch.tensor([0.2, 0.3]))
         expected = torch.tensor([0.2, 0.3, 0.5], dtype=encoded.dtype)
@@ -408,7 +431,8 @@ class TestDeprecatedFeatureMapSimpleNModes:
     def test_simple_factory_raises_when_input_exceeds_modes(self):
         with pytest.warns(DeprecationWarning):
             with pytest.raises(
-                ValueError, match="You cannot encore more features than mode with Builder"
+                ValueError,
+                match="You cannot encore more features than mode with Builder",
             ):
                 FeatureMap.simple(input_size=5, n_modes=4)
 
@@ -636,7 +660,9 @@ class TestDeprecatedKernelCircuitBuilder:
 
     def test_deprecation_warning_on_init(self):
         """KernelCircuitBuilder emits DeprecationWarning on instantiation."""
-        with pytest.warns(DeprecationWarning, match="KernelCircuitBuilder is deprecated"):
+        with pytest.warns(
+            DeprecationWarning, match="KernelCircuitBuilder is deprecated"
+        ):
             KernelCircuitBuilder()
 
     def test_deprecation_warning_build_feature_map(self):
@@ -670,7 +696,9 @@ class TestDeprecatedConstructorConsistency:
             simple_feature_map = FeatureMap.simple(input_size=2, n_modes=3)
 
         legacy_builder = KernelCircuitBuilder()
-        builder_feature_map = legacy_builder.input_size(2).n_modes(3).build_feature_map()
+        builder_feature_map = (
+            legacy_builder.input_size(2).n_modes(3).build_feature_map()
+        )
 
         assert (
             manual_feature_map.input_size
