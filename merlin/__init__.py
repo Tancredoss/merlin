@@ -73,7 +73,6 @@ from .models.photonic_generator import (
     PhotonicGenerator,
     VectorAdapter,
 )
-from .models.qcnn import QCNNClassifier
 from .pcvl_pytorch import CircuitConverter, build_slos_distribution_computegraph
 from .utils.combinadics import Combinadics
 from .utils.grouping import LexGrouping, ModGrouping
