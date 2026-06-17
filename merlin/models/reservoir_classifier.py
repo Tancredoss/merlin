@@ -58,7 +58,7 @@ class _ReservoirLayerProxy:
     reservoir layer so the external API stays simple:
     ``reservoir.layer.n_modes = ...``,
     ``reservoir.layer.measurement_strategy = ...``,
-    ``reservoir.layer.noise = ...`` (or ``noise_model`` for compatibility).
+    ``reservoir.layer.noise = ...``.
     """
 
     def __init__(self, parent: ReservoirClassifier) -> None:
@@ -77,8 +77,8 @@ class _ReservoirLayerProxy:
         if name == "measurement_strategy":
             self._parent._set_layer_measurement_strategy(value)
             return
-        if name in {"noise", "noise_model"}:
-            self._parent._set_layer_noise_model(value)
+        if name == "noise":
+            self._parent._set_layer_noise(value)
             return
         setattr(self._parent._quantum_layer, name, value)
 
@@ -94,12 +94,8 @@ class _ReservoirLayerProxy:
         return self._parent._quantum_layer.measurement_strategy
 
     @property
-    def noise_model(self) -> Any | None:
-        return self._parent._noise_model
-
-    @property
     def noise(self) -> Any | None:
-        return self._parent._noise_model
+        return self._parent._noise
 
 
 class ReservoirClassifier(MerlinModule):
@@ -206,13 +202,13 @@ class ReservoirClassifier(MerlinModule):
             self.seed,
         )
         self._measurement_strategy = MeasurementStrategy.probs()
-        self._noise_model = None
+        self._noise = None
         self._quantum_layer = self._build_layer(
             unitary_matrix=self._unitary_matrix,
             encoded_input_size=self.encoded_input_features,
             n_modes=self.quantum_input_features,
             measurement_strategy=self._measurement_strategy,
-            noise_model=self._noise_model,
+            noise=self._noise,
         )
         self.layer = _ReservoirLayerProxy(self)
         self.readout: nn.LazyLinear | nn.Linear
@@ -307,7 +303,7 @@ class ReservoirClassifier(MerlinModule):
         encoded_input_size: int,
         n_modes: int,
         measurement_strategy: Any,
-        noise_model: Any | None = None,
+        noise: Any | None = None,
     ) -> QuantumLayer:
         # CIRCUIT DESIGN ###
         # The reservoir is made of a:
@@ -344,19 +340,19 @@ class ReservoirClassifier(MerlinModule):
             "device": self.device,
             "dtype": self.dtype,
         }
-        if noise_model is None:
+        if noise is None:
             layer = QuantumLayer(
                 circuit=circuit,
                 **layer_kwargs,
             )
         else:
-            # TODO: broaden the supported noise-model surface as SLOS support
+            # TODO: broaden the supported noise surface as SLOS support
             # expands. For now we simply rebuild the layer through a Perceval
             # Experiment so QuantumLayer can resolve the currently supported
             # photon-loss noise path.
             experiment = pcvl.Experiment()
             experiment.add(0, circuit)
-            experiment.noise = noise_model
+            experiment.noise = noise
             if not hasattr(experiment, "in_heralds"):
                 experiment.in_heralds = {}
             if not hasattr(experiment, "heralds"):
@@ -398,7 +394,7 @@ class ReservoirClassifier(MerlinModule):
             encoded_input_size=self.encoded_input_features,
             n_modes=self.quantum_input_features,
             measurement_strategy=self._measurement_strategy,
-            noise_model=self._noise_model,
+            noise=self._noise,
         )
         self._quantum_layer.processor = processor
         self._invalidate_fit_state()
@@ -407,8 +403,8 @@ class ReservoirClassifier(MerlinModule):
         self._measurement_strategy = measurement_strategy
         self._rebuild_quantum_layer()
 
-    def _set_layer_noise_model(self, noise_model: Any | None) -> None:
-        self._noise_model = noise_model
+    def _set_layer_noise(self, noise: Any | None) -> None:
+        self._noise = noise
         self._rebuild_quantum_layer()
 
     def _set_layer_n_modes(self, n_modes: int) -> None:
@@ -941,7 +937,7 @@ class ReservoirClassifier(MerlinModule):
             "layer_state": {
                 "n_modes": self.quantum_input_features,
                 "measurement_strategy": self._measurement_strategy,
-                "noise_model": self._noise_model,
+                "noise": self._noise,
             },
             "unitary_matrix": self._unitary_matrix,
             "reduction_fitted": reduction_fitted,
@@ -1024,10 +1020,14 @@ class ReservoirClassifier(MerlinModule):
             "measurement_strategy",
             config.pop("measurement_strategy", None),
         )
-        saved_noise_model = layer_state.get(
-            "noise_model",
-            config.pop("noise_model", None),
-        )
+        missing = object()
+        saved_noise = layer_state.get("noise", missing)
+        if saved_noise is missing:
+            saved_noise = layer_state.get("noise_model", missing)
+        if saved_noise is missing:
+            saved_noise = config.pop("noise", missing)
+        if saved_noise is missing:
+            saved_noise = config.pop("noise_model", None)
         if device is not None:
             config["device"] = torch.device(device)
         model = cls(**config)
@@ -1038,13 +1038,13 @@ class ReservoirClassifier(MerlinModule):
             model.quantum_input_features = int(saved_n_modes)
         if saved_measurement_strategy is not None:
             model._measurement_strategy = saved_measurement_strategy
-        model._noise_model = saved_noise_model
+        model._noise = saved_noise
         model._quantum_layer = model._build_layer(
             unitary_matrix=model._unitary_matrix,
             encoded_input_size=model.encoded_input_features,
             n_modes=model.quantum_input_features,
             measurement_strategy=model._measurement_strategy,
-            noise_model=model._noise_model,
+            noise=model._noise,
         )
 
         if payload["readout_initialized"]:
