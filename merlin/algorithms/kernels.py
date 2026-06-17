@@ -156,6 +156,8 @@ def _inputs_are_equal(x1: Tensor, x2: Tensor | None) -> bool:
     return torch.allclose(x1, x2)
 
 
+# This message is deliberately FidelityKernel-specific. Keep it local so the
+# guidance can differ from QuantumLayer and FeedForwardBlock.
 _TENSOR_INPUT_STATE_REMOVAL_MESSAGE = (
     "torch.Tensor is no longer accepted as FidelityKernel input_state. "
     "FidelityKernel input_state must be a Fock occupation list such as "

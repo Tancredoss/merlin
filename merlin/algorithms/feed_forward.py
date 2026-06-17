@@ -20,7 +20,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import math
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -45,6 +44,8 @@ from ..pcvl_pytorch.utils import pcvl_to_tensor
 from .layer import QuantumLayer
 from .module import MerlinModule
 
+# This message is deliberately FeedForwardBlock-specific. Keep it local so the
+# guidance can differ from QuantumLayer and FidelityKernel.
 _TENSOR_INPUT_STATE_REMOVAL_MESSAGE = (
     "torch.Tensor is no longer accepted as FeedForwardBlock input_state. Build "
     "a StateVector with StateVector.from_tensor() and pass that StateVector as "
@@ -436,20 +437,6 @@ class FeedForwardBlock(MerlinModule):
         else:
             raise TypeError("Amplitude tensors must be floating point or complex.")
         return normalized
-
-    def _infer_photon_number_from_basis(self, num_states: int, total_modes: int) -> int:
-        n = 1
-        while n <= total_modes * 8 + 8:
-            states = math.comb(n + total_modes - 1, n)
-            if states == num_states:
-                return n
-            if states > num_states:
-                break
-            n += 1
-        raise ValueError(
-            "Unable to infer photon number from amplitude tensor length. "
-            "Ensure it matches the Fock basis of the experiment."
-        )
 
     @staticmethod
     def _extract_statevector_photons(state_vector: pcvl.StateVector) -> int:

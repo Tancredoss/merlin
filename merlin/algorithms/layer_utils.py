@@ -66,6 +66,8 @@ _CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE = (
     "object is needed."
 )
 
+# This message is deliberately QuantumLayer-specific. Keep it local so the
+# guidance can differ from FeedForwardBlock and FidelityKernel.
 _TENSOR_INPUT_STATE_REMOVAL_MESSAGE = (
     "torch.Tensor is no longer accepted as QuantumLayer input_state. Build a "
     "StateVector with StateVector.from_tensor() and pass that StateVector as "

@@ -105,7 +105,7 @@ See :doc:`/user_guide/encoding_space` for Fock, unbunched, dual-rail,
 partitioned, and QLOQ examples.
 
 Migrating from tensor ``input_state`` values
--------------------------------------------
+--------------------------------------------
 
 .. warning::
    Passing a ``torch.Tensor`` as an ``input_state`` value is removed in
