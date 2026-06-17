@@ -161,26 +161,22 @@ def test_add_sectored_distributions_aligns_basis_keys():
     process = _process()
     left_keys = ((1, 0), (0, 1))
     right_keys = ((0, 1), (1, 0))
-    left = SectoredDistribution(
-        (
-            SectorResult(
-                torch.tensor([[1.0, 2.0]], dtype=torch.float64),
-                n_modes=2,
-                n_photons=1,
-                keys=left_keys,
-            ),
-        )
-    )
-    right = SectoredDistribution(
-        (
-            SectorResult(
-                torch.tensor([[30.0, 10.0]], dtype=torch.float64),
-                n_modes=2,
-                n_photons=1,
-                keys=right_keys,
-            ),
-        )
-    )
+    left = SectoredDistribution((
+        SectorResult(
+            torch.tensor([[1.0, 2.0]], dtype=torch.float64),
+            n_modes=2,
+            n_photons=1,
+            keys=left_keys,
+        ),
+    ))
+    right = SectoredDistribution((
+        SectorResult(
+            torch.tensor([[30.0, 10.0]], dtype=torch.float64),
+            n_modes=2,
+            n_photons=1,
+            keys=right_keys,
+        ),
+    ))
 
     result = process._add_sectored_distributions(left, right)
 
@@ -193,26 +189,22 @@ def test_add_sectored_distributions_aligns_basis_keys():
 
 def test_add_sectored_distributions_rejects_duplicate_basis_keys():
     process = _process()
-    left = SectoredDistribution(
-        (
-            SectorResult(
-                torch.tensor([1.0, 2.0], dtype=torch.float64),
-                n_modes=2,
-                n_photons=1,
-                keys=((1, 0), (0, 1)),
-            ),
-        )
-    )
-    right = SectoredDistribution(
-        (
-            SectorResult(
-                torch.tensor([3.0, 4.0], dtype=torch.float64),
-                n_modes=2,
-                n_photons=1,
-                keys=((1, 0), (1, 0)),
-            ),
-        )
-    )
+    left = SectoredDistribution((
+        SectorResult(
+            torch.tensor([1.0, 2.0], dtype=torch.float64),
+            n_modes=2,
+            n_photons=1,
+            keys=((1, 0), (0, 1)),
+        ),
+    ))
+    right = SectoredDistribution((
+        SectorResult(
+            torch.tensor([3.0, 4.0], dtype=torch.float64),
+            n_modes=2,
+            n_photons=1,
+            keys=((1, 0), (1, 0)),
+        ),
+    ))
 
     with pytest.raises(ValueError, match="unique"):
         process._add_sectored_distributions(left, right)
@@ -242,9 +234,9 @@ def test_g2_source_superposition_accumulation_aligns_sector_keys(monkeypatch):
         else:
             tensor = torch.tensor([30.0, 10.0], dtype=torch.float64)
             keys = right_keys
-        return SectoredDistribution(
-            (SectorResult(tensor, n_modes=2, n_photons=1, keys=keys),)
-        )
+        return SectoredDistribution((
+            SectorResult(tensor, n_modes=2, n_photons=1, keys=keys),
+        ))
 
     monkeypatch.setattr(process.simulation_graph, "compute_probs", compute_probs)
 

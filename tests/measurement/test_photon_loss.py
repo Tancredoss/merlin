@@ -27,15 +27,15 @@ Tests for the main QuantumLayer class.
 import itertools
 import math
 
+import numpy as np
 import perceval as pcvl
 import pytest
 import torch
-import numpy as np
 
 import merlin as ML
+from merlin.algorithms.layer_utils import classify_noise
 from merlin.core.computation_space import ComputationSpace
 from merlin.measurement.photon_loss import resolve_photon_loss
-from merlin.algorithms.layer_utils import classify_noise
 
 
 class TestPhotonLossWithQuantumLayer:
