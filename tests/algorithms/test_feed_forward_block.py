@@ -22,6 +22,7 @@ from perceval.utils import NoiseModel
 from merlin.algorithms.feed_forward import FeedForwardBlock
 from merlin.algorithms.layer import QuantumLayer
 from merlin.core.computation_space import ComputationSpace
+from merlin.core.state_vector import StateVector
 from merlin.measurement.strategies import MeasurementStrategy
 
 _BASIS_CACHE: dict[tuple[int, int], list[tuple[int, ...]]] = {}
@@ -259,18 +260,34 @@ def test_feedforward_block2_mode_expectations():
     assert torch.allclose(manual, expectation, atol=1e-6, rtol=1e-6)
 
 
-def test_feedforward_block2_accepts_tensor_input_state():
+def test_feedforward_block2_rejects_tensor_input_state():
+    exp = _build_balanced_feedforward_experiment()
+    basis = _basis_states(3, 2)
+    amplitudes = torch.zeros(len(basis), dtype=torch.complex64)
+    amplitudes[basis.index((2, 0, 0))] = 1.0
+
+    with pytest.raises(ValueError) as exc_info:
+        FeedForwardBlock(exp, input_state=amplitudes)
+
+    message = str(exc_info.value)
+    assert "torch.Tensor" in message
+    assert "FeedForwardBlock input_state" in message
+    assert "StateVector.from_tensor()" in message
+
+
+def test_feedforward_block2_accepts_merlin_state_vector_input():
     exp = _build_balanced_feedforward_experiment()
     block_basic = FeedForwardBlock(exp, input_state=[2, 0, 0])
     basis = _basis_states(3, 2)
     amplitudes = torch.zeros(len(basis), dtype=torch.complex64)
     amplitudes[basis.index((2, 0, 0))] = 1.0
-    block_tensor = FeedForwardBlock(exp, input_state=amplitudes)
+    state_vector = StateVector.from_tensor(amplitudes, n_modes=3, n_photons=2)
+    block_state_vector = FeedForwardBlock(exp, input_state=state_vector)
 
     ref_outputs = _as_keyed_tensors(block_basic, block_basic())
-    tensor_outputs = _as_keyed_tensors(block_tensor, block_tensor())
+    state_vector_outputs = _as_keyed_tensors(block_state_vector, block_state_vector())
     for key in block_basic.output_keys:
-        assert torch.allclose(ref_outputs[key], tensor_outputs[key], atol=1e-6)
+        assert torch.allclose(ref_outputs[key], state_vector_outputs[key], atol=1e-6)
 
 
 def test_feedforward_block2_accepts_state_vector_input():
@@ -424,9 +441,9 @@ def test_feedforward_block_matches_perceval_distribution():
 
     assert set(block_probs.keys()) == set(perceval_probs.keys())
     for key, prob in block_probs.items():
-        assert math.isclose(
-            prob, perceval_probs[key], rel_tol=1e-5, abs_tol=1e-5
-        ), f"Mismatch for key {key}: Merlin={prob}, Perceval={perceval_probs[key]}"
+        assert math.isclose(prob, perceval_probs[key], rel_tol=1e-5, abs_tol=1e-5), (
+            f"Mismatch for key {key}: Merlin={prob}, Perceval={perceval_probs[key]}"
+        )
 
 
 def test_feedforwardblock_params_only_in_branches():
@@ -454,7 +471,7 @@ def test_feedforwardblock_params_only_in_branches():
 
     def adaptive_mzi_stage1(measurement):
         g_val = g(measurement)
-        return Circuit(2) // pcvl.BS() // pcvl.PS(pcvl.P(f"B{g_val-1}")) // pcvl.BS()
+        return Circuit(2) // pcvl.BS() // pcvl.PS(pcvl.P(f"B{g_val - 1}")) // pcvl.BS()
 
     gi = pcvl.GenericInterferometer(m, gi_func)
 
@@ -488,24 +505,24 @@ def test_feedforwardblock_params_only_in_branches():
     assert stage_0.trainable_parameters is not None
     trainable_set = set(stage_0.trainable_parameters)
     assert "A" in trainable_set, "Stage should have 'A' parameters from unitary"
-    assert (
-        "B" in trainable_set
-    ), "Stage should have 'B' parameters from conditional branches"
+    assert "B" in trainable_set, (
+        "Stage should have 'B' parameters from conditional branches"
+    )
 
     # Verify pre_layer exists and has correct parameters
     assert stage_0.pre_layer is not None
     pre_layer_trainable = set(stage_0.pre_layer.trainable_parameters or [])
     assert "A" in pre_layer_trainable, "Pre-layer should have 'A' from unitary"
     # Note: "x" is included in the first-stage unitary, so it should be treated as a first-stage input parameter.
-    assert (
-        "B" not in pre_layer_trainable
-    ), "Pre-layer should not have 'B' (only in conditional branches)"
+    assert "B" not in pre_layer_trainable, (
+        "Pre-layer should not have 'B' (only in conditional branches)"
+    )
 
     # Verify conditional circuits exist and contain "B" parameters
     assert stage_0.conditional_circuits is not None
-    assert (
-        len(stage_0.conditional_circuits) > 0
-    ), "Stage should have conditional circuits"
+    assert len(stage_0.conditional_circuits) > 0, (
+        "Stage should have conditional circuits"
+    )
     for circuit in stage_0.conditional_circuits.values():
         circuit_params = circuit.params
         # At least some conditional circuits should have B parameters
@@ -558,7 +575,7 @@ def test_feedforwardblock_input_at_send_layer_fails():
             // pcvl.BS()
             // pcvl.PS(g_val * pcvl.P("x"))
             // pcvl.BS()
-            // pcvl.PS(pcvl.P(f"B{g_val-1}"))
+            // pcvl.PS(pcvl.P(f"B{g_val - 1}"))
             // pcvl.BS()
         )
 
@@ -624,9 +641,9 @@ def test_feedforwardblock_params_multi_stage():
     )
 
     # Verify two stages were created
-    assert (
-        len(ff_block._stage_runtimes) == 2
-    ), f"Expected 2 stages, got {len(ff_block._stage_runtimes)}. Stages: {[s.measured_modes for s in ff_block._stage_runtimes]}"
+    assert len(ff_block._stage_runtimes) == 2, (
+        f"Expected 2 stages, got {len(ff_block._stage_runtimes)}. Stages: {[s.measured_modes for s in ff_block._stage_runtimes]}"
+    )
     stage_0 = ff_block._stage_runtimes[0]
     stage_1 = ff_block._stage_runtimes[1]
 
@@ -634,17 +651,17 @@ def test_feedforwardblock_params_multi_stage():
     assert stage_0.trainable_parameters is not None
     stage_0_params = set(stage_0.trainable_parameters)
     assert "A" in stage_0_params, "Stage 0 should have 'A' parameters"
-    assert (
-        "C" not in stage_0_params
-    ), "Stage 0 should not have 'C' parameters (belongs to stage 1)"
+    assert "C" not in stage_0_params, (
+        "Stage 0 should not have 'C' parameters (belongs to stage 1)"
+    )
 
     # Stage 1: should have only "C" parameters
     assert stage_1.trainable_parameters is not None
     stage_1_params = set(stage_1.trainable_parameters)
     assert "C" in stage_1_params, "Stage 1 should have 'C' parameters"
-    assert (
-        "A" not in stage_1_params
-    ), "Stage 1 should not have 'A' parameters (belongs to stage 0)"
+    assert "A" not in stage_1_params, (
+        "Stage 1 should not have 'A' parameters (belongs to stage 0)"
+    )
 
     # Verify each stage has its runtime objects (pre_layer may be None if root circuit has no parameters)
     assert stage_0.pre_layer is not None, "Stage 0 should have pre_layer"
@@ -652,18 +669,18 @@ def test_feedforwardblock_params_multi_stage():
 
     # Verify each stage has conditional circuits with their respective parameters
     assert stage_0.conditional_circuits is not None
-    assert (
-        len(stage_0.conditional_circuits) > 0
-    ), "Stage 0 should have conditional circuits"
+    assert len(stage_0.conditional_circuits) > 0, (
+        "Stage 0 should have conditional circuits"
+    )
     assert any(
         any(p.startswith("A") for p in circuit.params)
         for circuit in stage_0.conditional_circuits.values()
     ), "Stage 0 conditional circuits should contain 'A' parameters"
 
     assert stage_1.conditional_circuits is not None
-    assert (
-        len(stage_1.conditional_circuits) > 0
-    ), "Stage 1 should have conditional circuits"
+    assert len(stage_1.conditional_circuits) > 0, (
+        "Stage 1 should have conditional circuits"
+    )
     assert any(
         any(p.startswith("C") for p in circuit.params)
         for circuit in stage_1.conditional_circuits.values()

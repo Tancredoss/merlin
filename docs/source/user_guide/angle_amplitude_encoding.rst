@@ -222,7 +222,10 @@ from the **type** of the first argument to ``forward()``:
 .. warning::
    The ``amplitude_encoding=True`` constructor parameter was removed in
    **0.4**. Pass a :class:`~merlin.core.state_vector.StateVector` or a complex
-   ``torch.Tensor`` to ``forward()`` instead. See :doc:`/user_guide/migration_guide`.
+   ``torch.Tensor`` to ``forward()`` instead. Passing ``torch.Tensor`` as a
+   raw ``input_state`` is also removed; use
+   :meth:`~merlin.core.state_vector.StateVector.from_tensor` for
+   states. See :doc:`/user_guide/migration_guide`.
 
 Chunked execution tradeoff
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -584,6 +587,10 @@ Troubleshooting
 - **Removed constructor flag**: ``amplitude_encoding=True`` now raises an
   error. Pass a :class:`~merlin.core.state_vector.StateVector` or complex
   tensor to ``forward()`` instead of using the constructor flag.
+- **Removed tensor input state**: ``input_state=torch.Tensor(...)`` now
+  raises an error. Build a :class:`~merlin.core.state_vector.StateVector` with
+  :meth:`~merlin.core.state_vector.StateVector.from_tensor` and pass that as
+  ``input_state``.
 - **Batched amplitude encoding**: Pass a 2-D tensor to
   :meth:`~merlin.core.state_vector.StateVector.from_tensor` and call ``forward()`` with the resulting
   :class:`~merlin.core.state_vector.StateVector`. The layer normalizes each sample independently and

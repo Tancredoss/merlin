@@ -19,7 +19,9 @@ def _expected_embedded_tensor(
     if resolved_modes is None or resolved_photons is None:
         raise ValueError("n_modes and n_photons must be resolved for the example.")
 
-    fock_size = Combinadics("fock", resolved_photons, resolved_modes).compute_space_size()
+    fock_size = Combinadics(
+        "fock", resolved_photons, resolved_modes
+    ).compute_space_size()
     expected = torch.zeros(fock_size, dtype=torch.complex64)
     mapping = encoding.logical_to_fock_indices(
         n_modes=resolved_modes,

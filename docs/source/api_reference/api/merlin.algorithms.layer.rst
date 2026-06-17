@@ -180,7 +180,8 @@ layer as a tensor. Amplitude input handling is activated by passing a
 :class:`~merlin.core.state_vector.StateVector` or a complex ``torch.Tensor`` to
 ``forward()``. The removed ``amplitude_encoding=True`` constructor flag now
 raises an error; use :meth:`~merlin.core.state_vector.StateVector.from_tensor`
-when a constructor tensor must become a state object.
+when a constructor tensor must become a state object. Passing
+``torch.Tensor`` directly as ``input_state`` is also removed.
 
 The snippet below prepares a dual-rail Bell state as the initial condition and evaluates a batch of classical parameters:
 

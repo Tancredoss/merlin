@@ -5,8 +5,8 @@ import torch
 
 from merlin.core.computation_space import ComputationSpace
 from merlin.core.sectored_distribution import (
-    SectorResult,
     SectoredDistribution,
+    SectorResult,
     clean_sectored_distribution,
 )
 from merlin.utils.combinadics import Combinadics
@@ -246,7 +246,9 @@ class TestSectoredDistribution:
         dist = self._create_simple_distribution()
         cloned = dist.clone()
         assert len(cloned.sectors) == len(dist.sectors)
-        for orig_sector, cloned_sector in zip(dist.sectors, cloned.sectors):
+        for orig_sector, cloned_sector in zip(
+            dist.sectors, cloned.sectors, strict=True
+        ):
             assert torch.allclose(cloned_sector.tensor, orig_sector.tensor)
             assert cloned_sector.n_photons == orig_sector.n_photons
 
@@ -536,9 +538,18 @@ class TestCleanSectoredDistribution:
         # Full Fock basis for 2 photons: 6 states
         # Includes out-of-place keys: (1, 0, 0), (0, 1, 0), (0, 0, 1) represent 1-photon loss
         sector2 = SectorResult(
-            tensor=torch.tensor(
-                [0.12, 0.12, 0.12, 0.08, 0.08, 0.08, 0.1, 0.05, 0.05, 0.05]
-            ),
+            tensor=torch.tensor([
+                0.12,
+                0.12,
+                0.12,
+                0.08,
+                0.08,
+                0.08,
+                0.1,
+                0.05,
+                0.05,
+                0.05,
+            ]),
             n_modes=3,
             n_photons=2,
             keys=(
@@ -607,12 +618,10 @@ class TestCleanSectoredDistribution:
         # Batched sector2: 2 photons in 3 modes with photon loss
         # Includes full 2-photon basis (6 states) plus overlapping 1-photon keys and 0-photon
         sector2 = SectorResult(
-            tensor=torch.tensor(
-                [
-                    [0.12, 0.12, 0.12, 0.08, 0.08, 0.08, 0.1, 0.05, 0.05, 0.05],
-                    [0.14, 0.14, 0.14, 0.09, 0.09, 0.09, 0.08, 0.04, 0.04, 0.06],
-                ]
-            ),
+            tensor=torch.tensor([
+                [0.12, 0.12, 0.12, 0.08, 0.08, 0.08, 0.1, 0.05, 0.05, 0.05],
+                [0.14, 0.14, 0.14, 0.09, 0.09, 0.09, 0.08, 0.04, 0.04, 0.06],
+            ]),
             n_modes=3,
             n_photons=2,
             keys=(
@@ -688,9 +697,10 @@ class TestCleanSectoredDistribution:
             keys=((1, 0), (0, 1)),
         )
         sector2 = SectorResult(
-            tensor=torch.tensor(
-                [[0.2, 0.2, 0.2, 0.2, 0.2], [0.15, 0.2, 0.15, 0.25, 0.25]]
-            ),
+            tensor=torch.tensor([
+                [0.2, 0.2, 0.2, 0.2, 0.2],
+                [0.15, 0.2, 0.15, 0.25, 0.25],
+            ]),
             n_modes=2,
             n_photons=2,
             keys=(
@@ -721,9 +731,7 @@ class TestCleanSectoredDistribution:
             keys=((2, 0), (1, 1), (0, 2), (1, 0), (0, 0)),
         )
 
-        cleaned = clean_sectored_distribution(
-            SectoredDistribution(sectors=(sector2,))
-        )
+        cleaned = clean_sectored_distribution(SectoredDistribution(sectors=(sector2,)))
 
         assert cleaned.get_sector(2).tensor.shape == (2, 3, 3)
         assert torch.allclose(cleaned.get_sector(2).tensor, tensor[..., :3])
@@ -881,12 +889,10 @@ class TestIntegration:
     def test_batched_workflow_with_photon_loss(self):
         """Test batched workflow with photon loss across multiple inputs."""
         # 2 batch items, 2-photon input with photon loss
-        tensor = torch.tensor(
-            [
-                [0.1, 0.2, 0.1, 0.3, 0.3],
-                [0.15, 0.25, 0.15, 0.25, 0.2],
-            ]
-        )
+        tensor = torch.tensor([
+            [0.1, 0.2, 0.1, 0.3, 0.3],
+            [0.15, 0.25, 0.15, 0.25, 0.2],
+        ])
         sector = SectorResult(
             tensor=tensor,
             n_modes=2,

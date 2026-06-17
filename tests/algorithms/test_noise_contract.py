@@ -1,7 +1,6 @@
 from copy import deepcopy
 
 import numpy as np
-import re
 import perceval as pcvl
 import pytest
 import torch
@@ -1366,30 +1365,30 @@ def test_g2_output_keys_match_tensor_order_with_forward():
 
     # Verify keys are flat (not nested) for g2 case
     assert isinstance(keys_g2, list)
-    assert all(
-        isinstance(k, tuple) for k in keys_g2
-    ), "G2 output keys should be flat tuples"
+    assert all(isinstance(k, tuple) for k in keys_g2), (
+        "G2 output keys should be flat tuples"
+    )
 
     # Verify no duplicates in keys
-    assert len(keys_g2) == len(
-        set(keys_g2)
-    ), f"Duplicate keys found in g2 case: {keys_g2}"
+    assert len(keys_g2) == len(set(keys_g2)), (
+        f"Duplicate keys found in g2 case: {keys_g2}"
+    )
 
     # Verify output size matches keys
-    assert output_g2.shape[-1] == len(
-        keys_g2
-    ), f"Output tensor size {output_g2.shape[-1]} doesn't match keys count {len(keys_g2)}"
+    assert output_g2.shape[-1] == len(keys_g2), (
+        f"Output tensor size {output_g2.shape[-1]} doesn't match keys count {len(keys_g2)}"
+    )
 
     # Verify keys are valid Fock states for 1 photon in 2 modes
     expected_keys_g2 = {(0, 1), (1, 1), (2, 0), (0, 2), (1, 0)}
-    assert (
-        set(keys_g2) == expected_keys_g2
-    ), f"Expected {expected_keys_g2}, got {set(keys_g2)}"
+    assert set(keys_g2) == expected_keys_g2, (
+        f"Expected {expected_keys_g2}, got {set(keys_g2)}"
+    )
 
     # Verify probabilities sum to 1
-    assert torch.isclose(
-        output_g2.sum(), torch.tensor(1.0), atol=1e-5
-    ), f"G2 output probabilities don't sum to 1: {output_g2.sum()}"
+    assert torch.isclose(output_g2.sum(), torch.tensor(1.0), atol=1e-5), (
+        f"G2 output probabilities don't sum to 1: {output_g2.sum()}"
+    )
 
     # Compare with Perceval for g2 only case using fixed circuit (no variable params)
     fixed_circuit_g2 = pcvl.Circuit(2)
@@ -1406,9 +1405,9 @@ def test_g2_output_keys_match_tensor_order_with_forward():
 
     # Verify that all Perceval output states are represented in our keys
     perceval_states = {tuple(state) for state in perceval_result_g2.keys()}
-    assert perceval_states.issubset(
-        set(keys_g2)
-    ), f"Some Perceval states not in Merlin keys. Perceval: {perceval_states}, Merlin: {set(keys_g2)}"
+    assert perceval_states.issubset(set(keys_g2)), (
+        f"Some Perceval states not in Merlin keys. Perceval: {perceval_states}, Merlin: {set(keys_g2)}"
+    )
 
     # Test 2: G2 + Photon loss (brightness)
     circ_g2_pl = ml.CircuitBuilder(n_modes=2)
@@ -1432,30 +1431,30 @@ def test_g2_output_keys_match_tensor_order_with_forward():
 
     # Verify keys are flat (not nested) for g2 + photon loss case
     assert isinstance(keys_g2_pl, list)
-    assert all(
-        isinstance(k, tuple) for k in keys_g2_pl
-    ), "G2+PL output keys should be flat tuples"
+    assert all(isinstance(k, tuple) for k in keys_g2_pl), (
+        "G2+PL output keys should be flat tuples"
+    )
 
     # Verify no duplicates in keys
-    assert len(keys_g2_pl) == len(
-        set(keys_g2_pl)
-    ), f"Duplicate keys found in g2+PL case: {keys_g2_pl}"
+    assert len(keys_g2_pl) == len(set(keys_g2_pl)), (
+        f"Duplicate keys found in g2+PL case: {keys_g2_pl}"
+    )
 
     # Verify output size matches keys
-    assert output_g2_pl.shape[-1] == len(
-        keys_g2_pl
-    ), f"Output tensor size {output_g2_pl.shape[-1]} doesn't match keys count {len(keys_g2_pl)}"
+    assert output_g2_pl.shape[-1] == len(keys_g2_pl), (
+        f"Output tensor size {output_g2_pl.shape[-1]} doesn't match keys count {len(keys_g2_pl)}"
+    )
 
     # With photon loss, we can have 0 or 1 photon states
     expected_keys_g2_pl = {(0, 1), (0, 0), (1, 1), (2, 0), (0, 2), (1, 0)}
-    assert (
-        set(keys_g2_pl) == expected_keys_g2_pl
-    ), f"Expected {expected_keys_g2_pl}, got {set(keys_g2_pl)}"
+    assert set(keys_g2_pl) == expected_keys_g2_pl, (
+        f"Expected {expected_keys_g2_pl}, got {set(keys_g2_pl)}"
+    )
 
     # Verify probabilities sum to 1
-    assert torch.isclose(
-        output_g2_pl.sum(), torch.tensor(1.0), atol=1e-5
-    ), f"G2+PL output probabilities don't sum to 1: {output_g2_pl.sum()}"
+    assert torch.isclose(output_g2_pl.sum(), torch.tensor(1.0), atol=1e-5), (
+        f"G2+PL output probabilities don't sum to 1: {output_g2_pl.sum()}"
+    )
 
     # Compare with Perceval for g2 + photon loss case using fixed circuit
     sim_pl = pcvl.Simulator(backend)
@@ -1470,6 +1469,6 @@ def test_g2_output_keys_match_tensor_order_with_forward():
 
     # Verify that all Perceval output states are represented in our keys
     perceval_states_pl = {tuple(state) for state in perceval_result_g2_pl.keys()}
-    assert perceval_states_pl.issubset(
-        set(keys_g2_pl)
-    ), f"Some Perceval states not in Merlin keys. Perceval: {perceval_states_pl}, Merlin: {set(keys_g2_pl)}"
+    assert perceval_states_pl.issubset(set(keys_g2_pl)), (
+        f"Some Perceval states not in Merlin keys. Perceval: {perceval_states_pl}, Merlin: {set(keys_g2_pl)}"
+    )
