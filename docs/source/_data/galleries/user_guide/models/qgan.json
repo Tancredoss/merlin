@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Photonic QGAN",
+    "summary": "Photonic quantum generative adversarial network",
+    "image": "_static/reproduced_papers/photonicQGAN.png",
+    "doc": "user_guide/models/qgan",
+    "tags": ["Quantum models", "Ready to use","GAN","Generative"]
+  }
+]

@@ -28,13 +28,17 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, ClassVar, TypeAlias
+from typing import TYPE_CHECKING, ClassVar, TypeAlias, cast
 
 import torch
 
 from merlin.core.computation_space import ComputationSpace
 from merlin.core.partial_measurement import PartialMeasurement
-from merlin.measurement.process import partial_measurement
+from merlin.core.sectored_distribution import (
+    SectoredDistribution,
+    clean_sectored_distribution,
+)
+from merlin.measurement.process import SamplingProcess, partial_measurement
 from merlin.utils.deprecations import error_deprecated_enum_access
 from merlin.utils.grouping import LexGrouping, ModGrouping
 
@@ -73,29 +77,35 @@ class BaseMeasurementStrategy:
     def process(
         self,
         *,
-        distribution: torch.Tensor,
-        amplitudes: torch.Tensor,
+        distribution: torch.Tensor | SectoredDistribution,
+        amplitudes: torch.Tensor | SectoredDistribution,
         apply_sampling: bool,
         effective_shots: int,
-        sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
-        apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
-        apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        sampler: SamplingProcess,
+        apply_photon_loss: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
+        apply_detectors: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
-    ) -> torch.Tensor | PartialMeasurement:
+    ) -> torch.Tensor | PartialMeasurement | SectoredDistribution:
         """Return the processed result for the selected measurement strategy.
 
         Parameters
         ----------
-        distribution : torch.Tensor
-            Probability distribution before final post-processing.
-        amplitudes : torch.Tensor
-            Raw amplitudes before measurement-specific processing.
+        distribution : torch.Tensor | SectoredDistribution
+            Probability distribution before final post-processing, or a sectored
+            distribution in the g2 noise case.
+        amplitudes : torch.Tensor | SectoredDistribution
+            Raw amplitudes before measurement-specific processing, or a sectored
+            distribution in the g2 noise case.
         apply_sampling : bool
             Whether sampling should be applied.
         effective_shots : int
             Effective number of shots used for sampling.
-        sample_fn : Callable[[torch.Tensor, int], torch.Tensor]
-            Sampling function.
+        sampler : SamplingProcess
+            Sampling process object providing sampling methods.
         apply_photon_loss : Callable[[torch.Tensor], torch.Tensor]
             Photon-loss transform.
         apply_detectors : Callable[[torch.Tensor], torch.Tensor]
@@ -105,7 +115,7 @@ class BaseMeasurementStrategy:
 
         Returns
         -------
-        torch.Tensor | PartialMeasurement
+        torch.Tensor | PartialMeasurement | SectoredDistribution
             Processed measurement result.
         """
         raise NotImplementedError
@@ -120,21 +130,29 @@ class DistributionStrategy(BaseMeasurementStrategy):
     def process(
         self,
         *,
-        distribution: torch.Tensor,
-        amplitudes: torch.Tensor,
+        distribution: torch.Tensor | SectoredDistribution,
+        amplitudes: torch.Tensor | SectoredDistribution,
         apply_sampling: bool,
         effective_shots: int,
-        sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
-        apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
-        apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        sampler: SamplingProcess,
+        apply_photon_loss: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
+        apply_detectors: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> torch.Tensor:
         # Distribution strategies apply detector/noise transforms before sampling.
         distribution = apply_photon_loss(distribution)
         distribution = apply_detectors(distribution)
-
+        # Change the sectored distribution to a tensor
+        self.keys = None
+        if isinstance(distribution, SectoredDistribution):
+            distribution = clean_sectored_distribution(distribution)
+            self.keys, distribution = distribution.to_tensor(return_keys=True)
         if apply_sampling and effective_shots > 0:
-            distribution = sample_fn(distribution, effective_shots)
+            distribution = sampler.pcvl_sampler(distribution, effective_shots)
         if grouping is not None:
             return grouping(distribution)
         return distribution
@@ -155,7 +173,13 @@ class ModeExpectationsStrategy(DistributionStrategy):
 class AmplitudesStrategy(BaseMeasurementStrategy):
     """New API: return raw amplitudes (sampling is not supported)."""
 
-    def process(self, *, amplitudes: torch.Tensor, **kwargs: object) -> torch.Tensor:
+    def process(
+        self,
+        *,
+        amplitudes: torch.Tensor | SectoredDistribution,
+        sampler: SamplingProcess | None = None,
+        **kwargs: object,
+    ) -> torch.Tensor | SectoredDistribution:
         # Amplitudes bypass detectors, photon loss, and sampling.
         apply_sampling = bool(kwargs.get("apply_sampling", False))
         if apply_sampling:
@@ -181,22 +205,32 @@ class PartialMeasurementStrategy(BaseMeasurementStrategy):
     def process(
         self,
         *,
-        distribution: torch.Tensor,
-        amplitudes: torch.Tensor,
+        distribution: torch.Tensor | SectoredDistribution,
+        amplitudes: torch.Tensor | SectoredDistribution,
         apply_sampling: bool,
         effective_shots: int,
-        sample_fn: Callable[[torch.Tensor, int], torch.Tensor],
-        apply_photon_loss: Callable[[torch.Tensor], torch.Tensor],
-        apply_detectors: Callable[[torch.Tensor], torch.Tensor],
+        sampler: SamplingProcess,
+        apply_photon_loss: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
+        apply_detectors: Callable[
+            [torch.Tensor | SectoredDistribution], torch.Tensor | SectoredDistribution
+        ],
         grouping: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> PartialMeasurement:
         if apply_sampling and effective_shots > 0:
             raise RuntimeError(
                 "Sampling cannot be applied when measurement_strategy=MeasurementStrategy.partial()."
             )
+        # In partial measurement, amplitudes should always be Tensor, not SectoredDistribution.
+        # Cast to ensure type narrowing for the apply_photon_loss and apply_detectors calls.
+        amplitudes_tensor = cast(torch.Tensor, amplitudes)
         # Apply photon loss before detectors to match detector basis configuration.
-        amplitudes = apply_photon_loss(amplitudes)
-        detector_output = apply_detectors(amplitudes)
+        amplitudes_tensor = cast(
+            torch.Tensor,
+            apply_photon_loss(amplitudes_tensor),
+        )
+        detector_output = apply_detectors(amplitudes_tensor)
         if not isinstance(detector_output, list):
             raise TypeError(
                 "Partial measurement expects detector output in partial_measurement mode."
@@ -245,13 +279,19 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
     computation_space : ComputationSpace | None
         Computation space used by the strategy.
     grouping : LexGrouping | ModGrouping | None
-        Optional grouping applied to probability outputs.
+        Optional grouping applied to probability outputs. If
+        ``occupancy_readout`` is ``True``, grouping is applied after the
+        occupancy readout.
+    occupancy_readout : bool
+        Whether probability outputs are collapsed to binary occupied/unoccupied
+        output keys. Default value is ``False``.
     """
 
     type: MeasurementKind
     measured_modes: tuple[int, ...] = ()
     computation_space: ComputationSpace | None = None
     grouping: LexGrouping | ModGrouping | None = None
+    occupancy_readout: bool = False
     if TYPE_CHECKING:
         # Type-checker-only legacy/compat attributes. At runtime, the metaclass
         # resolves these names to either a new API instance (NONE) or legacy enums.
@@ -261,6 +301,8 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
     def probs(
         computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
         grouping: LexGrouping | ModGrouping | None = None,
+        *,
+        occupancy_readout: bool = False,
     ) -> MeasurementStrategy:
         """Create a probability-output measurement strategy.
 
@@ -269,19 +311,42 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
         computation_space : ComputationSpace
             Computation space used to enumerate the output basis.
         grouping : LexGrouping | ModGrouping | None
-            Optional grouping applied to the resulting probabilities.
+            Optional grouping applied to the resulting probabilities. If
+            ``occupancy_readout`` is ``True``, grouping is applied after the
+            occupancy readout.
+        occupancy_readout : bool
+            Whether to collapse count-resolved Fock output keys into binary
+            occupied/unoccupied keys before returning probabilities. Only
+            supported with ``ComputationSpace.FOCK``. Default value is
+            ``False``.
 
         Returns
         -------
         MeasurementStrategy
             Probability measurement strategy.
+
+        Raises
+        ------
+        TypeError
+            If ``occupancy_readout`` is not a bool.
+        ValueError
+            If occupancy readout is requested outside ``ComputationSpace.FOCK``.
         """
         # Full measurement returning a probability distribution.
         computation_space = ComputationSpace.coerce(computation_space)
+        if type(occupancy_readout) is not bool:
+            raise TypeError("occupancy_readout must be a bool.")
+        if occupancy_readout:
+            if computation_space is not ComputationSpace.FOCK:
+                raise ValueError(
+                    "occupancy_readout=True is only supported with "
+                    "computation_space=ComputationSpace.FOCK."
+                )
         return MeasurementStrategy(
             type=MeasurementKind["PROBABILITIES"],
             computation_space=computation_space,
             grouping=grouping,
+            occupancy_readout=occupancy_readout,
         )
 
     @staticmethod
@@ -384,6 +449,7 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
                 and self.measured_modes == other.measured_modes
                 and self.computation_space == other.computation_space
                 and self.grouping == other.grouping
+                and self.occupancy_readout == other.occupancy_readout
             )
         if isinstance(other, _LegacyMeasurementStrategy):
             return self.type.name == other.name
@@ -399,6 +465,7 @@ class MeasurementStrategy(metaclass=_MeasurementStrategyMeta):
             self.measured_modes,
             self.computation_space,
             self.grouping,
+            self.occupancy_readout,
         ))
 
     def validate_modes(self, n_modes: int) -> None:

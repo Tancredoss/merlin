@@ -22,7 +22,7 @@
 
 
 import warnings
-from typing import Any
+from typing import Any, cast
 
 import perceval as pcvl
 import pytest
@@ -41,6 +41,37 @@ from merlin.measurement.strategies import (
     resolve_measurement_strategy,
 )
 from merlin.utils.grouping import LexGrouping, ModGrouping
+
+
+def _reference_occupancy_readout(
+    output_keys: list[tuple[int, ...]],
+    probabilities: torch.Tensor,
+) -> tuple[tuple[tuple[int, ...], ...], torch.Tensor]:
+    """Collapse count-resolved probabilities to binary occupancy keys."""
+    occupancy_keys = [
+        tuple(1 if count > 0 else 0 for count in key) for key in output_keys
+    ]
+    grouped_keys = tuple(sorted(set(occupancy_keys)))
+    key_to_group = {key: index for index, key in enumerate(grouped_keys)}
+    group_indices = torch.tensor(
+        [key_to_group[key] for key in occupancy_keys],
+        dtype=torch.long,
+        device=probabilities.device,
+    )
+    grouped = torch.zeros(
+        probabilities.shape[0],
+        len(grouped_keys),
+        dtype=probabilities.dtype,
+        device=probabilities.device,
+    )
+    grouped.index_add_(1, group_indices, probabilities)
+    mass = grouped.sum(dim=1, keepdim=True)
+    grouped = torch.where(
+        mass > 0,
+        grouped / mass.clamp_min(torch.finfo(grouped.dtype).eps),
+        grouped,
+    )
+    return grouped_keys, grouped
 
 
 class TestQuantumLayerMeasurementStrategy:
@@ -439,6 +470,130 @@ class TestQuantumLayerMeasurementStrategy:
                 reference = grouping(legacy_output)
             assert torch.allclose(output, reference, atol=1e-6)
 
+    def test_occupancy_readout_binds_to_strategy_output_keys(self):
+        """Occupancy readout should bind to layer keys and update metadata."""
+        torch.manual_seed(0)
+
+        builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=True, name="U1")
+        builder.add_angle_encoding(modes=[0, 1], name="input")
+        builder.add_entangling_layer(trainable=True, name="U2")
+
+        x = torch.rand(2, 2)
+        ungrouped_layer = ML.QuantumLayer(
+            input_size=2,
+            n_photons=2,
+            builder=builder,
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK
+            ),
+        )
+        grouped_layer = ML.QuantumLayer(
+            input_size=2,
+            n_photons=2,
+            builder=builder,
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK,
+                occupancy_readout=True,
+            ),
+        )
+        grouped_layer.load_state_dict(ungrouped_layer.state_dict())
+
+        ungrouped_output = ungrouped_layer(x)
+        reference_keys, reference = _reference_occupancy_readout(
+            ungrouped_layer.output_keys,
+            ungrouped_output,
+        )
+        output = grouped_layer(x)
+
+        assert grouped_layer.output_size == len(reference_keys)
+        assert tuple(grouped_layer.output_keys) == reference_keys
+        assert output.shape == (2, grouped_layer.output_size)
+        assert torch.allclose(output, reference, atol=1e-6)
+
+    def test_occupancy_readout_requires_fock_space(self):
+        """Occupancy readout is only defined for count-resolved Fock keys."""
+        with pytest.raises(ValueError, match="FOCK"):
+            MeasurementStrategy.probs(
+                computation_space=ComputationSpace.UNBUNCHED,
+                occupancy_readout=True,
+            )
+        with pytest.raises(ValueError, match="FOCK"):
+            MeasurementStrategy.probs(
+                computation_space=ComputationSpace.DUAL_RAIL,
+                occupancy_readout=True,
+            )
+
+    def test_occupancy_readout_applies_before_grouping(self):
+        """Occupancy readout should reduce keys before ordinary grouping."""
+        torch.manual_seed(0)
+
+        builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=True, name="U1")
+        builder.add_angle_encoding(modes=[0, 1], name="input")
+        builder.add_entangling_layer(trainable=True, name="U2")
+
+        x = torch.rand(2, 2)
+        ungrouped_layer = ML.QuantumLayer(
+            input_size=2,
+            n_photons=2,
+            builder=builder,
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK
+            ),
+        )
+
+        ungrouped_output = ungrouped_layer(x)
+        reference_keys, occupancy_reference = _reference_occupancy_readout(
+            ungrouped_layer.output_keys,
+            ungrouped_output,
+        )
+        grouping = LexGrouping(len(reference_keys), 2)
+        grouped_layer = ML.QuantumLayer(
+            input_size=2,
+            n_photons=2,
+            builder=builder,
+            measurement_strategy=MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK,
+                grouping=grouping,
+                occupancy_readout=True,
+            ),
+        )
+        grouped_layer.load_state_dict(ungrouped_layer.state_dict())
+
+        output = grouped_layer(x)
+
+        assert grouped_layer.output_size == grouping.output_size
+        assert tuple(grouped_layer.output_keys) == reference_keys
+        assert output.shape == (2, grouping.output_size)
+        assert torch.allclose(output, grouping(occupancy_reference), atol=1e-6)
+
+    def test_occupancy_readout_validates_grouping_input_size(self):
+        """Grouping after occupancy readout must match the reduced readout width."""
+        builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=True, name="U1")
+        builder.add_angle_encoding(modes=[0, 1], name="input")
+
+        with pytest.raises(ValueError, match="occupancy readout output size"):
+            ML.QuantumLayer(
+                input_size=2,
+                n_photons=2,
+                builder=builder,
+                measurement_strategy=MeasurementStrategy.probs(
+                    computation_space=ComputationSpace.FOCK,
+                    grouping=LexGrouping(4, 2),
+                    occupancy_readout=True,
+                ),
+            )
+
+    def test_occupancy_readout_requires_bool(self):
+        """Invalid readout flags should fail at strategy construction."""
+        with pytest.raises(TypeError, match="occupancy_readout"):
+            MeasurementStrategy.probs(
+                computation_space=ComputationSpace.FOCK,
+                occupancy_readout=cast(bool, 1),
+            )
+
 
 def test_resolve_measurement_strategy():
     assert isinstance(
@@ -563,12 +718,22 @@ def test_probabilities_strategy_applies_transforms_and_sampling():
         assert shots == 5
         return dist * 0 + shots
 
+    # Create a mock sampler with the expected interface
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            assert torch.allclose(dist, torch.tensor([3.0]))
+            assert shots == 5
+            return dist * 0 + shots
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=True,
         effective_shots=5,
-        sample_fn=sample_fn,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -588,15 +753,20 @@ def test_probabilities_strategy_skips_sampling_when_zero_shots():
     def apply_detectors(dist: torch.Tensor) -> torch.Tensor:
         return dist * 2.0
 
-    def sample_fn(dist: torch.Tensor, shots: int) -> torch.Tensor:
-        raise AssertionError("Sampling should not be called when shots are zero.")
+    # Create a mock sampler that should not be called
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            raise AssertionError("Sampling should not be called when shots are zero.")
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            raise AssertionError("Sampling should not be called when shots are zero.")
 
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=True,
         effective_shots=0,
-        sample_fn=sample_fn,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -616,17 +786,22 @@ def test_mode_expectations_strategy_skips_sampling_when_disabled():
     def apply_detectors(dist: torch.Tensor) -> torch.Tensor:
         return dist - 1.0
 
-    def sample_fn(dist: torch.Tensor, shots: int) -> torch.Tensor:
-        nonlocal sample_called
-        sample_called = True
-        return dist
+    # Create a mock sampler
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            nonlocal sample_called
+            sample_called = True
+            return dist
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
 
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=False,
         effective_shots=10,
-        sample_fn=sample_fn,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -720,12 +895,19 @@ def test_partial_measurement_strategy_applies_photon_loss_before_detectors():
             }
         ]
 
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
     result = strategy.process(
         distribution=distribution,
         amplitudes=amplitudes,
         apply_sampling=False,
         effective_shots=0,
-        sample_fn=lambda dist, shots: dist,
+        sampler=MockSampler(),
         apply_photon_loss=apply_photon_loss,
         apply_detectors=apply_detectors,
     )
@@ -748,12 +930,19 @@ def test_partial_measurement_strategy_applies_grouping_to_tensor():
             }
         ]
 
+    class MockSampler:
+        def pcvl_sampler(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
+        def pcvl_sampler_g2(self, dist: torch.Tensor, shots: int) -> torch.Tensor:
+            return dist
+
     result = strategy.process(
         distribution=torch.tensor([1.0]),
         amplitudes=torch.tensor([0.25]),
         apply_sampling=False,
         effective_shots=0,
-        sample_fn=lambda dist, shots: dist,
+        sampler=MockSampler(),
         apply_photon_loss=lambda amps: amps,
         apply_detectors=apply_detectors,
         grouping=grouping,
@@ -789,10 +978,16 @@ class _DummyComputationProcess:
         self.last_simultaneous_processes = simultaneous_processes
         return torch.tensor([1.0])
 
-    def compute(self, params, memristive_current_state=None):
+    def compute(
+        self,
+        params,
+        amplitude_encoding=False,
+        memristive_current_state=None,
+    ):
         if memristive_current_state is None:
             memristive_current_state = []
         self.called = "compute"
+        self.last_amplitude_encoding = amplitude_encoding
         return torch.tensor([2.0])
 
 
@@ -999,7 +1194,7 @@ class TestComputationSpaceConflictResolution:
             AttributeError,
             match="Cannot specify 'computation_space' in QuantumLayer's constructor. ",
         ):
-            layer = ML.QuantumLayer(
+            ML.QuantumLayer(
                 input_size=2,
                 n_photons=1,
                 builder=builder,

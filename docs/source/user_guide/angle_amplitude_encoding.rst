@@ -222,7 +222,10 @@ from the **type** of the first argument to ``forward()``:
 .. warning::
    The ``amplitude_encoding=True`` constructor parameter was removed in
    **0.4**. Pass a :class:`~merlin.core.state_vector.StateVector` or a complex
-   ``torch.Tensor`` to ``forward()`` instead.
+   ``torch.Tensor`` to ``forward()`` instead. Passing ``torch.Tensor`` as a
+   raw ``input_state`` is also removed; use
+   :meth:`~merlin.core.state_vector.StateVector.from_tensor` for
+   states. See :doc:`/user_guide/migration_guide`.
 
 Chunked execution tradeoff
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -336,11 +339,13 @@ internally — and validates that the last dimension matches the Fock basis size
    normalizing upstream (e.g. via ``nn.functional.normalize``) can improve
    numerical stability during training.
 
-Structured input encodings can infer their own dimensions. For example,
-dual-rail infers ``n_photons`` from the logical tensor width and sets
-``n_modes = 2 * n_photons``. QLOQ and other partitioned encodings infer
-``n_modes`` and ``n_photons`` from their ``modes_per_photon`` contract. The
-resolved values are available on the returned object:
+Structured input encodings
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If your amplitude tensor's final dimension indexes a logical basis rather than
+Merlin's full Fock basis, pass an ``EncodingSpace`` to
+``StateVector.from_tensor(..., encoding=...)``. Structured encodings can infer
+their own physical dimensions:
 
 .. code-block:: python
 
@@ -368,6 +373,10 @@ encoded state:
     padded = dual_rail @ [0]
     assert padded.n_modes == 5
     assert padded.n_photons == 2
+
+This section only introduces the mechanism. See :doc:`encoding_space` for the
+PyTorch-oriented decision table and runnable examples for Fock, unbunched,
+dual-rail, partitioned, and QLOQ inputs.
 
 
 Using a complex tensor directly
@@ -578,6 +587,10 @@ Troubleshooting
 - **Removed constructor flag**: ``amplitude_encoding=True`` now raises an
   error. Pass a :class:`~merlin.core.state_vector.StateVector` or complex
   tensor to ``forward()`` instead of using the constructor flag.
+- **Removed tensor input state**: ``input_state=torch.Tensor(...)`` now
+  raises an error. Build a :class:`~merlin.core.state_vector.StateVector` with
+  :meth:`~merlin.core.state_vector.StateVector.from_tensor` and pass that as
+  ``input_state``.
 - **Batched amplitude encoding**: Pass a 2-D tensor to
   :meth:`~merlin.core.state_vector.StateVector.from_tensor` and call ``forward()`` with the resulting
   :class:`~merlin.core.state_vector.StateVector`. The layer normalizes each sample independently and

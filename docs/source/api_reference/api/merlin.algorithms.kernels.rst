@@ -29,10 +29,19 @@ Deprecations
    :undoc-members:
    :show-inheritance:
 
-.. warning:: *Deprecated since version 0.3:*
+.. warning:: *Removed in version 0.4:*
    The ``no_bunching`` flag accepted by legacy kernel constructors is removed
-   since version 0.3.0. Use the ``computation_space`` parameter instead.
-   See :doc:`/user_guide/migration_guide`.
+   in version 0.4. Use ``computation_space=ComputationSpace.UNBUNCHED`` or
+   ``computation_space=ComputationSpace.FOCK`` instead. See
+   :doc:`/user_guide/migration_guide`.
+
+.. warning:: *Removed in version 0.4:*
+   Passing ``torch.Tensor`` as ``FidelityKernel(input_state=...)`` is removed.
+   Kernel ``input_state`` must be a Fock occupation list such as
+   ``[1, 0, 1]``. For amplitude tensors, build a
+   :class:`~merlin.core.state_vector.StateVector` with
+   :meth:`~merlin.core.state_vector.StateVector.from_tensor` and use
+   :class:`~merlin.algorithms.layer.QuantumLayer` instead.
 
 .. warning:: *Deprecated since version 0.4:*
    Direct unitary construction through :meth:`FeatureMap.compute_unitary` is a

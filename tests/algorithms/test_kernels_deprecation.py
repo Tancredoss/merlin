@@ -274,11 +274,11 @@ class TestLegacyFeatureMapUnitaryPath:
 
 
 # ---------------------------------------------------------------------------
-# Deprecated no_bunching parameter
+# Removed no_bunching parameter
 # ---------------------------------------------------------------------------
 
 
-class TestDeprecatedNoBunchingParam:
+class TestRemovedNoBunchingParam:
     """Tests for the removed ``no_bunching`` parameter across kernel APIs."""
 
     def setup_method(self):
@@ -292,26 +292,45 @@ class TestDeprecatedNoBunchingParam:
             input_parameters="x",
         )
 
-    def test_kernel_rejects_no_bunching(self):
-        with pytest.warns(DeprecationWarning):
+    def _assert_removed_message(self, message: str) -> None:
+        assert "no_bunching" in message
+        assert "ComputationSpace.UNBUNCHED" in message
+        assert "ComputationSpace.FOCK" in message
+
+    def _assert_no_deprecation_warning(self, warning_list) -> None:
+        assert not any(
+            issubclass(warning.category, DeprecationWarning) for warning in warning_list
+        )
+
+    @pytest.mark.parametrize("no_bunching", [True, False])
+    def test_kernel_rejects_no_bunching(self, no_bunching: bool):
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
             with pytest.raises(ValueError) as exc_info:
                 FidelityKernel(
                     feature_map=self.feature_map,
                     input_state=[2, 0],
-                    no_bunching=True,
+                    no_bunching=no_bunching,
                 )
-        assert "no_bunching" in str(exc_info.value)
+        self._assert_no_deprecation_warning(warning_list)
+        self._assert_removed_message(str(exc_info.value))
 
-        with pytest.warns(DeprecationWarning):
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
             with pytest.raises(ValueError) as exc_info:
-                FidelityKernel.simple(input_size=2, no_bunching=True)
-        assert "no_bunching" in str(exc_info.value)
+                FidelityKernel.simple(input_size=2, no_bunching=no_bunching)
+        self._assert_no_deprecation_warning(warning_list)
+        self._assert_removed_message(str(exc_info.value))
 
-        builder = KernelCircuitBuilder().input_size(2).n_modes(4)
-        with pytest.warns(DeprecationWarning):
+        with pytest.warns(DeprecationWarning, match="KernelCircuitBuilder"):
+            builder = KernelCircuitBuilder()
+        builder = builder.input_size(2).n_modes(4)
+        with warnings.catch_warnings(record=True) as warning_list:
+            warnings.simplefilter("always")
             with pytest.raises(ValueError) as exc_info:
-                builder.build_fidelity_kernel(no_bunching=True)
-        assert "no_bunching" in str(exc_info.value)
+                builder.build_fidelity_kernel(no_bunching=no_bunching)
+        self._assert_no_deprecation_warning(warning_list)
+        self._assert_removed_message(str(exc_info.value))
 
 
 # ---------------------------------------------------------------------------
