@@ -57,6 +57,23 @@ class TestConstructorInputTypes:
 
         assert layer.n_photons == 2
 
+    def test_input_state_statevector_n_photons_mismatch_raises(self):
+        """StateVector photon count must match explicit n_photons."""
+        circuit = pcvl.Circuit(4)
+        sv = StateVector.from_basic_state([1, 0, 1, 0])
+
+        with pytest.raises(
+            ValueError,
+            match="Inconsistent number of photons between input_state and n_photons",
+        ):
+            ML.QuantumLayer(
+                input_size=0,
+                circuit=circuit,
+                input_state=sv,
+                n_photons=1,
+                measurement_strategy=ML.MeasurementStrategy.probs(),
+            )
+
     def test_input_state_accepts_perceval_statevector(self):
         """pcvl.StateVector should be accepted and converted."""
         circuit = pcvl.Circuit(4)
