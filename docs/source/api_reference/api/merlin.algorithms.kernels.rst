@@ -35,6 +35,14 @@ Deprecations
    ``computation_space=ComputationSpace.FOCK`` instead. See
    :doc:`/user_guide/migration_guide`.
 
+.. warning:: *Removed in version 0.4:*
+   Passing ``torch.Tensor`` as ``FidelityKernel(input_state=...)`` is removed.
+   Kernel ``input_state`` must be a Fock occupation list such as
+   ``[1, 0, 1]``. For amplitude tensors, build a
+   :class:`~merlin.core.state_vector.StateVector` with
+   :meth:`~merlin.core.state_vector.StateVector.from_tensor` and use
+   :class:`~merlin.algorithms.layer.QuantumLayer` instead.
+
 .. warning:: *Deprecated since version 0.4:*
    Direct unitary construction through :meth:`FeatureMap.compute_unitary` is a
    legacy path. It still owns compiler state for backwards compatibility, but

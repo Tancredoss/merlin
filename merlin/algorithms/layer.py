@@ -66,6 +66,7 @@ from ..utils.grouping import ModGrouping
 from ..utils.normalization import normalize_probabilities_and_amplitudes
 from .layer_utils import (
     _CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE,
+    _TENSOR_INPUT_STATE_REMOVAL_MESSAGE,
     InitializationContext,
     _build_simple_circuit,
     _normalize_sector_keys,
@@ -115,13 +116,7 @@ class QuantumLayer(MerlinModule):
         experiment: pcvl.Experiment | None = None,
         # For both custom circuits and builder
         input_state: (
-            StateVector
-            | pcvl.StateVector
-            | pcvl.BasicState
-            | list
-            | tuple
-            | torch.Tensor
-            | None
+            StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | None
         ) = None,
         n_photons: int | None = None,
         # only for custom circuits and experiments
@@ -240,8 +235,6 @@ class QuantumLayer(MerlinModule):
         DeprecationWarning
             When ``amplitude_encoding=True`` is passed (deprecated in favor of
             passing ``StateVector`` to ``forward()``).
-            When ``torch.Tensor`` is passed as ``input_state`` (deprecated in favor
-            of ``StateVector``).
 
         """
         super().__init__()
@@ -886,15 +879,33 @@ class QuantumLayer(MerlinModule):
                 f"Amplitude input expects {expected_dim} components, received {feature_dim}."
             ) from exc
 
-    def set_input_state(self, input_state):
+    def set_input_state(
+        self,
+        input_state: StateVector | pcvl.StateVector | pcvl.BasicState | tuple | list,
+    ) -> None:
         """Set the layer input state for subsequent evaluations.
 
         Parameters
         ----------
-        input_state : pcvl.BasicState | tuple | list | torch.Tensor | merlin.core.state_vector.StateVector
+        input_state : merlin.core.state_vector.StateVector | pcvl.StateVector | pcvl.BasicState | tuple | list
             Input state to store on the layer and underlying computation
             process.
+
+        Raises
+        ------
+        ValueError
+            If ``torch.Tensor`` is passed as ``input_state``.
         """
+        if isinstance(input_state, torch.Tensor):
+            raise ValueError(_TENSOR_INPUT_STATE_REMOVAL_MESSAGE)
+
+        if isinstance(input_state, pcvl.StateVector):
+            input_state = StateVector.from_perceval(
+                input_state,
+                device=self.device,
+                dtype=self.complex_dtype,
+            )
+
         if isinstance(input_state, pcvl.BasicState):
             self.input_state = input_state
             self.computation_process.input_state = list(input_state)
@@ -912,13 +923,6 @@ class QuantumLayer(MerlinModule):
         if isinstance(input_state, StateVector):
             tensor_state = self._statevector_tensor(input_state)
             embedded = self._embed_amplitude_tensor(tensor_state)
-            self.input_state = input_state
-            self.computation_process.input_state = embedded
-            return
-
-        if isinstance(input_state, torch.Tensor):
-            validated = self._validate_amplitude_input(input_state)
-            embedded = self._embed_amplitude_tensor(validated)
             self.input_state = input_state
             self.computation_process.input_state = embedded
             return

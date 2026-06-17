@@ -32,6 +32,8 @@ from merlin.algorithms.feed_forward_legacy import (
     PoolingFeedForwardLegacy,
     define_layer_no_input,
 )
+from merlin.core.encoding_space import EncodingSpace
+from merlin.core.state_vector import StateVector
 
 
 class TestFeedForwardBlockLegacy:
@@ -344,7 +346,14 @@ class TestPoolingFeedForwardLegacy:
         post_layer = define_layer_no_input(8, 2)
         amplitudes = pre_layer()
         amplitudes = pff(amplitudes)
-        post_layer.set_input_state(amplitudes)
+        post_layer.set_input_state(
+            StateVector.from_tensor(
+                amplitudes,
+                n_modes=post_layer.circuit.m,
+                n_photons=post_layer.n_photons,
+                encoding=EncodingSpace.UNBUNCHED,
+            )
+        )
         res = post_layer()
         assert isinstance(res, torch.Tensor)
         assert res.requires_grad
@@ -362,7 +371,14 @@ class TestPoolingFeedForwardLegacy:
         for _ in range(3):
             amplitudes = pre_layer()
             amplitudes = pff(amplitudes)
-            post_layer.set_input_state(amplitudes)
+            post_layer.set_input_state(
+                StateVector.from_tensor(
+                    amplitudes,
+                    n_modes=post_layer.circuit.m,
+                    n_photons=post_layer.n_photons,
+                    encoding=EncodingSpace.UNBUNCHED,
+                )
+            )
             res = post_layer().abs().pow(2).sum()
             res.backward()
             optimizer.step()

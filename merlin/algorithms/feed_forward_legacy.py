@@ -27,7 +27,9 @@ import torch
 from perceval.components import BS, PS
 
 from ..core.computation_space import ComputationSpace
+from ..core.encoding_space import EncodingSpace
 from ..core.state import StatePattern, generate_state
+from ..core.state_vector import StateVector
 from ..measurement.strategies import MeasurementStrategy
 from ..utils.deprecations import raise_no_bunching_removed
 from .layer import QuantumLayer
@@ -440,8 +442,13 @@ class FeedForwardBlockLegacy(torch.nn.Module):
                         keys, keys_next, self.conditional_modes, combo
                     )
 
-                # Set input quantum state for the layer
-                layer.set_input_state(remaining_amplitudes[:, match_idx])
+                state_vector = StateVector.from_tensor(
+                    remaining_amplitudes[:, match_idx],
+                    n_modes=layer.circuit.m,
+                    n_photons=layer.n_photons,
+                    encoding=EncodingSpace.UNBUNCHED,
+                )
+                layer.set_input_state(state_vector)
                 start, end = self.input_segments[current_key]
 
                 # Execute layer with or without classical input

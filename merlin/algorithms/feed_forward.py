@@ -32,6 +32,7 @@ from perceval.components.linear_circuit import ACircuit
 from perceval.utils import NoiseModel
 
 from ..core.computation_space import ComputationSpace
+from ..core.state_vector import StateVector
 from ..measurement.detectors import DetectorTransform
 from ..measurement.mappers import OutputMapper
 from ..measurement.strategies import (
@@ -43,6 +44,12 @@ from ..measurement.strategies import (
 from ..pcvl_pytorch.utils import pcvl_to_tensor
 from .layer import QuantumLayer
 from .module import MerlinModule
+
+_TENSOR_INPUT_STATE_REMOVAL_MESSAGE = (
+    "torch.Tensor is no longer accepted as FeedForwardBlock input_state. Build "
+    "a StateVector with StateVector.from_tensor() and pass that StateVector as "
+    "input_state instead."
+)
 
 
 @dataclass
@@ -175,11 +182,11 @@ class FeedForwardBlock(MerlinModule):
         Perceval experiment containing the full feed-forward definition. The
         current implementation requires noise-free experiments (``NoiseModel()`` or
         ``None``).
-    input_state : list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None
+    input_state : list[int] | pcvl.BasicState | pcvl.StateVector | merlin.core.state_vector.StateVector | None
         Initial quantum state. May be provided as a Fock occupation list,
-        `pcvl.BasicState <https://perceval.quandela.net/docs/v1.2/reference/utils/states.html>`_, :class:`~exqalibur.StateVector`, or a tensor whose
-        components represent amplitudes in the experiment Fock basis. The tensor
-        form is only required for amplitude-encoding inputs.
+        `pcvl.BasicState <https://perceval.quandela.net/docs/v1.2/reference/utils/states.html>`_,
+        :class:`~exqalibur.StateVector`, or
+        :class:`~merlin.core.state_vector.StateVector`.
     trainable_parameters : list[str] | None
         Optional list of Perceval parameter prefixes that should remain learnable
         across all stages.
@@ -217,7 +224,7 @@ class FeedForwardBlock(MerlinModule):
         experiment: pcvl.Experiment,
         *,
         input_state: (
-            list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None
+            list[int] | pcvl.BasicState | pcvl.StateVector | StateVector | None
         ) = None,
         trainable_parameters: list[str] | None = None,
         input_parameters: list[str] | None = None,
@@ -300,12 +307,17 @@ class FeedForwardBlock(MerlinModule):
         self,
         experiment: pcvl.Experiment,
         provided_state: (
-            list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None
+            list[int] | pcvl.BasicState | pcvl.StateVector | StateVector | None
         ),
     ):
+        if isinstance(provided_state, torch.Tensor):
+            raise ValueError(_TENSOR_INPUT_STATE_REMOVAL_MESSAGE)
+
         experiment_state = getattr(experiment, "input_state", None)
         if experiment_state is None:
             return provided_state
+        if isinstance(experiment_state, torch.Tensor):
+            raise ValueError(_TENSOR_INPUT_STATE_REMOVAL_MESSAGE)
         if provided_state is not None and not self._states_match(
             experiment_state, provided_state
         ):
@@ -342,7 +354,7 @@ class FeedForwardBlock(MerlinModule):
     def _prepare_initial_state(
         self,
         input_state: (
-            list[int] | pcvl.BasicState | pcvl.StateVector | torch.Tensor | None
+            list[int] | pcvl.BasicState | pcvl.StateVector | StateVector | None
         ),
         experiment: pcvl.Experiment,
     ) -> tuple[list[int], int, torch.Tensor | None]:
@@ -358,10 +370,14 @@ class FeedForwardBlock(MerlinModule):
         amplitude_tensor: torch.Tensor | None = None
 
         if isinstance(source_state, torch.Tensor):
-            amplitude_tensor = self._normalize_amplitude_tensor(source_state)
-            n_photons = self._infer_photon_number_from_basis(
-                amplitude_tensor.shape[-1], total_modes
-            )
+            raise ValueError(_TENSOR_INPUT_STATE_REMOVAL_MESSAGE)
+        elif isinstance(source_state, StateVector):
+            if source_state.n_modes != total_modes:
+                raise ValueError(
+                    f"StateVector has {source_state.n_modes} modes but experiment expects {total_modes}."
+                )
+            amplitude_tensor = self._normalize_amplitude_tensor(source_state.tensor)
+            n_photons = source_state.n_photons
             base_state = self._default_input_state(total_modes, n_photons)
         elif isinstance(source_state, pcvl.StateVector):
             n_photons = self._extract_statevector_photons(source_state)

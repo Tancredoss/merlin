@@ -146,8 +146,25 @@ class TestConstructorInputTypes:
 
         message = str(exc_info.value)
         assert "torch.Tensor" in message
-        assert "forward(StateVector)" in message
-        assert "forward(complex_tensor)" in message
+        assert "QuantumLayer input_state" in message
+        assert "StateVector" in message
+        assert "StateVector.from_tensor()" in message
+
+    def test_set_input_state_tensor_raises_clear_error(self):
+        """torch.Tensor should be rejected by set_input_state."""
+        layer = ML.QuantumLayer(
+            circuit=pcvl.Circuit(2),
+            input_state=[1, 0],
+            measurement_strategy=ML.MeasurementStrategy.NONE,
+        )
+        tensor_state = torch.tensor([1.0, 0.0], dtype=torch.complex64)
+
+        with pytest.raises(ValueError) as exc_info:
+            layer.set_input_state(tensor_state)
+
+        message = str(exc_info.value)
+        assert "torch.Tensor" in message
+        assert "QuantumLayer input_state" in message
         assert "StateVector.from_tensor()" in message
 
 

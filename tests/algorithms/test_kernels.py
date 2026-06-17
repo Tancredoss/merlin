@@ -693,6 +693,24 @@ class TestFidelityKernelInputStateDerivation:
                 n_photons=3,
             )
 
+    def test_tensor_input_state_raises_statevector_guidance(self):
+        """Tensor input_state is rejected with StateVector migration guidance."""
+        fm = self._make_feature_map(4)
+        tensor_state = torch.zeros(6, dtype=torch.complex64)
+
+        with pytest.raises(ValueError) as exc_info:
+            FidelityKernel(
+                feature_map=fm,
+                input_state=tensor_state,
+            )
+
+        message = str(exc_info.value)
+        assert "torch.Tensor" in message
+        assert "FidelityKernel input_state" in message
+        assert "Fock occupation list" in message
+        assert "StateVector.from_tensor()" in message
+        assert "QuantumLayer" in message
+
     # ------------------------------------------------------------------
     # Invalid n_photons values
     # ------------------------------------------------------------------

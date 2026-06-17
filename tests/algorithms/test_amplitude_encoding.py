@@ -88,6 +88,14 @@ def _normalised_state(n_states: int, dtype: torch.dtype) -> torch.Tensor:
     return state / norm
 
 
+def _state_vector_for_layer(layer: QuantumLayer, tensor: torch.Tensor) -> StateVector:
+    return StateVector.from_tensor(
+        tensor,
+        n_modes=layer.circuit.m,
+        n_photons=layer.n_photons,
+    )
+
+
 @pytest.mark.parametrize(
     ("space", "n_photons", "n_modes", "expected_size"),
     [
@@ -227,7 +235,7 @@ def test_amplitude_encoding_matches_superposition(make_layer):
     )
 
     prepared_state = layer._validate_amplitude_input(raw_amplitude)
-    layer.set_input_state(prepared_state)
+    layer.set_input_state(_state_vector_for_layer(layer, prepared_state))
     params = layer.prepare_parameters([])
     expected = layer.computation_process.compute_superposition_state(
         params, simultaneous_processes=2
@@ -298,13 +306,13 @@ def test_amplitude_encoding_superposition_streams_chunked_batches(
     )
 
     prepared_state = layer._validate_amplitude_input(raw_amplitude)
-    layer.set_input_state(prepared_state)
+    layer.set_input_state(_state_vector_for_layer(layer, prepared_state))
     params = layer.prepare_parameters([])
     expected = layer.computation_process.compute_superposition_state(
         params, simultaneous_processes=2
     )
 
-    layer.set_input_state(prepared_state)
+    layer.set_input_state(_state_vector_for_layer(layer, prepared_state))
     original_compute_batch = process.simulation_graph.compute_batch
     recorded_batches: list[int] = []
 
@@ -625,7 +633,7 @@ def test_amplitude_encoding_probabilities_strategy(make_layer):
     )
 
     prepared_state = layer._validate_amplitude_input(raw_amplitude)
-    layer.set_input_state(prepared_state)
+    layer.set_input_state(_state_vector_for_layer(layer, prepared_state))
     params = layer.prepare_parameters([])
     expected_amplitudes = layer.computation_process.compute_superposition_state(params)
     expected_probabilities = expected_amplitudes.abs() ** 2
