@@ -156,6 +156,16 @@ def _inputs_are_equal(x1: Tensor, x2: Tensor | None) -> bool:
     return torch.allclose(x1, x2)
 
 
+# This message is deliberately FidelityKernel-specific. Keep it local so the
+# guidance can differ from QuantumLayer and FeedForwardBlock.
+_TENSOR_INPUT_STATE_REMOVAL_MESSAGE = (
+    "torch.Tensor is no longer accepted as FidelityKernel input_state. "
+    "FidelityKernel input_state must be a Fock occupation list such as "
+    "[1, 0, 1]. For amplitude tensors, build a StateVector with "
+    "StateVector.from_tensor() and use QuantumLayer instead."
+)
+
+
 class FeatureMap:
     """Quantum feature map.
 
@@ -1595,7 +1605,10 @@ class FidelityKernel(MerlinModule):
         Input Fock state occupation list. If ``None``, the state is derived
         from ``n_photons`` when given, otherwise defaults to an alternating
         single-photon state ``[1, 0, 1, 0, ...]`` of length
-        ``feature_map.circuit.m``.
+        ``feature_map.circuit.m``. Passing ``torch.Tensor`` is removed; build
+        a :class:`~merlin.core.state_vector.StateVector` with
+        :meth:`~merlin.core.state_vector.StateVector.from_tensor` for
+        amplitude-state workflows.
     n_photons : int | None
         Number of photons to place in the input state when ``input_state`` is
         ``None``. If ``n_photons <= ceil(m / 2)`` (where ``m`` is the number of
@@ -1684,7 +1697,9 @@ class FidelityKernel(MerlinModule):
             Input Fock state occupation list. If ``None``, the state is derived
             from ``n_photons`` when given, otherwise defaults to an alternating
             single-photon state ``[1, 0, 1, 0, ...]`` of length
-            ``feature_map.circuit.m``.
+            ``feature_map.circuit.m``. Passing ``torch.Tensor`` is removed; use
+            ``StateVector.from_tensor()`` for amplitude tensors and evaluate
+            them with :class:`~merlin.algorithms.layer.QuantumLayer`.
         n_photons : int | None
             Number of photons used to derive ``input_state`` when
             ``input_state`` is ``None``.  Must satisfy
@@ -1718,7 +1733,8 @@ class FidelityKernel(MerlinModule):
         ------
         ValueError
             If the input state, experiment, circuit size, or computation space
-            is incompatible with fidelity-kernel evaluation.
+            is incompatible with fidelity-kernel evaluation, or if
+            ``torch.Tensor`` is passed as ``input_state``.
         RuntimeError
             If detector transforms are combined with a non-FOCK computation
             space.
@@ -1746,6 +1762,9 @@ class FidelityKernel(MerlinModule):
         else:
             self.dtype = to_torch_dtype(dtype, default=feature_map.dtype)
         self.input_size = self.feature_map.input_size
+        if isinstance(input_state, torch.Tensor):
+            raise ValueError(_TENSOR_INPUT_STATE_REMOVAL_MESSAGE)
+
         backend_input_size = self._resolve_backend_input_size()
 
         m = self.feature_map.circuit.m
