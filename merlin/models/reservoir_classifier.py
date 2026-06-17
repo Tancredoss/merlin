@@ -58,7 +58,7 @@ class _ReservoirLayerProxy:
     reservoir layer so the external API stays simple:
     ``reservoir.layer.n_modes = ...``,
     ``reservoir.layer.measurement_strategy = ...``,
-    ``reservoir.layer.noise_model = ...``.
+    ``reservoir.layer.noise = ...`` (or ``noise_model`` for compatibility).
     """
 
     def __init__(self, parent: ReservoirClassifier) -> None:
@@ -77,7 +77,7 @@ class _ReservoirLayerProxy:
         if name == "measurement_strategy":
             self._parent._set_layer_measurement_strategy(value)
             return
-        if name == "noise_model":
+        if name in {"noise", "noise_model"}:
             self._parent._set_layer_noise_model(value)
             return
         setattr(self._parent._quantum_layer, name, value)
@@ -95,6 +95,10 @@ class _ReservoirLayerProxy:
 
     @property
     def noise_model(self) -> Any | None:
+        return self._parent._noise_model
+
+    @property
+    def noise(self) -> Any | None:
         return self._parent._noise_model
 
 
