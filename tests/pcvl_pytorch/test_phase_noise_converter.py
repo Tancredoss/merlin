@@ -39,7 +39,9 @@ def _single_phase_circuit() -> pcvl.Circuit:
     return pcvl.Circuit(1) // pcvl.PS(pcvl.P("phi"))
 
 
-def _expected_phase_unitary(phase: torch.Tensor | float, dtype: torch.dtype) -> torch.Tensor:
+def _expected_phase_unitary(
+    phase: torch.Tensor | float, dtype: torch.dtype
+) -> torch.Tensor:
     phase_tensor = torch.as_tensor(phase, dtype=torch.float64)
     complex_dtype = torch.complex128 if dtype == torch.float64 else torch.complex64
     return torch.exp(1j * phase_tensor.to(complex_dtype)).reshape(1, 1)
@@ -288,7 +290,9 @@ def test_constant_ps_can_be_precomputed_with_only_phase_imprecision():
         phase_imprecision=0.5,
     )
 
-    assert all(isinstance(component, torch.Tensor) for _, component in converter.list_rct)
+    assert all(
+        isinstance(component, torch.Tensor) for _, component in converter.list_rct
+    )
 
     unitary = converter.to_tensor()
     expected = _expected_phase_unitary(0.5, torch.float64)
@@ -447,12 +451,10 @@ def test_gradient_flow_multi_param_circuit():
     noisy_loss.backward()
 
     torch.manual_seed(4321)
-    phase_error_samples = torch.stack(
-        [
-            torch.empty((), dtype=torch.float64).uniform_(-phase_error, phase_error),
-            torch.empty((), dtype=torch.float64).uniform_(-phase_error, phase_error),
-        ]
-    )
+    phase_error_samples = torch.stack([
+        torch.empty((), dtype=torch.float64).uniform_(-phase_error, phase_error),
+        torch.empty((), dtype=torch.float64).uniform_(-phase_error, phase_error),
+    ])
     expected_theta = theta.detach().clone().requires_grad_(True)
     expected_phi = phi.detach().clone().requires_grad_(True)
     quantized_phi = torch.round(expected_phi / phase_imprecision) * phase_imprecision

@@ -810,9 +810,7 @@ def main() -> None:
         if args.baseline:
             payload = {
                 "noisy": [asdict(result) for result in results],
-                "noiseless_baseline": [
-                    asdict(result) for result in baseline_results
-                ],
+                "noiseless_baseline": [asdict(result) for result in baseline_results],
             }
             print(json.dumps(payload, indent=2))
         else:
@@ -878,13 +876,11 @@ def main() -> None:
         print("\nExponential fit (target = exp(a + b*n + c*m + d*n*m))")
         print(_format_exponential_formula(cache_fit, "cache_mb"))
         print(
-            f"  R2_log={cache_fit.r2_log:.6f} "
-            f"R2_original={cache_fit.r2_original:.6f}"
+            f"  R2_log={cache_fit.r2_log:.6f} R2_original={cache_fit.r2_original:.6f}"
         )
         print(_format_exponential_formula(graph_fit, "graph_mb"))
         print(
-            f"  R2_log={graph_fit.r2_log:.6f} "
-            f"R2_original={graph_fit.r2_original:.6f}"
+            f"  R2_log={graph_fit.r2_log:.6f} R2_original={graph_fit.r2_original:.6f}"
         )
 
 

@@ -283,9 +283,9 @@ class TestG2DistinguishabilityModes:
         # 4×4 DFT: U_{jk} = exp(2πijk/4) / 2 — maximally mixing, unitary.
         n = 4
         idx = torch.arange(n, dtype=torch.float32)
-        dft = (
-            torch.exp(2j * torch.pi * idx[:, None] * idx[None, :] / n) / n**0.5
-        ).to(torch.complex64)
+        dft = (torch.exp(2j * torch.pi * idx[:, None] * idx[None, :] / n) / n**0.5).to(
+            torch.complex64
+        )
         u_tensor = dft.unsqueeze(0)  # [1, 4, 4]
 
         # Test with distinguishable extra photons (classical convolution)
@@ -342,9 +342,9 @@ class TestG2DistinguishabilityModes:
                 result_indist.sectors[1:], result_dist.sectors[1:], strict=True
             )
         )
-        assert (
-            sectors_higher_differ
-        ), "Extra-photon sectors must differ between distinguishable and indistinguishable modes"
+        assert sectors_higher_differ, (
+            "Extra-photon sectors must differ between distinguishable and indistinguishable modes"
+        )
 
     def test_indistinguishable_bunched_delegate(self, unitary):
         """g2_distinguishable=False: augmented input has the expected mode occupation.
@@ -419,9 +419,9 @@ class TestG2DistinguishabilityModes:
 
         assert isinstance(result, SectoredDistribution)
         assert [sector.n_photons for sector in result.sectors] == [2, 3, 4]
-        sector_probabilities = torch.stack(
-            [sector.tensor.sum() for sector in result.sectors]
-        )
+        sector_probabilities = torch.stack([
+            sector.tensor.sum() for sector in result.sectors
+        ])
         assert torch.allclose(
             sector_probabilities,
             torch.tensor([0.0, 0.0, 1.0], dtype=sector_probabilities.dtype),
@@ -657,17 +657,17 @@ class TestG2PercevalComparison:
             occupations = tuple(state)
             n = sum(occupations)
             sector_idx = n - n_photons
-            assert (
-                0 <= sector_idx < len(result_merlin.sectors)
-            ), f"State {occupations} with {n} photons has no corresponding Merlin sector"
+            assert 0 <= sector_idx < len(result_merlin.sectors), (
+                f"State {occupations} with {n} photons has no corresponding Merlin sector"
+            )
             combo = Combinadics("fock", n=n, m=m)
             tensor_idx = combo.fock_to_index(occupations)
             merlin_prob = (
                 result_merlin.sectors[sector_idx].tensor.squeeze()[tensor_idx].item()
             )
-            assert (
-                abs(merlin_prob - perceval_prob) < 1e-4
-            ), f"State {occupations}: Merlin={merlin_prob:.6f}, Perceval={perceval_prob:.6f}"
+            assert abs(merlin_prob - perceval_prob) < 1e-4, (
+                f"State {occupations}: Merlin={merlin_prob:.6f}, Perceval={perceval_prob:.6f}"
+            )
 
     def test_against_perceval_distinguishable(self, circuit, unitary):
         """g2_distinguishable=True probabilities are within 1e-4 of Perceval."""
@@ -829,17 +829,17 @@ class TestG2AmplitudeEncodingMultipleActiveIndices:
             occupations = tuple(state)
             n = sum(occupations)
             sector_idx = n - n_photons
-            assert (
-                0 <= sector_idx < len(result_merlin.sectors)
-            ), f"State {occupations} with {n} photons has no corresponding Merlin sector"
+            assert 0 <= sector_idx < len(result_merlin.sectors), (
+                f"State {occupations} with {n} photons has no corresponding Merlin sector"
+            )
             combo = Combinadics("fock", n=n, m=m)
             tensor_idx = combo.fock_to_index(occupations)
             merlin_prob = (
                 result_merlin.sectors[sector_idx].tensor.squeeze()[tensor_idx].item()
             )
-            assert (
-                abs(merlin_prob - perceval_prob) < 1e-4
-            ), f"State {occupations}: Merlin={merlin_prob:.6f}, Perceval={perceval_prob:.6f}"
+            assert abs(merlin_prob - perceval_prob) < 1e-4, (
+                f"State {occupations}: Merlin={merlin_prob:.6f}, Perceval={perceval_prob:.6f}"
+            )
 
     def _make_superposition(
         self,

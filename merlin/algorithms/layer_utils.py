@@ -66,11 +66,12 @@ _CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE = (
     "object is needed."
 )
 
-_CONSTRUCTOR_TENSOR_INPUT_STATE_REMOVAL_MESSAGE = (
-    "torch.Tensor is no longer accepted as QuantumLayer input_state. Pass "
-    "amplitude data to forward(StateVector) or forward(complex_tensor) instead. "
-    "Convert constructor tensors with StateVector.from_tensor() when a "
-    "StateVector object is needed."
+# This message is deliberately QuantumLayer-specific. Keep it local so the
+# guidance can differ from FeedForwardBlock and FidelityKernel.
+_TENSOR_INPUT_STATE_REMOVAL_MESSAGE = (
+    "torch.Tensor is no longer accepted as QuantumLayer input_state. Build a "
+    "StateVector with StateVector.from_tensor() and pass that StateVector as "
+    "input_state instead."
 )
 
 
@@ -465,13 +466,7 @@ def validate_encoding_mode(
 
 def prepare_input_state(
     input_state: (
-        StateVector
-        | pcvl.StateVector
-        | pcvl.BasicState
-        | list
-        | tuple
-        | torch.Tensor
-        | None
+        StateVector | pcvl.StateVector | pcvl.BasicState | list | tuple | None
     ),
     n_photons: int | None,
     computation_space: ComputationSpace,
@@ -485,10 +480,11 @@ def prepare_input_state(
 
     Parameters
     ----------
-    input_state : :class:`~merlin.core.state_vector.StateVector` | pcvl.StateVector | pcvl.BasicState | list | tuple | torch.Tensor | None
+    input_state : :class:`~merlin.core.state_vector.StateVector` | pcvl.StateVector | pcvl.BasicState | list | tuple | None
         The input state in various formats. :class:`~merlin.core.state_vector.StateVector` is the canonical type.
-        Legacy tensor constructor inputs are rejected. Pass amplitude tensors to
-        ``forward()`` or wrap them with ``StateVector.from_tensor()``.
+        Build a :class:`~merlin.core.state_vector.StateVector` with
+        ``StateVector.from_tensor()`` before passing amplitude tensors as
+        ``input_state``.
     n_photons : int | None
         Number of photons (used for default state generation).
     computation_space : ComputationSpace
@@ -545,7 +541,7 @@ def prepare_input_state(
 
     # === Reject removed tensor constructor state ===
     if isinstance(input_state, torch.Tensor):
-        raise ValueError(_CONSTRUCTOR_TENSOR_INPUT_STATE_REMOVAL_MESSAGE)
+        raise ValueError(_TENSOR_INPUT_STATE_REMOVAL_MESSAGE)
 
     # === Handle pcvl.BasicState ===
     if isinstance(input_state, pcvl.BasicState):
