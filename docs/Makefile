@@ -5,6 +5,7 @@
 # from the environment for the first two.
 SPHINXOPTS    ?=
 SPHINXBUILD   ?= sphinx-build
+PYTHON        ?= python
 SOURCEDIR     = source
 BUILDDIR      = build
 
@@ -26,7 +27,7 @@ apidoc:
 	@echo "API documentation generated in $(SOURCEDIR)/api/"
 
 multiversion:
-	python -m sphinx_multiversion -f multiversion_config source build/html
+	$(PYTHON) build_multiversion.py --output "$(BUILDDIR)/html" --sphinx-build "$(SPHINXBUILD)" -- $(SPHINXOPTS)
 
 clean:
 	rm -rf build
