@@ -49,6 +49,7 @@ from ..measurement import OutputMapper
 from ..measurement.autodiff import AutoDiffProcess
 from ..measurement.detectors import DetectorTransform
 from ..measurement.photon_loss import PhotonLossTransform
+from ..measurement.readouts import _OccupancyReadout
 from ..measurement.strategies import (
     DistributionStrategy,
     MeasurementKind,
@@ -417,6 +418,8 @@ class QuantumLayer(MerlinModule):
         self._photon_loss_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]] = []
         self._detector_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]] = []
         self._raw_output_keys: list[tuple[int, ...]] | list[list[tuple[int, ...]]] = []
+        self._probability_readout_output_keys: list[tuple[int, ...]] | None = None
+        self._probability_readout: _OccupancyReadout | None = None
         self._detector_is_identity = True
         self._output_size = 0
         self._current_params: dict[str, Any] = {}
@@ -641,14 +644,19 @@ class QuantumLayer(MerlinModule):
             else:
                 output_keys = self._detector_keys
 
-        # Calculate distribution size uniformly for nested and flat cases
+        # Calculate distribution size uniformly for nested and flat cases.
         if is_nested:
-            dist_size = sum(
-                len(key_list)
+            flat_output_keys = [
+                key
                 for key_list in cast(list[list[tuple[int, ...]]], output_keys)
-            )
+                for key in key_list
+            ]
         else:
-            dist_size = len(cast(list[tuple[int, ...]], output_keys))
+            flat_output_keys = cast(list[tuple[int, ...]], output_keys)
+        dist_size = len(flat_output_keys)
+
+        self._probability_readout = None
+        self._probability_readout_output_keys = None
 
         # Determine output size (upstream model)
         if kind == MeasurementKind.PROBABILITIES:
@@ -675,6 +683,27 @@ class QuantumLayer(MerlinModule):
         else:
             raise TypeError(f"Unknown measurement_strategy: {measurement_strategy}")
 
+        if (
+            kind == MeasurementKind.PROBABILITIES
+            and isinstance(measurement_strategy, MeasurementStrategy)
+            and measurement_strategy.occupancy_readout
+        ):
+            self._probability_readout = _OccupancyReadout(flat_output_keys)
+            self._probability_readout_output_keys = [
+                self._normalize_output_key(key)
+                for key in self._probability_readout.output_keys
+            ]
+            self._output_size = self._probability_readout.output_size
+            grouping = measurement_strategy.grouping
+            if grouping is not None:
+                if grouping.input_size != self._probability_readout.output_size:
+                    raise ValueError(
+                        "When occupancy_readout=True, grouping input_size must "
+                        "match the occupancy readout output size "
+                        f"({self._probability_readout.output_size})."
+                    )
+                self._output_size = grouping.output_size
+
         # Create measurement mapping
 
         # Check if there is source noise, if so, it directly returns probabilities and should stay probabilities
@@ -683,20 +712,10 @@ class QuantumLayer(MerlinModule):
         if kind == MeasurementKind.PARTIAL or source_noise:
             self.measurement_mapping = nn.Identity()
         else:
-            # Flatten keys if nested for measurement mapping
-            if is_nested:
-                flat_measurement_keys = [
-                    key
-                    for key_list in cast(list[list[tuple[int, ...]]], output_keys)
-                    for key in key_list
-                ]
-            else:
-                flat_measurement_keys = cast(list[tuple[int, ...]], output_keys)
-
             self.measurement_mapping = OutputMapper.create_mapping(
                 measurement_strategy,
                 self.computation_process.computation_space,
-                flat_measurement_keys,
+                flat_output_keys,
                 dtype=self.dtype,
             )
 
@@ -1191,14 +1210,21 @@ class QuantumLayer(MerlinModule):
 
         # Phase 6: Measurement strategy dispatch and output mapping
         strategy = resolve_measurement_strategy(self.measurement_strategy)
-        # Handle backward compatibility for backpropagation - will be removed in future
         grouping = None
+        post_readout_grouping = None
         if isinstance(self.measurement_strategy, MeasurementStrategy):
             if self.measurement_strategy.type in (
                 MeasurementKind.PROBABILITIES,
                 MeasurementKind.PARTIAL,
             ):
                 grouping = self.measurement_strategy.grouping
+            if (
+                self.measurement_strategy.type is MeasurementKind.PROBABILITIES
+                and self.measurement_strategy.occupancy_readout
+                and self._probability_readout is not None
+            ):
+                post_readout_grouping = grouping
+                grouping = None
 
         results = strategy.process(
             distribution=distribution,
@@ -1240,6 +1266,17 @@ class QuantumLayer(MerlinModule):
                         key_to_tensor_idx[key] for key in expected_keys_list
                     ]
                     results = results[..., reorder_indices]
+
+        if (
+            isinstance(self.measurement_strategy, MeasurementStrategy)
+            and self.measurement_strategy.type is MeasurementKind.PROBABILITIES
+            and self._probability_readout is not None
+        ):
+            if not isinstance(results, torch.Tensor):
+                raise TypeError("occupancy_readout=True expects tensor probabilities.")
+            results = self._probability_readout(results)
+            if post_readout_grouping is not None:
+                results = post_readout_grouping(results)
 
         output: (
             torch.Tensor | PartialMeasurement | ProbabilityDistribution | StateVector
@@ -1537,6 +1574,9 @@ class QuantumLayer(MerlinModule):
                     dtype=self.dtype,
                 )
 
+        if self._probability_readout is not None:
+            self._probability_readout = self._probability_readout.to(device=self.device)
+
         target_kwargs: dict[str, Any] = {"dtype": self.dtype}
         if self.device is not None:
             target_kwargs["device"] = self.device
@@ -1591,6 +1631,12 @@ class QuantumLayer(MerlinModule):
                 return cast(list[list[tuple[int, ...]]], self._raw_output_keys)
             else:
                 return cast(list[tuple[int, ...]], self._raw_output_keys)
+        if (
+            _resolve_measurement_kind(self.measurement_strategy)
+            == MeasurementKind.PROBABILITIES
+            and self._probability_readout_output_keys is not None
+        ):
+            return list(self._probability_readout_output_keys)
         # For probabilities/other modes: flatten nested keys for g2 cases
         if self._detector_is_identity:
             keys = self._photon_loss_keys
