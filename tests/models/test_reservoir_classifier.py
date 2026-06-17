@@ -808,10 +808,10 @@ def test_layer_noise_model_rebuilds_layer_and_invalidates_fit():
     model.fit_reservoir(X)
 
     noise_model = pcvl.NoiseModel(brightness=0.9)
-    model.layer.noise_model = noise_model
+    model.layer.noise = noise_model
 
-    assert model.layer.noise_model is noise_model
-    assert model._quantum_layer.noise_model is noise_model
+    assert model.layer.noise is noise_model
+    assert model._quantum_layer.noise is noise_model
     assert model._is_fitted is False
     assert model._fit_quantum_cache is None
 

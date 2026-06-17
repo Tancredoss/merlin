@@ -5,5 +5,12 @@
     "image": "_static/reproduced_papers/photonicQGAN.png",
     "doc": "user_guide/models/qgan",
     "tags": ["Quantum models", "Ready to use","GAN","Generative"]
+  },
+  {
+    "title": "ReservoirClassifier",
+    "summary": "Frozen quantum optical reservoir with a trainable linear readout.",
+    "image": "_static/img/reservoir_scheme.png",
+    "doc": "user_guide/models/reservoir_classifier",
+    "tags": ["Quantum models", "Ready to use", "Reservoir", "Classification"]
   }
 ]
