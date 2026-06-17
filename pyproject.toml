@@ -57,6 +57,7 @@ docs = [
     "ipython",
     "ipykernel",
     "gitpython",
+    "python-dotenv",
     "sphinx-multiversion-contrib @ git+https://github.com/Quandela/sphinx-multiversion-contrib.git@1.1.1",
     "jinja2==3.0.0",
     "scikit-learn>=1.7.0",
@@ -84,7 +85,6 @@ packages = [
     "merlin.datasets",
     "merlin.models",
     "merlin.measurement",
-    "merlin.models",
     "merlin.pcvl_pytorch",
     "merlin.utils",
 ]
