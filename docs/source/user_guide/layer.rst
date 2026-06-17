@@ -110,6 +110,11 @@ a good understanding of Perceval.
 
   ``input_state=[...]`` is accepted as a convenience input, but the layer stores it as a Perceval
   `pcvl.BasicState <https://perceval.quandela.net/docs/v1.2/reference/utils/states.html>`_ (access the occupation vector via ``list(layer.input_state)``).
+  Tensor constructor states are removed; build a
+  :class:`~merlin.core.state_vector.StateVector` with
+  :meth:`~merlin.core.state_vector.StateVector.from_tensor` when amplitude data
+  must be passed as ``input_state``. The same rule applies to
+  :meth:`~merlin.algorithms.layer.QuantumLayer.set_input_state`.
 
 Experiment-driven
 ~~~~~~~~~~~~~~~~~

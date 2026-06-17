@@ -104,6 +104,51 @@ construction.
 See :doc:`/user_guide/encoding_space` for Fock, unbunched, dual-rail,
 partitioned, and QLOQ examples.
 
+Migrating from tensor ``input_state`` values
+--------------------------------------------
+
+.. warning::
+   Passing a ``torch.Tensor`` as an ``input_state`` value is removed in
+   **0.4**. Build a :class:`~merlin.core.state_vector.StateVector` with
+   :meth:`~merlin.core.state_vector.StateVector.from_tensor` and pass that
+   object instead.
+
+Tensor-valued ``input_state`` arguments used to represent amplitude data. That
+state metadata now belongs in :class:`~merlin.core.state_vector.StateVector`,
+which carries the tensor together with its mode, photon, and encoding-space
+information. This applies to constructors and mutators such as
+``QuantumLayer.set_input_state()``.
+
+.. code-block:: python
+
+  import torch
+  from merlin import QuantumLayer, MeasurementStrategy, ComputationSpace
+  from merlin.core import EncodingSpace, StateVector
+
+  amplitudes = torch.rand(1, 10, dtype=torch.complex64)
+  input_state = StateVector.from_tensor(
+      amplitudes,
+      n_modes=4,
+      n_photons=2,
+      encoding=EncodingSpace.FOCK,
+  )
+
+  layer = QuantumLayer(
+      circuit=circuit,
+      input_state=input_state,
+      measurement_strategy=MeasurementStrategy.probs(
+          computation_space=ComputationSpace.FOCK
+      ),
+  )
+
+For :class:`~merlin.algorithms.kernels.FidelityKernel`,
+``input_state`` remains a Fock occupation list such as ``[1, 0, 1, 0]``.
+Tensor amplitude states are not valid kernel input states; use a
+:class:`~merlin.algorithms.layer.QuantumLayer` with ``StateVector`` for those
+workflows. The same rule applies to feed-forward blocks: use a Fock occupation
+list, ``pcvl.BasicState``, ``pcvl.StateVector``, or
+:class:`~merlin.core.state_vector.StateVector`, not a raw tensor.
+
 
 v.0.3 deprecations are now errors
 --------------------------------------
