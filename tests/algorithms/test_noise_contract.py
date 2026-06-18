@@ -255,6 +255,31 @@ def _component_phase_error_circuit() -> pcvl.Circuit:
     return circuit
 
 
+def _phase_interferometer_builder(rotation_value: float) -> ml.CircuitBuilder:
+    """Create a fixed phase interferometer matching the memristive test circuit."""
+    builder = ml.CircuitBuilder(n_modes=2)
+    builder.add_superpositions(targets=(0, 1), theta=0.785398)
+    builder.add_rotations(modes=0, value=rotation_value)
+    builder.add_superpositions(targets=(0, 1), theta=0.785398)
+    return builder
+
+
+def _memristive_phase_interferometer_builder(
+    update_rule,
+    initial_state: float,
+) -> ml.CircuitBuilder:
+    """Create the same interferometer with a memristive phase shifter."""
+    builder = ml.CircuitBuilder(n_modes=2)
+    builder.add_superpositions(targets=(0, 1), theta=0.785398)
+    builder.add_memristive_ps(
+        mode=0,
+        update_rule=update_rule,
+        initial_state=initial_state,
+    )
+    builder.add_superpositions(targets=(0, 1), theta=0.785398)
+    return builder
+
+
 def _assert_normalized_distribution(output: torch.Tensor, size: int) -> None:
     assert output.shape[-1] == size
     assert not output.is_complex()
@@ -281,6 +306,47 @@ def test_phase_imprecision_with_probs_constructs_and_forwards():
     assert layer.computation_process.converter._phase_imprecision == pytest.approx(0.5)
 
 
+def test_phase_imprecision_quantizes_memristive_layer_phase():
+    initial_state = 0.74
+
+    def keep_state(state: torch.Tensor, output: torch.Tensor) -> torch.Tensor:
+        return state
+
+    memristive_layer = ml.QuantumLayer(
+        input_size=0,
+        builder=_memristive_phase_interferometer_builder(
+            keep_state,
+            initial_state,
+        ),
+        input_state=[1, 0],
+        n_photons=1,
+        noise=pcvl.NoiseModel(phase_imprecision=0.5),
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+    fixed_quantized_layer = ml.QuantumLayer(
+        input_size=0,
+        builder=_phase_interferometer_builder(0.5),
+        input_state=[1, 0],
+        n_photons=1,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+
+    memristive_output = memristive_layer()
+    fixed_quantized_output = fixed_quantized_layer()
+
+    assert torch.allclose(memristive_output, fixed_quantized_output)
+    assert torch.allclose(
+        memristive_layer.memristive_state[0],
+        memristive_output.new_tensor([initial_state]),
+    )
+
+
 def test_phase_error_with_probs_constructs_and_forwards():
     layer = ml.QuantumLayer(
         input_size=0,
@@ -301,6 +367,42 @@ def test_phase_error_with_probs_constructs_and_forwards():
 
     _assert_normalized_distribution(output, 2)
     assert layer.computation_process._n_phase_error_samples == 4
+
+
+def test_phase_error_memristive_layer_updates_from_noisy_probabilities():
+    def update_from_first_probability(
+        state: torch.Tensor,
+        output: torch.Tensor,
+    ) -> torch.Tensor:
+        return output[:, 0]
+
+    builder = _memristive_phase_interferometer_builder(
+        update_from_first_probability,
+        initial_state=0.74,
+    )
+    builder.add_angle_encoding(modes=[1], name="x")
+    layer = ml.QuantumLayer(
+        input_size=1,
+        builder=builder,
+        input_state=[1, 0],
+        n_photons=1,
+        noise=pcvl.NoiseModel(phase_error=0.25),
+        n_phase_error_samples=5,
+        measurement_strategy=ml.MeasurementStrategy.probs(
+            computation_space=ml.ComputationSpace.FOCK
+        ),
+        dtype=torch.float64,
+    )
+    layer.reset(batch_size=2)
+
+    torch.manual_seed(123)
+    output = layer(torch.zeros(2, 1, dtype=torch.float64))
+
+    _assert_normalized_distribution(output, 2)
+    assert layer.computation_process._n_phase_error_samples == 5
+    assert layer.computation_process.converter._phase_error == pytest.approx(0.25)
+    assert torch.allclose(layer.memristive_state[0], output[:, 0])
+    assert torch.allclose(layer.memristive_history[0][-1], output[:, 0])
 
 
 def test_phase_error_with_probs_defaults_to_one_sample():

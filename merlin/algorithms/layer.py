@@ -239,6 +239,7 @@ class QuantumLayer(MerlinModule):
 
         """
         super().__init__()
+        self.processor: Any | None = None
 
         if amplitude_encoding:
             raise ValueError(_CONSTRUCTOR_AMPLITUDE_ENCODING_REMOVAL_MESSAGE)

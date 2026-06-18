@@ -39,6 +39,22 @@ def _single_phase_circuit() -> pcvl.Circuit:
     return pcvl.Circuit(1) // pcvl.PS(pcvl.P("phi"))
 
 
+def _single_memristive_phase_circuit() -> pcvl.Circuit:
+    return pcvl.Circuit(1) // pcvl.PS(pcvl.P("mem1"))
+
+
+def _memristive_metadata() -> list[dict]:
+    return [
+        {
+            "target_mode": 0,
+            "name": "mem1",
+            "update_rule": lambda state, output: state,
+            "initial_state": 0.0,
+            "detach_at_each_forward": True,
+        }
+    ]
+
+
 def _expected_phase_unitary(
     phase: torch.Tensor | float, dtype: torch.dtype
 ) -> torch.Tensor:
@@ -76,6 +92,23 @@ def test_phase_imprecision_quantizes_forward_phase_values():
 
     phase = torch.tensor([0.74], dtype=torch.float64)
     unitary = converter.to_tensor(phase)
+
+    expected = _expected_phase_unitary(0.5, torch.float64)
+    assert torch.allclose(unitary, expected)
+
+
+def test_phase_imprecision_quantizes_memristive_phase_values():
+    circuit = _single_memristive_phase_circuit()
+    converter = CircuitConverter(
+        circuit,
+        input_specs=[],
+        memristive_metadata=_memristive_metadata(),
+        dtype=torch.float64,
+        phase_imprecision=0.5,
+    )
+    memristive_state = torch.tensor([0.74], dtype=torch.float64)
+
+    unitary = converter.to_tensor(memristive_current_state=[memristive_state])
 
     expected = _expected_phase_unitary(0.5, torch.float64)
     assert torch.allclose(unitary, expected)
@@ -157,6 +190,37 @@ def test_different_torch_seeds_produce_different_phase_error_samples():
     second = converter.to_tensor(phase, apply_phase_error=True)
 
     assert not torch.allclose(first, second)
+
+
+def test_active_phase_error_perturbs_memristive_phase_values():
+    circuit = _single_memristive_phase_circuit()
+    phase_error = 0.25
+    converter = CircuitConverter(
+        circuit,
+        input_specs=[],
+        memristive_metadata=_memristive_metadata(),
+        dtype=torch.float64,
+        phase_error=phase_error,
+    )
+    memristive_state = torch.tensor([0.74], dtype=torch.float64)
+
+    torch.manual_seed(1234)
+    phase_error_sample = torch.empty_like(memristive_state).uniform_(
+        -phase_error,
+        phase_error,
+    )
+    expected = _expected_phase_unitary(
+        memristive_state + phase_error_sample,
+        torch.float64,
+    )
+
+    torch.manual_seed(1234)
+    unitary = converter.to_tensor(
+        memristive_current_state=[memristive_state],
+        apply_phase_error=True,
+    )
+
+    assert torch.allclose(unitary, expected)
 
 
 def test_phase_error_is_inactive_without_apply_phase_error_flag():

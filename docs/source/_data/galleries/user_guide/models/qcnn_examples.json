@@ -1,0 +1,23 @@
+[
+  {
+    "title": "QCNN API reference",
+    "summary": "Constructor, stage objects, layer API, and serialization helpers.",
+    "image": "_static/img/merlin_black.png",
+    "doc": "api_reference/api/merlin.models.qcnn",
+    "tags": ["API", "QCNNClassifier", "Reference"]
+  },
+  {
+    "title": "Photonic QCNN reproduction",
+    "summary": "Paper reproduction for adaptive state injection in photonic QCNNs.",
+    "image": "_static/reproduced_papers/PhotonicQCNN.png",
+    "doc": "reproduced_papers/reproductions/photonic_qcnn",
+    "tags": ["Reproduced paper", "QCNN", "Vision"]
+  },
+  {
+    "title": "QCNNClassifier tutorial",
+    "summary": "Binary MNIST classification with the ready-to-use QCNN model.",
+    "image": "_static/img/25_binary_mnist_samples.png",
+    "doc": "notebooks/QCNNClassifier-demo-MNIST",
+    "tags": ["Tutorial", "MNIST", "Classification"]
+  }
+]
