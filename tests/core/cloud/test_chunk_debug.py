@@ -24,9 +24,10 @@ from merlin.measurement.strategies import MeasurementStrategy
 
 def _make_layer():
     b = CircuitBuilder(n_modes=6)
+    b.add_entangling_layer(trainable=False, name="pre_mix")
     b.add_rotations(trainable=True, name="theta")
     b.add_angle_encoding(modes=[0, 1], name="px")
-    b.add_entangling_layer()
+    b.add_entangling_layer(trainable=False, name="post_mix")
     return QuantumLayer(
         input_size=2,
         builder=b,

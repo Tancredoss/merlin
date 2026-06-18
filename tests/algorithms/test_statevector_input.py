@@ -427,8 +427,10 @@ class TestAngleEncodingBackwardCompatibility:
     def test_multiple_input_prefixes_still_work(self):
         """Multiple angle encoding prefixes should continue to work."""
         builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input_a")
         builder.add_angle_encoding(modes=[2, 3], name="input_b")
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=4,
@@ -576,7 +578,9 @@ class TestErrorHandling:
     def test_unsupported_type_raises_typeerror(self):
         """Unsupported input types should fail with clear TypeError."""
         builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input")
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=2,
@@ -594,7 +598,9 @@ class TestErrorHandling:
     def test_mixed_inputs_clear_error_message(self):
         """Mixed inputs should provide clear error message."""
         builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input")
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=2,
