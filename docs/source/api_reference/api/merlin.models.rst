@@ -1,0 +1,26 @@
+merlin.models package
+=====================
+
+.. automodule:: merlin.models
+   :no-members:
+
+Modules
+-------
+
+.. list-table::
+   :widths: 35 65
+   :header-rows: 0
+
+   * - :doc:`merlin.models.reservoir_classifier`
+     - Frozen photonic reservoir classifier with a trainable linear readout and optional preprocessing.
+   * - :doc:`merlin.models.qcnn`
+     - Quantum convolutional neural network classifier model built from quantum convolution and quantum pooling stages followed by a quantum dense and a readout stage.
+   * - :doc:`merlin.models.photonic_generator`
+     - Photonic generator model that maps latent batches through QuantumLayer heads and adapts measurements to vector or image samples.
+
+.. toctree::
+   :hidden:
+
+   merlin.models.reservoir_classifier
+   merlin.models.qcnn
+   merlin.models.photonic_generator

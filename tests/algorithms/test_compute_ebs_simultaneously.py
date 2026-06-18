@@ -18,7 +18,9 @@ import torch
 
 from merlin import QuantumLayer
 from merlin.core.computation_space import ComputationSpace
+from merlin.core.encoding_space import EncodingSpace
 from merlin.core.process import ComputationProcess
+from merlin.core.state_vector import StateVector, embed_tensor_in_fock_basis
 from merlin.measurement.strategies import MeasurementStrategy
 
 
@@ -69,6 +71,18 @@ class TestComputeEbsSimultaneously:
         self.input_state_tensor = torch.rand(2, expected_states, dtype=torch.float64)
         sum_values = self.input_state_tensor.abs().pow(2).sum(dim=1).sqrt().unsqueeze(1)
         self.input_state_tensor = self.input_state_tensor / sum_values
+        self.embedded_input_state = embed_tensor_in_fock_basis(
+            self.input_state_tensor,
+            n_modes=self.circuit.m,
+            n_photons=2,
+            computation_space=ComputationSpace.UNBUNCHED,
+        )
+        self.input_state = StateVector.from_tensor(
+            self.input_state_tensor,
+            n_modes=self.circuit.m,
+            n_photons=2,
+            encoding=EncodingSpace.UNBUNCHED,
+        )
         # Set up parameters
         self.trainable_parameters = ["phi"]
         self.input_parameters = []
@@ -81,7 +95,7 @@ class TestComputeEbsSimultaneously:
             measurement_strategy=MeasurementStrategy.probs(
                 computation_space=ComputationSpace.UNBUNCHED
             ),
-            input_state=self.input_state_tensor,
+            input_state=self.input_state,
             trainable_parameters=self.trainable_parameters,
             input_parameters=self.input_parameters,
             dtype=torch.float64,
@@ -89,7 +103,7 @@ class TestComputeEbsSimultaneously:
         )
         # Create computation process
         self.process = self.layer.computation_process
-        self.process.input_state = self.input_state_tensor
+        self.process.input_state = self.embedded_input_state
 
         # Create test parameters
         self.test_parameters = self.layer.prepare_parameters([])
@@ -149,10 +163,16 @@ class TestComputeEbsSimultaneously:
 
     def test_edge_case_single_state(self):
         """Test with input state that has only one non-zero component."""
-        # Create input state with only one non-zero component
-        expected_states = math.comb(self.circuit.m, self.n_photons)
-        single_state = torch.zeros(1, expected_states, dtype=torch.float64)
-        single_state[0, 0] = 1.0
+        compact_state = torch.zeros(
+            1, math.comb(self.circuit.m, self.n_photons), dtype=torch.float64
+        )
+        compact_state[0, 0] = 1.0
+        single_state = embed_tensor_in_fock_basis(
+            compact_state,
+            n_modes=self.circuit.m,
+            n_photons=self.n_photons,
+            computation_space=ComputationSpace.UNBUNCHED,
+        )
 
         process_single = ComputationProcess(
             circuit=self.circuit,
@@ -174,7 +194,7 @@ class TestComputeEbsSimultaneously:
     def test_dtype_consistency(self):
         """Test that dtype is handled correctly."""
         # Test with float32
-        input_state_f32 = self.input_state_tensor.to(torch.float32)
+        input_state_f32 = self.embedded_input_state.to(torch.float32)
         process_f32 = ComputationProcess(
             circuit=self.circuit,
             input_state=input_state_f32,
@@ -195,8 +215,8 @@ class TestComputeEbsSimultaneously:
     def test_invalid_superposition_dimension_no_bunching(self):
         """Input state with mismatched dimension should raise a ValueError."""
         invalid_state = torch.rand(
-            self.input_state_tensor.shape[0],
-            self.input_state_tensor.shape[1] - 1,
+            self.embedded_input_state.shape[0],
+            self.embedded_input_state.shape[1] - 1,
             dtype=self.input_state_tensor.dtype,
             device=self.input_state_tensor.device,
         )

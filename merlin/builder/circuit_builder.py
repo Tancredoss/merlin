@@ -24,10 +24,14 @@
 Circuit builder for constructing quantum circuits declaratively.
 """
 
+import inspect
 import math
 import numbers
+from collections.abc import Callable
 from itertools import combinations
 from typing import Any
+
+import torch
 
 from ..core.circuit import Circuit
 from ..core.components import (
@@ -88,6 +92,7 @@ class CircuitBuilder:
         self._entangling_layer_counter = 0
         self._superposition_counter = 0
         self._entangling_counter = 0
+        self._memristor_counter = 0
 
         self._trainable_prefixes: list[str] = []
         self._trainable_prefix_set: set[str] = set()
@@ -96,7 +101,9 @@ class CircuitBuilder:
         self._angle_encoding_specs: dict[str, list[tuple[int, ...]]] = {}
         self._angle_encoding_scales: dict[str, dict[int, float]] = {}
         self._angle_encoding_counts: dict[str, int] = {}
-
+        self.memristive_specs: list[dict] = []
+        self._memristor_prefixes: list[str] = []
+        self._memristor_prefix_set: set[str] = set()
         self._trainable_name_counts: dict[str, int] = {}
         self._used_trainable_names: set[str] = set()
 
@@ -144,6 +151,17 @@ class CircuitBuilder:
         if prefix and prefix not in self._input_prefix_set:
             self._input_prefix_set.add(prefix)
             self._input_prefixes.append(prefix)
+
+    def _register_memristor_prefix(self, name: str | None):
+        """Track stems used for memristor parameters.
+
+        Args:
+            name: Input parameter name emitted while adding a memristive phase-shifter.
+        """
+        prefix = self._deduce_prefix(name)
+        if prefix and prefix not in self._input_prefix_set:
+            self._memristor_prefix_set.add(prefix)
+            self._memristor_prefixes.append(prefix)
 
     def _unique_trainable_name(self, base: str) -> str:
         """Return a unique trainable identifier derived from ``base``.
@@ -226,6 +244,7 @@ class CircuitBuilder:
                     "fixed": ParameterRole.FIXED,
                     "input": ParameterRole.INPUT,
                     "trainable": ParameterRole.TRAINABLE,
+                    "memristor": ParameterRole.MEMRISTOR,
                 }
                 resolved_role = role_map.get(role.lower(), ParameterRole.FIXED)
             else:
@@ -254,10 +273,14 @@ class CircuitBuilder:
                         f"{name}_{current_mode}" if len(target_modes) > 1 else name
                     )
                     custom_name = self._unique_trainable_name(base_name)
+                elif resolved_role == ParameterRole.MEMRISTOR:
+                    custom_name = f"{name}{self._memristor_counter + 1}"
+                    self._memristor_counter += 1
                 else:
                     custom_name = (
                         f"{name}_{current_mode}" if len(target_modes) > 1 else name
                     )
+
             elif resolved_role == ParameterRole.INPUT:
                 custom_name = f"px{self._input_counter + 1}"
                 self._input_counter += 1
@@ -265,6 +288,9 @@ class CircuitBuilder:
                 base_name = f"theta_{self._trainable_counter}_{current_mode}"
                 self._trainable_counter += 1
                 custom_name = self._unique_trainable_name(base_name)
+            elif resolved_role == ParameterRole.MEMRISTOR:
+                custom_name = f"mem{self._memristor_counter + 1}"
+                self._memristor_counter += 1
             else:
                 custom_name = None
 
@@ -281,6 +307,8 @@ class CircuitBuilder:
                 self._register_trainable_prefix(rotation.custom_name or name)
             elif resolved_role == ParameterRole.INPUT:
                 self._register_input_prefix(rotation.custom_name or name)
+            elif resolved_role == ParameterRole.MEMRISTOR:
+                self._register_memristor_prefix(rotation.custom_name or name)
 
         self._layer_counter += 1
         return self
@@ -405,6 +433,138 @@ class CircuitBuilder:
 
         factor = float(scale)
         return dict.fromkeys(feature_indices, factor)
+
+    @staticmethod
+    def _validate_memristive_update_rule(update_rule: Callable) -> None:
+        """Validates that update rule has exactly 2 positional parameters
+
+        Raises
+        ------
+        TypeError
+            If signature does not match or annotations are missing/incorrect.
+        """
+
+        try:
+            sig = inspect.signature(update_rule)
+        except (ValueError, TypeError) as e:
+            raise TypeError(
+                f"update_rule must be callable with inspectable signature, "
+                f"but got {type(update_rule).__name__}: {e}"
+            ) from e
+
+        params = list(sig.parameters.values())
+        positional_params = [
+            param
+            for param in params
+            if param.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+        ]
+        if len(positional_params) != 2:
+            raise TypeError(
+                f"update_rule must accept exactly 2 positional arguments, got {len(positional_params)}. "
+                f"Expected: update_rule(state: torch.Tensor, "
+                f"output: torch.Tensor | StateVector | ProbabilityDistribution | PartialMeasurement) "
+                f"-> torch.Tensor"
+            )
+
+    def add_memristive_ps(
+        self,
+        mode: int,
+        update_rule: Callable,
+        initial_state: float,
+        name: str | None = None,
+        detach_at_each_forward: bool = True,
+    ) -> "CircuitBuilder":
+        """Add a memristive phase shifter that will update in regards to the update rule after each forward pass.
+
+        Parameters
+        ----------
+        mode : int
+           Circuit mode to target.
+        update_rule : ~collections.abc.Callable
+           Callable with signature ``update_rule(state: torch.Tensor, output: torch.Tensor | StateVector |
+           ProbabilityDistribution | PartialMeasurement) -> torch.Tensor``. The update rule receives the current
+           memristive state and the layer output, and must return a new state tensor of shape ``[batch_size]``.
+        initial_state : float
+           The initial value of the phase shifter. This will be the value used after each :meth:`~merlin.algorithms.layer.QuantumLayer.reset` call.
+        name : str | None
+            Prefix used for the generated memristive phase shifter parameter. Defaults to ``"mem"``.
+        detach_at_each_forward : bool
+            Controls gradient flow through the memristive recurrence (state → new_state):
+
+            - ``True`` (default): The new state is detached at each forward, preventing gradients from flowing
+              through the recurrence chain. Earlier inputs receive zero gradients from the memristive state.
+            - ``False``: The new state retains gradients, allowing full gradient flow through the entire
+              recurrence history. All inputs can receive gradients through the accumulated state chain.
+
+        Returns
+        -------
+        CircuitBuilder
+            ``self`` for fluent chaining.
+        """
+
+        if name is None:
+            name = "mem"
+
+        # Verifying the parameters
+        if not isinstance(mode, int):
+            raise ValueError(f"The mode parameter must be an int, got {type(mode)}")
+
+        if mode < 0 or mode >= self.n_modes:
+            raise ValueError(
+                f"The assigned mode must be between 0 and CircuitBuilder.n_modes ({self.n_modes} here). Got {mode}."
+            )
+
+        scalar_initial_state = initial_state
+        if isinstance(initial_state, torch.Tensor):
+            is_valid_tensor_scalar = (
+                initial_state.ndim == 0
+                and not initial_state.is_complex()
+                and (
+                    torch.is_floating_point(initial_state)
+                    or initial_state.dtype
+                    in {
+                        torch.int8,
+                        torch.int16,
+                        torch.int32,
+                        torch.int64,
+                        torch.uint8,
+                    }
+                )
+            )
+            if not is_valid_tensor_scalar:
+                raise ValueError(
+                    f"The initial_state parameter must be an float, got {type(initial_state)}"
+                )
+            scalar_initial_state = initial_state.item()
+        elif not isinstance(initial_state, numbers.Real):
+            raise ValueError(
+                f"The initial_state parameter must be an float, got {type(initial_state)}"
+            )
+
+        # Validate update_rule signature before accepting it
+        self._validate_memristive_update_rule(update_rule)
+
+        # Assign contiguous logical feature indices so downstream encoders do not rely on physical modes
+
+        self.add_rotations(
+            modes=mode,
+            role=ParameterRole.MEMRISTOR,
+            name=name,
+            value=scalar_initial_state,
+        )
+
+        self.memristive_specs.append({
+            "target_mode": mode,
+            "name": f"{name}{self._memristor_counter}",
+            "update_rule": update_rule,
+            "initial_state": scalar_initial_state,
+            "detach_at_each_forward": detach_at_each_forward,
+        })
+        return self
 
     def add_entangling_layer(
         self,

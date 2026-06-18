@@ -27,12 +27,15 @@ Tests for the main QuantumLayer class.
 import itertools
 import math
 
+import numpy as np
 import perceval as pcvl
 import pytest
 import torch
 
 import merlin as ML
+from merlin.algorithms.layer_utils import classify_noise
 from merlin.core.computation_space import ComputationSpace
+from merlin.measurement.photon_loss import resolve_photon_loss
 
 
 class TestPhotonLossWithQuantumLayer:
@@ -113,8 +116,8 @@ class TestPhotonLossWithQuantumLayer:
         )
 
         with pytest.raises(
-            RuntimeError,
-            match="measurement_strategy=MeasurementStrategy.AMPLITUDES cannot be used when the experiment defines a NoiseModel.",
+            ValueError,
+            match="When doing a noisy simulation, the probabilities measurement strategy must be used.",
         ):
             ML.QuantumLayer(
                 input_size=0,
@@ -129,22 +132,35 @@ class TestPhotonLossWithQuantumLayer:
             input_state=[1, 0],
             measurement_strategy=ML.MeasurementStrategy.probs(),
         )
+        with pytest.raises(
+            ValueError,
+            match="When doing a noisy simulation, the probabilities measurement strategy must be used.",
+        ):
+            expectation_layer = ML.QuantumLayer(
+                input_size=0,
+                experiment=experiment,
+                input_state=[1, 0],
+                measurement_strategy=ML.MeasurementStrategy.mode_expectations(
+                    computation_space=ComputationSpace.UNBUNCHED
+                ),
+            )
+
+        experiment_no_noise = pcvl.Experiment(circuit)
         expectation_layer = ML.QuantumLayer(
             input_size=0,
-            experiment=experiment,
+            experiment=experiment_no_noise,
             input_state=[1, 0],
             measurement_strategy=ML.MeasurementStrategy.mode_expectations(
                 computation_space=ComputationSpace.UNBUNCHED
             ),
         )
+
         prob_output = prob_layer()
         expectation_output = expectation_layer()
         keys = prob_layer.output_keys
 
         assert prob_output.shape[-1] == len(keys)
         assert expectation_output.shape[-1] == len(keys[0])
-
-        experiment_no_noise = pcvl.Experiment(circuit)
 
         amplitude_layer = ML.QuantumLayer(
             input_size=0,
@@ -232,7 +248,7 @@ class TestPhotonLossWithQuantumLayer:
             output.sum(dim=1), torch.ones_like(output[:, 0]), atol=1e-6
         )
 
-    def test_photon_loss_no_noise_model(self):
+    def test_photon_loss_no_noise(self):
         """Experiments without a noise model must match the noise-free circuit."""
         circuit = pcvl.Circuit(2)
         circuit.add((0, 1), pcvl.BS())
@@ -268,7 +284,7 @@ class TestPhotonLossWithQuantumLayer:
             == layer_experiment_unbunched.output_keys
         )
 
-    def test_photon_loss_incomplete_noise_model(self):
+    def test_photon_loss_incomplete_noise(self):
         """Missing transmittance defaults to 1 while brightness controls survival and vice versa."""
         circuit = pcvl.Circuit(2)
         circuit.add((0, 1), pcvl.BS())
@@ -426,6 +442,7 @@ class TestPhotonLossWithQuantumLayer:
         """Photon loss transforms must preserve autograd support."""
         circuit = pcvl.Circuit(2)
         theta = pcvl.P("phi")
+        circuit.add((0, 1), pcvl.BS())
         circuit.add(0, pcvl.PS(theta))
         circuit.add((0, 1), pcvl.BS())
 
@@ -581,8 +598,10 @@ class TestPhotonLossWithFidelityKernel:
 
     def test_kernel_reflects_photon_survival(self):
         """Kernel value must drop according to the survival probability."""
-        circuit = pcvl.Circuit(1)
+        circuit = pcvl.Circuit(2)
+        circuit.add(0, pcvl.BS())
         circuit.add(0, pcvl.PS(pcvl.P("x")))
+        circuit.add(0, pcvl.BS())
         experiment = pcvl.Experiment(circuit)
         experiment.noise = pcvl.NoiseModel(brightness=0.8, transmittance=0.9)
 
@@ -593,7 +612,7 @@ class TestPhotonLossWithFidelityKernel:
         )
         kernel = ML.FidelityKernel(
             feature_map=feature_map,
-            input_state=[1],
+            input_state=[1, 0],
             computation_space=ComputationSpace.FOCK,
         )
 
@@ -607,8 +626,10 @@ class TestPhotonLossWithFidelityKernel:
 
     def test_kernel_matches_noise_free_case(self):
         """Removing the noise model restores unit kernel values."""
-        circuit = pcvl.Circuit(1)
+        circuit = pcvl.Circuit(2)
+        circuit.add(0, pcvl.BS())
         circuit.add(0, pcvl.PS(pcvl.P("x")))
+        circuit.add(0, pcvl.BS())
 
         feature_map = ML.FeatureMap(
             circuit=circuit,
@@ -617,7 +638,7 @@ class TestPhotonLossWithFidelityKernel:
         )
         kernel = ML.FidelityKernel(
             feature_map=feature_map,
-            input_state=[1],
+            input_state=[1, 0],
             computation_space=ComputationSpace.FOCK,
         )
 
@@ -636,7 +657,7 @@ class TestPhotonLossWithFidelityKernel:
         )
         kernel_noiseless = ML.FidelityKernel(
             feature_map=feature_map_noiseless,
-            input_state=[1],
+            input_state=[1, 0],
             computation_space=ComputationSpace.FOCK,
         )
 
@@ -672,11 +693,13 @@ class TestPhotonLossWithFidelityKernel:
             input_state=input_state,
         )
 
-        keys = kernel._detector_transform.output_keys
-        keys_noise = kernel_noise._detector_transform.output_keys
+        keys = kernel._quantum_layer._detector_transform.output_keys
+        keys_noise = kernel_noise._quantum_layer._detector_transform.output_keys
 
-        assert kernel._detector_transform.output_size == len(keys)
-        assert kernel_noise._detector_transform.output_size == len(keys_noise)
+        assert kernel._quantum_layer._detector_transform.output_size == len(keys)
+        assert kernel_noise._quantum_layer._detector_transform.output_size == len(
+            keys_noise
+        )
         assert len(keys) < len(keys_noise)
         assert all(sum(key) == sum(input_state) for key in keys)
         assert any(sum(key) < sum(input_state) for key in keys_noise)
@@ -686,6 +709,7 @@ class TestPhotonLossWithFidelityKernel:
         """FidelityKernel should inherit noise model and detector configuration provided via FeatureMap."""
 
         circuit = pcvl.Circuit(2)
+        circuit.add((0, 1), pcvl.BS())
         circuit.add(0, pcvl.PS(pcvl.P("px")))
         circuit.add((0, 1), pcvl.BS())
 
@@ -717,3 +741,70 @@ class TestPhotonLossWithFidelityKernel:
         assert torch.allclose(diag, torch.ones_like(diag), atol=1e-6)
         assert torch.all(k_train >= 0)
         assert torch.all(k_test >= 0)
+
+
+def test_resolve_photon_loss_with_noise_groups_empty_post_measurement():
+    # No post measurement noise
+    survival_probs, empty_post_measurement = resolve_photon_loss(None, n_modes=4)
+    assert np.allclose(survival_probs, [1, 1, 1, 1])
+    assert empty_post_measurement
+
+    survival_probs, empty_post_measurement = resolve_photon_loss(
+        classify_noise(pcvl.NoiseModel(phase_imprecision=0.2)), n_modes=4
+    )
+    assert np.allclose(survival_probs, [1, 1, 1, 1])
+    assert empty_post_measurement
+
+    survival_probs, empty_post_measurement = resolve_photon_loss(
+        classify_noise(pcvl.NoiseModel(indistinguishability=0.2)), n_modes=4
+    )
+    assert np.allclose(survival_probs, [1, 1, 1, 1])
+    assert empty_post_measurement
+
+    # Only post measurement noise
+    survival_probs, empty_post_measurement = resolve_photon_loss(
+        classify_noise(pcvl.NoiseModel(brightness=0.2)), n_modes=4
+    )
+    assert np.allclose(survival_probs, [0.2, 0.2, 0.2, 0.2])
+    assert not empty_post_measurement
+
+    survival_probs, empty_post_measurement = resolve_photon_loss(
+        classify_noise(pcvl.NoiseModel(transmittance=0.2)), n_modes=4
+    )
+    assert np.allclose(survival_probs, [0.2, 0.2, 0.2, 0.2])
+    assert not empty_post_measurement
+
+    survival_probs, empty_post_measurement = resolve_photon_loss(
+        classify_noise(pcvl.NoiseModel(transmittance=0.2, brightness=0.1)),
+        n_modes=4,
+    )
+    assert np.allclose(survival_probs, [0.02, 0.02, 0.02, 0.02])
+    assert not empty_post_measurement
+
+    # Mix of noises
+    survival_probs, empty_post_measurement = resolve_photon_loss(
+        classify_noise(pcvl.NoiseModel(brightness=0.2, indistinguishability=0.9)),
+        n_modes=4,
+    )
+    assert np.allclose(survival_probs, [0.2, 0.2, 0.2, 0.2])
+    assert not empty_post_measurement
+
+    survival_probs, empty_post_measurement = resolve_photon_loss(
+        classify_noise(pcvl.NoiseModel(transmittance=0.2, g2=0.6)), n_modes=4
+    )
+    assert np.allclose(survival_probs, [0.2, 0.2, 0.2, 0.2])
+    assert not empty_post_measurement
+
+    survival_probs, empty_post_measurement = resolve_photon_loss(
+        classify_noise(
+            pcvl.NoiseModel(
+                transmittance=0.2,
+                brightness=0.1,
+                indistinguishability=0.1,
+                phase_error=0.7,
+            )
+        ),
+        n_modes=4,
+    )
+    assert np.allclose(survival_probs, [0.02, 0.02, 0.02, 0.02])
+    assert not empty_post_measurement

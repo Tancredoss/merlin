@@ -7,11 +7,20 @@ User Guide
 ==========
 Here are a few pages to guide you through your MerLin usage.
 
+
 Master the QuantumLayer
 ----------------------------
 .. merlin-gallery::
    :data: _data/galleries/user_guide/master_quantum_layer.json
-   :columns: 2
+   :columns: 3
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   layer
+   angle_amplitude_encoding
+   encoding_space
 
 Master the output types and sizes
 -----------------------------------
@@ -19,11 +28,37 @@ Master the output types and sizes
    :data: _data/galleries/user_guide/master_output.json
    :columns: 3
 
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   measurement_strategy
+   computation_space
+   grouping
+
 Mixing gates and interferometers
 ----------------------------------------
 .. merlin-gallery::
    :data: _data/galleries/user_guide/mixing_gates.json
    :columns: 2
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   quantum_bridge
+
+Noisy simulations
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/noisy_simulations.json
+   :columns: 2
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   noisy_simulations
 
 Send your code to simulators or QPUs
 ----------------------------------------
@@ -31,11 +66,49 @@ Send your code to simulators or QPUs
    :data: _data/galleries/user_guide/send_code_qpu.json
    :columns: 2
 
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   remote_execution
+
+Ready to use quantum models
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/models.json
+   :columns: 2
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   models/index
+
 Specific algorithms
 ----------------------------------------
 .. merlin-gallery::
    :data: _data/galleries/user_guide/specific_algorithms.json
    :columns: 2
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   feed_forward
+   kernels
+
+Compatibility
+----------------------------------------
+.. merlin-gallery::
+   :data: _data/galleries/user_guide/compatibility.json
+   :columns: 2
+   :contour-color: #f2994a
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   compatibility
 
 Migration guide
 ----------------------------------------
@@ -44,18 +117,8 @@ Migration guide
    :columns: 2
    :contour-color: #f2994a
 
-
 .. toctree::
    :hidden:
    :maxdepth: 1
 
-   angle_amplitude_encoding
-   computation_space
-   feed_forward
-   grouping
-   kernels
-   layer
-   measurement_strategy
    migration_guide
-   quantum_bridge
-   remote_execution

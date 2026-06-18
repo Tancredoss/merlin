@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Run the HQPINN benchmarks",
+    "summary": "Physics-informed DHO, Euler, and transonic-airfoil benchmarks with classical, PennyLane, and MerLin photonic branches.",
+    "image": "_static/reproduced_papers/HQPINN.png",
+    "url": "https://github.com/merlinquantum/reproduced_papers/tree/main/papers/HQPINN",
+    "tags": ["Reproduced papers", "HQPINN", "PINN", "MerLin", "Fluid dynamics"]
+  }
+]

@@ -20,7 +20,6 @@ def make_identity_layer(m: int, n_photons: int, device: torch.device) -> Quantum
         measurement_strategy=MeasurementStrategy.probs(
             computation_space=ComputationSpace.UNBUNCHED
         ),
-        amplitude_encoding=True,
     )
 
 

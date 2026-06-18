@@ -31,12 +31,9 @@ import perceval as pcvl
 import torch
 
 from ..utils.combinadics import Combinadics
-from ..utils.sparse import ensure_sparse_invariant_policy, sparse_coo_tensor
 from .computation_space import ComputationSpace
 
 Basis = Union[Combinadics, "FilteredBasis", tuple[tuple[int, ...], ...]]
-
-ensure_sparse_invariant_policy()
 
 
 class FilteredBasis:
@@ -98,7 +95,7 @@ def _to_real(
     if tensor.is_sparse:
         coalesced = tensor.coalesce()
         values = coalesced.values().to(dtype=target_dtype, device=target_device)
-        return sparse_coo_tensor(
+        return torch.sparse_coo_tensor(
             coalesced.indices(), values, coalesced.shape, device=target_device
         )
     return tensor.to(dtype=target_dtype, device=target_device)
@@ -304,7 +301,7 @@ class ProbabilityDistribution:
             nnz = values.shape[0]
             if nnz == 0:
                 # Nothing to renormalize; keep an empty sparse tensor with the same shape
-                self.tensor = sparse_coo_tensor(
+                self.tensor = torch.sparse_coo_tensor(
                     indices, values, coalesced.shape, device=coalesced.device
                 )
                 return self
@@ -317,7 +314,7 @@ class ProbabilityDistribution:
                 batch_coords = tuple(int(v) for v in indices[:-1, col].tolist())
                 scaled_vals.append(values[col] / safe[batch_coords])
             new_vals = torch.stack(scaled_vals)
-            self.tensor = sparse_coo_tensor(
+            self.tensor = torch.sparse_coo_tensor(
                 indices, new_vals, coalesced.shape, device=coalesced.device
             )
             return self
@@ -481,7 +478,9 @@ class ProbabilityDistribution:
                 )
             indices = torch.tensor([idxs], dtype=torch.long, device=device)
             values = torch.tensor(vals, dtype=torch.float32, device=device)
-            tensor = sparse_coo_tensor(indices, values, (basis_size,), device=device)
+            tensor = torch.sparse_coo_tensor(
+                indices, values, (basis_size,), device=device
+            )
             tensor = _to_real(tensor, dtype=dtype, device=device)
             return cls(
                 tensor, n_modes, n_photons, computation_space=ComputationSpace.FOCK
@@ -746,7 +745,7 @@ class ProbabilityDistribution:
             )
             new_indices = torch.cat([batch_part, last_part], dim=0)
             new_shape = coalesced.shape[:-1] + (len(unique_kept),)
-            tensor = sparse_coo_tensor(
+            tensor = torch.sparse_coo_tensor(
                 new_indices, new_vals, new_shape, device=coalesced.device
             )
             return ProbabilityDistribution(

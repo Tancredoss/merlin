@@ -34,7 +34,7 @@ import torch
 from merlin.algorithms.layer import QuantumLayer
 from merlin.builder.circuit_builder import CircuitBuilder
 from merlin.core.computation_space import ComputationSpace
-from merlin.core.merlin_processor import MerlinProcessor
+from merlin.core.merlin_processor import MerlinProcessor, ValidatedLayerConfig
 from merlin.measurement import MeasurementStrategy
 
 # ---------------------------------------------------------------------------
@@ -55,6 +55,12 @@ def _expected_dist_size(space: ComputationSpace, m: int, n: int) -> int:
     raise ValueError(f"Unsupported computation space: {space}")
 
 
+def _add_beam_splitter_chain(circuit: pcvl.Circuit, n_modes: int) -> None:
+    """Add fixed nearest-neighbor mixing to keep phase encodings non-passive."""
+    for mode in range(n_modes - 1):
+        circuit.add(mode, pcvl.BS())
+
+
 def _make_perceval_circuit_single_prefix(
     n_logical: int, n_physical: int | None = None, prefix: str = "px"
 ):
@@ -62,10 +68,12 @@ def _make_perceval_circuit_single_prefix(
         n_physical = n_logical
 
     U = pcvl.Matrix.random_unitary(n=n_physical)
-    c_var = pcvl.Circuit(n_physical)
+    circuit = pcvl.Circuit(n_physical)
+    circuit.add(0, pcvl.Unitary(U))
     for i in range(n_logical):
-        c_var.add(i, pcvl.PS(pcvl.P(f"{prefix}{i + 1}")))
-    return pcvl.Unitary(U) // c_var // pcvl.Unitary(U.copy())
+        circuit.add(i, pcvl.PS(pcvl.P(f"{prefix}{i + 1}")))
+    circuit.add(0, pcvl.Unitary(U.copy()))
+    return circuit
 
 
 def _make_perceval_layer(
@@ -115,11 +123,13 @@ def _make_perceval_layer_two_prefixes(prefixes: list[str], counts: list[int], m:
     assert len(prefixes) == len(counts)
     c = pcvl.Circuit(m)
 
+    _add_beam_splitter_chain(c, m)
     mode = 0
-    for pref, n in zip(prefixes, counts):
+    for pref, n in zip(prefixes, counts, strict=True):
         for i in range(n):
             c.add(mode, pcvl.PS(pcvl.P(f"{pref}{i + 1}")))
             mode += 1
+    _add_beam_splitter_chain(c, m)
 
     input_state = [0] * m
     input_state[0] = 1
@@ -145,9 +155,11 @@ def _make_builder_layer(
     computation_space: ComputationSpace = ComputationSpace.UNBUNCHED,
 ):
     b = CircuitBuilder(n_modes=n_modes)
+    b.add_entangling_layer(trainable=False, name="pre_mix")
     if include_trainable:
         b.add_entangling_layer(trainable=True, name="W")
     b.add_angle_encoding(modes=list(range(n_modes)), name="px", scale=scale)
+    b.add_entangling_layer(trainable=False, name="post_mix")
 
     layer = QuantumLayer(
         input_size=n_modes,
@@ -177,10 +189,9 @@ def _expected_from_converter(layer: QuantumLayer) -> list[str]:
     return out
 
 
-def _assert_config_contract(cfg: dict):
-    assert "input_param_order" in cfg, f"export_config keys={sorted(cfg.keys())}"
-    assert isinstance(cfg["input_param_order"], list)
-    assert all(isinstance(x, str) for x in cfg["input_param_order"])
+def _assert_config_contract(cfg: ValidatedLayerConfig):
+    assert isinstance(cfg.input_param_order, list)
+    assert all(isinstance(x, str) for x in cfg.input_param_order)
 
 
 # ---------------------------------------------------------------------------
@@ -192,42 +203,42 @@ class TestPercevalUserBuilt:
     @pytest.mark.parametrize("n", [3, 5, 10, 12])
     def test_export_matches_converter_and_is_numeric(self, n):
         layer = _make_perceval_layer(n, prefix="px")
-        cfg = layer.export_config()
+        cfg = ValidatedLayerConfig(layer.export_config())
         _assert_config_contract(cfg)
 
-        assert cfg["input_param_order"] == _expected_from_converter(layer)
-        assert cfg["input_param_order"] == [f"px{i + 1}" for i in range(n)]
+        assert cfg.input_param_order == _expected_from_converter(layer)
+        assert cfg.input_param_order == [f"px{i + 1}" for i in range(n)]
 
     def test_two_prefixes_12_each(self):
         layer = _make_perceval_layer_two_prefixes(
             prefixes=["a", "b"], counts=[12, 12], m=24
         )
-        cfg = layer.export_config()
+        cfg = ValidatedLayerConfig(layer.export_config())
         _assert_config_contract(cfg)
 
         expected = [f"a{i + 1}" for i in range(12)] + [f"b{i + 1}" for i in range(12)]
-        assert cfg["input_param_order"] == expected
+        assert cfg.input_param_order == expected
 
     def test_reversed_prefix_order(self):
         layer = _make_perceval_layer_two_prefixes(
             prefixes=["beta", "alpha"], counts=[4, 4], m=8
         )
-        cfg = layer.export_config()
+        cfg = ValidatedLayerConfig(layer.export_config())
         _assert_config_contract(cfg)
 
         expected = [f"beta{i + 1}" for i in range(4)] + [
             f"alpha{i + 1}" for i in range(4)
         ]
-        assert cfg["input_param_order"] == expected
+        assert cfg.input_param_order == expected
 
     @pytest.mark.parametrize("n", [10, 12])
     def test_merlinprocessor_extract_and_route(self, n):
         layer = _make_perceval_layer(n, prefix="px")
-        cfg = layer.export_config()
+        cfg = ValidatedLayerConfig(layer.export_config())
         proc = _mock_processor()
 
         names = proc._extract_input_params(cfg)
-        assert names == cfg["input_param_order"]
+        assert names == cfg.input_param_order
 
         row = np.array([(j + 1) * 0.1 for j in range(n)], dtype=float)
         params = {name: float(row[j]) for j, name in enumerate(names)}
@@ -239,7 +250,7 @@ class TestPercevalUserBuilt:
 
     def test_user_scenario_2ph_12logical_24modes(self):
         layer = _make_perceval_layer(12, n_physical=24, n_photons=2, prefix="px")
-        cfg = layer.export_config()
+        cfg = ValidatedLayerConfig(layer.export_config())
         proc = _mock_processor()
         names = proc._extract_input_params(cfg)
 
@@ -261,15 +272,15 @@ class TestBuilderDeclarative:
     @pytest.mark.parametrize("n", [5, 10, 12])
     def test_builder_export_matches_converter_and_routes(self, n):
         layer, _b = _make_builder_layer(n, include_trainable=True, scale=1.0)
-        cfg = layer.export_config()
+        cfg = ValidatedLayerConfig(layer.export_config())
         _assert_config_contract(cfg)
 
-        assert cfg["input_param_order"] == _expected_from_converter(layer)
-        assert len(cfg["input_param_order"]) == n
+        assert cfg.input_param_order == _expected_from_converter(layer)
+        assert len(cfg.input_param_order) == n
 
         proc = _mock_processor()
         names = proc._extract_input_params(cfg)
-        assert names == cfg["input_param_order"]
+        assert names == cfg.input_param_order
 
         row = np.array([(j + 1) * 0.1 for j in range(n)], dtype=float)
         params = {name: float(row[j]) for j, name in enumerate(names)}
@@ -278,21 +289,21 @@ class TestBuilderDeclarative:
 
     def test_builder_no_trainable_leakage(self):
         layer, _b = _make_builder_layer(12, include_trainable=True, scale=1.0)
-        cfg = layer.export_config()
+        cfg = ValidatedLayerConfig(layer.export_config())
         _assert_config_contract(cfg)
 
-        for name in cfg["input_param_order"]:
+        for name in cfg.input_param_order:
             assert not name.startswith("W"), (
                 f"trainable leaked into input_param_order: {name}"
             )
 
     def test_builder_input_only_no_trainables(self):
         layer, _b = _make_builder_layer(8, include_trainable=False, scale=1.0)
-        cfg = layer.export_config()
+        cfg = ValidatedLayerConfig(layer.export_config())
         _assert_config_contract(cfg)
 
-        assert cfg["input_param_order"] == _expected_from_converter(layer)
-        assert len(cfg["input_param_order"]) == 8
+        assert cfg.input_param_order == _expected_from_converter(layer)
+        assert len(cfg.input_param_order) == 8
 
     def test_builder_scale_does_not_change_order(self):
         layer1, b1 = _make_builder_layer(10, include_trainable=True, scale=1.0)
@@ -300,8 +311,8 @@ class TestBuilderDeclarative:
 
         cfg1 = layer1.export_config()
         cfg2 = layer2.export_config()
-        _assert_config_contract(cfg1)
-        _assert_config_contract(cfg2)
+        _assert_config_contract(ValidatedLayerConfig(cfg1))
+        _assert_config_contract(ValidatedLayerConfig(cfg2))
 
         assert cfg1["input_param_order"] == cfg2["input_param_order"]
         assert cfg1["input_param_order"] == _expected_from_converter(layer1)
@@ -309,7 +320,7 @@ class TestBuilderDeclarative:
 
         # builder bookkeeping
         assert "px" in b2._angle_encoding_scales
-        assert b2._angle_encoding_scales["px"] == {i: 2.5 for i in range(10)}
+        assert b2._angle_encoding_scales["px"] == dict.fromkeys(range(10), 2.5)
 
 
 # ---------------------------------------------------------------------------
@@ -451,10 +462,12 @@ class TestCloudMultiPrefixBothSpaces:
         n_photons = 2  # cloud-acceptable minimum
 
         c = pcvl.Circuit(total_modes)
+        _add_beam_splitter_chain(c, total_modes)
         for i in range(n_each):
             c.add(i, pcvl.PS(pcvl.P(f"a{i + 1}")))
         for i in range(n_each):
             c.add(i + n_each, pcvl.PS(pcvl.P(f"b{i + 1}")))
+        _add_beam_splitter_chain(c, total_modes)
 
         input_state = [0] * total_modes
         input_state[0] = 1
