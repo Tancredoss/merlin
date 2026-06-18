@@ -12,7 +12,7 @@ Master the QuantumLayer
 ----------------------------
 .. merlin-gallery::
    :data: _data/galleries/user_guide/master_quantum_layer.json
-   :columns: 2
+   :columns: 3
 
 .. toctree::
    :hidden:
