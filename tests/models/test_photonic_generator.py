@@ -753,6 +753,32 @@ def test_gradients_flow_through_photonic_generator():
     assert any(grad is not None for grad in grads)
 
 
+@pytest.mark.parametrize(
+    ("to_args", "to_kwargs"),
+    [
+        ((torch.float64,), {}),
+        ((), {"dtype": torch.float64}),
+    ],
+)
+def test_cpu_generator_supports_dtype_only_to_forms(to_args, to_kwargs):
+    generator = ML.PhotonicGenerator(
+        layers=_make_layer(input_size=2),
+        output_adapter=ML.VectorAdapter(size=3),
+    )
+    layer = cast(ML.QuantumLayer, generator.layers[0])
+    assert layer.device is None
+
+    generator.to(*to_args, **to_kwargs)
+    z = torch.randn(2, generator.latent_dim, dtype=torch.float64)
+    output = generator(z)
+
+    assert layer.device is None
+    assert layer.dtype == torch.float64
+    assert layer.computation_process.converter.tensor_fdtype == torch.float64
+    assert layer.computation_process.simulation_graph.dtype == torch.float64
+    assert output.dtype == torch.float64
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA GPU not available")
 def test_photonic_qgan_forward_keeps_cuda_device():
     device = torch.device("cuda")
