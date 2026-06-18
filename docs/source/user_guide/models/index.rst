@@ -19,3 +19,4 @@ Here are the quantum models that are ready to use in MerLin.
 
    qgan
    qcnn
+   reservoir_classifier

@@ -27,19 +27,26 @@ from merlin.pcvl_pytorch.noisy_slos import (
 )
 
 
+def _two_mode_mixed_feature_map(
+    x1: pcvl.P, x2: pcvl.P, theta: pcvl.P | None = None
+) -> pcvl.Circuit:
+    """Build a two-mode circuit with interleaved mixing and phase encodings."""
+    circuit = pcvl.Circuit(2)
+    circuit.add(0, pcvl.BS(theta) if theta is not None else pcvl.BS())
+    circuit.add(0, pcvl.PS(x1))
+    circuit.add(0, pcvl.BS(theta) if theta is not None else pcvl.BS())
+    circuit.add(0, pcvl.PS(x2))
+    circuit.add(0, pcvl.BS(theta) if theta is not None else pcvl.BS())
+    return circuit
+
+
 class TestCCInvBackend:
     """Tests for _CCInvQuantumLayer as the FidelityKernel computation backend."""
 
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
         theta = pcvl.P("theta")
-        self.circuit = (
-            pcvl.Circuit(2)
-            // pcvl.PS(x1)
-            // pcvl.BS(theta)
-            // pcvl.PS(x2)
-            // pcvl.BS(theta)
-        )
+        self.circuit = _two_mode_mixed_feature_map(x1, x2, theta)
         self.feature_map = FeatureMap(
             circuit=self.circuit,
             input_size=2,
@@ -424,9 +431,7 @@ class TestFidelityKernelInternals:
 
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2)
         self.feature_map = FeatureMap(
             circuit=circuit,
             input_size=2,
@@ -485,9 +490,7 @@ class TestFidelityKernelInternals:
 class TestFidelityKernel:
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2)
         self.feature_map = FeatureMap(
             circuit=circuit,
             input_size=2,
@@ -518,13 +521,7 @@ class TestFidelityKernel:
     def test_fidelity_kernel_with_trainable_feature_map(self):
         theta = pcvl.P("theta")
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2)
-            // pcvl.PS(x1)
-            // pcvl.BS(theta)
-            // pcvl.PS(x2)
-            // pcvl.BS(theta)
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2, theta)
 
         feature_map = FeatureMap(
             circuit=circuit,
@@ -609,7 +606,7 @@ class TestFidelityKernel:
 
     def test_input_state_circuit_size_mismatch(self):
         x1 = pcvl.P("x1")
-        circuit = pcvl.Circuit(3) // pcvl.PS(x1)  # 3 modes
+        circuit = pcvl.Circuit(3) // pcvl.BS() // pcvl.PS(x1) // pcvl.BS()
         feature_map = FeatureMap(
             circuit=circuit,
             input_size=1,
@@ -627,11 +624,13 @@ class TestFidelityKernel:
 
     def test_kernel_uses_builder_subset_encoding_without_deprecation(self):
         builder = CircuitBuilder(n_modes=3)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(
             modes=[0, 1],
             name="input",
             subset_combinations=True,
         )
+        builder.add_entangling_layer(trainable=False, name="post_mix")
         feature_map = FeatureMap(
             builder=builder,
             input_size=2,
@@ -652,11 +651,13 @@ class TestFidelityKernel:
 
     def test_kernel_backend_preserves_builder_angle_encoding_scale(self):
         builder = CircuitBuilder(n_modes=3)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(
             modes=[0, 1],
             name="input",
             scale=0.5,
         )
+        builder.add_entangling_layer(trainable=False, name="post_mix")
         feature_map = FeatureMap(
             builder=builder,
             input_size=2,
@@ -675,12 +676,14 @@ class TestFidelityKernel:
 
     def test_kernel_backend_preserves_builder_subset_scale(self):
         builder = CircuitBuilder(n_modes=3)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(
             modes=[0, 1],
             name="input",
             scale=0.5,
             subset_combinations=True,
         )
+        builder.add_entangling_layer(trainable=False, name="post_mix")
         feature_map = FeatureMap(
             builder=builder,
             input_size=2,
@@ -894,7 +897,12 @@ class TestFeatureMapDescriptor:
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
         self.circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
+            pcvl.Circuit(2)
+            // pcvl.BS()
+            // pcvl.PS(x1)
+            // pcvl.BS()
+            // pcvl.PS(x2)
+            // pcvl.BS()
         )
         self.feature_map = FeatureMap(
             circuit=self.circuit,
@@ -912,6 +920,7 @@ class TestFeatureMapDescriptor:
         theta = pcvl.P("theta")
         circuit = (
             pcvl.Circuit(2)
+            // pcvl.BS()
             // pcvl.PS(pcvl.P("x1"))
             // pcvl.BS(theta)
             // pcvl.PS(pcvl.P("x2"))
@@ -1160,11 +1169,13 @@ class TestFeatureMapFactoryMethods:
 
     def test_angle_encoding_respects_scale_in_feature_map(self):
         builder = CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(
             modes=[0, 1, 2],
             name="input",
             scale=0.5,
         )
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         feature_map = FeatureMap(
             builder=builder,
@@ -1183,9 +1194,7 @@ class TestFeatureMapFactoryMethods:
     def test_from_pcvl_circuit(self):
         """FeatureMap can be built directly from a pcvl.Circuit."""
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2)
 
         feature_map = FeatureMap(
             circuit=circuit,
@@ -1266,9 +1275,7 @@ class TestFidelityKernelFactoryMethods:
     def test_from_feature_map_pcvl_circuit(self):
         """FidelityKernel can wrap a FeatureMap built from pcvl.Circuit."""
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2)
         feature_map = FeatureMap(
             circuit=circuit,
             input_size=2,
@@ -1591,9 +1598,7 @@ class TestKernelIntegration:
 
         # Set up kernel
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2)
         feature_map = FeatureMap(
             circuit=circuit,
             input_size=2,
@@ -1625,13 +1630,7 @@ class TestKernelIntegration:
         # Trainable kernel
         theta = pcvl.P("theta")
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
-        circuit = (
-            pcvl.Circuit(2)
-            // pcvl.PS(x1)
-            // pcvl.BS(theta)
-            // pcvl.PS(x2)
-            // pcvl.BS(theta)
-        )
+        circuit = _two_mode_mixed_feature_map(x1, x2, theta)
 
         feature_map = FeatureMap(
             circuit=circuit,
@@ -1951,6 +1950,8 @@ def test_iris_with_supported_constructors():
         try:
             params = [pcvl.P(f"x{i + 1}") for i in range(4)]
             circuit = pcvl.Circuit(4)
+            circuit.add(0, pcvl.BS())
+            circuit.add(2, pcvl.BS())
             for mode, param in enumerate(params):
                 circuit.add(mode, pcvl.PS(param))
             circuit.add(0, pcvl.BS())
@@ -2150,6 +2151,8 @@ def test_kernel_constructor_performance_comparison():
     start = time.time()
     params = [pcvl.P(f"x{i + 1}") for i in range(3)]
     circuit = pcvl.Circuit(4)
+    circuit.add(0, pcvl.BS())
+    circuit.add(2, pcvl.BS())
     for mode, param in enumerate(params):
         circuit.add(mode, pcvl.PS(param))
     circuit.add(0, pcvl.BS())
@@ -2222,6 +2225,8 @@ def test_fidelity_kernel_gpu_execution_all_constructors(cuda_device, constructor
     elif constructor == "manual":
         params = [pcvl.P(f"x{i + 1}") for i in range(4)]
         circuit = pcvl.Circuit(4)
+        circuit.add(0, pcvl.BS())
+        circuit.add(2, pcvl.BS())
         for mode, param in enumerate(params):
             circuit.add(mode, pcvl.PS(param))
         circuit.add(0, pcvl.BS())

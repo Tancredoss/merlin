@@ -34,14 +34,16 @@ from .photonic_generator import (
     VectorAdapter,
 )
 from .qcnn import QCNNClassifier
+from .reservoir_classifier import ReservoirClassifier
 
 __all__ = [
+    "ReservoirClassifier",
     "GeneratorMeasurements",
     "ImageAdapter",
     "LatentDistribution",
     "NormalLatent",
     "OutputAdapter",
+    "VectorAdapter",
     "PhotonicGenerator",
     "QCNNClassifier",
-    "VectorAdapter",
 ]

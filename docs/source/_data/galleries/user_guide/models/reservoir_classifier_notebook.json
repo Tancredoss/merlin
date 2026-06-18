@@ -1,0 +1,9 @@
+[
+  {
+    "title": "ReservoirClassifier tutorial",
+    "summary": "MNIST and Fashion-MNIST workflows for the frozen reservoir classifier.",
+    "image": "_static/img/reservoir_scheme.png",
+    "doc": "notebooks/ReservoirClassifier",
+    "tags": ["Quantum models", "Reservoir", "MNIST", "Classification"]
+  }
+]

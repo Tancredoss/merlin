@@ -287,8 +287,10 @@ class TestQuantumLayer:
     @pytest.mark.parametrize("names", [("input", "input"), ("input_a", "input_b")])
     def test_multiple_angle_encodings_validate_input_size(self, names):
         builder = ML.CircuitBuilder(n_modes=5)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name=names[0])
         builder.add_angle_encoding(modes=[2, 3, 4], name=names[1])
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=5,
@@ -351,8 +353,10 @@ class TestQuantumLayer:
     def test_prepare_classical_parameters_detects_batch_mismatch(self):
         """Classical parameter helper should reject mismatched batch sizes."""
         builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input_a")
         builder.add_angle_encoding(modes=[2, 3], name="input_b")
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=4,
@@ -514,6 +518,7 @@ class TestQuantumLayer:
     def test_builder_infers_input_size_for_backward_compat(self):
         """Builder-based layers should infer input_size when omitted."""
         builder = ML.CircuitBuilder(n_modes=3)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input")
         builder.add_entangling_layer(trainable=True, name="U1")
 
@@ -2854,6 +2859,7 @@ def test_mixed_memristors_with_different_detach_settings():
     torch.manual_seed(2)
 
     builder = ML.CircuitBuilder(n_modes=5)
+    builder.add_entangling_layer(trainable=False, name="pre_mix")
     # First memristor: detach gradients (blocking flow)
     builder.add_memristive_ps(
         mode=1,
@@ -2871,6 +2877,7 @@ def test_mixed_memristors_with_different_detach_settings():
         name="mem_full_grad",
     )
     builder.add_angle_encoding(modes=[0, 3])
+    builder.add_entangling_layer(trainable=False, name="post_mix")
 
     layer = ML.QuantumLayer(
         builder=builder,

@@ -12,5 +12,12 @@
     "image": "_static/reproduced_papers/PhotonicQCNN_state_injection.png",
     "doc": "user_guide/models/qcnn",
     "tags": ["Quantum models", "Ready to use", "QCNN", "Classification"]
+  },
+  {
+    "title": "ReservoirClassifier",
+    "summary": "Frozen quantum optical reservoir with a trainable linear readout.",
+    "image": "_static/img/reservoir_scheme.png",
+    "doc": "user_guide/models/reservoir_classifier",
+    "tags": ["Quantum models", "Ready to use", "Reservoir", "Classification"]
   }
 ]
