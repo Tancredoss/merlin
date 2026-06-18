@@ -1539,17 +1539,11 @@ class QuantumLayer(MerlinModule):
 
         if device is not None:
             self.device = torch.device(device)
-            self.computation_process.simulation_graph = (
-                self.computation_process.simulation_graph.to(self.device)
-            )
 
         if device is None and dtype is None:
             return self
 
-        self.computation_process.converter = self.computation_process.converter.to(
-            self.dtype,
-            self.device,
-        )
+        self.computation_process.to(dtype=self.dtype, device=self.device)
 
         # Photon loss Module
         if self._photon_loss_transform is not None:

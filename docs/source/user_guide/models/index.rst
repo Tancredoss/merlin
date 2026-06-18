@@ -8,7 +8,7 @@ Models
 Here are the quantum models that are ready to use in MerLin.
 
 .. merlin-gallery::
-   :data: _data/galleries/user_guide/models/qgan.json
+   :data: _data/galleries/user_guide/models.json
    :columns: 2
 
 

@@ -223,6 +223,59 @@ class ReservoirClassifier(MerlinModule):
         self._fit_fingerprint: str | None = None
         self._fit_quantum_cache: torch.Tensor | None = None
 
+    def to(self, *args: Any, **kwargs: Any) -> ReservoirClassifier:
+        """Move the classifier and quantum-layer runtime state.
+
+        Parameters
+        ----------
+        *args : tuple[Any, ...]
+            Positional arguments forwarded to :meth:`torch.nn.Module.to` and
+            :meth:`merlin.algorithms.layer.QuantumLayer.to`.
+        **kwargs : dict[str, Any]
+            Keyword arguments forwarded to :meth:`torch.nn.Module.to` and
+            :meth:`merlin.algorithms.layer.QuantumLayer.to`.
+
+        Returns
+        -------
+        ReservoirClassifier
+            Updated classifier instance.
+
+        Raises
+        ------
+        ValueError
+            If the requested dtype is not supported by Merlin modules.
+        """
+        device = kwargs.get("device")
+        dtype = kwargs.get("dtype")
+
+        if args:
+            first_arg = args[0]
+            if isinstance(first_arg, torch.dtype):
+                dtype = first_arg if dtype is None else dtype
+            elif isinstance(first_arg, (torch.device, str)):
+                device = first_arg if device is None else device
+            elif isinstance(first_arg, torch.Tensor):
+                if device is None:
+                    device = first_arg.device
+                if dtype is None:
+                    dtype = first_arg.dtype
+
+        if len(args) > 1 and isinstance(args[1], torch.dtype) and dtype is None:
+            dtype = args[1]
+
+        if dtype is not None:
+            MerlinModule.setup_device_and_dtype(None, dtype)
+
+        super().to(*args, **kwargs)
+        self._quantum_layer.to(*args, **kwargs)
+
+        if device is not None:
+            self.device = torch.device(device)
+        if dtype is not None:
+            _, self.dtype, _ = MerlinModule.setup_device_and_dtype(None, dtype)
+
+        return self
+
     @staticmethod
     def _validate_positive_integer(value: Any, name: str) -> None:
         if isinstance(value, bool) or not isinstance(value, Integral):
@@ -554,13 +607,11 @@ class ReservoirClassifier(MerlinModule):
 
     @staticmethod
     def _fingerprint(X: np.ndarray) -> str:
-        # Build a cheap cache key for X without storing the full raw dataset:
-        # we hash shape/dtype plus a small strided subsample, which is enough
-        # to detect the common "same training set reused" case.
-        stride = max(1, len(X) // 1000)
-        sample = np.ascontiguousarray(X[::stride][:1000])
-        payload = f"{X.shape}:{X.dtype}".encode() + sample.tobytes()
-        return hashlib.blake2b(payload, digest_size=16).hexdigest()
+        contiguous = np.ascontiguousarray(X)
+        digest = hashlib.blake2b(digest_size=16)
+        digest.update(f"{contiguous.shape}:{contiguous.dtype}".encode())
+        digest.update(contiguous.tobytes())
+        return digest.hexdigest()
 
     def fit_reservoir(
         self,

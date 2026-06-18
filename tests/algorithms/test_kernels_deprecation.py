@@ -87,7 +87,12 @@ class TestLegacyFeatureMapUnitaryPath:
     def setup_method(self):
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
         self.circuit = (
-            pcvl.Circuit(2) // pcvl.PS(x1) // pcvl.BS() // pcvl.PS(x2) // pcvl.BS()
+            pcvl.Circuit(2)
+            // pcvl.BS()
+            // pcvl.PS(x1)
+            // pcvl.BS()
+            // pcvl.PS(x2)
+            // pcvl.BS()
         )
         self.feature_map = FeatureMap(
             circuit=self.circuit,
@@ -99,6 +104,7 @@ class TestLegacyFeatureMapUnitaryPath:
         theta = pcvl.P("theta")
         circuit = (
             pcvl.Circuit(2)
+            // pcvl.BS()
             // pcvl.PS(pcvl.P("x1"))
             // pcvl.BS(theta)
             // pcvl.PS(pcvl.P("x2"))
@@ -337,8 +343,12 @@ class TestDeprecatedLegacyKernelPaths:
 
     def test_kernel_warns_and_uses_feature_map_encoder(self):
         circuit = pcvl.Circuit(3)
+        circuit.add(0, pcvl.BS())
+        circuit.add(1, pcvl.BS())
         for mode in range(3):
             circuit.add(mode, pcvl.PS(pcvl.P(f"x{mode}")))
+        circuit.add(0, pcvl.BS())
+        circuit.add(1, pcvl.BS())
 
         def encoder(x):
             return torch.stack([x[0], x[1], x[0] + x[1]])
@@ -372,8 +382,12 @@ class TestDeprecatedLegacyKernelPaths:
 
     def test_kernel_warns_and_uses_direct_circuit_subset_expansion(self):
         circuit = pcvl.Circuit(3)
+        circuit.add(0, pcvl.BS())
+        circuit.add(1, pcvl.BS())
         for mode in range(3):
             circuit.add(mode, pcvl.PS(pcvl.P(f"x{mode}")))
+        circuit.add(0, pcvl.BS())
+        circuit.add(1, pcvl.BS())
 
         feature_map = FeatureMap(
             circuit=circuit,
@@ -684,6 +698,7 @@ class TestDeprecatedConstructorConsistency:
         x1, x2 = pcvl.P("x1"), pcvl.P("x2")
         manual_feature_map = FeatureMap(
             circuit=pcvl.Circuit(3)
+            // pcvl.BS()
             // pcvl.PS(x1)
             // pcvl.BS()
             // pcvl.PS(x2)

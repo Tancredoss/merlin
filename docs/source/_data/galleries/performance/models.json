@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Photonic QGAN GPU Performance",
+    "summary": "GPU timing and CUDA memory benchmark for the PhotonicGenerator QGAN path.",
+    "image": "_static/img/performance/qgan/torch_allocated_memory_overview.png",
+    "doc": "performance/performance_gpu",
+    "tags": ["Performance", "Photonic QGAN", "PhotonicGenerator", "GPU"]
+  }
+]

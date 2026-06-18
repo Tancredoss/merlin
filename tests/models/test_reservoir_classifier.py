@@ -92,6 +92,67 @@ def test_constructor_rejects_non_positive_integer_dimensions(parameter, value):
         ReservoirClassifier(**kwargs)
 
 
+def test_to_updates_classifier_dtype_and_delegates_quantum_layer(monkeypatch):
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=2),
+    )
+    quantum_to_calls = []
+    original_quantum_to = model._quantum_layer.to
+
+    def _count_quantum_to(*args, **kwargs):
+        quantum_to_calls.append((args, kwargs))
+        return original_quantum_to(*args, **kwargs)
+
+    monkeypatch.setattr(model._quantum_layer, "to", _count_quantum_to)
+
+    returned = model.to("cpu", dtype=torch.float64)
+
+    assert returned is model
+    assert len(quantum_to_calls) == 1
+    assert model.device.type == "cpu"
+    assert model.dtype is torch.float64
+    assert model._quantum_layer.device.type == "cpu"
+    assert model._quantum_layer.dtype is torch.float64
+    assert model.readout.weight.dtype is torch.float64
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_to_cuda_updates_runtime_device_for_reservoir_inputs(monkeypatch):
+    X, _ = _toy_data()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=1),
+        cache=True,
+    )
+
+    model.to("cuda")
+    original_forward = model._quantum_layer.forward
+    calls = {"count": 0}
+
+    def _assert_cuda_forward(*input_parameters, **kwargs):
+        calls["count"] += 1
+        assert input_parameters[0].device.type == "cuda"
+        output = original_forward(*input_parameters, **kwargs)
+        assert output.device.type == "cuda"
+        return output
+
+    monkeypatch.setattr(model._quantum_layer, "forward", _assert_cuda_forward)
+
+    model.fit_reservoir(X)
+    logits = model.predict(X + 0.05)
+
+    assert calls["count"] == 2
+    assert model.device.type == "cuda"
+    assert model.layer.device.type == "cuda"
+    assert model.readout.weight.device.type == "cuda"
+    assert logits.device.type == "cpu"
+
+
 def test_accepts_fastica_reduction():
     X, y = _toy_data()
     model = ReservoirClassifier(
@@ -255,6 +316,34 @@ def test_cache_reuses_training_quantum_features(monkeypatch):
     monkeypatch.setattr(model, "_encode_quantum", _fail)
     dataset = model.make_dataset(X, y)
     assert dataset.tensors[0].shape[0] == len(X)
+
+
+def test_cache_miss_for_large_input_change_outside_old_sample(monkeypatch):
+    X = np.arange(2001 * 4, dtype=np.float32).reshape(2001, 4)
+    X_changed = X.copy()
+    X_changed[1, 0] += 10.0
+
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=None,
+        concatenate=False,
+        cache=True,
+    )
+    calls = {"count": 0}
+
+    def _fake_encode_quantum(X_reduced_normalized, processor=None):
+        del processor
+        calls["count"] += 1
+        return torch.as_tensor(X_reduced_normalized, dtype=model.dtype)
+
+    monkeypatch.setattr(model, "_encode_quantum", _fake_encode_quantum)
+
+    model.fit_reservoir(X)
+    model.transform_reservoir(X_changed)
+
+    assert calls["count"] == 2
 
 
 def test_cache_false_always_encodes(monkeypatch):
@@ -808,10 +897,10 @@ def test_layer_noise_model_rebuilds_layer_and_invalidates_fit():
     model.fit_reservoir(X)
 
     noise_model = pcvl.NoiseModel(brightness=0.9)
-    model.layer.noise_model = noise_model
+    model.layer.noise = noise_model
 
-    assert model.layer.noise_model is noise_model
-    assert model._quantum_layer.noise_model is noise_model
+    assert model.layer.noise is noise_model
+    assert model._quantum_layer.noise is noise_model
     assert model._is_fitted is False
     assert model._fit_quantum_cache is None
 
