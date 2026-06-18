@@ -303,6 +303,49 @@ class ComputationProcess(AbstractComputationProcess):
             self.simulation_graph, NoisySLOSComputeGraph
         ) or isinstance(self.simulation_graph, NoisyG2SLOSComputeGraph)
 
+    def to(
+        self,
+        *,
+        dtype: torch.dtype,
+        device: torch.device | None,
+    ) -> "ComputationProcess":
+        """Move runtime computation state to a new dtype or device.
+
+        Parameters
+        ----------
+        dtype : torch.dtype
+            Target real tensor dtype used by the unitary converter and SLOS
+            simulation graph.
+        device : torch.device | None
+            Target tensor device. If omitted, runtime tensors keep PyTorch's
+            implicit CPU placement.
+
+        Returns
+        -------
+        ComputationProcess
+            Updated computation process instance.
+
+        Raises
+        ------
+        TypeError
+            If the converter rejects the target dtype or device.
+        ValueError
+            If the SLOS simulation graph cannot be rebuilt for the target dtype.
+        """
+        dtype_changed = dtype != self.dtype
+        self.dtype = dtype
+        self.device = device
+
+        if dtype_changed:
+            self._setup_computation_graphs()
+            return self
+
+        converter_device = device if device is not None else torch.device("cpu")
+        self.converter = self.converter.to(dtype, converter_device)
+        if device is not None:
+            self.simulation_graph = self.simulation_graph.to(device)
+        return self
+
     def _default_fixed_input_state(self) -> list[int]:
         """Return the default fixed input state for tensor input placeholders.
 

@@ -1,0 +1,9 @@
+[
+  {
+    "title": "Overall GPU Performance",
+    "summary": "Memory and runtime benchmarks for MerLin QuantumLayer execution on GPU.",
+    "image": "_static/img/SW-times.png",
+    "doc": "performance/performance",
+    "tags": ["Performance", "QuantumLayer", "GPU", "H100"]
+  }
+]
