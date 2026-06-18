@@ -4,7 +4,14 @@
     "summary": "Photonic quantum generative adversarial network",
     "image": "_static/reproduced_papers/photonicQGAN.png",
     "doc": "user_guide/models/qgan",
-    "tags": ["Quantum models", "Ready to use", "GAN", "Generative"]
+    "tags": ["Quantum models", "Ready to use","GAN","Generative"]
+  },
+  {
+    "title": "Photonic QCNN",
+    "summary": "Photonic quantum convolutional neural network for image classification",
+    "image": "_static/reproduced_papers/PhotonicQCNN_state_injection.png",
+    "doc": "user_guide/models/qcnn",
+    "tags": ["Quantum models", "Ready to use", "QCNN", "Classification"]
   },
   {
     "title": "ReservoirClassifier",
