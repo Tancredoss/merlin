@@ -1,0 +1,108 @@
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  claude:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read         # Read-only access to code
+      pull-requests: write   # Can post comments/reviews on PRs
+      issues: write          # Can reply to PR conversation comments
+      id-token: write        # Required for authentication
+      actions: read          # Required for Claude to read CI results on PRs
+    steps:
+      - name: Check Claude trigger authorization
+        id: authorize
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const trustedPermissions = new Set(['admin', 'maintain', 'write']);
+            const eventName = context.eventName;
+            const payload = context.payload;
+
+            let body = '';
+            let authorAssociation = '';
+            let isPullRequestEvent = false;
+            let repositoryPermission = 'unknown';
+
+            if (eventName === 'issue_comment') {
+              body = payload.comment?.body ?? '';
+              authorAssociation = payload.comment?.author_association ?? '';
+              isPullRequestEvent = Boolean(payload.issue?.pull_request);
+            } else if (eventName === 'pull_request_review_comment') {
+              body = payload.comment?.body ?? '';
+              authorAssociation = payload.comment?.author_association ?? '';
+              isPullRequestEvent = true;
+            } else if (eventName === 'pull_request_review') {
+              body = payload.review?.body ?? '';
+              authorAssociation = payload.review?.author_association ?? '';
+              isPullRequestEvent = true;
+            }
+
+            try {
+              const response = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.actor,
+              });
+              repositoryPermission = response.data.permission;
+            } catch (error) {
+              core.info(`repository_permission_lookup_failed=${error.status ?? error.message}`);
+            }
+
+            const hasTriggerPhrase = body.toLowerCase().includes('@claude');
+            const isTrustedActor = trustedPermissions.has(repositoryPermission);
+            const isAuthorized = isPullRequestEvent && hasTriggerPhrase && isTrustedActor;
+
+            core.info(`event_name=${eventName}`);
+            core.info(`actor=${context.actor}`);
+            core.info(`author_association=${authorAssociation || 'unknown'}`);
+            core.info(`repository_permission=${repositoryPermission}`);
+            core.info(`is_pull_request_event=${isPullRequestEvent}`);
+            core.info(`has_trigger_phrase=${hasTriggerPhrase}`);
+            core.info(`is_trusted_actor=${isTrustedActor}`);
+
+            core.setOutput('authorized', String(isAuthorized));
+
+      - name: Checkout repository
+        if: steps.authorize.outputs.authorized == 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        if: steps.authorize.outputs.authorized == 'true'
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          additional_permissions: |
+            actions: read
+
+          # Optional: Customize the trigger phrase (default: @claude)
+          # trigger_phrase: "/claude"
+
+          # Optional: Trigger when specific user is assigned to an issue
+          # assignee_trigger: "claude-bot"
+
+          # Optional: Configure Claude's behavior with CLI arguments
+          # claude_args: |
+          #   --model claude-opus-4-1-20250805
+          #   --max-turns 10
+          #   --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
+          #   --system-prompt "Follow our coding standards. Ensure all new code has tests. Use TypeScript for new files."
+
+          # Optional: Advanced settings configuration
+          # settings: |
+          #   {
+          #     "env": {
+          #       "NODE_ENV": "test"
+          #     }
+          #   }
