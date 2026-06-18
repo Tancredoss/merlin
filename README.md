@@ -52,7 +52,7 @@ pip install -e '.[examples]'
 
 Build documentation locally:
 ```bash
-pip install -e '.[docs]'
+pip install -r requirements-docs.txt
 cd docs
 make html  # or: make livehtml (if sphinx-autobuild added manually)
 ```
