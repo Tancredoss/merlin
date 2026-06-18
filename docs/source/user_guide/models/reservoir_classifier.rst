@@ -1,5 +1,5 @@
-Photonic Reservoir Classifier
 ReservoirClassifier
+===================
 
 The :class:`~merlin.models.reservoir_classifier.ReservoirClassifier` is a
 ready-to-use quantum optical reservoir model for classification. It implements
