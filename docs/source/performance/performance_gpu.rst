@@ -204,11 +204,21 @@ shape.
 Reproducing the benchmark
 -------------------------
 
-Run the CUDA benchmark from the repository root:
+Run the CUDA benchmark from the repository root. The ``--plot-dir`` argument
+writes the timing plots and the allocated-memory graphs shown above.
 
 .. code-block:: bash
 
    PYTHONPATH=$PWD PCVL_PERSISTENT_PATH=.pcvl_home \
    python benchmarks/benchmark_photonic_generator_gpu.py \
        --json-out benchmarks/results/photonic_generator_gpu.json \
-       --plot-dir benchmarks/results/photonic_generator_gpu_plots
+       --plot-dir docs/source/_static/img/performance/qgan
+
+Regenerate the memory graphs from an existing JSON output without rerunning the
+CUDA benchmark:
+
+.. code-block:: bash
+
+   PYTHONPATH=$PWD python benchmarks/benchmark_photonic_generator_gpu.py \
+       --json-in benchmarks/results/photonic_generator_gpu.json \
+       --plot-dir docs/source/_static/img/performance/qgan

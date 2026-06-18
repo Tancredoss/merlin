@@ -16,7 +16,11 @@ Example
 PYTHONPATH=$PWD PCVL_PERSISTENT_PATH=.pcvl_home \
 python benchmarks/benchmark_photonic_generator_gpu.py \
     --json-out benchmarks/results/photonic_generator_gpu.json \
-    --plot-dir benchmarks/results/photonic_generator_gpu_plots
+    --plot-dir docs/source/_static/img/performance/qgan
+
+PYTHONPATH=$PWD python benchmarks/benchmark_photonic_generator_gpu.py \
+    --json-in benchmarks/results/photonic_generator_gpu.json \
+    --plot-dir docs/source/_static/img/performance/qgan
 """
 
 from __future__ import annotations
@@ -29,15 +33,20 @@ import platform
 import subprocess  # noqa: S404
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean, stdev
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import torch
+if TYPE_CHECKING:
+    import torch
 
-import merlin as ML
+    import merlin as ML
+else:
+    torch = None
+    ML = None
 
 BYTES_PER_MIB = 1024 * 1024
 DEFAULT_BATCH_FOCK_CASES = "1:2,2:4,4:6,8:8"
@@ -50,6 +59,23 @@ DEFAULT_SPACE_CASES = (
     "FOCK:20:8,UNBUNCHED:20:8"
 )
 DEFAULT_OUTPUT_SHAPES = "1x4x4,1x8x8,1x16x16"
+BUBBLE_FACE_ALPHA = 0.22
+BUBBLE_EDGE_ALPHA = 0.8
+CENTER_POINT_AREA = 20.0
+
+
+def _ensure_runtime_dependencies() -> None:
+    """Import benchmark runtime dependencies needed for CUDA execution."""
+    global ML, torch
+
+    if torch is None:
+        import torch as torch_module
+
+        torch = torch_module
+    if ML is None:
+        import merlin as merlin_module
+
+        ML = merlin_module
 
 
 @dataclass(frozen=True)
@@ -96,6 +122,61 @@ class GeneratorCase:
     depth: int
     x_value: int
     x_label: str
+
+
+@dataclass(frozen=True)
+class MemoryPoint:
+    """Memory metrics for one benchmark point.
+
+    Parameters
+    ----------
+    curve_name : str
+        Name of the benchmark curve containing the point.
+    case_name : str
+        Stable benchmark case name.
+    x_value : float
+        Numeric x-axis value from the benchmark JSON.
+    x_label : str
+        Human-readable x-axis label from the benchmark JSON.
+    computation_space : str
+        Computation-space name used by the quantum layer.
+    basis_size : int
+        Number of basis states in the measured computation space.
+    n_modes : int
+        Number of photonic modes.
+    n_photons : int
+        Number of photons.
+    batch_size : int
+        Latent batch size.
+    generator_count : int
+        Number of generator heads.
+    setup_allocated_mib : float
+        CUDA memory allocated after setup in MiB.
+    peak_allocated_mib : float
+        Maximum of forward/backward absolute CUDA allocated peaks in MiB.
+    peak_delta_allocated_mib : float
+        Maximum of forward/backward CUDA allocated peak deltas in MiB.
+    peak_reserved_mib : float
+        Maximum of forward/backward absolute CUDA reserved peaks in MiB.
+    peak_delta_reserved_mib : float
+        Maximum of forward/backward CUDA reserved peak deltas in MiB.
+    """
+
+    curve_name: str
+    case_name: str
+    x_value: float
+    x_label: str
+    computation_space: str
+    basis_size: int
+    n_modes: int
+    n_photons: int
+    batch_size: int
+    generator_count: int
+    setup_allocated_mib: float
+    peak_allocated_mib: float
+    peak_delta_allocated_mib: float
+    peak_reserved_mib: float
+    peak_delta_reserved_mib: float
 
 
 def _parse_image_shape(value: str) -> tuple[int, int, int]:
@@ -400,7 +481,12 @@ def _run_case(
     ]
     torch.cuda.synchronize(device)
 
-    layer = generator[0]
+    output_size_per_generator = generator[0].output_size
+    parameter_count = sum(parameter.numel() for parameter in generator.parameters())
+    parameter_bytes = sum(
+        parameter.numel() * parameter.element_size()
+        for parameter in generator.parameters()
+    )
     result = {
         "case_name": case.name,
         "curve_name": case.curve_name,
@@ -420,14 +506,9 @@ def _run_case(
             case.n_modes,
             case.n_photons,
         ),
-        "output_size_per_generator": layer.output_size,
-        "parameter_count": sum(
-            parameter.numel() for parameter in generator.parameters()
-        ),
-        "parameter_bytes": sum(
-            parameter.numel() * parameter.element_size()
-            for parameter in generator.parameters()
-        ),
+        "output_size_per_generator": output_size_per_generator,
+        "parameter_count": parameter_count,
+        "parameter_bytes": parameter_bytes,
         "setup_time_s": setup_time_s,
         "allocated_after_setup_bytes": int(allocated_after_setup),
         "reserved_after_setup_bytes": int(reserved_after_setup),
@@ -505,7 +586,6 @@ def _build_cases(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
     batch_fock_points = []
     for batch_size, n_photons in _parse_batch_fock_cases(args.batch_fock_cases):
         n_modes = 2 * n_photons
-        basis_size = _basis_size(ML.ComputationSpace.FOCK, n_modes, n_photons)
         batch_fock_points.append(
             GeneratorCase(
                 name=f"batch_{batch_size}_fock_m{n_modes}_p{n_photons}",
@@ -697,6 +777,7 @@ def _benchmark_metadata(
 
 def _run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
     """Run all configured curves and return JSON-ready results."""
+    _ensure_runtime_dependencies()
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required for this benchmark.")
 
@@ -735,9 +816,20 @@ def _run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
             if args.plot_dir is not None:
                 _record_plot_path(
                     result,
-                    _plot_curve(result, args.plot_dir, curve_name),
+                    _plot_metric_curve(result, args.plot_dir, curve_name),
                 )
             _write_json(result, args.json_out)
+    if args.plot_dir is not None:
+        for plot_path in _plot_memory_graphs(
+            result,
+            args.plot_dir,
+            bubble_scale=args.bubble_scale,
+            min_bubble_area=args.min_bubble_area,
+            max_bubble_area=args.max_bubble_area,
+            annotate=not args.no_annotations,
+            log_y=args.log_y,
+        ):
+            _record_plot_path(result, str(plot_path))
     return result
 
 
@@ -756,17 +848,516 @@ def _memory_series_mib(points: list[dict[str, Any]]) -> list[float]:
     return values
 
 
-def _plot_curves(result: dict[str, Any], plot_dir: Path) -> list[str]:
+def _sample_max_mib(point: dict[str, Any], field_name: str) -> float:
+    """Return a benchmark sample maximum converted to MiB."""
+    return float(point[field_name]["max"]) / BYTES_PER_MIB
+
+
+def _bytes_mib(point: dict[str, Any], field_name: str) -> float:
+    """Return a byte field converted to MiB."""
+    return float(point[field_name]) / BYTES_PER_MIB
+
+
+def _memory_point(curve_name: str, point: dict[str, Any]) -> MemoryPoint:
+    """Build a memory point from one JSON point."""
+    forward_peak_allocated = _sample_max_mib(point, "forward_peak_allocated_bytes")
+    backward_peak_allocated = _sample_max_mib(point, "backward_peak_allocated_bytes")
+    forward_delta_allocated = _sample_max_mib(
+        point,
+        "forward_peak_delta_allocated_bytes",
+    )
+    backward_delta_allocated = _sample_max_mib(
+        point,
+        "backward_peak_delta_allocated_bytes",
+    )
+    forward_peak_reserved = _sample_max_mib(point, "forward_peak_reserved_bytes")
+    backward_peak_reserved = _sample_max_mib(point, "backward_peak_reserved_bytes")
+    forward_delta_reserved = _sample_max_mib(
+        point,
+        "forward_peak_delta_reserved_bytes",
+    )
+    backward_delta_reserved = _sample_max_mib(
+        point,
+        "backward_peak_delta_reserved_bytes",
+    )
+    return MemoryPoint(
+        curve_name=curve_name,
+        case_name=point["case_name"],
+        x_value=float(point["x_value"]),
+        x_label=point["x_label"],
+        computation_space=point["computation_space"],
+        basis_size=int(point["basis_size"]),
+        n_modes=int(point["n_modes"]),
+        n_photons=int(point["n_photons"]),
+        batch_size=int(point["batch_size"]),
+        generator_count=int(point["generator_count"]),
+        setup_allocated_mib=_bytes_mib(point, "allocated_after_setup_bytes"),
+        peak_allocated_mib=max(forward_peak_allocated, backward_peak_allocated),
+        peak_delta_allocated_mib=max(
+            forward_delta_allocated,
+            backward_delta_allocated,
+        ),
+        peak_reserved_mib=max(forward_peak_reserved, backward_peak_reserved),
+        peak_delta_reserved_mib=max(forward_delta_reserved, backward_delta_reserved),
+    )
+
+
+def _memory_points(result: dict[str, Any]) -> list[MemoryPoint]:
+    """Return memory points parsed from a benchmark result."""
+    points = []
+    for curve_name, curve in result["curves"].items():
+        for point in curve["points"]:
+            points.append(_memory_point(curve_name, point))
+    return points
+
+
+def _basis_transform(value: int, scale: str) -> float:
+    """Transform a basis size before mapping it to marker area."""
+    if scale == "linear":
+        return float(value)
+    if scale == "log":
+        return math.log10(max(1, value))
+    raise ValueError(f"Unsupported bubble scale: {scale}.")
+
+
+def _bubble_area(
+    basis_size: int,
+    basis_sizes: list[int],
+    *,
+    scale: str,
+    min_area: float,
+    max_area: float,
+) -> float:
+    """Map one basis size to a scatter marker area."""
+    transformed_values = [_basis_transform(value, scale) for value in basis_sizes]
+    transformed = _basis_transform(basis_size, scale)
+    low = min(transformed_values)
+    high = max(transformed_values)
+    if math.isclose(low, high):
+        return (min_area + max_area) / 2
+    ratio = (transformed - low) / (high - low)
+    return min_area + ratio * (max_area - min_area)
+
+
+def _bubble_areas(
+    points: list[MemoryPoint],
+    *,
+    scale: str,
+    min_area: float,
+    max_area: float,
+) -> list[float]:
+    """Return marker areas for a sequence of memory points."""
+    basis_sizes = [point.basis_size for point in points]
+    return [
+        _bubble_area(
+            point.basis_size,
+            basis_sizes,
+            scale=scale,
+            min_area=min_area,
+            max_area=max_area,
+        )
+        for point in points
+    ]
+
+
+def _rgba_color(color: str, alpha: float) -> tuple[float, float, float, float]:
+    """Return a Matplotlib color with the requested alpha channel."""
+    from matplotlib.colors import to_rgba
+
+    red, green, blue, _ = to_rgba(color)
+    return red, green, blue, alpha
+
+
+def _scatter_bubble_points(
+    axis: Any,
+    x_values: Sequence[float],
+    y_values: Sequence[float],
+    marker_areas: Sequence[float],
+    color: str,
+    *,
+    label: str | None = None,
+) -> None:
+    """Draw translucent basis-size bubbles with centered point markers."""
+    axis.scatter(
+        x_values,
+        y_values,
+        s=marker_areas,
+        facecolors=_rgba_color(color, BUBBLE_FACE_ALPHA),
+        edgecolors=_rgba_color(color, BUBBLE_EDGE_ALPHA),
+        linewidths=1.1,
+        label=label,
+        zorder=3,
+    )
+    axis.scatter(
+        x_values,
+        y_values,
+        s=CENTER_POINT_AREA,
+        facecolors=color,
+        edgecolors="white",
+        linewidths=0.5,
+        zorder=4,
+    )
+
+
+def _curve_memory_points(
+    points: list[MemoryPoint],
+    curve_name: str,
+) -> list[MemoryPoint]:
+    """Return memory points for one curve sorted by x-axis value."""
+    return sorted(
+        [point for point in points if point.curve_name == curve_name],
+        key=lambda point: point.x_value,
+    )
+
+
+def _group_memory_points(points: list[MemoryPoint]) -> dict[str, list[MemoryPoint]]:
+    """Group memory points by computation space."""
+    grouped: dict[str, list[MemoryPoint]] = {}
+    for point in points:
+        grouped.setdefault(point.computation_space, []).append(point)
+    for space_name, space_points in grouped.items():
+        grouped[space_name] = sorted(space_points, key=lambda point: point.x_value)
+    return grouped
+
+
+def _point_label(point: MemoryPoint) -> str:
+    """Return a compact point annotation."""
+    return f"{point.n_photons}p/{point.n_modes}m\n|S|={point.basis_size:,}"
+
+
+def _legend_basis_values(points: list[MemoryPoint]) -> list[int]:
+    """Return representative basis sizes for the bubble legend."""
+    basis_sizes = sorted({point.basis_size for point in points})
+    if len(basis_sizes) <= 3:
+        return basis_sizes
+    return [
+        basis_sizes[0],
+        basis_sizes[len(basis_sizes) // 2],
+        basis_sizes[-1],
+    ]
+
+
+def _add_bubble_legend(
+    axis: Any,
+    points: list[MemoryPoint],
+    *,
+    scale: str,
+    min_area: float,
+    max_area: float,
+) -> None:
+    """Add a marker-size legend for basis size."""
+    basis_sizes = [point.basis_size for point in points]
+    handles = []
+    labels = []
+    for basis_size in _legend_basis_values(points):
+        area = _bubble_area(
+            basis_size,
+            basis_sizes,
+            scale=scale,
+            min_area=min_area,
+            max_area=max_area,
+        )
+        handle = axis.scatter(
+            [],
+            [],
+            s=area,
+            facecolors=_rgba_color("black", BUBBLE_FACE_ALPHA),
+            edgecolors=_rgba_color("black", BUBBLE_EDGE_ALPHA),
+            linewidths=1.1,
+        )
+        handles.append(handle)
+        labels.append(f"|S|={basis_size:,}")
+
+    title = "Basis size"
+    if scale == "log":
+        title = "Basis size (log area)"
+    bubble_legend = axis.legend(
+        handles,
+        labels,
+        title=title,
+        loc="upper left",
+        fontsize=8,
+        title_fontsize=8,
+        framealpha=0.9,
+    )
+    axis.add_artist(bubble_legend)
+
+
+def _plot_memory_axis(
+    axis: Any,
+    points: list[MemoryPoint],
+    metric_name: str,
+    ylabel: str,
+    *,
+    bubble_scale: str,
+    min_bubble_area: float,
+    max_bubble_area: float,
+    annotate: bool,
+) -> None:
+    """Plot one memory metric with basis-size bubble markers."""
+    grouped = _group_memory_points(points)
+    colors = {
+        "FOCK": "tab:blue",
+        "UNBUNCHED": "tab:orange",
+        "DUAL_RAIL": "tab:green",
+    }
+    for space_name, space_points in grouped.items():
+        x_values = [point.x_value for point in space_points]
+        y_values = [float(getattr(point, metric_name)) for point in space_points]
+        color = colors.get(space_name, "tab:gray")
+        axis.plot(
+            x_values,
+            y_values,
+            color=color,
+            linewidth=1.4,
+            alpha=0.65,
+            label=space_name,
+        )
+        _scatter_bubble_points(
+            axis,
+            x_values,
+            y_values,
+            _bubble_areas(
+                space_points,
+                scale=bubble_scale,
+                min_area=min_bubble_area,
+                max_area=max_bubble_area,
+            ),
+            color,
+        )
+        if annotate:
+            for x_value, y_value, point in zip(
+                x_values,
+                y_values,
+                space_points,
+                strict=True,
+            ):
+                axis.annotate(
+                    _point_label(point),
+                    (x_value, y_value),
+                    textcoords="offset points",
+                    xytext=(7, 7),
+                    fontsize=8,
+                )
+
+    if len(grouped) > 1:
+        axis.legend(loc="best", fontsize=8)
+    _add_bubble_legend(
+        axis,
+        points,
+        scale=bubble_scale,
+        min_area=min_bubble_area,
+        max_area=max_bubble_area,
+    )
+    axis.set_ylabel(ylabel)
+    axis.grid(True, alpha=0.3)
+
+
+def _plot_memory_curve(
+    result: dict[str, Any],
+    points: list[MemoryPoint],
+    curve_name: str,
+    plot_dir: Path,
+    *,
+    bubble_scale: str,
+    min_bubble_area: float,
+    max_bubble_area: float,
+    annotate: bool,
+    log_y: bool,
+) -> Path:
+    """Plot memory metrics for one benchmark curve."""
+    import matplotlib.pyplot as plt
+
+    curve_points = _curve_memory_points(points, curve_name)
+    curve = result["curves"][curve_name]
+    x_axis = curve.get("x_axis", curve_name)
+    fig, axes = plt.subplots(2, 1, figsize=(9.5, 8), constrained_layout=True)
+    _plot_memory_axis(
+        axes[0],
+        curve_points,
+        "peak_allocated_mib",
+        "Peak allocated CUDA memory (MiB)",
+        bubble_scale=bubble_scale,
+        min_bubble_area=min_bubble_area,
+        max_bubble_area=max_bubble_area,
+        annotate=annotate,
+    )
+    _plot_memory_axis(
+        axes[1],
+        curve_points,
+        "peak_delta_allocated_mib",
+        "Peak allocated delta (MiB)",
+        bubble_scale=bubble_scale,
+        min_bubble_area=min_bubble_area,
+        max_bubble_area=max_bubble_area,
+        annotate=annotate,
+    )
+    for axis in axes:
+        if log_y:
+            axis.set_yscale("log")
+        axis.set_xlabel(x_axis)
+
+    fig.suptitle(curve_name.replace("_", " ").title())
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    path = plot_dir / f"{curve_name}_torch_allocated_memory.png"
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+    return path
+
+
+def _plot_memory_overview(
+    points: list[MemoryPoint],
+    plot_dir: Path,
+    *,
+    bubble_scale: str,
+    min_bubble_area: float,
+    max_bubble_area: float,
+    log_y: bool,
+) -> Path:
+    """Plot all benchmark points against computation-space basis size."""
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(2, 1, figsize=(9.5, 8), constrained_layout=True)
+    metric_specs = [
+        ("peak_allocated_mib", "Peak allocated CUDA memory (MiB)"),
+        ("peak_delta_allocated_mib", "Peak allocated delta (MiB)"),
+    ]
+    colors = {
+        "batch_fock_curve": "tab:blue",
+        "generator_count_curve": "tab:purple",
+        "space_shape_curve": "tab:orange",
+        "output_shape_curve": "tab:green",
+    }
+    for axis, (metric_name, ylabel) in zip(axes, metric_specs, strict=True):
+        for curve_name in sorted({point.curve_name for point in points}):
+            curve_points = sorted(
+                [point for point in points if point.curve_name == curve_name],
+                key=lambda point: point.basis_size,
+            )
+            _scatter_bubble_points(
+                axis,
+                [point.basis_size for point in curve_points],
+                [float(getattr(point, metric_name)) for point in curve_points],
+                _bubble_areas(
+                    curve_points,
+                    scale=bubble_scale,
+                    min_area=min_bubble_area,
+                    max_area=max_bubble_area,
+                ),
+                colors.get(curve_name, "tab:gray"),
+                label=curve_name,
+            )
+        axis.set_xscale("log")
+        if log_y:
+            axis.set_yscale("log")
+        axis.set_xlabel("basis_size")
+        axis.set_ylabel(ylabel)
+        axis.grid(True, alpha=0.3)
+        axis.legend(loc="best", fontsize=8)
+
+    fig.suptitle("Torch CUDA Allocated Memory vs Computation Space")
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    path = plot_dir / "torch_allocated_memory_overview.png"
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+    return path
+
+
+def _plot_memory_graphs(
+    result: dict[str, Any],
+    plot_dir: Path,
+    *,
+    bubble_scale: str,
+    min_bubble_area: float,
+    max_bubble_area: float,
+    annotate: bool,
+    log_y: bool,
+) -> list[Path]:
+    """Write QGAN allocated-memory graphs and return created paths."""
+    points = _memory_points(result)
+    if not points:
+        raise ValueError("No benchmark points found in result.")
+
+    written_paths = []
+    for curve_name in result["curves"]:
+        if _curve_memory_points(points, curve_name):
+            written_paths.append(
+                _plot_memory_curve(
+                    result,
+                    points,
+                    curve_name,
+                    plot_dir,
+                    bubble_scale=bubble_scale,
+                    min_bubble_area=min_bubble_area,
+                    max_bubble_area=max_bubble_area,
+                    annotate=annotate,
+                    log_y=log_y,
+                )
+            )
+    written_paths.append(
+        _plot_memory_overview(
+            points,
+            plot_dir,
+            bubble_scale=bubble_scale,
+            min_bubble_area=min_bubble_area,
+            max_bubble_area=max_bubble_area,
+            log_y=log_y,
+        )
+    )
+    return written_paths
+
+
+def _format_mib(value: float) -> str:
+    """Format a MiB value for console tables."""
+    return f"{value:,.1f}"
+
+
+def _print_memory_summary(points: list[MemoryPoint]) -> None:
+    """Print a compact memory summary."""
+    max_allocated = max(points, key=lambda point: point.peak_allocated_mib)
+    max_delta = max(points, key=lambda point: point.peak_delta_allocated_mib)
+    print(
+        "Max absolute allocated: "
+        f"{_format_mib(max_allocated.peak_allocated_mib)} MiB "
+        f"({max_allocated.case_name}, |S|={max_allocated.basis_size:,})"
+    )
+    print(
+        "Max allocated delta: "
+        f"{_format_mib(max_delta.peak_delta_allocated_mib)} MiB "
+        f"({max_delta.case_name}, |S|={max_delta.basis_size:,})"
+    )
+    batch_points = _curve_memory_points(points, "batch_fock_curve")
+    if not batch_points:
+        return
+
+    print("\nbatch_fock_curve CUDA allocated memory:")
+    print(
+        "case                         batch   photons/modes        |S|"
+        "   peak_abs_MiB   peak_delta_MiB"
+    )
+    for point in batch_points:
+        photon_mode_label = f"{point.n_photons}p/{point.n_modes}m"
+        print(
+            f"{point.case_name:<28} "
+            f"{point.batch_size:>5}   "
+            f"{photon_mode_label:>8}       "
+            f"{point.basis_size:>10,}   "
+            f"{_format_mib(point.peak_allocated_mib):>12}   "
+            f"{_format_mib(point.peak_delta_allocated_mib):>14}"
+        )
+
+
+def _plot_metric_curves(result: dict[str, Any], plot_dir: Path) -> list[str]:
     """Write one three-panel plot per curve and return created paths."""
     plot_paths = []
     for curve_name in result["curves"]:
-        path = _plot_curve(result, plot_dir, curve_name)
+        path = _plot_metric_curve(result, plot_dir, curve_name)
         if path is not None:
             plot_paths.append(path)
     return plot_paths
 
 
-def _plot_curve(
+def _plot_metric_curve(
     result: dict[str, Any],
     plot_dir: Path,
     curve_name: str,
@@ -884,6 +1475,38 @@ def _write_json(result: dict[str, Any], path: Path) -> None:
         handle.write("\n")
 
 
+def _read_json(path: Path) -> dict[str, Any]:
+    """Read a benchmark JSON document."""
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _render_plots_from_json(args: argparse.Namespace) -> int:
+    """Render memory graphs from an existing benchmark JSON document."""
+    if args.plot_dir is None:
+        raise ValueError("plot_dir is required when json_in is supplied.")
+
+    result = _read_json(args.json_in)
+    points = _memory_points(result)
+    if not points:
+        raise ValueError("No benchmark points found in JSON.")
+
+    written_paths = _plot_memory_graphs(
+        result,
+        args.plot_dir,
+        bubble_scale=args.bubble_scale,
+        min_bubble_area=args.min_bubble_area,
+        max_bubble_area=args.max_bubble_area,
+        annotate=not args.no_annotations,
+        log_y=args.log_y,
+    )
+    _print_memory_summary(points)
+    print("\nWrote plots:")
+    for path in written_paths:
+        print(f"  {path}")
+    return 0
+
+
 def _parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -896,10 +1519,16 @@ def _parse_args() -> argparse.Namespace:
         help="Path where JSON results are written.",
     )
     parser.add_argument(
+        "--json-in",
+        type=Path,
+        default=None,
+        help="Existing benchmark JSON to render memory graphs from without CUDA.",
+    )
+    parser.add_argument(
         "--plot-dir",
         type=Path,
         default=None,
-        help="Optional directory where curve PNGs are written.",
+        help="Optional directory where timing plots and memory graph PNGs are written.",
     )
     parser.add_argument(
         "--device",
@@ -946,6 +1575,34 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not run the output-shape diagnostic sweep.",
     )
+    parser.add_argument(
+        "--bubble-scale",
+        choices=("log", "linear"),
+        default="log",
+        help="Mapping from basis_size to memory-graph marker area.",
+    )
+    parser.add_argument(
+        "--min-bubble-area",
+        type=float,
+        default=70.0,
+        help="Smallest memory-graph scatter marker area.",
+    )
+    parser.add_argument(
+        "--max-bubble-area",
+        type=float,
+        default=950.0,
+        help="Largest memory-graph scatter marker area.",
+    )
+    parser.add_argument(
+        "--no-annotations",
+        action="store_true",
+        help="Do not annotate memory-graph points with photon/mode and basis labels.",
+    )
+    parser.add_argument(
+        "--log-y",
+        action="store_true",
+        help="Use a logarithmic y-axis for memory graphs.",
+    )
     args = parser.parse_args()
     if args.warmup_steps < 0:
         raise ValueError("warmup_steps must be non-negative.")
@@ -961,12 +1618,19 @@ def _parse_args() -> argparse.Namespace:
         raise ValueError("latent_dim must be positive.")
     if args.depth < 0:
         raise ValueError("depth must be non-negative.")
+    if args.min_bubble_area <= 0:
+        raise ValueError("min-bubble-area must be positive.")
+    if args.max_bubble_area <= args.min_bubble_area:
+        raise ValueError("max-bubble-area must be larger than min-bubble-area.")
     return args
 
 
 def main() -> int:
     """Run the benchmark from the command line."""
     args = _parse_args()
+    if args.json_in is not None:
+        return _render_plots_from_json(args)
+
     result = _run_benchmark(args)
     _write_json(result, args.json_out)
     print(f"Wrote JSON results to {args.json_out}")
