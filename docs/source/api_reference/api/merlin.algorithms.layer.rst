@@ -331,15 +331,13 @@ The snippet below prepares a basic quantum layer and returns a :class:`~merlin.c
 
 Memristive phase-shifter
 -------------------------
-When using the :class:`~merlin.builder.circuit_builder.CircuitBuilder` that contains memristive phase-shifters (added with the :meth:`~merlin.builder.circuit_builder.CircuitBuilder.add_memristive_ps` method) to create a :class:`~merlin.algorithms.layer.QuantumLayer`, it is important to set the batch size. To do so, call the :meth:`~merlin.algorithms.layer.QuantumLayer.reset` method. This resets the memristors to their initial state while clearing their history.
-It also prepares the memristors to be run with the specified ``batch_size`` parameter of the function, which defaults to 1.
+Memristive phase-shifters carry state across forward passes. When a :class:`~merlin.algorithms.layer.QuantumLayer` is built from a :class:`~merlin.builder.circuit_builder.CircuitBuilder` that contains memristive phase-shifters added with :meth:`~merlin.builder.circuit_builder.CircuitBuilder.add_memristive_ps`, call :meth:`~merlin.algorithms.layer.QuantumLayer.reset` before processing a new sequence or batch.
 
-The :class:`~merlin.algorithms.layer.QuantumLayer` expects all forward passes to use the configured ``batch_size`` unless :meth:`~merlin.algorithms.layer.QuantumLayer.reset` is called again.
-This method resets the memristors to their initial state while clearing the history. It also
-defines the allowed batch size to be ran per forward pass for circuits with memristive phase shifters. Here is an example to run a N dimension batch.
+``reset(batch_size=...)`` restores each memristor to its initial state, clears :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history`, and sets the batch size expected by later forward passes. Until ``reset`` is called again, all forward passes must use that configured batch size.
 
 .. code-block:: python
 
+    import torch
     import merlin as ML
 
     circ = ML.CircuitBuilder(n_modes=3)
@@ -354,63 +352,78 @@ defines the allowed batch size to be ran per forward pass for circuits with memr
         ),
     )
 
-    input_tensor=torch.rand((5,2))
+    input_tensor = torch.rand((5, 2))
 
-    # Will fail since it expects tensor of batch dimension of 1 not 5.
-    # probs=ql(input_tensor)
+    # This would fail because the default memristive batch size is 1.
+    # probs = ql(input_tensor)
 
-    # Will pass since the layer was reset to accept tensors of batch dimension 5.
-    ql.reset(5)
-    probs=ql(input_tensor)
+    ql.reset(batch_size=5)
+    probs = ql(input_tensor)
 
-The current state of the memristive phase-shifters can be accessed with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_state` attribute. The full history of the memristive phase-shifters can be accessed
-with the :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` attribute. The order of the states and history is defined by the order in which the memristive phase-shifters were added in the :class:`~merlin.builder.circuit_builder.CircuitBuilder`.
+The current state of each memristive phase-shifter is available through :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_state`. The full state history is available through :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history`. Both lists follow the order in which the memristive phase-shifters were added to the :class:`~merlin.builder.circuit_builder.CircuitBuilder`.
 
 **Gradient Flow Control**
 
 When defining a memristive phase-shifter using :meth:`~merlin.builder.circuit_builder.CircuitBuilder.add_memristive_ps`, the ``detach_at_each_forward`` parameter controls how gradients flow through the memristive state recurrence.
 
-Since the memristive state at time *t* depends on the previous state and the output at *t-1*, gradients would normally propagate through the entire history during backpropagation. The ``detach_at_each_forward`` parameter controls this behavior:
+At time step ``t``, the layer uses the current memristive state as the phase value. After the forward pass, the memristor's ``update_rule`` receives the current state and the layer output, then returns the state used at time step ``t + 1``. The numerical state is carried forward in every regime below; only the retained PyTorch autograd history changes.
 
-- ``detach_at_each_forward=True`` (default): New states are detached after computation, blocking gradients from flowing back through the state recurrence. Earlier inputs will receive zero gradients from the memristive state chain, but backpropagation remains fast.
-- ``detach_at_each_forward=False``: New states retain gradients, allowing full gradient flow through the entire accumulated state history. This enables learning from all historical states but may be more computationally expensive.
+Use :meth:`~merlin.algorithms.layer.QuantumLayer.detach_memristive_state` at a TBPTT boundary when the next chunk should keep the current numerical state but stop backpropagating through earlier recurrent updates. Use ``reset`` instead when starting a new independent sequence.
 
-The full history of states is always maintained in :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` regardless of the ``detach_at_each_forward`` setting.
+The common gradient-history regimes are:
 
-For manual truncated backpropagation through time (TBPTT), set ``detach_at_each_forward=False`` so gradients flow inside each chunk, then call :meth:`~merlin.algorithms.layer.QuantumLayer.detach_memristive_state` at the chunk boundary. This keeps the current numerical memristive state, but cuts the recurrent autograd graph before the next chunk.
+- **No recurrent gradient steps**: use ``detach_at_each_forward=True``, the default. The memristive state still updates after each forward pass, but each new state is detached from the graph. A later loss does not backpropagate through earlier memristive state updates.
+- **All recurrent gradient steps**: use ``detach_at_each_forward=False`` and do not manually detach during the sequence. Backpropagation can traverse the full memristive history since the last ``reset()``. This is full backpropagation through time and uses more memory as the sequence grows.
+- **N recurrent gradient steps**: use ``detach_at_each_forward=False`` and call ``detach_memristive_state(clear_history=True)`` every ``n`` time steps. This is truncated backpropagation through time (TBPTT): gradients flow inside the current chunk, while the current numerical state is preserved for the next chunk.
+
+The full history of states is maintained in :attr:`~merlin.algorithms.layer.QuantumLayer.memristive_history` until :meth:`~merlin.algorithms.layer.QuantumLayer.reset` is called or :meth:`~merlin.algorithms.layer.QuantumLayer.detach_memristive_state` is called with ``clear_history=True``.
+
+The examples below assume ``torch``, ``ql``, ``optimizer``, ``criterion``, ``inputs``, and ``targets`` already exist, and that each ``x_t`` is one time step with the batch size configured by ``ql.reset(batch_size=...)``. Construct the memristive phase-shifter with the ``detach_at_each_forward`` setting named by each case.
+
+No recurrent gradient steps:
 
 .. code-block:: python
-    
-    import torch
-    import merlin as ML
 
-    # Define the memristive layer
-    circ.add_entangling_layer()
-    circ.add_memristive_ps(
-        mode=1, update_rule=update_rule, initial_state=1.2, detach_at_each_forward=False
-    )
-    circ.add_angle_encoding(modes=[0, 2])
-    circ.add_entangling_layer()
+    ql.reset(batch_size=batch_size)
 
-    ql = ML.QuantumLayer(
-        builder=circ,
-        n_photons=3,
-        input_size=2,  # Two input angles for modes [0, 2]
-        measurement_strategy=ML.MeasurementStrategy.probs(
-            computation_space=ML.ComputationSpace.FOCK
-        ),
-    )
+    for x_t, target_t in zip(inputs, targets):
+        optimizer.zero_grad(set_to_none=True)
 
-    ql.reset(batch_size=1)
-    optimizer = torch.optim.Adam(ql.parameters(), lr=1e-3)
+        prediction = ql(x_t)
+        loss = criterion(prediction, target_t)
 
-    k = 3  # Number of timesteps per TBPTT chunk
-    
-    for chunk in sequence_chunks(inputs, targets, k):
-        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+All recurrent gradient steps:
+
+.. code-block:: python
+
+    ql.reset(batch_size=batch_size)
+    optimizer.zero_grad(set_to_none=True)
+
+    loss = torch.zeros((), dtype=ql.dtype, device=ql.device)
+    for x_t, target_t in zip(inputs, targets):
+        prediction = ql(x_t)
+        loss = loss + criterion(prediction, target_t)
+
+    loss.backward()
+    optimizer.step()
+
+N recurrent gradient steps with TBPTT:
+
+.. code-block:: python
+
+    ql.reset(batch_size=batch_size)
+
+    for start in range(0, len(inputs), n):
+        input_chunk = inputs[start : start + n]
+        target_chunk = targets[start : start + n]
+
+        optimizer.zero_grad(set_to_none=True)
+
         loss = torch.zeros((), dtype=ql.dtype, device=ql.device)
-
-        for x_t, target_t in chunk:
+        for x_t, target_t in zip(input_chunk, target_chunk):
             prediction = ql(x_t)
             loss = loss + criterion(prediction, target_t)
 
