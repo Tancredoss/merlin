@@ -141,7 +141,8 @@ class MemoryPoint:
     computation_space : str
         Computation-space name used by the quantum layer.
     basis_size : int
-        Number of basis states in the measured computation space.
+        System size, meaning the number of basis states in the measured
+        computation space.
     n_modes : int
         Number of photonic modes.
     n_photons : int
@@ -259,7 +260,7 @@ def _basis_size(
     n_modes: int,
     n_photons: int,
 ) -> int:
-    """Return the output basis size for the computation space."""
+    """Return the computation-space system size."""
     if computation_space is ML.ComputationSpace.FOCK:
         return math.comb(n_modes + n_photons - 1, n_photons)
     if computation_space is ML.ComputationSpace.UNBUNCHED:
@@ -634,7 +635,7 @@ def _build_cases(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
                 n_modes=n_modes,
                 n_photons=n_photons,
                 x_value=basis_size,
-                x_label=f"{computation_space.name} |S|={basis_size}",
+                x_label=f"{computation_space.name} system size = {basis_size}",
                 **common_kwargs,
             )
         )
@@ -912,7 +913,7 @@ def _memory_points(result: dict[str, Any]) -> list[MemoryPoint]:
 
 
 def _basis_transform(value: int, scale: str) -> float:
-    """Transform a basis size before mapping it to marker area."""
+    """Transform a system size before mapping it to marker area."""
     if scale == "linear":
         return float(value)
     if scale == "log":
@@ -928,7 +929,7 @@ def _bubble_area(
     min_area: float,
     max_area: float,
 ) -> float:
-    """Map one basis size to a scatter marker area."""
+    """Map one system size to a scatter marker area."""
     transformed_values = [_basis_transform(value, scale) for value in basis_sizes]
     transformed = _basis_transform(basis_size, scale)
     low = min(transformed_values)
@@ -1022,11 +1023,11 @@ def _group_memory_points(points: list[MemoryPoint]) -> dict[str, list[MemoryPoin
 
 def _point_label(point: MemoryPoint) -> str:
     """Return a compact point annotation."""
-    return f"{point.n_photons}p/{point.n_modes}m\n|S|={point.basis_size:,}"
+    return f"{point.n_photons}p/{point.n_modes}m\nsystem size = {point.basis_size:,}"
 
 
 def _legend_basis_values(points: list[MemoryPoint]) -> list[int]:
-    """Return representative basis sizes for the bubble legend."""
+    """Return representative system sizes for the bubble legend."""
     basis_sizes = sorted({point.basis_size for point in points})
     if len(basis_sizes) <= 3:
         return basis_sizes
@@ -1045,7 +1046,7 @@ def _add_bubble_legend(
     min_area: float,
     max_area: float,
 ) -> None:
-    """Add a marker-size legend for basis size."""
+    """Add a marker-size legend for system size."""
     basis_sizes = [point.basis_size for point in points]
     handles = []
     labels = []
@@ -1066,11 +1067,11 @@ def _add_bubble_legend(
             linewidths=1.1,
         )
         handles.append(handle)
-        labels.append(f"|S|={basis_size:,}")
+        labels.append(f"system size = {basis_size:,}")
 
-    title = "Basis size"
+    title = "System size"
     if scale == "log":
-        title = "Basis size (log area)"
+        title = "System size (log area)"
     bubble_legend = axis.legend(
         handles,
         labels,
@@ -1171,6 +1172,8 @@ def _plot_memory_curve(
     curve_points = _curve_memory_points(points, curve_name)
     curve = result["curves"][curve_name]
     x_axis = curve.get("x_axis", curve_name)
+    if x_axis == "basis_size":
+        x_axis = "system size"
     fig, axes = plt.subplots(2, 1, figsize=(9.5, 8), constrained_layout=True)
     _plot_memory_axis(
         axes[0],
@@ -1214,7 +1217,7 @@ def _plot_memory_overview(
     max_bubble_area: float,
     log_y: bool,
 ) -> Path:
-    """Plot all benchmark points against computation-space basis size."""
+    """Plot all benchmark points against computation-space system size."""
     import matplotlib.pyplot as plt
 
     fig, axes = plt.subplots(2, 1, figsize=(9.5, 8), constrained_layout=True)
@@ -1250,7 +1253,7 @@ def _plot_memory_overview(
         axis.set_xscale("log")
         if log_y:
             axis.set_yscale("log")
-        axis.set_xlabel("basis_size")
+        axis.set_xlabel("system size")
         axis.set_ylabel(ylabel)
         axis.grid(True, alpha=0.3)
         axis.legend(loc="best", fontsize=8)
@@ -1319,12 +1322,12 @@ def _print_memory_summary(points: list[MemoryPoint]) -> None:
     print(
         "Max absolute allocated: "
         f"{_format_mib(max_allocated.peak_allocated_mib)} MiB "
-        f"({max_allocated.case_name}, |S|={max_allocated.basis_size:,})"
+        f"({max_allocated.case_name}, system size = {max_allocated.basis_size:,})"
     )
     print(
         "Max allocated delta: "
         f"{_format_mib(max_delta.peak_delta_allocated_mib)} MiB "
-        f"({max_delta.case_name}, |S|={max_delta.basis_size:,})"
+        f"({max_delta.case_name}, system size = {max_delta.basis_size:,})"
     )
     batch_points = _curve_memory_points(points, "batch_fock_curve")
     if not batch_points:
@@ -1332,7 +1335,7 @@ def _print_memory_summary(points: list[MemoryPoint]) -> None:
 
     print("\nbatch_fock_curve CUDA allocated memory:")
     print(
-        "case                         batch   photons/modes        |S|"
+        "case                         batch   photons/modes   system size"
         "   peak_abs_MiB   peak_delta_MiB"
     )
     for point in batch_points:
@@ -1455,7 +1458,10 @@ def _plot_metric_axis(
             strict=True,
         ):
             axis.annotate(
-                f"{point['n_photons']}p/{point['n_modes']}m\n|S|={point['basis_size']}",
+                (
+                    f"{point['n_photons']}p/{point['n_modes']}m\n"
+                    f"system size = {point['basis_size']}"
+                ),
                 (x_value, y_value),
                 textcoords="offset points",
                 xytext=(6, 6),
@@ -1579,7 +1585,7 @@ def _parse_args() -> argparse.Namespace:
         "--bubble-scale",
         choices=("log", "linear"),
         default="log",
-        help="Mapping from basis_size to memory-graph marker area.",
+        help="Mapping from system size to memory-graph marker area.",
     )
     parser.add_argument(
         "--min-bubble-area",

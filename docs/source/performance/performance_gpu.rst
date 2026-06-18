@@ -39,6 +39,9 @@ Benchmark setup
    * - Measured computation spaces
      - ``FOCK`` and ``UNBUNCHED``
 
+Here, **system size** means the number of basis states in the selected
+computation space for the given photon and mode count.
+
 The benchmark records two memory views:
 
 ``Peak allocated CUDA memory``
@@ -59,7 +62,7 @@ Summary
 
    * - Case
      - Space
-     - ``|S|``
+     - System size
      - Batch
      - Heads
      - Forward
@@ -133,10 +136,10 @@ Main observations
 -----------------
 
 - The largest measured Fock-space case, ``20`` modes and ``8`` photons, reaches
-  a basis size of 2,220,075 and needs 4,232.5 MiB of incremental allocated CUDA
+  a system size of 2,220,075 and needs 4,232.5 MiB of incremental allocated CUDA
   memory during the measured operation.
 - For the same ``20`` modes and ``8`` photons, switching from ``FOCK`` to
-  ``UNBUNCHED`` reduces the basis size from 2,220,075 to 125,970 and reduces
+  ``UNBUNCHED`` reduces the system size from 2,220,075 to 125,970 and reduces
   the measured incremental allocation from 4,232.5 MiB to 424.1 MiB.
 - Increasing the number of generator heads from ``1`` to ``8`` is close to
   linear in runtime for the fixed ``20`` mode, ``4`` photon setup. Forward time
@@ -144,16 +147,16 @@ Main observations
   1,437.91 ms.
 - Increasing the image adapter output from ``1x4x4`` to ``1x16x16`` does not
   change the measured quantum runtime or memory materially when the quantum
-  layer and basis size are fixed. This sweep measures adapter/runtime cost only.
+  layer and system size are fixed. This sweep measures adapter/runtime cost only.
 
 Memory overview
 ---------------
 
-The marker area is proportional to computation-space basis size, using a
+The marker area is proportional to computation-space system size, using a
 logarithmic area scale.
 
 .. image:: ../_static/img/performance/qgan/torch_allocated_memory_overview.png
-   :alt: Photonic QGAN GPU allocated memory overview by computation-space basis size
+   :alt: Photonic QGAN GPU allocated memory overview by computation-space system size
    :width: 760px
    :align: center
 
