@@ -92,6 +92,67 @@ def test_constructor_rejects_non_positive_integer_dimensions(parameter, value):
         ReservoirClassifier(**kwargs)
 
 
+def test_to_updates_classifier_dtype_and_delegates_quantum_layer(monkeypatch):
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=2),
+    )
+    quantum_to_calls = []
+    original_quantum_to = model._quantum_layer.to
+
+    def _count_quantum_to(*args, **kwargs):
+        quantum_to_calls.append((args, kwargs))
+        return original_quantum_to(*args, **kwargs)
+
+    monkeypatch.setattr(model._quantum_layer, "to", _count_quantum_to)
+
+    returned = model.to("cpu", dtype=torch.float64)
+
+    assert returned is model
+    assert len(quantum_to_calls) == 1
+    assert model.device.type == "cpu"
+    assert model.dtype is torch.float64
+    assert model._quantum_layer.device.type == "cpu"
+    assert model._quantum_layer.dtype is torch.float64
+    assert model.readout.weight.dtype is torch.float64
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_to_cuda_updates_runtime_device_for_reservoir_inputs(monkeypatch):
+    X, _ = _toy_data()
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=PCA(n_components=1),
+        cache=True,
+    )
+
+    model.to("cuda")
+    original_forward = model._quantum_layer.forward
+    calls = {"count": 0}
+
+    def _assert_cuda_forward(*input_parameters, **kwargs):
+        calls["count"] += 1
+        assert input_parameters[0].device.type == "cuda"
+        output = original_forward(*input_parameters, **kwargs)
+        assert output.device.type == "cuda"
+        return output
+
+    monkeypatch.setattr(model._quantum_layer, "forward", _assert_cuda_forward)
+
+    model.fit_reservoir(X)
+    logits = model.predict(X + 0.05)
+
+    assert calls["count"] == 2
+    assert model.device.type == "cuda"
+    assert model.layer.device.type == "cuda"
+    assert model.readout.weight.device.type == "cuda"
+    assert logits.device.type == "cpu"
+
+
 def test_accepts_fastica_reduction():
     X, y = _toy_data()
     model = ReservoirClassifier(
