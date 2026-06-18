@@ -152,7 +152,7 @@ Memory overview
 The marker area is proportional to computation-space basis size, using a
 logarithmic area scale.
 
-.. image:: ../_static/performance/torch_allocated_memory_overview.png
+.. image:: ../_static/img/performance/qgan/torch_allocated_memory_overview.png
    :alt: Photonic QGAN GPU allocated memory overview by computation-space basis size
    :width: 760px
    :align: center
@@ -163,7 +163,7 @@ Batch and Fock-space scaling
 This sweep uses ``FOCK`` with ``n_modes = 2 * n_photons`` and increases
 ``batch_size`` from 1 to 8.
 
-.. image:: ../_static/performance/batch_fock_curve_torch_allocated_memory.png
+.. image:: ../_static/img/performance/qgan/batch_fock_curve_torch_allocated_memory.png
    :alt: Photonic QGAN GPU memory for the batch and Fock-space sweep
    :width: 760px
    :align: center
@@ -174,7 +174,7 @@ Generator-head scaling
 This sweep fixes ``20`` modes, ``4`` photons, ``FOCK`` space, batch size ``8``,
 and image shape ``1x4x4`` while increasing the number of generator heads.
 
-.. image:: ../_static/performance/generator_count_curve_torch_allocated_memory.png
+.. image:: ../_static/img/performance/qgan/generator_count_curve_torch_allocated_memory.png
    :alt: Photonic QGAN GPU memory for generator-head-count scaling
    :width: 760px
    :align: center
@@ -185,7 +185,7 @@ Computation-space scaling
 This sweep compares ``FOCK`` and ``UNBUNCHED`` spaces for the same mode and
 photon counts.
 
-.. image:: ../_static/performance/space_shape_curve_torch_allocated_memory.png
+.. image:: ../_static/img/performance/qgan/space_shape_curve_torch_allocated_memory.png
    :alt: Photonic QGAN GPU memory for Fock and unbunched computation spaces
    :width: 760px
    :align: center
@@ -196,7 +196,7 @@ Output-shape scaling
 This sweep fixes the quantum layer and changes only the image adapter output
 shape.
 
-.. image:: ../_static/performance/output_shape_curve_torch_allocated_memory.png
+.. image:: ../_static/img/performance/qgan/output_shape_curve_torch_allocated_memory.png
    :alt: Photonic QGAN GPU memory for output-shape scaling
    :width: 760px
    :align: center
@@ -212,11 +212,3 @@ Run the CUDA benchmark from the repository root:
    python benchmarks/benchmark_photonic_generator_gpu.py \
        --json-out benchmarks/results/photonic_generator_gpu.json \
        --plot-dir benchmarks/results/photonic_generator_gpu_plots
-
-Render the memory graphs from the JSON output:
-
-.. code-block:: bash
-
-   PYTHONPATH=$PWD python benchmarks/graph_benchmark_qgan.py \
-       --json-in benchmarks/results/photonic_generator_gpu.json \
-       --plot-dir benchmarks/results/qgan_memory_graphs
