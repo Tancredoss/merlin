@@ -178,7 +178,9 @@ def test_validate_and_resolve_circuit_source_multiple_sources():
 
 def test_validate_and_resolve_circuit_source_builder_prefixes():
     builder = ML.CircuitBuilder(n_modes=2)
+    builder.add_entangling_layer(trainable=False, name="pre_mix")
     builder.add_angle_encoding(modes=[0], name="x")
+    builder.add_entangling_layer(trainable=False, name="post_mix")
     source = validate_and_resolve_circuit_source(builder, None, None, None, None)
     assert source.source_type == "builder"
     assert source.input_parameters == ["x"]
