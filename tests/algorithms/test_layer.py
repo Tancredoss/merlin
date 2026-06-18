@@ -198,6 +198,56 @@ class TestQuantumLayer:
                 input_state=empty_state,
             )
 
+    def test_constructor_requires_input_state_or_n_photons(self):
+        """Custom circuit layers should require an input state or photon count."""
+        with pytest.raises(ValueError, match="Either input_state or n_photons"):
+            ML.QuantumLayer(
+                input_size=0,
+                circuit=pcvl.Circuit(2),
+                trainable_parameters=[],
+                input_parameters=[],
+                measurement_strategy=ML.MeasurementStrategy.NONE,
+            )
+
+    def test_dual_rail_default_input_state_from_n_photons(self):
+        """Dual-rail layers should derive a paired default input state."""
+        layer = ML.QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(4),
+            n_photons=2,
+            trainable_parameters=[],
+            input_parameters=[],
+            measurement_strategy=ML.MeasurementStrategy.probs(
+                computation_space=ComputationSpace.DUAL_RAIL
+            ),
+        )
+
+        assert layer.input_state == pcvl.BasicState([1, 0, 1, 0])
+        assert layer.output_size == 4
+
+    def test_constructor_accepts_merlin_statevector_input_state(self):
+        """StateVector constructor input should be preserved and executable."""
+        state_vector = StateVector.from_tensor(
+            torch.tensor([1.0 + 0.0j, 0.0 + 0.0j]),
+            n_modes=2,
+            n_photons=1,
+        )
+
+        layer = ML.QuantumLayer(
+            input_size=0,
+            circuit=pcvl.Circuit(2),
+            input_state=state_vector,
+            trainable_parameters=[],
+            input_parameters=[],
+            measurement_strategy=ML.MeasurementStrategy.NONE,
+        )
+
+        output = layer()
+
+        assert layer.input_state is state_vector
+        assert layer.n_photons == 1
+        assert torch.allclose(output, state_vector.tensor.unsqueeze(0))
+
     def test_amplitudes_reject_custom_detectors(self):
         """Amplitude readout is incompatible with custom detectors."""
         circuit = pcvl.Circuit(2)
@@ -237,8 +287,10 @@ class TestQuantumLayer:
     @pytest.mark.parametrize("names", [("input", "input"), ("input_a", "input_b")])
     def test_multiple_angle_encodings_validate_input_size(self, names):
         builder = ML.CircuitBuilder(n_modes=5)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name=names[0])
         builder.add_angle_encoding(modes=[2, 3, 4], name=names[1])
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=5,
@@ -301,8 +353,10 @@ class TestQuantumLayer:
     def test_prepare_classical_parameters_detects_batch_mismatch(self):
         """Classical parameter helper should reject mismatched batch sizes."""
         builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input_a")
         builder.add_angle_encoding(modes=[2, 3], name="input_b")
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=4,
@@ -365,6 +419,75 @@ class TestQuantumLayer:
 
         assert torch.all(torch.isfinite(output))
 
+    def test_forward_rejects_unsupported_input_type(self):
+        """forward() should reject inputs that are not tensors or StateVector."""
+        circuit = pcvl.Circuit(2)
+        layer = ML.QuantumLayer(
+            circuit=circuit,
+            n_photons=1,
+            measurement_strategy=ML.MeasurementStrategy.NONE,
+            trainable_parameters=[],
+            input_parameters=[],
+        )
+
+        with pytest.raises(TypeError, match="Unsupported input types"):
+            layer("not-a-tensor")
+
+    def test_forward_rejects_multiple_statevector_inputs(self):
+        """forward() should accept at most one StateVector input."""
+        circuit = pcvl.Circuit(2)
+        layer = ML.QuantumLayer(
+            circuit=circuit,
+            n_photons=1,
+            measurement_strategy=ML.MeasurementStrategy.NONE,
+            trainable_parameters=[],
+            input_parameters=[],
+        )
+        state_vector = StateVector.from_tensor(
+            torch.tensor([1.0 + 0.0j, 0.0 + 0.0j]),
+            n_modes=2,
+            n_photons=1,
+        )
+
+        with pytest.raises(ValueError, match="Only one StateVector input"):
+            layer(state_vector, state_vector)
+
+    def test_forward_rejects_mixed_tensor_and_statevector_inputs(self):
+        """forward() should not mix classical tensors with StateVector inputs."""
+        circuit = pcvl.Circuit(2)
+        layer = ML.QuantumLayer(
+            circuit=circuit,
+            n_photons=1,
+            measurement_strategy=ML.MeasurementStrategy.NONE,
+            trainable_parameters=[],
+            input_parameters=[],
+        )
+        state_vector = StateVector.from_tensor(
+            torch.tensor([1.0 + 0.0j, 0.0 + 0.0j]),
+            n_modes=2,
+            n_photons=1,
+        )
+
+        with pytest.raises(TypeError, match="Cannot mix torch.Tensor and StateVector"):
+            layer(torch.tensor([0.0]), state_vector)
+
+    def test_to_without_target_returns_same_layer(self):
+        """to() with no device or dtype target should be a no-op."""
+        circuit = pcvl.Circuit(2)
+        layer = ML.QuantumLayer(
+            circuit=circuit,
+            n_photons=1,
+            measurement_strategy=ML.MeasurementStrategy.NONE,
+            trainable_parameters=[],
+            input_parameters=[],
+        )
+        converter = layer.computation_process.converter
+
+        returned = layer.to()
+
+        assert returned is layer
+        assert layer.computation_process.converter is converter
+
     def test_multiple_classical_inputs_forward(self):
         """Classical encoding should accept one tensor per input prefix."""
         builder = ML.CircuitBuilder(n_modes=4)
@@ -395,6 +518,7 @@ class TestQuantumLayer:
     def test_builder_infers_input_size_for_backward_compat(self):
         """Builder-based layers should infer input_size when omitted."""
         builder = ML.CircuitBuilder(n_modes=3)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input")
         builder.add_entangling_layer(trainable=True, name="U1")
 
@@ -2735,6 +2859,7 @@ def test_mixed_memristors_with_different_detach_settings():
     torch.manual_seed(2)
 
     builder = ML.CircuitBuilder(n_modes=5)
+    builder.add_entangling_layer(trainable=False, name="pre_mix")
     # First memristor: detach gradients (blocking flow)
     builder.add_memristive_ps(
         mode=1,
@@ -2752,6 +2877,7 @@ def test_mixed_memristors_with_different_detach_settings():
         name="mem_full_grad",
     )
     builder.add_angle_encoding(modes=[0, 3])
+    builder.add_entangling_layer(trainable=False, name="post_mix")
 
     layer = ML.QuantumLayer(
         builder=builder,

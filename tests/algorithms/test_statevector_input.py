@@ -146,8 +146,25 @@ class TestConstructorInputTypes:
 
         message = str(exc_info.value)
         assert "torch.Tensor" in message
-        assert "forward(StateVector)" in message
-        assert "forward(complex_tensor)" in message
+        assert "QuantumLayer input_state" in message
+        assert "StateVector" in message
+        assert "StateVector.from_tensor()" in message
+
+    def test_set_input_state_tensor_raises_clear_error(self):
+        """torch.Tensor should be rejected by set_input_state."""
+        layer = ML.QuantumLayer(
+            circuit=pcvl.Circuit(2),
+            input_state=[1, 0],
+            measurement_strategy=ML.MeasurementStrategy.NONE,
+        )
+        tensor_state = torch.tensor([1.0, 0.0], dtype=torch.complex64)
+
+        with pytest.raises(ValueError) as exc_info:
+            layer.set_input_state(tensor_state)
+
+        message = str(exc_info.value)
+        assert "torch.Tensor" in message
+        assert "QuantumLayer input_state" in message
         assert "StateVector.from_tensor()" in message
 
 
@@ -410,8 +427,10 @@ class TestAngleEncodingBackwardCompatibility:
     def test_multiple_input_prefixes_still_work(self):
         """Multiple angle encoding prefixes should continue to work."""
         builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input_a")
         builder.add_angle_encoding(modes=[2, 3], name="input_b")
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=4,
@@ -559,7 +578,9 @@ class TestErrorHandling:
     def test_unsupported_type_raises_typeerror(self):
         """Unsupported input types should fail with clear TypeError."""
         builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input")
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=2,
@@ -577,7 +598,9 @@ class TestErrorHandling:
     def test_mixed_inputs_clear_error_message(self):
         """Mixed inputs should provide clear error message."""
         builder = ML.CircuitBuilder(n_modes=4)
+        builder.add_entangling_layer(trainable=False, name="pre_mix")
         builder.add_angle_encoding(modes=[0, 1], name="input")
+        builder.add_entangling_layer(trainable=False, name="post_mix")
 
         layer = ML.QuantumLayer(
             input_size=2,

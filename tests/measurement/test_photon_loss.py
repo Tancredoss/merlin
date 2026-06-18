@@ -442,6 +442,7 @@ class TestPhotonLossWithQuantumLayer:
         """Photon loss transforms must preserve autograd support."""
         circuit = pcvl.Circuit(2)
         theta = pcvl.P("phi")
+        circuit.add((0, 1), pcvl.BS())
         circuit.add(0, pcvl.PS(theta))
         circuit.add((0, 1), pcvl.BS())
 
@@ -597,8 +598,10 @@ class TestPhotonLossWithFidelityKernel:
 
     def test_kernel_reflects_photon_survival(self):
         """Kernel value must drop according to the survival probability."""
-        circuit = pcvl.Circuit(1)
+        circuit = pcvl.Circuit(2)
+        circuit.add(0, pcvl.BS())
         circuit.add(0, pcvl.PS(pcvl.P("x")))
+        circuit.add(0, pcvl.BS())
         experiment = pcvl.Experiment(circuit)
         experiment.noise = pcvl.NoiseModel(brightness=0.8, transmittance=0.9)
 
@@ -609,7 +612,7 @@ class TestPhotonLossWithFidelityKernel:
         )
         kernel = ML.FidelityKernel(
             feature_map=feature_map,
-            input_state=[1],
+            input_state=[1, 0],
             computation_space=ComputationSpace.FOCK,
         )
 
@@ -623,8 +626,10 @@ class TestPhotonLossWithFidelityKernel:
 
     def test_kernel_matches_noise_free_case(self):
         """Removing the noise model restores unit kernel values."""
-        circuit = pcvl.Circuit(1)
+        circuit = pcvl.Circuit(2)
+        circuit.add(0, pcvl.BS())
         circuit.add(0, pcvl.PS(pcvl.P("x")))
+        circuit.add(0, pcvl.BS())
 
         feature_map = ML.FeatureMap(
             circuit=circuit,
@@ -633,7 +638,7 @@ class TestPhotonLossWithFidelityKernel:
         )
         kernel = ML.FidelityKernel(
             feature_map=feature_map,
-            input_state=[1],
+            input_state=[1, 0],
             computation_space=ComputationSpace.FOCK,
         )
 
@@ -652,7 +657,7 @@ class TestPhotonLossWithFidelityKernel:
         )
         kernel_noiseless = ML.FidelityKernel(
             feature_map=feature_map_noiseless,
-            input_state=[1],
+            input_state=[1, 0],
             computation_space=ComputationSpace.FOCK,
         )
 
@@ -704,6 +709,7 @@ class TestPhotonLossWithFidelityKernel:
         """FidelityKernel should inherit noise model and detector configuration provided via FeatureMap."""
 
         circuit = pcvl.Circuit(2)
+        circuit.add((0, 1), pcvl.BS())
         circuit.add(0, pcvl.PS(pcvl.P("px")))
         circuit.add((0, 1), pcvl.BS())
 

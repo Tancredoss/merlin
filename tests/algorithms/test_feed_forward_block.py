@@ -22,6 +22,7 @@ from perceval.utils import NoiseModel
 from merlin.algorithms.feed_forward import FeedForwardBlock
 from merlin.algorithms.layer import QuantumLayer
 from merlin.core.computation_space import ComputationSpace
+from merlin.core.state_vector import StateVector
 from merlin.measurement.strategies import MeasurementStrategy
 
 _BASIS_CACHE: dict[tuple[int, int], list[tuple[int, ...]]] = {}
@@ -259,18 +260,34 @@ def test_feedforward_block2_mode_expectations():
     assert torch.allclose(manual, expectation, atol=1e-6, rtol=1e-6)
 
 
-def test_feedforward_block2_accepts_tensor_input_state():
+def test_feedforward_block2_rejects_tensor_input_state():
+    exp = _build_balanced_feedforward_experiment()
+    basis = _basis_states(3, 2)
+    amplitudes = torch.zeros(len(basis), dtype=torch.complex64)
+    amplitudes[basis.index((2, 0, 0))] = 1.0
+
+    with pytest.raises(ValueError) as exc_info:
+        FeedForwardBlock(exp, input_state=amplitudes)
+
+    message = str(exc_info.value)
+    assert "torch.Tensor" in message
+    assert "FeedForwardBlock input_state" in message
+    assert "StateVector.from_tensor()" in message
+
+
+def test_feedforward_block2_accepts_merlin_state_vector_input():
     exp = _build_balanced_feedforward_experiment()
     block_basic = FeedForwardBlock(exp, input_state=[2, 0, 0])
     basis = _basis_states(3, 2)
     amplitudes = torch.zeros(len(basis), dtype=torch.complex64)
     amplitudes[basis.index((2, 0, 0))] = 1.0
-    block_tensor = FeedForwardBlock(exp, input_state=amplitudes)
+    state_vector = StateVector.from_tensor(amplitudes, n_modes=3, n_photons=2)
+    block_state_vector = FeedForwardBlock(exp, input_state=state_vector)
 
     ref_outputs = _as_keyed_tensors(block_basic, block_basic())
-    tensor_outputs = _as_keyed_tensors(block_tensor, block_tensor())
+    state_vector_outputs = _as_keyed_tensors(block_state_vector, block_state_vector())
     for key in block_basic.output_keys:
-        assert torch.allclose(ref_outputs[key], tensor_outputs[key], atol=1e-6)
+        assert torch.allclose(ref_outputs[key], state_vector_outputs[key], atol=1e-6)
 
 
 def test_feedforward_block2_accepts_state_vector_input():
@@ -289,6 +306,7 @@ def test_feedforward_block2_accepts_state_vector_input():
 def test_feedforward_block2_input_and_trainable_parameters_backward():
     exp = pcvl.Experiment()
     root = pcvl.Circuit(2)
+    root.add((0, 1), pcvl.BS())
     root.add(0, pcvl.PS(pcvl.P("phi")))
     root.add((0, 1), pcvl.BS(theta=pcvl.P("theta_1")))
     exp.add(0, root)
@@ -332,7 +350,9 @@ def test_feedforward_block2_forward_without_inputs_matches_explicit_tensor():
 def test_feedforward_block2_requires_classical_features_when_needed():
     exp = pcvl.Experiment()
     circuit = pcvl.Circuit(2)
+    circuit.add(0, pcvl.BS())
     circuit.add(0, pcvl.PS(pcvl.P("phi")))
+    circuit.add(0, pcvl.BS())
     exp.add(0, circuit)
     exp.add(0, pcvl.Detector.pnr())
     provider = pcvl.FFCircuitProvider(1, 0, pcvl.Circuit(1))

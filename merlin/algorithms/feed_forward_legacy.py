@@ -27,7 +27,9 @@ import torch
 from perceval.components import BS, PS
 
 from ..core.computation_space import ComputationSpace
+from ..core.encoding_space import EncodingSpace
 from ..core.state import StatePattern, generate_state
+from ..core.state_vector import StateVector
 from ..measurement.strategies import MeasurementStrategy
 from ..utils.deprecations import raise_no_bunching_removed
 from .layer import QuantumLayer
@@ -440,8 +442,13 @@ class FeedForwardBlockLegacy(torch.nn.Module):
                         keys, keys_next, self.conditional_modes, combo
                     )
 
-                # Set input quantum state for the layer
-                layer.set_input_state(remaining_amplitudes[:, match_idx])
+                state_vector = StateVector.from_tensor(
+                    remaining_amplitudes[:, match_idx],
+                    n_modes=layer.circuit.m,
+                    n_photons=layer.n_photons,
+                    encoding=self._encoding_space_for_layer(layer),
+                )
+                layer.set_input_state(state_vector)
                 start, end = self.input_segments[current_key]
 
                 # Execute layer with or without classical input
@@ -534,6 +541,34 @@ class FeedForwardBlockLegacy(torch.nn.Module):
             ):
                 idx.append(out_map[reduced])
         return torch.tensor(idx)
+
+    @staticmethod
+    def _encoding_space_for_layer(layer: QuantumLayer) -> EncodingSpace:
+        """Return the input tensor encoding expected by a target layer.
+
+        Parameters
+        ----------
+        layer : QuantumLayer
+            Layer receiving the branch amplitudes.
+
+        Returns
+        -------
+        EncodingSpace
+            Encoding corresponding to the layer computation space.
+
+        Raises
+        ------
+        ValueError
+            If the layer computation space is unsupported.
+        """
+        computation_space = ComputationSpace.coerce(layer.computation_space)
+        if computation_space is ComputationSpace.FOCK:
+            return EncodingSpace.FOCK
+        if computation_space is ComputationSpace.UNBUNCHED:
+            return EncodingSpace.UNBUNCHED
+        if computation_space is ComputationSpace.DUAL_RAIL:
+            return EncodingSpace.DUAL_RAIL
+        raise ValueError(f"Unsupported computation space: {computation_space!r}.")
 
     # =======================================================================
     #  Forward Pass & Layer Management
