@@ -257,6 +257,34 @@ def test_cache_reuses_training_quantum_features(monkeypatch):
     assert dataset.tensors[0].shape[0] == len(X)
 
 
+def test_cache_miss_for_large_input_change_outside_old_sample(monkeypatch):
+    X = np.arange(2001 * 4, dtype=np.float32).reshape(2001, 4)
+    X_changed = X.copy()
+    X_changed[1, 0] += 10.0
+
+    model = ReservoirClassifier(
+        in_features=4,
+        out_features=2,
+        n_photons=1,
+        reduction=None,
+        concatenate=False,
+        cache=True,
+    )
+    calls = {"count": 0}
+
+    def _fake_encode_quantum(X_reduced_normalized, processor=None):
+        del processor
+        calls["count"] += 1
+        return torch.as_tensor(X_reduced_normalized, dtype=model.dtype)
+
+    monkeypatch.setattr(model, "_encode_quantum", _fake_encode_quantum)
+
+    model.fit_reservoir(X)
+    model.transform_reservoir(X_changed)
+
+    assert calls["count"] == 2
+
+
 def test_cache_false_always_encodes(monkeypatch):
     X, y = _toy_data()
     model = ReservoirClassifier(

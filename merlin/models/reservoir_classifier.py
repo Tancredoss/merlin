@@ -554,13 +554,11 @@ class ReservoirClassifier(MerlinModule):
 
     @staticmethod
     def _fingerprint(X: np.ndarray) -> str:
-        # Build a cheap cache key for X without storing the full raw dataset:
-        # we hash shape/dtype plus a small strided subsample, which is enough
-        # to detect the common "same training set reused" case.
-        stride = max(1, len(X) // 1000)
-        sample = np.ascontiguousarray(X[::stride][:1000])
-        payload = f"{X.shape}:{X.dtype}".encode() + sample.tobytes()
-        return hashlib.blake2b(payload, digest_size=16).hexdigest()
+        contiguous = np.ascontiguousarray(X)
+        digest = hashlib.blake2b(digest_size=16)
+        digest.update(f"{contiguous.shape}:{contiguous.dtype}".encode())
+        digest.update(contiguous.tobytes())
+        return digest.hexdigest()
 
     def fit_reservoir(
         self,
