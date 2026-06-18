@@ -1,9 +1,9 @@
-Photonic QCNN
 :github_url: https://github.com/merlinquantum/merlin
 
 .. _qcnn_model_user_guide:
 
 Photonic QCNN
+=============
 
 The :class:`~merlin.models.qcnn.QCNNClassifier` is a ready-to-use photonic
 quantum convolutional neural network for square, single-channel image
