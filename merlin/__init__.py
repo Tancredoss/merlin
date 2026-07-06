@@ -39,7 +39,7 @@ from .algorithms.feed_forward_legacy import (
     define_layer_no_input,
     define_layer_with_input,
 )
-from .algorithms.kernels import FeatureMap, FidelityKernel
+from .algorithms.kernels import FeatureMap, FidelityKernel, ProjectedFidelityKernel
 from .algorithms.layer import QuantumLayer
 from .algorithms.loss import NKernelAlignment
 from .bridge.quantum_bridge import QuantumBridge
