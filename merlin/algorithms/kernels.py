@@ -2575,12 +2575,14 @@ class ProjectedFidelityKernel(MerlinModule):
         else:
             features2 = self._get_projected_features(x2)
 
-        # 3. Compute pairwise squared Euclidean distances
-        # torch.cdist computes standard Euclidean distance, so we square it
-        distances = torch.cdist(features1, features2, p=2.0)
-        squared_distances = distances ** 2
-        
-        # 4. Apply the Gaussian/RBF kernel formula: exp(-gamma * ||rho(x) - rho(y)||^2)
+        # 3. Compute pairwise squared distances explicitly as
+        # sum_k ||rho_k(x_i) - rho_k(x_j)||^2 over all modes k.
+        # Here each rho_k is the projected scalar feature for mode k.
+        pairwise_diff = features1[:, None, :] - features2[None, :, :]
+        squared_distances = (pairwise_diff**2).sum(dim=-1)
+
+        # 4. Apply the Gaussian/RBF kernel formula
+        # K(x_i, x_j) = exp(-gamma * sum_k ||rho_k(x_i) - rho_k(x_j)||^2)
         kernel_matrix = torch.exp(-self.gamma * squared_distances)
 
         # 5. Post-processing for numerical stability (Training matrix case)
