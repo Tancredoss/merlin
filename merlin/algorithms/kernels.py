@@ -2477,32 +2477,26 @@ class ProjectedFidelityKernel(MerlinModule):
         """
         Passes the input data through the quantum circuit and projects the resulting
         state into the classical feature space (marginal probabilities of 0 photons per mode).
-        
-        Parameters
-        ----------
-        x : torch.Tensor
-            Batch of raw input data of shape (batch_size, input_size).
-            
-        Returns
-        -------
-        torch.Tensor
-            Projected features of shape (batch_size, n_modes).
         """
-        # 1. Evaluate the circuit to get the probability distribution over Fock states
+        # 1. Evaluate the circuit
         result = self._quantum_layer(x)
         
         from ..core.sectored_distribution import SectoredDistribution
         
-        # Handle the dynamic return type of QuantumLayer
+        # Extract probabilities
         if isinstance(result, SectoredDistribution):
-            # If using a noisy backend that returns sectored distributions
             probs = result.to(dtype=self.dtype)
-            # Flatten sectored keys into a single list for our mask
-            keys = [key for sector in result.sectors for key in sector.keys]
         else:
-            # Standard FOCK space returns a tuple (keys, probabilities)
-            keys, probs = result
-            probs = probs.to(dtype=self.dtype)
+            probs = result.to(dtype=self.dtype)
+            
+        # Extract keys from the layer's internal attributes
+        raw_keys = self._quantum_layer._raw_output_keys
+        
+        # Handle sectored vs non-sectored keys
+        if raw_keys and isinstance(raw_keys[0], list):
+            keys = [k for sector in raw_keys for k in sector]
+        else:
+            keys = raw_keys
             
         # Ensure probs is a 2D tensor (batch_size, num_states)
         if probs.ndim == 1:
@@ -2521,9 +2515,6 @@ class ProjectedFidelityKernel(MerlinModule):
             )
             
         # 3. Compute the marginals (rho_k) using PyTorch matrix multiplication
-        # probs shape: (batch_size, num_states)
-        # mask shape: (num_modes, num_states)
-        # Result shape: (batch_size, num_modes)
         projected_features = probs @ self._zero_photon_mask.T
         
         return projected_features
